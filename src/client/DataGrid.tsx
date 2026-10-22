@@ -33,6 +33,10 @@ export interface DataGridProps {
   onCellClick?: (column: ColumnInfo, value: CellValue) => void
   /** Remember user-dragged column widths under this key. */
   storageKey?: string
+  /** Active sort; the matching header shows an arrow. */
+  sort?: { column: string; direction: 'asc' | 'desc' } | null
+  /** Clicking a header asks the page to sort by that column. */
+  onSort?: (column: ColumnInfo) => void
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -96,7 +100,7 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
 }
 
 export function DataGrid(props: DataGridProps): ReactElement {
-  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey } = props
+  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort } = props
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const { range, onScroll } = useVirtualRange(rows.length, containerRef)
@@ -175,8 +179,26 @@ export function DataGrid(props: DataGridProps): ReactElement {
           <tr>
             <th className="dshdb-num">#</th>
             {columns.map((column, index) => (
-              <th key={`${column.name}-${index}`} title={`${column.name} ${column.typeName}`}>
+              <th
+                key={`${column.name}-${index}`}
+                title={onSort === undefined ? `${column.name} ${column.typeName}` : `按 ${column.name} 排序`}
+                className={onSort === undefined ? undefined : 'dshdb-th-sortable'}
+                data-sorted={sort !== null && sort !== undefined && sort.column === column.name ? sort.direction : undefined}
+                onClick={
+                  onSort === undefined
+                    ? undefined
+                    : (event) => {
+                        if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
+                        onSort(column)
+                      }
+                }
+              >
                 {column.name}
+                {sort !== null && sort !== undefined && sort.column === column.name ? (
+                  <span className="dshdb-sort-arrow" aria-hidden="true">
+                    {sort.direction === 'asc' ? '▲' : '▼'}
+                  </span>
+                ) : null}
                 <span
                   className="dshdb-grip"
                   role="separator"

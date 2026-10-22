@@ -298,6 +298,15 @@ export const CSS = `
 }
 .dshdb-grid tbody tr { height: 22px; }
 .dshdb-grid.dshdb-grid-sized { table-layout: fixed; width: 100%; }
+.dshdb-th-sortable { cursor: pointer; user-select: none; }
+.dshdb-th-sortable:hover { color: var(--dsw-alias-label-primary); }
+.dshdb-grid th[data-sorted] { color: var(--dsw-alias-label-primary); }
+.dshdb-sort-arrow {
+  margin-left: 4px;
+  font-size: 9px;
+  vertical-align: 1px;
+  color: var(--dsw-alias-brand-primary);
+}
 .dshdb-grid-sized td { overflow: hidden; text-overflow: ellipsis; }
 .dshdb-grip {
   position: absolute;
