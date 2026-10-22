@@ -447,6 +447,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           columns={columns}
           rows={rows}
           offset={offset}
+          storageKey={`table:${params.schema}.${params.table}`}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
                 <th className="dshdb-num" />
                 {columns.map((column, index) => {

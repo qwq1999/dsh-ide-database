@@ -297,6 +297,29 @@ export const CSS = `
   text-overflow: ellipsis;
 }
 .dshdb-grid tbody tr { height: 22px; }
+.dshdb-grid.dshdb-grid-sized { table-layout: fixed; width: 100%; }
+.dshdb-grid-sized td { overflow: hidden; text-overflow: ellipsis; }
+.dshdb-grip {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  z-index: 3;
+  cursor: col-resize;
+}
+.dshdb-grip::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+}
+.dshdb-grip:hover::after {
+  background: var(--dsw-alias-business-primary);
+}
 .dshdb-vpad td { padding: 0 !important; border: 0 !important; }
 .dshdb-grid tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-grid .dshdb-num {

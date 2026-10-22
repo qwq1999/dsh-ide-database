@@ -641,7 +641,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           ) : null}
 
           {result !== null && rows.length > 0 ? (
-            <DataGrid columns={columns} rows={rows} offset={offset} />
+            <DataGrid columns={columns} rows={rows} offset={offset} storageKey="console:sql" />
           ) : (
             <div className="dshdb-grid-wrap">
               {result === null ? (
