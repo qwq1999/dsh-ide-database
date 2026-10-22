@@ -6,17 +6,18 @@ import type {
   ConnectionDraft,
   ConnectionTestResult,
   DbSettings,
+  DescribeResult,
   DriverConfig,
   DriverStatus,
   EnvStatus,
+  ObjectListResult,
   QueryResult,
   RedisCommandResult,
   RedisScanResult,
   RedisValue,
-  SchemaInfo,
-  SchemaObject,
+  SchemaListResult,
   ServerInfo,
-  TableDescription,
+  StructureSnapshot,
 } from '../shared/types.js'
 
 export class ApiError extends Error {
@@ -79,10 +80,11 @@ export const api = {
   connect: (id: string) => post<ServerInfo>('/connections/connect', { id }),
   disconnect: (id: string) => post<{ disconnected: string }>('/connections/disconnect', { id }),
 
-  schemas: (id: string, filter = '') => post<{ schemas: SchemaInfo[] }>('/schema/list', { id, filter }),
-  objects: (id: string, schema: string) => post<{ objects: SchemaObject[] }>('/schema/objects', { id, schema }),
+  structure: () => post<{ structures: StructureSnapshot }>('/structure'),
+  schemas: (id: string, filter = '') => post<SchemaListResult>('/schema/list', { id, filter }),
+  objects: (id: string, schema: string) => post<ObjectListResult>('/schema/objects', { id, schema }),
   describe: (id: string, schema: string, table: string, kind: string) =>
-    post<TableDescription>('/schema/describe', { id, schema, table, kind }),
+    post<DescribeResult>('/schema/describe', { id, schema, table, kind }),
 
   query: (options: {
     id: string

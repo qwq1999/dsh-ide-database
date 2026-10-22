@@ -1,0 +1,409 @@
+/**
+ * One table's data in its own right Sidebar tab, IDEA style: a WHERE box, an
+ * ORDER BY box, a result grid, and a pager under it.
+ *
+ * Double-clicking a table in the data tree opens this page with the table's
+ * coordinates as navigation parameters. The first read opens the connection when
+ * it is closed; a restored tab carries no parameters, so it reports that the
+ * table has to be opened again instead of guessing.
+ */
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
+import { ApiError, api } from './api'
+import { formatCell, formatMs } from './format'
+import { PlayIcon, RefreshIcon, TableIcon } from './icons'
+import { readTableTabParams, type TableTabParams } from './tab-open'
+import { Banner, EmptyState, Spinner, Tag } from './ui'
+
+/** What the tab body receives: the framework's tab reader. */
+export interface TableTabProps {
+  useTabInfo?: () => { tab?: { navigation?: { params?: unknown } } } | undefined
+}
+
+interface Failure {
+  message: string
+  detail?: string
+}
+
+const PAGE_SIZES = [100, 200, 500, 1000, 2000, 5000]
+
+const noTabInfo = (): undefined => undefined
+
+function failureText(error: unknown): Failure {
+  if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }
+  return { message: error instanceof Error ? error.message : String(error) }
+}
+
+function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
+  return dialect === 'mysql' ? `\`${name}\`` : `"${name}"`
+}
+
+function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
+  const tableName = quoteIdent(dialect, table)
+  return schema === '' ? tableName : `${quoteIdent(dialect, schema)}.${tableName}`
+}
+
+/** One page of rows: LIMIT/OFFSET on MySQL-family servers, OFFSET FETCH elsewhere. */
+function pageClause(dialect: ClientConnection['dialect'], limit: number, offset: number): string {
+  if (dialect === 'oracle' || dialect === 'oceanbase-oracle') return `OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
+  return `LIMIT ${limit} OFFSET ${offset}`
+}
+
+/** Strip a leading WHERE/ORDER BY keyword so the box takes just the expression. */
+function stripKeyword(text: string, keyword: string): string {
+  const trimmed = text.trim().replace(/[\s;]+$/u, '')
+  if (trimmed === '') return ''
+  const pattern = new RegExp(`^${keyword}\\b`, 'i')
+  return trimmed.replace(pattern, '').trim()
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString('en-US')
+}
+
+async function runSql(id: string, sql: string, maxRows: number): Promise<QueryResult> {
+  try {
+    return await api.query({ id, sql, maxRows })
+  } catch (error) {
+    // A tab opened from a cold app has no bridge connection yet; open it once.
+    if (error instanceof ApiError && error.code === 'not-connected') {
+      await api.connect(id)
+      return await api.query({ id, sql, maxRows })
+    }
+    throw error
+  }
+}
+
+function PagerButton({
+  label,
+  title,
+  onClick,
+  disabled,
+}: {
+  label: string
+  title: string
+  onClick: () => void
+  disabled: boolean
+}): ReactElement {
+  return (
+    <button type="button" className="dshdb-pager-btn" title={title} aria-label={title} onClick={onClick} disabled={disabled}>
+      {label}
+    </button>
+  )
+}
+
+function TableGrid({ params }: { params: TableTabParams }): ReactElement {
+  const [connection, setConnection] = useState<ClientConnection | null>(null)
+  const [columns, setColumns] = useState<ColumnInfo[]>([])
+  const [rows, setRows] = useState<Row[]>([])
+  const [total, setTotal] = useState<number | undefined>(undefined)
+  const [elapsed, setElapsed] = useState<number | undefined>(undefined)
+  const [sqlText, setSqlText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<Failure | null>(null)
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(500)
+  const [whereText, setWhereText] = useState('')
+  const [orderText, setOrderText] = useState('')
+
+  const load = useCallback(
+    async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const dialect = found.dialect
+        const from = qualifiedName(dialect, params.schema, params.table)
+        const where = stripKeyword(target.where, 'WHERE')
+        const orderBy = stripKeyword(target.orderBy, 'ORDER\\s+BY')
+        const whereSql = where === '' ? '' : ` WHERE ${where}`
+        const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
+        const offset = target.page * target.size
+        const pageSql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, target.size, offset)}`
+        const result = await runSql(params.connectionId, pageSql, target.size)
+        setColumns(result.columns)
+        setRows(result.rows)
+        setElapsed(result.elapsedMs)
+        setSqlText(result.sql === '' ? pageSql : result.sql)
+        setPage(target.page)
+        if (target.recount) {
+          try {
+            const counted = await runSql(params.connectionId, `SELECT COUNT(*) FROM ${from}${whereSql}`, 1)
+            const first = counted.rows[0]?.[0]
+            const value = typeof first === 'number' ? first : Number(first)
+            setTotal(Number.isFinite(value) ? value : undefined)
+          } catch {
+            // Counting is best effort: a pager without a total still pages.
+            setTotal(undefined)
+          }
+        }
+      } catch (caught) {
+        setError(failureText(caught))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [params.connectionId, params.schema, params.table],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    setConnection(null)
+    setRows([])
+    setColumns([])
+    setTotal(undefined)
+    setPage(0)
+    setWhereText('')
+    setOrderText('')
+    setError(null)
+    void (async () => {
+      try {
+        const status = await api.status()
+        const found = status.config.connections.find((item) => item.id === params.connectionId)
+        if (found === undefined) throw new ApiError('not-found', '该数据源已不存在，请重新连接后再打开数据表')
+        if (found.dialect === 'redis') throw new ApiError('unsupported', '数据表只能在关系型数据源中打开')
+        if (cancelled) return
+        setConnection(found)
+        await load(found, { page: 0, size: 500, where: '', orderBy: '', recount: true })
+      } catch (caught) {
+        if (!cancelled) setError(failureText(caught))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [load, params.connectionId])
+
+  const offset = page * pageSize
+  const hasPrevious = page > 0
+  const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
+  const hasNext = lastPage === undefined ? rows.length >= pageSize : page < lastPage
+  const rangeStart = rows.length === 0 ? 0 : offset + 1
+  const rangeEnd = offset + rows.length
+  const totalText = total !== undefined ? `/${formatCount(total)}` : hasNext ? `/${formatCount(offset + pageSize)}+` : ''
+
+  const apply = (next: { page?: number; size?: number; where?: string; orderBy?: string }): void => {
+    if (connection === null) return
+    void load(connection, {
+      page: next.page ?? page,
+      size: next.size ?? pageSize,
+      where: next.where ?? whereText,
+      orderBy: next.orderBy ?? orderText,
+      recount: next.where !== undefined || next.size !== undefined,
+    })
+  }
+
+  if (error !== null && rows.length === 0) {
+    return (
+      <div className="dshdb-qtab">
+        <Banner tone="error" onClose={() => setError(null)}>
+          {error.message}
+          {error.detail ? `\n${error.detail}` : ''}
+        </Banner>
+      </div>
+    )
+  }
+
+  return (
+    <div className="dshdb-qtab">
+      <div className="dshdb-qbar">
+        <span className="dshdb-qtable" title={`${params.schema}.${params.table}`}>
+          <TableIcon size={13} />
+          {params.table}
+        </span>
+        <span className="dshdb-qbar-spacer" />
+        {loading ? <Spinner /> : null}
+        {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="刷新"
+          aria-label="刷新"
+          onClick={() => apply({})}
+          disabled={loading}
+        >
+          <RefreshIcon size={13} />
+        </button>
+      </div>
+
+      <div className="dshdb-qfilter">
+        <span className="dshdb-qfilter-label">WHERE</span>
+        <input
+          className="dshdb-input dshdb-qfilter-input"
+          placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
+          value={whereText}
+          spellCheck={false}
+          onChange={(event) => setWhereText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') apply({ where: whereText, page: 0 })
+          }}
+        />
+        <span className="dshdb-qfilter-label">ORDER BY</span>
+        <input
+          className="dshdb-input dshdb-qfilter-input dshdb-qfilter-order"
+          placeholder="排序列，例如 ID DESC"
+          value={orderText}
+          spellCheck={false}
+          onChange={(event) => setOrderText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') apply({ orderBy: orderText, page: 0 })
+          }}
+        />
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="应用查询条件"
+          aria-label="应用查询条件"
+          onClick={() => apply({ where: whereText, orderBy: orderText, page: 0 })}
+          disabled={loading}
+        >
+          <PlayIcon size={13} />
+        </button>
+      </div>
+
+      {error !== null ? (
+        <Banner tone="error" onClose={() => setError(null)}>
+          {error.message}
+          {error.detail ? `\n${error.detail}` : ''}
+        </Banner>
+      ) : null}
+
+      <div className="dshdb-grid-wrap">
+        {rows.length === 0 && !loading ? (
+          <EmptyState icon={<TableIcon size={22} />} title="没有匹配的行" description={sqlText} />
+        ) : (
+          <table className="dshdb-grid">
+            <thead>
+              <tr>
+                <th className="dshdb-num">#</th>
+                {columns.map((column, index) => (
+                  <th key={`${column.name}-${index}`} title={`${column.name} ${column.typeName}`}>
+                    {column.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  <td className="dshdb-num">{offset + rowIndex + 1}</td>
+                  {columns.map((column, columnIndex) => {
+                    const value: CellValue = row[columnIndex] ?? null
+                    return (
+                      <td key={`${column.name}-${columnIndex}`} title={formatCell(value)}>
+                        <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="dshdb-pager">
+        {loading ? <Tag tone="business">查询中</Tag> : null}
+        {sqlText !== '' ? (
+          <span className="dshdb-pager-sql" title={sqlText}>
+            {sqlText}
+          </span>
+        ) : null}
+        <span className="dshdb-pager-spacer" />
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="第一页"
+          aria-label="第一页"
+          onClick={() => apply({ page: 0 })}
+          disabled={!hasPrevious || loading}
+        >
+          |◀
+        </button>
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="上一页"
+          aria-label="上一页"
+          onClick={() => apply({ page: Math.max(page - 1, 0) })}
+          disabled={!hasPrevious || loading}
+        >
+          ◀
+        </button>
+        <span className="dshdb-pager-range" title={`${formatCount(rangeStart)}-${formatCount(rangeEnd)}`}>
+          {formatCount(rangeStart)}-{formatCount(rangeEnd)}
+        </span>
+        <select
+          className="dshdb-select dshdb-select-inline dshdb-pager-size"
+          aria-label="每页行数"
+          value={String(pageSize)}
+          disabled={loading}
+          onChange={(event) => {
+            const size = Number(event.target.value)
+            setPageSize(size)
+            apply({ size, page: 0 })
+          }}
+        >
+          {PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {formatCount(size)}
+            </option>
+          ))}
+        </select>
+        <span className="dshdb-pager-total">{totalText}</span>
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="下一页"
+          aria-label="下一页"
+          onClick={() => apply({ page: page + 1 })}
+          disabled={!hasNext || loading}
+        >
+          ▶
+        </button>
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="最后一页"
+          aria-label="最后一页"
+          onClick={() => apply({ page: lastPage ?? page })}
+          disabled={lastPage === undefined || loading || page >= lastPage}
+        >
+          ▶|
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Render the table tab named by this tab's navigation parameters. */
+export function TableTab(props: TableTabProps): ReactElement {
+  const info = (props.useTabInfo ?? noTabInfo)()
+  const params = readTableTabParams(info?.tab?.navigation?.params)
+  if (params === undefined) {
+    return (
+      <EmptyState
+        icon={<TableIcon size={22} />}
+        title="数据表已关闭"
+        description="这个标签页没有记录数据表位置，请在数据树中双击数据表重新打开。"
+      />
+    )
+  }
+  return <TableGrid params={params} />
+}
+
+/** The chip text of a table tab: the table's name, or nothing to name. */
+export function TableTabTitle(props: TableTabProps): ReactElement {
+  const info = (props.useTabInfo ?? noTabInfo)()
+  const params = readTableTabParams(info?.tab?.navigation?.params)
+  if (params === undefined) return <span>数据表</span>
+  // The chip is narrow: name the table, keep the qualified name in the tip and
+  // in the body header.
+  const label = params.table
+  const qualified = params.schema === '' ? params.table : `${params.schema}.${params.table}`
+  return (
+    <span className="dshdb-tabtitle" title={qualified}>
+      <TableIcon size={12} />
+      {label}
+    </span>
+  )
+}

@@ -56,8 +56,13 @@ export function PlusIcon(props: IconProps): ReactElement {
 export function RefreshIcon(props: IconProps): ReactElement {
   return (
     <Svg {...props}>
-      <path d="M20 11a8 8 0 1 0-2.6 5.9" />
-      <path d="M20 4v7h-7" />
+      {/* The open arc is drawn around (12, 11), so its ink rides 1 unit high in
+          the 24 box; shifting it to y = 12 puts the glyph on the optical centre
+          beside an inline label. */}
+      <g transform="translate(0 1)">
+        <path d="M20 11a8 8 0 1 0-2.6 5.9" />
+        <path d="M20 4v7h-7" />
+      </g>
     </Svg>
   )
 }
@@ -221,6 +226,60 @@ export function InfoIcon(props: IconProps): ReactElement {
     <Svg {...props}>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 10.8v5M12 7.8h.01" />
+    </Svg>
+  )
+}
+
+export function FolderIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l1.8 2H19.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z" />
+    </Svg>
+  )
+}
+
+/** 例程：存储过程与函数共用。 */
+export function FunctionIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M7 4h3.2C12 4 13 5 13 6.6V17c0 2 1 3 3 3h1.4" />
+      <path d="M5.5 10.5h11" />
+    </Svg>
+  )
+}
+
+export function SequenceIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h9M4 12h13M4 17h7" />
+      <circle cx="18.5" cy="7" r="1.6" />
+      <circle cx="20.5" cy="17" r="1.6" />
+    </Svg>
+  )
+}
+
+export function TriggerIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M13 3 5 13.5h5L9.5 21 19 10h-5.5Z" />
+    </Svg>
+  )
+}
+
+export function ColumnIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M10 4v16M14 4v16" />
+    </Svg>
+  )
+}
+
+export function IndexIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <circle cx="11" cy="11" r="6" />
+      <path d="m20 20-4.4-4.4" />
     </Svg>
   )
 }

@@ -304,6 +304,11 @@ export class SqlService {
 
   async describe(connId: string, schema: string, table: string, kind: ObjectKind = 'table'): Promise<TableDescription> {
     this.requireConnected(connId)
+    // Columns/indexes only exist for relations; routines, sequences and triggers
+    // are listed in the tree but have no table structure to read.
+    if (kind !== 'table' && kind !== 'view') {
+      return { schema, table, kind, columns: [], indexes: [] }
+    }
     const bridge = await this.ensureBridge()
     const reply = await bridge.request<{ columns?: ColumnDetail[]; indexes?: IndexInfo[] }>(
       'columns',

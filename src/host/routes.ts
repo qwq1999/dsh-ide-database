@@ -12,8 +12,13 @@ import type {
   RedisCommandResult,
   RedisScanResult,
   RedisValue,
+  DescribeResult,
+  ObjectKind,
+  ObjectListResult,
   SchemaInfo,
+  SchemaListResult,
   SchemaObject,
+  StructureSnapshot,
   ServerInfo,
   TableDescription,
 } from '../shared/types.js'
@@ -26,6 +31,7 @@ import type { RedisManager } from './redis.js'
 import type { SecretStore } from './secrets.js'
 import { optionalService, type HostContext } from './services.js'
 import type { SqlService } from './sql.js'
+import type { StructureStore } from './structure.js'
 
 const BODY_LIMIT = 4 * 1024 * 1024
 
@@ -38,6 +44,7 @@ export interface RouteDeps {
   java: JavaLocator
   sql: SqlService
   redis: RedisManager
+  structure: StructureStore
   log: (message: string) => void
 }
 
@@ -117,6 +124,65 @@ function sqlConnection(deps: RouteDeps, id: string) {
   return connection
 }
 
+/**
+ * Live read first; when the data source is not connected (or the read fails) fall
+ * back to the cached structure so the tree stays browsable. Successful reads
+ * replace the cache, which is what "connect once, browse later" means in IDEA.
+ */
+async function readSchemas(deps: RouteDeps, id: string, filter: string): Promise<SchemaListResult> {
+  try {
+    const schemas: SchemaInfo[] = await deps.sql.schemas(id, filter)
+    // Only a full read may replace the cache; a filtered read would drop schemas.
+    if (filter.trim() === '') deps.structure.putSchemas(id, schemas)
+    return { schemas, cached: false, fetchedAt: new Date().toISOString() }
+  } catch (error) {
+    const cached = deps.structure.get(id)
+    if (cached === undefined) throw error
+    const needle = filter.trim().toLowerCase()
+    const schemas = needle === ''
+      ? cached.schemas
+      : cached.schemas.filter((entry) => entry.name.toLowerCase().includes(needle))
+    return { schemas, cached: true, fetchedAt: cached.fetchedAt, error: errorText(error) }
+  }
+}
+
+async function readDescription(
+  deps: RouteDeps,
+  id: string,
+  schema: string,
+  table: string,
+  kind: ObjectKind,
+): Promise<DescribeResult> {
+  try {
+    const description = await deps.sql.describe(id, schema, table, kind)
+    if (kind === 'table' || kind === 'view') {
+      deps.structure.putDescription(id, schema, table, description)
+    }
+    return { ...description, cached: false, fetchedAt: new Date().toISOString() }
+  } catch (error) {
+    const description = deps.structure.getDescription(id, schema, table)
+    if (description === undefined) throw error
+    return { ...description, cached: true, fetchedAt: deps.structure.get(id)?.fetchedAt }
+  }
+}
+
+async function readObjects(deps: RouteDeps, id: string, schema: string): Promise<ObjectListResult> {
+  try {
+    const objects: SchemaObject[] = await deps.sql.objects(id, schema)
+    deps.structure.putObjects(id, schema, objects)
+    return { objects, cached: false, fetchedAt: new Date().toISOString() }
+  } catch (error) {
+    const cached = deps.structure.get(id)
+    const objects = cached?.objects[schema]
+    if (cached === undefined || objects === undefined) throw error
+    return { objects, cached: true, fetchedAt: cached.fetchedAt, error: errorText(error) }
+  }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function envStatus(deps: RouteDeps): EnvStatus {
   const settings = deps.config.settings()
   const java: JavaStatus = deps.java.locate(settings.javaPath)
@@ -162,6 +228,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       await deps.sql.disconnect(id)
       await deps.redis.disconnect(id)
       deps.config.deleteConnection(id)
+      deps.structure.clear(id)
       sendJson(response, 200, { ok: true, data: { config: deps.config.snapshot() } })
       return
     }
@@ -187,19 +254,24 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       sendJson(response, 200, { ok: true, data: { disconnected: id } })
       return
     }
+    case '/structure': {
+      const structures: StructureSnapshot = deps.structure.snapshot()
+      sendJson(response, 200, { ok: true, data: { structures } })
+      return
+    }
     case '/schema/list': {
       const id = typeof data.id === 'string' ? data.id : ''
       const filter = typeof data.filter === 'string' ? data.filter : ''
-      const schemas: SchemaInfo[] = await deps.sql.schemas(id, filter)
-      sendJson(response, 200, { ok: true, data: { schemas } })
+      const result: SchemaListResult = await readSchemas(deps, id, filter)
+      sendJson(response, 200, { ok: true, data: result })
       return
     }
     case '/schema/objects': {
       const id = typeof data.id === 'string' ? data.id : ''
       const schema = typeof data.schema === 'string' ? data.schema : ''
       if (schema === '') throw new DbError('invalid', '必须选择 Schema')
-      const objects: SchemaObject[] = await deps.sql.objects(id, schema)
-      sendJson(response, 200, { ok: true, data: { objects } })
+      const result: ObjectListResult = await readObjects(deps, id, schema)
+      sendJson(response, 200, { ok: true, data: result })
       return
     }
     case '/schema/describe': {
@@ -207,9 +279,9 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const schema = typeof data.schema === 'string' ? data.schema : ''
       const table = typeof data.table === 'string' ? data.table : ''
       if (schema === '' || table === '') throw new DbError('invalid', '必须提供 schema 与表名')
-      const kind = data.kind === 'view' || data.kind === 'other' ? data.kind : 'table'
-      const description: TableDescription = await deps.sql.describe(id, schema, table, kind)
-      sendJson(response, 200, { ok: true, data: description })
+      const kind = typeof data.kind === 'string' ? (data.kind as ObjectKind) : 'table'
+      const result: DescribeResult = await readDescription(deps, id, schema, table, kind)
+      sendJson(response, 200, { ok: true, data: result })
       return
     }
     case '/query': {

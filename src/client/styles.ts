@@ -12,84 +12,57 @@ export const CSS = `
   overflow: hidden;
 }
 
-.dshdb-topbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 10px 6px;
-  flex: none;
-}
-.dshdb-topbar-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-.dshdb-topbar-title span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dshdb-topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-}
+/* Glyphs are flex children all over this panel. A block-level svg drops the
+   descender gap an inline one leaves, so an icon and the text beside it share
+   one centre line instead of the glyph riding high. */
+.dshdb-root svg { display: block; }
 
-.dshdb-connbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 0 10px 8px;
-  flex: none;
+/* IDEA 风格工具窗口工具栏：按钮左对齐，右侧放视图切换 */
+.dshdb-toolbar-top {
+  padding: 5px 8px;
+  gap: 2px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
-.dshdb-chip {
+.dshdb-toolbtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 24px;
-  padding: 0 8px;
+  padding: 0 7px;
   flex: none;
-  max-width: 180px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
   font-family: inherit;
+  font-size: 12px;
+  /* The UA font shorthand on <button> leaves line-height at normal, whose extra
+     line gap pushes the glyph 1px below the icon. Pinning the line box to the
+     font content height keeps label and icon on one optical centre. */
+  line-height: 15px;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
-.dshdb-chip:hover {
+.dshdb-toolbtn:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
-.dshdb-chip[data-active="true"] {
-  border-color: var(--dsw-alias-state-business-primary);
-  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 12%, transparent);
-  color: var(--dsw-alias-label-primary);
-}
-.dshdb-chip[data-active="true"] .dshdb-chip-name { font-weight: 500; }
-.dshdb-chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
+.dshdb-toolbtn:disabled { opacity: 0.45; cursor: default; }
+.dshdb-toolbtn svg { flex: none; color: var(--dsw-alias-label-tertiary); }
+.dshdb-toolbtn:hover:not(:disabled) svg { color: var(--dsw-alias-label-primary); }
 
-.dshdb-tabs {
+.dshdb-seg {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 10px 8px;
   flex: none;
+  padding: 1px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
 }
+.dshdb-seg .dshdb-tab { height: 20px; padding: 0 8px; }
+
 .dshdb-tab {
   height: 24px;
   padding: 0 9px;
@@ -185,6 +158,7 @@ export const CSS = `
   align-items: center;
   gap: 5px;
   width: 100%;
+  box-sizing: border-box;
   min-height: 24px;
   padding: 0 6px 0 calc(4px + var(--dshdb-depth, 0) * 12px);
   border: 0;
@@ -197,7 +171,11 @@ export const CSS = `
   cursor: pointer;
 }
 .dshdb-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.dshdb-row[data-active="true"] { background: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-button-primary-label, var(--dsw-alias-label-primary)); }
+.dshdb-row[data-active="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
+}
 .dshdb-row[data-active="true"] .dshdb-row-meta { color: inherit; opacity: 0.8; }
 .dshdb-row-toggle {
   display: inline-flex;
@@ -220,8 +198,9 @@ export const CSS = `
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
 }
-.dshdb-row-icon { flex: none; color: var(--dsw-alias-label-tertiary); }
+.dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
 .dshdb-row[data-kind="view"] .dshdb-row-icon { color: var(--dsw-alias-state-business-secondary, var(--dsw-alias-label-tertiary)); }
+.dshdb-row[data-kind="datasource"] .dshdb-row-label { font-weight: 500; }
 
 .dshdb-detail {
   display: flex;
@@ -554,6 +533,7 @@ export const CSS = `
 .dshdb-tag[data-tone="success"] { background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent); color: var(--dsw-alias-state-success-primary); }
 .dshdb-tag[data-tone="warn"] { background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 16%, transparent); color: var(--dsw-alias-state-warn-primary); }
 .dshdb-tag[data-tone="error"] { background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent); color: var(--dsw-alias-state-error-primary); }
+.dshdb-tag[data-tone="key"] { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 16%, transparent); color: var(--dsw-alias-state-business-primary); font-weight: 500; }
 
 .dshdb-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--dsw-alias-state-idle-primary); }
 .dshdb-dot[data-tone="success"] { background: var(--dsw-alias-state-success-primary); }
@@ -573,7 +553,7 @@ export const CSS = `
 @keyframes dshdb-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .dshdb-spinner { animation-duration: 2400ms; }
-  .dshdb-btn, .dshdb-chip, .dshdb-tab, .dshdb-switch, .dshdb-switch::after { transition: none; }
+  .dshdb-btn, .dshdb-toolbtn, .dshdb-tab, .dshdb-switch, .dshdb-switch::after { transition: none; }
 }
 
 .dshdb-modal-overlay {
@@ -616,24 +596,6 @@ export const CSS = `
 .dshdb-modal-foot-spacer { flex: 1; }
 .dshdb-modal-message { color: var(--dsw-alias-label-secondary); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .dshdb-modal-message .dshdb-mono { display: block; margin-top: 6px; padding: 8px; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); white-space: pre-wrap; max-height: 180px; overflow: auto; }
-
-.dshdb-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  z-index: 1300;
-  max-width: min(480px, 86vw);
-  padding: 7px 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2));
-  color: var(--dsw-alias-label-primary);
-  box-shadow: var(--dsw-elevation-panel);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.dshdb-toast[data-tone="error"] { color: var(--dsw-alias-state-error-primary); }
 
 .dshdb-redis-bar {
   display: flex;
@@ -718,6 +680,77 @@ export const CSS = `
 }
 .dshdb-progress-inner { height: 100%; background: var(--dsw-alias-state-business-primary); animation: dshdb-indeterminate 1.2s ease-in-out infinite; width: 40%; }
 @keyframes dshdb-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+
+/* One table's rows in their own Sidebar tab (IDEA-style data page). */
+.dshdb-qtab { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; padding: 8px 10px 10px; box-sizing: border-box; }
+.dshdb-qbar { display: flex; align-items: center; gap: 6px; flex: none; min-height: 22px; }
+.dshdb-qtable {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dshdb-qbar-spacer { flex: 1; }
+.dshdb-qmeta { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.dshdb-qfilter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 3px 4px 3px 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dshdb-qfilter-label {
+  flex: none;
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.dshdb-qfilter-input { flex: 1; min-width: 90px; height: 22px; border: 0; background: transparent; font-family: var(--ds-font-family-code, ui-monospace, Menlo, Consolas, monospace); font-size: 11.5px; }
+.dshdb-qfilter-input:focus { border: 0; outline: none; }
+.dshdb-qfilter-order { flex: 0 1 190px; border-left: 0.5px solid var(--dsw-alias-border-l1); padding-left: 8px; }
+.dshdb-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+.dshdb-pager-spacer { flex: 1; }
+.dshdb-pager-sql { min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ds-font-family-code, ui-monospace, Menlo, Consolas, monospace); font-size: 10.5px; }
+.dshdb-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dshdb-pager-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dshdb-pager-btn:disabled { opacity: 0.35; cursor: default; }
+.dshdb-pager-range { padding: 0 2px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+.dshdb-pager-total { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.dshdb-pager-size { width: auto; height: 20px; padding: 0 18px 0 4px; font-size: 10.5px; }
+.dshdb-tabtitle { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
 const STYLE_ID = 'dsh-ide-database/styles';

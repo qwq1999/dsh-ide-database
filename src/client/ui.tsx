@@ -7,6 +7,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react'
+import { IconWarningOutlineRegular, Toast as PrimitiveToast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CheckIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
 
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger'
@@ -361,16 +362,20 @@ export interface ToastState {
   seq: number
 }
 
+/**
+ * Transient notice, rendered by the Harness' own toast primitive so a plugin
+ * announcement matches the product chrome exactly: fixed top-center, dark
+ * surface in both themes, hold then fade.
+ */
 export function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () => void }) {
-  useEffect(() => {
-    if (!toast) return
-    const timer = window.setTimeout(onDismiss, 3200)
-    return () => window.clearTimeout(timer)
-  }, [toast, onDismiss])
-  if (!toast) return null
+  if (toast === null) return null
   return (
-    <div className="dshdb-toast" data-tone={toast.tone} role="status">
-      {toast.text}
-    </div>
+    <PrimitiveToast
+      key={toast.seq}
+      text={toast.text}
+      tone={toast.tone === 'success' ? 'success' : undefined}
+      icon={toast.tone === 'error' ? <IconWarningOutlineRegular /> : undefined}
+      onDone={onDismiss}
+    />
   )
 }

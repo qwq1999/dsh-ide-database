@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
-import { DIALECT_LABEL, ROUTE_PREFIX } from '../shared/presets'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { ROUTE_PREFIX } from '../shared/presets'
 import type {
   ClientConnection,
   DbSettings,
@@ -9,32 +9,31 @@ import type {
   SchemaInfo,
   SchemaObject,
   ServerInfo,
+  StructureSnapshot,
   TableDescription,
 } from '../shared/types'
 import { api } from './api'
 import { looksLikeWrite } from './format'
-import { DatabaseIcon, PlusIcon, RefreshIcon, SettingsIcon } from './icons'
+import { PlusIcon, RefreshIcon, SettingsIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
+import { SettingsModal } from './modals/SettingsModal'
 import { DataView } from './views/DataView'
 import { RedisView } from './views/RedisView'
-import { SettingsView } from './views/SettingsView'
 import { SqlView } from './views/SqlView'
+import { openTableTab } from './tab-open'
 import {
   Banner,
   Button,
   ConfirmDialog,
-  EmptyState,
-  IconButton,
   Spinner,
   StateDot,
-  Tag,
   Toast,
   type ConfirmRequest,
   type ToastState,
 } from './ui'
 
-type ViewKey = 'data' | 'sql' | 'redis' | 'settings'
+type ViewKey = 'data' | 'sql' | 'redis'
 
 interface Snapshot {
   connections: ClientConnection[]
@@ -56,6 +55,12 @@ export interface AppProps {
 
 const noopTabInfo = (): undefined => undefined
 
+const VIEW_LABELS: [ViewKey, string][] = [
+  ['data', '数据'],
+  ['sql', 'SQL'],
+  ['redis', 'Redis'],
+]
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -63,6 +68,27 @@ function errorText(error: unknown): string {
 function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
   if (dialect === 'mysql') return `\`${schema}\`.\`${table}\``
   return `"${schema}"."${table}"`
+}
+
+function ToolButton({
+  icon,
+  children,
+  title,
+  onClick,
+  disabled,
+}: {
+  icon: ReactNode
+  children: ReactNode
+  title: string
+  onClick: () => void
+  disabled?: boolean
+}): ReactElement {
+  return (
+    <button type="button" className="dshdb-toolbtn" title={title} aria-label={title} onClick={onClick} disabled={disabled}>
+      {icon}
+      <span>{children}</span>
+    </button>
+  )
 }
 
 export function App(props: AppProps): ReactElement {
@@ -79,8 +105,11 @@ export function App(props: AppProps): ReactElement {
   const [schemas, setSchemas] = useState<Record<string, SchemaInfo[]>>({})
   const [objects, setObjects] = useState<Record<string, SchemaObject[]>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [loadingSchemas, setLoadingSchemas] = useState(false)
+  const [loadingSchemas, setLoadingSchemas] = useState<Record<string, boolean>>({})
   const [loadingObjects, setLoadingObjects] = useState<Record<string, boolean>>({})
+  const [cachedAt, setCachedAt] = useState<Record<string, string>>({})
+  const [descriptions, setDescriptions] = useState<Record<string, TableDescription>>({})
+  const [loadingDescriptions, setLoadingDescriptions] = useState<Record<string, boolean>>({})
   const [detail, setDetail] = useState<TableDescription | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
@@ -93,7 +122,9 @@ export function App(props: AppProps): ReactElement {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
   const [downloading, setDownloading] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [connModal, setConnModal] = useState<{ open: boolean; editing: ClientConnection | null }>({
     open: false,
     editing: null,
@@ -135,14 +166,53 @@ export function App(props: AppProps): ReactElement {
     void refresh()
   }, [refresh])
 
+  // Cached structure lets the tree render before (or without) a connection.
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const { structures } = await api.structure()
+        if (!alive) return
+        applyStructures(structures)
+      } catch {
+        // A missing cache only means an empty tree until the first connect.
+      }
+    })()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function applyStructures(structures: StructureSnapshot): void {
+    const nextSchemas: Record<string, SchemaInfo[]> = {}
+    const nextObjects: Record<string, SchemaObject[]> = {}
+    const nextCached: Record<string, string> = {}
+    const nextDescriptions: Record<string, TableDescription> = {}
+    for (const [connectionId, entry] of Object.entries(structures)) {
+      if (entry.schemas.length > 0) nextSchemas[connectionId] = entry.schemas
+      for (const [schema, list] of Object.entries(entry.objects)) {
+        nextObjects[`${connectionId}:${schema}`] = list
+      }
+      for (const [key, description] of Object.entries(entry.descriptions ?? {})) {
+        nextDescriptions[`${connectionId}|${key}`] = description
+      }
+      nextCached[connectionId] = entry.fetchedAt
+    }
+    setSchemas((previous) => ({ ...nextSchemas, ...previous }))
+    setObjects((previous) => ({ ...nextObjects, ...previous }))
+    setDescriptions((previous) => ({ ...nextDescriptions, ...previous }))
+    setCachedAt((previous) => ({ ...nextCached, ...previous }))
+  }
+
   useEffect(() => {
     if (!snapshot) return
     const exists = snapshot.connections.some((connection) => connection.id === selectedId)
     if (!exists) {
+      // Keep cached structures: they are keyed by connection id and the tree
+      // filters by `snapshot.connections`, so stale entries are harmless.
       setSelectedId(snapshot.connections[0]?.id ?? '')
       setServers({})
-      setSchemas({})
-      setObjects({})
       setDetail(null)
       setSelectedKey('')
     }
@@ -158,11 +228,29 @@ export function App(props: AppProps): ReactElement {
   const server = selected ? servers[selected.id] : undefined
 
   async function loadSchemas(connectionId: string): Promise<void> {
-    setLoadingSchemas(true)
+    setLoadingSchemas((previous) => ({ ...previous, [connectionId]: true }))
     try {
       const result = await api.schemas(connectionId)
       setSchemas((previous) => ({ ...previous, [connectionId]: result.schemas }))
+      if (result.fetchedAt !== undefined) {
+        const stamp = result.fetchedAt
+        setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
+      }
       setObjects((previous) => {
+        const next = { ...previous }
+        for (const key of Object.keys(next)) {
+          if (key.startsWith(`${connectionId}:`)) delete next[key]
+        }
+        return next
+      })
+      setDescriptions((previous) => {
+        const next = { ...previous }
+        for (const key of Object.keys(next)) {
+          if (key.startsWith(`${connectionId}|`)) delete next[key]
+        }
+        return next
+      })
+      setExpanded((previous) => {
         const next = { ...previous }
         for (const key of Object.keys(next)) {
           if (key.startsWith(`${connectionId}:`)) delete next[key]
@@ -172,7 +260,7 @@ export function App(props: AppProps): ReactElement {
     } catch (error) {
       notify(`加载 schema 失败：${errorText(error)}`, 'error')
     } finally {
-      setLoadingSchemas(false)
+      setLoadingSchemas((previous) => ({ ...previous, [connectionId]: false }))
     }
   }
 
@@ -220,16 +308,29 @@ export function App(props: AppProps): ReactElement {
     else if (view === 'redis') setView('data')
   }
 
-  async function toggleSchema(schema: string): Promise<void> {
-    if (!selected) return
-    const key = `${selected.id}:${schema}`
+  function toggleConnection(id: string): void {
+    const isExpanded = expanded[id] === true
+    setExpanded((previous) => ({ ...previous, [id]: !isExpanded }))
+  }
+
+  function toggleFolder(connectionId: string, schema: string, folder: string): void {
+    const key = `${connectionId}:${schema}#${folder}`
+    setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
+  }
+
+  async function toggleSchema(connectionId: string, schema: string): Promise<void> {
+    const key = `${connectionId}:${schema}`
     const isExpanded = expanded[key] === true
     setExpanded((previous) => ({ ...previous, [key]: !isExpanded }))
     if (isExpanded || objects[key] !== undefined) return
     setLoadingObjects((previous) => ({ ...previous, [key]: true }))
     try {
-      const result = await api.objects(selected.id, schema)
+      const result = await api.objects(connectionId, schema)
       setObjects((previous) => ({ ...previous, [key]: result.objects }))
+      if (result.fetchedAt !== undefined) {
+        const stamp = result.fetchedAt
+        setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
+      }
     } catch (error) {
       notify(`加载对象失败：${errorText(error)}`, 'error')
     } finally {
@@ -237,25 +338,71 @@ export function App(props: AppProps): ReactElement {
     }
   }
 
-  async function selectObject(schema: string, object: SchemaObject): Promise<void> {
-    if (!selected) return
-    setSelectedKey(`${schema}.${object.name}`)
+  async function selectObject(connectionId: string, schema: string, object: SchemaObject): Promise<void> {
+    const key = `${connectionId}|${schema}.${object.name}`
+    setSelectedId(connectionId)
+    setSelectedKey(key)
+    // Routines, sequences and triggers have no column structure of their own.
+    if (object.kind !== 'table' && object.kind !== 'view') {
+      setDetailLoading(false)
+      setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
+      return
+    }
+    const known = descriptions[key]
+    if (known !== undefined) {
+      setDetailLoading(false)
+      setDetail(known)
+      return
+    }
+    if (!servers[connectionId]) {
+      setDetailLoading(false)
+      setDetail(null)
+      notify('数据源未连接，连接后可查看表结构', 'info')
+      return
+    }
     setDetailLoading(true)
+    setLoadingDescriptions((previous) => ({ ...previous, [key]: true }))
     try {
-      const description = await api.describe(selected.id, schema, object.name, object.kind)
+      const description = await api.describe(connectionId, schema, object.name, object.kind)
+      setDescriptions((previous) => ({ ...previous, [key]: description }))
       setDetail(description)
     } catch (error) {
       setDetail(null)
       notify(`读取表结构失败：${errorText(error)}`, 'error')
     } finally {
       setDetailLoading(false)
+      setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
     }
   }
 
-  function queryObject(schema: string, object: { name: string; kind: string }): void {
-    if (!selected) return
-    setSql(`SELECT * FROM ${qualifiedName(selected.dialect, schema, object.name)}`)
+  function toggleKey(key: string): void {
+    setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
+  }
+
+  function queryObject(connectionId: string, schema: string, object: { name: string; kind: string }): void {
+    const connection = connections.find((item) => item.id === connectionId)
+    if (!connection) return
+    setSelectedId(connectionId)
+    setSql(`SELECT * FROM ${qualifiedName(connection.dialect, schema, object.name)}`)
     setView('sql')
+  }
+
+  /** Toolbar 刷新：重读选中数据源（未连接则连接，已连接则刷新库表结构）。 */
+  async function refreshSelected(): Promise<void> {
+    setDetail(null)
+    setSelectedKey('')
+    if (!selected) {
+      await refresh()
+      return
+    }
+    if (!servers[selected.id] || selected.dialect === 'redis') {
+      await connect(selected.id)
+      await refresh()
+      return
+    }
+    await loadSchemas(selected.id)
+    await refresh()
+    notify('已刷新数据源', 'success')
   }
 
   async function runSql(): Promise<void> {
@@ -345,6 +492,7 @@ export function App(props: AppProps): ReactElement {
   async function deleteConnection(connection: ClientConnection): Promise<void> {
     const ok = await askConfirm(`删除连接「${connection.name}」？保存的密码也会一并删除。`)
     if (!ok) return
+    setDeleting(true)
     try {
       await api.deleteConnection(connection.id)
       setConnModal({ open: false, editing: null })
@@ -352,10 +500,12 @@ export function App(props: AppProps): ReactElement {
       await refresh()
     } catch (error) {
       notify(`删除失败：${errorText(error)}`, 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
-  const statusStyle: CSSProperties = {
+  const rootStyle: CSSProperties = {
     display: hidden ? 'none' : 'flex',
     flexDirection: 'column',
     height: '100%',
@@ -363,86 +513,53 @@ export function App(props: AppProps): ReactElement {
   }
 
   return (
-    <div className="dshdb-root" style={statusStyle} data-plugin-route={ROUTE_PREFIX}>
-      <header className="dshdb-topbar">
-        <div className="dshdb-topbar-title">
-          <DatabaseIcon size={16} />
-          <span>数据库</span>
-          {selected ? (
-            <>
-              <Tag tone={server ? 'success' : undefined}>{DIALECT_LABEL[selected.dialect]}</Tag>
-              {selected.readOnly ? <Tag tone="warn">只读</Tag> : null}
-            </>
-          ) : null}
-        </div>
-        <div className="dshdb-topbar-actions">
-          <IconButton
-            label="新建连接"
-            icon={<PlusIcon size={14} />}
-            onClick={() => setConnModal({ open: true, editing: null })}
-          />
-          <IconButton
-            label="刷新"
-            icon={<RefreshIcon size={14} />}
-            onClick={() => void refresh()}
-          />
-          <IconButton
-            label="设置"
-            icon={<SettingsIcon size={14} />}
-            onClick={() => setView('settings')}
-          />
-        </div>
-      </header>
-
-      <div className="dshdb-connbar" role="tablist" aria-label="数据源">
-        {connections.map((connection) => (
-          <button
-            key={connection.id}
-            type="button"
-            role="tab"
-            aria-selected={selectedId === connection.id}
-            className="dshdb-chip"
-            data-active={selectedId === connection.id}
-            title={`${connection.name} · ${connection.host}:${connection.port}`}
-            onClick={() => selectConnection(connection.id)}
-          >
-            <StateDot tone={servers[connection.id] ? 'success' : connection.dialect === 'redis' ? 'business' : 'idle'} />
-            <span className="dshdb-chip-name">{connection.name}</span>
-          </button>
-        ))}
-        <button
-          type="button"
-          className="dshdb-chip"
+    <div className="dshdb-root" style={rootStyle} data-plugin-route={ROUTE_PREFIX}>
+      {/* IDEA 风格工具窗口：工具栏左对齐，下面是数据源列表 */}
+      <div className="dshdb-toolbar dshdb-toolbar-top" role="toolbar" aria-label="数据库工具栏">
+        <ToolButton
+          title="新增数据源"
+          icon={<PlusIcon size={14} />}
           onClick={() => setConnModal({ open: true, editing: null })}
-          aria-label="新建连接"
-          title="新建连接"
-          style={{ width: 26, justifyContent: 'center', padding: 0 }}
         >
-          <PlusIcon size={13} />
-        </button>
-      </div>
-
-      <div className="dshdb-tabs" role="tablist" aria-label="视图">
-        {(
-          [
-            ['data', '数据'],
-            ['sql', 'SQL'],
-            ['redis', 'Redis'],
-            ['settings', '设置'],
-          ] as [ViewKey, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={view === key}
-            className="dshdb-tab"
-            data-active={view === key}
-            onClick={() => setView(key)}
-          >
-            {label}
-          </button>
-        ))}
+          新增
+        </ToolButton>
+        <ToolButton
+          title="刷新选中的数据源"
+          icon={<RefreshIcon size={14} />}
+          onClick={() => void refreshSelected()}
+          disabled={connectingId !== ''}
+        >
+          刷新
+        </ToolButton>
+        <ToolButton
+          title="删除选中的数据源"
+          icon={<TrashIcon size={14} />}
+          onClick={() => {
+            if (selected) void deleteConnection(selected)
+          }}
+          disabled={!selected || deleting}
+        >
+          删除
+        </ToolButton>
+        <ToolButton title="设置" icon={<SettingsIcon size={14} />} onClick={() => setSettingsOpen(true)}>
+          设置
+        </ToolButton>
+        <span className="dshdb-toolbar-spacer" />
+        <div className="dshdb-seg" role="tablist" aria-label="视图">
+          {VIEW_LABELS.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              className="dshdb-tab"
+              data-active={view === key}
+              onClick={() => setView(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <main className="dshdb-main">
@@ -466,28 +583,38 @@ export function App(props: AppProps): ReactElement {
               style={{ display: view === 'data' ? 'flex' : 'none', padding: '8px 10px 12px', minHeight: 0 }}
             >
               <DataView
-                connection={selected}
-                server={server}
-                connecting={connectingId === selectedId}
-                schemas={selected ? schemas[selected.id] ?? [] : []}
+                connections={connections}
+                selectedId={selectedId}
+                servers={servers}
+                connectingId={connectingId}
+                schemas={schemas}
                 objects={objects}
                 expanded={expanded}
                 loadingSchemas={loadingSchemas}
                 loadingObjects={loadingObjects}
+                cachedAt={cachedAt}
+                descriptions={descriptions}
+                loadingDescriptions={loadingDescriptions}
                 detail={detail}
                 detailLoading={detailLoading}
                 selectedKey={selectedKey}
                 onAddConnection={() => setConnModal({ open: true, editing: null })}
-                onConnect={() => {
-                  if (selected) void connect(selected.id)
+                onSelectConnection={selectConnection}
+                onToggleConnection={toggleConnection}
+                onConnect={(id) => void connect(id)}
+                onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
+                onToggleFolder={toggleFolder}
+                onToggleKey={toggleKey}
+                onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
+                onQueryObject={(connectionId, schema, object) => queryObject(connectionId, schema, object)}
+                onOpenTable={(connectionId, schema, object) => {
+                  setSelectedId(connectionId)
+                  openTableTab({ connectionId, schema, table: object.name })
                 }}
-                onRefreshSchemas={() => {
-                  if (selected) void loadSchemas(selected.id)
+                onOpenRedis={(id) => {
+                  selectConnection(id)
+                  setView('redis')
                 }}
-                onToggleSchema={(schema) => void toggleSchema(schema)}
-                onSelectObject={(schema, object) => void selectObject(schema, object)}
-                onQueryObject={(schema, object) => queryObject(schema, object)}
-                onOpenRedis={() => setView('redis')}
               />
             </div>
 
@@ -528,25 +655,6 @@ export function App(props: AppProps): ReactElement {
                 }}
                 askConfirm={askConfirm}
                 notify={notify}
-              />
-            </div>
-
-            <div
-              className="dshdb-view"
-              style={{ display: view === 'settings' ? 'flex' : 'none', padding: '8px 10px 12px', minHeight: 0 }}
-            >
-              <SettingsView
-                settings={snapshot.settings}
-                env={snapshot.env}
-                drivers={snapshot.drivers}
-                saving={savingSettings}
-                downloading={downloading}
-                onSave={(next) => void saveSettings(next)}
-                onRefresh={() => void refresh()}
-                onDownload={(driverId) => void downloadDriver(driverId)}
-                onAddCustomDriver={() => setDriverModal({ open: true, editing: null })}
-                onEditCustomDriver={(driver) => setDriverModal({ open: true, editing: driver })}
-                onDeleteCustomDriver={(driver) => void deleteCustomDriver(driver)}
               />
             </div>
           </>
@@ -605,6 +713,23 @@ export function App(props: AppProps): ReactElement {
         onSaved={(drivers) => setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))}
         notify={notify}
       />
+      {snapshot ? (
+        <SettingsModal
+          open={settingsOpen}
+          settings={snapshot.settings}
+          env={snapshot.env}
+          drivers={snapshot.drivers}
+          saving={savingSettings}
+          downloading={downloading}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(next) => void saveSettings(next)}
+          onRefresh={() => void refresh()}
+          onDownload={(driverId) => void downloadDriver(driverId)}
+          onAddCustomDriver={() => setDriverModal({ open: true, editing: null })}
+          onEditCustomDriver={(driver) => setDriverModal({ open: true, editing: driver })}
+          onDeleteCustomDriver={(driver) => void deleteCustomDriver(driver)}
+        />
+      ) : null}
       <ConfirmDialog request={confirm?.request ?? null} onConfirm={() => resolveConfirm(true)} onCancel={() => resolveConfirm(false)} />
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>

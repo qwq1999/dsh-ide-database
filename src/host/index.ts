@@ -8,6 +8,7 @@ import { createRouteHandler } from './routes.js'
 import { makeLogger, type HostContext } from './services.js'
 import { SecretStore } from './secrets.js'
 import { SqlService } from './sql.js'
+import { StructureStore } from './structure.js'
 import { createDatabaseTools } from './tools.js'
 
 export const name = 'dsh-ide-database'
@@ -29,8 +30,10 @@ export function apply(ctx: HostContext): void {
   const drivers = new DriverManager(paths, config, log)
   const sql = new SqlService(paths, config, secrets, drivers, java, log)
   const redis = new RedisManager(config, secrets, log)
+  const structure = new StructureStore(paths.structureFile, log)
+  structure.retain(config.snapshot().connections.map((entry) => entry.id))
 
-  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, sql, redis, log })
+  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, sql, redis, structure, log })
 
   ctx.effect(() => {
     const dispose = ctx.webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler })
@@ -57,6 +60,7 @@ export function apply(ctx: HostContext): void {
   })
 
   ctx.effect(() => () => {
+    structure.flush()
     void sql.dispose()
     void redis.dispose()
   })

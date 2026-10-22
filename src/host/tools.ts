@@ -243,7 +243,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
 
     tool({
       name: 'db_list_objects',
-      description: 'List tables and views in a schema of a SQL connection. Requires a schema name from db_list_databases.',
+      description: 'List objects (tables, views, procedures, functions, sequences, triggers) in a schema of a SQL connection. Requires a schema name from db_list_databases.',
       parameters: {
         type: 'object',
         properties: {
@@ -251,8 +251,8 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           schema: { type: 'string', description: 'Schema or database name.' },
           kinds: {
             type: 'string',
-            enum: ['all', 'table', 'view', 'other'],
-            description: 'Restrict the object kind (default all).',
+            enum: ['all', 'table', 'view', 'procedure', 'function', 'sequence', 'trigger', 'other'],
+            description: 'Restrict the object kind (default all). Routines are procedure/function.',
           },
         },
         required: ['connection', 'schema'],

@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -290,26 +291,27 @@ final class SqlExecutor {
                             result.add(row);
                         }
                     }
-                    return result;
                 } catch (SQLException error) {
                     return metadataObjects(entry, schema);
                 }
+                readMysqlRoutines(entry, schema, result);
+                readMysqlTriggers(entry, schema, result);
+                return result;
             }
             if ("oracle".equals(entry.dialect)
                     || "oceanbase-oracle".equals(entry.dialect)
                     || "dameng".equals(entry.dialect)) {
                 String sql = "SELECT object_name, object_type FROM all_objects"
-                        + " WHERE owner = ? AND object_type IN ('TABLE','VIEW','MATERIALIZED VIEW')"
+                        + " WHERE owner = ? AND object_type IN ('TABLE','VIEW','MATERIALIZED VIEW',"
+                        + "'PROCEDURE','FUNCTION','PACKAGE','SEQUENCE','TRIGGER')"
                         + " AND object_name NOT LIKE 'BIN$%' ORDER BY object_name";
                 try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
                     statement.setString(1, schema);
                     try (ResultSet rs = statement.executeQuery()) {
                         while (rs.next()) {
-                            String type = rs.getString(2);
                             Map<String, Object> row = new LinkedHashMap<String, Object>();
                             row.put("name", rs.getString(1));
-                            row.put("kind", type != null && type.toUpperCase().contains("VIEW")
-                                    ? "view" : "table");
+                            row.put("kind", oracleObjectKind(rs.getString(2)));
                             result.add(row);
                         }
                     }
@@ -321,6 +323,56 @@ final class SqlExecutor {
             return metadataObjects(entry, schema);
         } finally {
             entry.lock.unlock();
+        }
+    }
+
+    private static String oracleObjectKind(String type) {
+        String value = type == null ? "" : type.toUpperCase(Locale.ROOT);
+        if (value.contains("MATERIALIZED")) return "view";
+        if (value.contains("VIEW")) return "view";
+        if (value.equals("TABLE")) return "table";
+        if (value.equals("PROCEDURE") || value.equals("PACKAGE")) return "procedure";
+        if (value.equals("FUNCTION")) return "function";
+        if (value.equals("SEQUENCE")) return "sequence";
+        if (value.equals("TRIGGER")) return "trigger";
+        return "other";
+    }
+
+    /** Routines whose schema matches; missing privileges must not hide the tables. */
+    private void readMysqlRoutines(Conn entry, String schema, List<Object> result) {
+        String sql = "SELECT routine_name, routine_type, routine_comment FROM information_schema.routines"
+                + " WHERE routine_schema = ? ORDER BY routine_name";
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<String, Object>();
+                    row.put("name", rs.getString(1));
+                    row.put("kind", "FUNCTION".equalsIgnoreCase(rs.getString(2)) ? "function" : "procedure");
+                    row.put("comment", rs.getString(3));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException error) {
+            // information_schema.routines is unavailable or not readable; keep tables.
+        }
+    }
+
+    private void readMysqlTriggers(Conn entry, String schema, List<Object> result) {
+        String sql = "SELECT trigger_name FROM information_schema.triggers"
+                + " WHERE trigger_schema = ? ORDER BY trigger_name";
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<String, Object>();
+                    row.put("name", rs.getString(1));
+                    row.put("kind", "trigger");
+                    result.add(row);
+                }
+            }
+        } catch (SQLException error) {
+            // triggers not readable; keep tables and routines.
         }
     }
 

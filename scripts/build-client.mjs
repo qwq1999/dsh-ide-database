@@ -28,6 +28,7 @@ const result = await build({
     'react',
     'react-dom',
     'react/jsx-runtime',
+    '@deepseek-ai/dsh-client-ui-primitives',
   ],
   charset: 'utf8',
   legalComments: 'none',

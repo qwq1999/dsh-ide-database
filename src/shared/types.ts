@@ -222,12 +222,54 @@ export interface SchemaInfo {
   system?: boolean
 }
 
-export type ObjectKind = 'table' | 'view' | 'other'
+export type ObjectKind =
+  | 'table'
+  | 'view'
+  | 'procedure'
+  | 'function'
+  | 'sequence'
+  | 'trigger'
+  | 'other'
 
 export interface SchemaObject {
   name: string
   kind: ObjectKind
   comment?: string
+}
+
+/**
+ * Structure snapshot kept on disk: written after every successful live read and
+ * served when the data source is not connected (JetBrains Database behaviour).
+ */
+export interface CachedStructure {
+  fetchedAt: string
+  schemas: SchemaInfo[]
+  objects: Record<string, SchemaObject[]>
+  /** `schema.table` → described columns and indexes, kept for offline browsing. */
+  descriptions: Record<string, TableDescription>
+}
+
+export interface StructureSnapshot {
+  [connectionId: string]: CachedStructure
+}
+
+export interface DescribeResult extends TableDescription {
+  cached?: boolean
+  fetchedAt?: string
+}
+
+export interface SchemaListResult {
+  schemas: SchemaInfo[]
+  cached?: boolean
+  fetchedAt?: string
+  error?: string
+}
+
+export interface ObjectListResult {
+  objects: SchemaObject[]
+  cached?: boolean
+  fetchedAt?: string
+  error?: string
 }
 
 export interface ColumnDetail extends ColumnInfo {
