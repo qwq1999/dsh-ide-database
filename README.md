@@ -1,0 +1,187 @@
+# dsh-ide-database
+
+DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧边栏的数据库工具窗，以及一组供 Agent 查询/操作数据库的工具。
+
+支持 MySQL、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
+
+![MySQL 查询](docs/screenshots/mysql-query.png)
+
+## 功能
+
+- **右侧边栏入口**：在右侧边栏的「+」新标签页菜单里选择「数据库」，或在 Guide 页点击「数据库」胶囊；标签页会保持挂载，切换会话不丢状态。
+- **预设数据源**：MySQL、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板。
+- **自定义驱动**：填写驱动名、方言、驱动类、URL 模板和 Maven 坐标（可多个 jar），点击下载即可从 Maven Central / 阿里云镜像拉取并缓存，无需手动放置 jar。
+- **数据浏览**：Schema/数据库 → 表/视图 → 列、默认值、主键、索引与注释；双击表可直接 `SELECT` 预览（自动限行）。
+- **SQL 控制台**：多行编辑、`Ctrl+Enter` 执行、可取消、行数上限、耗时、列类型、NULL 高亮；写语句执行前二次确认；只读连接永远拒绝写操作。
+- **Redis 控制台**：游标 SCAN、按类型过滤、键详情（string/hash/list/set/zset/stream）、TTL、命令执行；写命令二次确认，危险命令（FLUSHALL 等）始终拒绝。
+- **Agent 工具**：11 个 `db_*` 工具，Agent 可列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`。
+- **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
+- **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
+
+![Redis 控制台](docs/screenshots/redis.png)
+
+## 运行要求
+
+- DeepSeek Harness `>= 0.1.6-alpha.2`（当前在 0.2.1 上开发验证）。
+- 关系型数据库需要本机可用的 Java（`JAVA_HOME`、`PATH` 或「设置 → Java 路径」显式指定），**Java 8+** 即可；驱动与桥接 jar 都按 Java 8 字节码编译。
+- 首次使用某个预设驱动时需要联网下载 jar（可在设置中切换 Maven 中央仓库 / 阿里云镜像）。
+- Redis 走纯 JS 客户端，不需要 Java。
+
+## 安装
+
+### 安装到 DSH 桌面版（profile `desktop`）
+
+```bash
+dsh plugin --profile desktop add link:E:\ai-code-space\dsh-ide-database
+```
+
+或安装发布版包：
+
+```bash
+dsh plugin --profile desktop add dsh-ide-database
+```
+
+也可以在 DSH 的「设置 → 插件」页面选择从本地目录/包名安装。安装完成后 **重启 DSH**（宿主半插件在进程启动时加载），在任意会话打开右侧边栏 → 「+」→「数据库」。
+
+> `dsh plugin` 只是把包写进 profile 的依赖与 `dsh.profile.bundles`，不会热加载宿主代码；客户端部分会随 Web 资源热更新，但为了避免半加载状态，建议整体重启。
+
+### 开发模式（本仓库）
+
+```bash
+npm install
+npm run build          # 编译 Java 桥接、宿主 TS、浏览器 bundle
+npm test               # 单元测试
+```
+
+本地调试可以用一个独立的 Web profile 启动第二个 DSH 实例：
+
+```bash
+export DSH_HOME=~/.dsh-dev
+export DSH_PROFILE=dbweb
+dsh --profile dbweb --from-default-profile web --dump-config   # 首次创建 profile
+dsh plugin --profile dbweb add link:E:\ai-code-space\dsh-ide-database
+dsh --profile dbweb --port 16402 --no-open
+```
+
+## 快速开始
+
+1. 打开右侧边栏，点「+」→「数据库」，或从 Guide 页进入。
+2. 点右上角「+」新建连接，选择驱动（如 MySQL），填写主机、端口、用户名、密码和数据库。
+3. 首次连接会提示下载驱动：确认后从 Maven 仓库下载并缓存到插件数据目录。
+4. 连接成功后，左侧出现 Schema 列表；点表查看列/索引，双击表生成预览 SQL。
+5. 在 `SQL` 标签里写语句，`Ctrl+Enter` 执行；`Redis` 标签用于 Redis 连接。
+
+### 预置驱动
+
+| 驱动 | 方言 | 默认端口 | 驱动类 | jar 坐标 |
+| --- | --- | --- | --- | --- |
+| MySQL | MySQL | 3306 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
+| OceanBase（MySQL 模式） | MySQL | 2881 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
+| OceanBase（Oracle 模式） | OceanBase Oracle | 2881 | `com.oceanbase.jdbc.Driver` | `com.oceanbase:oceanbase-client:2.4.19` |
+| Oracle | Oracle | 1521 | `oracle.jdbc.OracleDriver` | `com.oracle.database.jdbc:ojdbc8:23.26.3.0.0` |
+| 达梦 DM | 达梦 | 5236 | `dm.jdbc.driver.DmDriver` | `com.dameng:DmJdbcDriver18:8.1.3.140` |
+| Redis | Redis | 6379 | — | 不需要驱动 |
+
+URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符；连接表单里的「额外 JDBC 参数」会作为 Properties 传给驱动（每行一个 `key=value`）。
+
+### 自定义驱动
+
+「设置 → 自定义驱动 → 新建」填写：
+
+- 名称、方言（MySQL / Oracle / 达梦 / OceanBase-Oracle / 通用 JDBC）
+- 驱动类，例如 `org.postgresql.Driver`
+- URL 模板，例如 `jdbc:postgresql://{{host}}:{{port}}/{{database}}`
+- jar 的 Maven 坐标（`group:artifact:version`，可多个），保存后点「下载」。
+
+下载使用 Maven 仓库的 `.sha1` 校验（存在时），文件写入 `drivers/` 目录。
+
+## Agent 工具
+
+| 工具 | 用途 |
+| --- | --- |
+| `db_list_connections` | 列出已配置连接、设置与驱动状态；Agent 可用连接 id 或名称引用 |
+| `db_test_connection` | 测试保存的连接或临时草稿（不落盘） |
+| `db_list_databases` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
+| `db_list_objects` | 列出指定 Schema 下的表/视图 |
+| `db_describe_table` | 列、类型、可空、主键、索引、注释 |
+| `db_query` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写 |
+| `db_explain` | MySQL `EXPLAIN`、Oracle/达梦执行计划 |
+| `db_redis_scan` | 游标 SCAN，返回键名/类型/TTL |
+| `db_redis_get` | 读取键详情（自动识别类型，限制大小） |
+| `db_redis_command` | 执行 Redis 命令；写命令受 `allowAgentWrites` 与只读连接限制 |
+| `db_download_driver` | 下载缺失的预置驱动 jar |
+
+写保护规则：
+
+1. 只读连接永远拒绝写语句/写命令。
+2. 非只读连接默认也只允许读；必须在「设置」中打开 `allowAgentWrites`。
+3. Redis 危险命令（`FLUSHALL`/`FLUSHDB`/`SHUTDOWN` 等）始终拒绝。
+4. 面板里的写操作需要二次确认（`confirmDestructive` 默认开启）。
+
+## 数据与配置
+
+数据目录优先级：
+
+1. `DSH_IDE_DATABASE_DATA` 环境变量（显式覆盖，便于测试/多实例）
+2. `<DSH_HOME>/profiles/<DSH_PROFILE>/data/dsh-ide-database/`
+3. `<DSH_PROFILE_DIR>/data/dsh-ide-database/`
+4. `~/.dsh/data/dsh-ide-database/`
+
+目录内容：
+
+| 文件 | 说明 |
+| --- | --- |
+| `connections.json` | 连接与自定义驱动配置、插件设置（不含密码） |
+| `secrets.json` | 密码（base64 编码，`0600` 权限） |
+| `drivers/*.jar` | 缓存的 JDBC 驱动 |
+| `logs/` | 预留日志目录 |
+
+环境变量 `DSH_IDE_DATABASE_DATA` 也可用于在隔离目录中做 UI 验收。
+
+## 安全说明
+
+- 密码只存储在插件私有文件中，HTTP API 永不回传；同名环境变量优先于存储值（变量名见 `secrets.json` 的键，形如 `DSH_IDE_DB_<连接ID>`）。
+- 本地 HTTP 接口只接受 POST，并校验 DSH 的会话 cookie / Origin / `sec-fetch-site`，跨站请求会被拒绝。
+- 所有 SQL 经 JDBC 桥接进程执行，驱动以独立的 `URLClassLoader` 加载；桥接进程与 Node 宿主通过 JSON-lines 通信，取消查询使用 `Statement.cancel()`。
+- Agent 写操作默认关闭；建议生产库使用只读账号或开启「只读连接」。
+
+## 限制
+
+- SQL Server / PostgreSQL 等未内置预设，可通过「自定义驱动」接入。
+- 不提供 SSH 隧道、数据库导出/导入、执行计划可视化（仅表格）。
+- 单次只执行一条语句（`;` 分隔的多语句会被驱动拒绝或只执行首条，按驱动行为）。
+- Oracle 仅 thin 模式，不支持 thick（OCI）模式。
+- Redis 命令白名单以只读命令 + 常用写命令为主，未覆盖的命令请通过 `db_redis_command` 的完整命令参数使用（仍受只读/危险命令限制）。
+
+## 开发
+
+```bash
+npm run build:bridge   # javac --release 8（JDK 8 用 -source/-target 8）→ bridge/dsh-db-bridge.jar
+npm run build:host     # tsc → lib/
+npm run build:client   # esbuild → lib/client.js（window.__ModuleLoader__ 格式）
+npm run typecheck
+npm test               # vitest：host 单元测试 + 客户端工具函数
+```
+
+### 真实数据库集成测试
+
+```bash
+docker run -d --name dshdb-mysql -e MYSQL_ROOT_PASSWORD=testpass -e MYSQL_DATABASE=app -p 13306:3306 mysql:8.0
+docker run -d --name dshdb-redis -p 16379:6379 redis:7-alpine
+
+DSH_TEST_MYSQL_PORT=13306 DSH_TEST_REDIS_PORT=16379 npx vitest run tests/integration/mysql.test.mjs
+```
+
+集成测试会真实下载 MySQL 驱动、连接数据库、执行查询并验证 Agent 工具。
+
+### 浏览器验收
+
+在一个独立的 DSH Web 实例上运行：
+
+```bash
+DSH_TEST_TOKEN=<token> PLAYWRIGHT_CHROMIUM_PATH=<chromium> node scripts/qa-live.mjs
+```
+
+## License
+
+MIT

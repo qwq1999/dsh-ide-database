@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-ide-database
+      name: 'dsh-ide-database'
