@@ -18,6 +18,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **表下钻**：树里展开表即可看到「列 / 键 / 索引」三个分组——列带类型与主键标记，键与索引带所属列，不用点开详情面板就能看清结构。
 - **双击打开数据表**：树里双击表或视图，会在右侧栏新开一个数据表标签页分页浏览数据（标签页标题是表名，正文顶部显示 `schema.table`）；顶部 `WHERE` / `ORDER BY` 输入框回车即生效，底栏显示实际执行的 SQL、当前区间、总行数与翻页按钮，每页 50 / 100 / 200 / 500 / 1000 行可切，同一张表可重复打开互不影响。
 - **查询控制台**：工具栏的「控制台」按钮会在右侧栏新开一个查询标签页（可同时开多个）。SQL 模式支持多行编辑、`Ctrl+Enter` 执行、取消、行数上限、耗时与分页（把单条 `SELECT` 包成 `LIMIT/OFFSET` 或 `OFFSET … FETCH`）；写语句执行前二次确认，只读连接永远拒绝写。切到 Redis 数据源时变成键表格（键 / 类型 / TTL / 长度）+ 选中键的值面板 + 命令框，写命令二次确认、危险命令（`FLUSHALL` 等）始终拒绝。
+- **执行历史**：控制台会记住最近执行过的 50 条 SQL / Redis 命令（存在浏览器本地，刷新和重开控制台都还在）。「历史」按钮展开列表，点一条即回填到编辑器；SQL 编辑器里 `Ctrl/⌘ + ↑ / ↓` 直接翻历史，Redis 命令框用 `↑ / ↓`，重复的语句会提到最前而不是堆叠。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
 - **Agent 工具**：15 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
@@ -26,6 +27,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ![展开表查看列、键与索引](docs/screenshots/database-columns.png)
 
 ![双击表打开分页查询标签页](docs/screenshots/database-table-tab.png)
+
+![查询控制台历史](docs/screenshots/database-history.png)
 
 ![表结构 DDL](docs/screenshots/database-ddl.png)
 

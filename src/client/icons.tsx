@@ -283,3 +283,22 @@ export function IndexIcon(props: IconProps): ReactElement {
     </Svg>
   )
 }
+
+export function ClockIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4.5l3 1.8" />
+    </Svg>
+  )
+}
+
+export function ClearIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l1.6 12.2A2 2 0 0 0 9.6 20h4.8a2 2 0 0 0 2-1.8L18 6" />
+      <path d="M4.5 6h15" />
+      <path d="M9 6V4.8A1.8 1.8 0 0 1 10.8 3h2.4A1.8 1.8 0 0 1 15 4.8V6" />
+    </Svg>
+  )
+}

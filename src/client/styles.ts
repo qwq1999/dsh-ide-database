@@ -685,6 +685,38 @@ export const CSS = `
   white-space: nowrap;
 }
 .dshdb-qbar-spacer { flex: 1; }
+/* Executed-statement history, dropped in below the editor while open. */
+.dshdb-history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  max-height: 168px;
+  padding: 6px 6px 4px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dshdb-history-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 2px; }
+.dshdb-history-title { color: var(--dsw-alias-label-tertiary); font-size: 10px; letter-spacing: 0.4px; }
+.dshdb-history-list { display: flex; flex-direction: column; overflow: auto; min-height: 0; }
+.dshdb-history-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.dshdb-history-row:hover { background: var(--dsw-alias-bg-layer-2); }
+.dshdb-history-sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dshdb-history-time { flex: none; color: var(--dsw-alias-label-tertiary); font-family: inherit; font-size: 10px; }
 .dshdb-qmeta { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .dshdb-qfilter {
   display: flex;

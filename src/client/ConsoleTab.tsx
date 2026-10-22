@@ -21,7 +21,8 @@ import type {
 } from '../shared/types'
 import { ApiError, api } from './api'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
-import { DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
+import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
+import { ClockIcon, ClearIcon, DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 
@@ -38,6 +39,38 @@ interface Failure {
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
 
 const noTabInfo = (): undefined => undefined
+
+/** Fold a statement onto one line for the history rows. */
+function oneLine(statement: string): string {
+  return statement.replace(/\s+/gu, ' ').trim()
+}
+
+function HistoryPanel(props: { entries: HistoryEntry[]; onPick: (entry: HistoryEntry) => void; onClear: () => void }): ReactElement {
+  return (
+    <div className="dshdb-history">
+      <div className="dshdb-history-head">
+        <span className="dshdb-history-title">最近执行 · {props.entries.length}</span>
+        <Button size="sm" variant="ghost" icon={<ClearIcon size={12} />} onClick={props.onClear}>
+          清空
+        </Button>
+      </div>
+      <div className="dshdb-history-list">
+        {props.entries.map((entry, index) => (
+          <button
+            key={`${entry.at}-${index}`}
+            type="button"
+            className="dshdb-history-row"
+            title={entry.statement}
+            onClick={() => props.onPick(entry)}
+          >
+            <span className="dshdb-history-sql">{oneLine(entry.statement)}</span>
+            <span className="dshdb-history-time">{historyAgo(entry.at)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function failureText(error: unknown): Failure {
   if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }
@@ -207,11 +240,16 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
 
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
 
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+
   const stmtRef = useRef('')
   const scanCursorRef = useRef('0')
+  const recallRef = useRef(-1)
 
   const connection = connections.find((item) => item.id === selectedId)
   const isRedis = connection?.dialect === 'redis'
+  const historyKind = isRedis ? 'redis' : 'sql'
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
@@ -249,6 +287,13 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     }
   }, [])
 
+  // History is per console kind: switching between SQL and Redis swaps it.
+  useEffect(() => {
+    setHistory(readHistory(historyKind))
+    setHistoryOpen(false)
+    recallRef.current = -1
+  }, [historyKind])
+
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
     async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
@@ -283,7 +328,21 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       const ok = await askConfirm('即将执行写语句，可能修改或删除数据。', text)
       if (!ok) return
     }
+    setHistory(pushHistory('sql', text))
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
+  }
+
+  /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones. */
+  const recallHistory = (delta: 1 | -1): void => {
+    if (history.length === 0) return
+    const next = Math.min(history.length - 1, Math.max(0, recallRef.current + delta))
+    recallRef.current = next
+    setStatement(history[next]!.statement)
+  }
+
+  const pickHistory = (entry: HistoryEntry): void => {
+    setStatement(entry.statement)
+    setHistoryOpen(false)
   }
 
   const cancel = async (): Promise<void> => {
@@ -334,6 +393,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       const ok = await askConfirm('即将执行会修改 Redis 数据的命令。', text)
       if (!ok) return
     }
+    setHistory(pushHistory('redis', text))
     setCommandRunning(true)
     setValueError(null)
     try {
@@ -345,6 +405,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     } finally {
       setCommandRunning(false)
     }
+  }
+
+  /** ↑ / ↓ in the command box walk the command history. */
+  const recallCommand = (delta: 1 | -1): void => {
+    if (history.length === 0) return
+    const next = Math.min(history.length - 1, Math.max(0, recallRef.current + delta))
+    recallRef.current = next
+    setCommand(history[next]!.statement)
   }
 
   const selectKey = async (key: RedisKeyInfo): Promise<void> => {
@@ -431,10 +499,23 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
 
       {isRedis ? (
         <>
+          {historyOpen ? (
+            <HistoryPanel
+              entries={history}
+              onPick={(entry) => {
+                setCommand(entry.statement)
+                setHistoryOpen(false)
+              }}
+              onClear={() => {
+                setHistory(clearHistory('redis'))
+                recallRef.current = -1
+              }}
+            />
+          ) : null}
           <div className="dshdb-qfilter">
             <span className="dshdb-qfilter-label">MATCH</span>
             <input
-              className="dshdb-input dshdb-qfilter-input"
+              className="dshdb-input dshdb-qfilter-input dshdb-pattern-input"
               placeholder="键模式，例如 shop:*"
               value={pattern}
               spellCheck={false}
@@ -490,15 +571,26 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           <div className="dshdb-qfilter">
             <span className="dshdb-qfilter-label">命令</span>
             <input
-              className="dshdb-input dshdb-qfilter-input"
+              className="dshdb-input dshdb-qfilter-input dshdb-command-input"
               placeholder="例如 GET shop:customer:42"
               value={command}
               spellCheck={false}
               onChange={(event) => setCommand(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void runCommand()
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  recallCommand(1)
+                }
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  recallCommand(-1)
+                }
               }}
             />
+            <Button size="sm" variant="ghost" icon={<ClockIcon size={12} />} onClick={() => setHistoryOpen((open) => !open)} disabled={history.length === 0}>
+              历史
+            </Button>
             <Button size="sm" variant="primary" onClick={() => void runCommand()} loading={commandRunning}>
               执行
             </Button>
@@ -509,12 +601,13 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               {stringifyJson(commandResult.value)}
             </pre>
           ) : null}
+
         </>
       ) : (
         <>
           <textarea
             className="dshdb-input dshdb-console-input"
-            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行"
+            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行，Ctrl/⌘ + ↑↓ 切换历史"
             value={statement}
             spellCheck={false}
             onChange={(event) => setStatement(event.target.value)}
@@ -522,6 +615,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault()
                 void run()
+                return
+              }
+              if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                event.preventDefault()
+                recallHistory(event.key === 'ArrowUp' ? 1 : -1)
               }
             }}
           />
@@ -533,9 +631,23 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             <Button size="sm" variant="ghost" icon={<StopIcon size={12} />} onClick={() => void cancel()} disabled={!running}>
               取消
             </Button>
+            <Button size="sm" variant="ghost" icon={<ClockIcon size={12} />} onClick={() => setHistoryOpen((open) => !open)} disabled={history.length === 0}>
+              历史
+            </Button>
             <span className="dshdb-qbar-spacer" />
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
+
+          {historyOpen ? (
+            <HistoryPanel
+              entries={history}
+              onPick={pickHistory}
+              onClear={() => {
+                setHistory(clearHistory('sql'))
+                recallRef.current = -1
+              }}
+            />
+          ) : null}
 
           {failure !== null ? (
             <Banner tone="error" onClose={() => setFailure(null)}>
