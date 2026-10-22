@@ -26,7 +26,8 @@ import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJso
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
 import { pickStatement } from './sqlselection'
-import { ClockIcon, ClearIcon, DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
+import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
+import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 
@@ -199,6 +200,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
   const [base, setBase] = useState('')
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportNote, setExportNote] = useState('')
 
   const [pattern, setPattern] = useState('*')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
@@ -298,6 +301,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   )
 
   const run = async (): Promise<void> => {
+    setExportOpen(false)
     const area = inputRef.current
     const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
     const text = picked.statement.trim()
@@ -479,6 +483,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const offset = page * pageSize
   const columns = result?.columns ?? []
   const rows = result?.rows ?? []
+  /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
+  const exportPage = (format: ExportFormat): void => {
+    setExportOpen(false)
+    if (rows.length === 0) return
+    const text = format === 'csv' ? toCsv(columns, rows) : toJson(columns, rows)
+    downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
+    setExportNote(`${format.toUpperCase()} 已导出 ${rows.length} 行`)
+    setTimeout(() => setExportNote(''), 5000)
+  }
   const hasPrevious = page > 0
   const hasNext = result !== null && rows.length >= pageSize
   const rangeStart = rows.length === 0 ? 0 : offset + 1
@@ -669,7 +682,31 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             >
               执行计划
             </Button>
+            <span className="dshdb-menu-wrap">
+              <button
+                type="button"
+                className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}
+                title="导出当前页结果"
+                aria-label="导出结果"
+                aria-expanded={exportOpen}
+                onClick={() => setExportOpen((open) => !open)}
+                disabled={running || rows.length === 0}
+              >
+                <DownloadIcon size={13} />
+              </button>
+              {exportOpen ? (
+                <span className="dshdb-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => exportPage('csv')}>
+                    当前页 CSV（{rows.length} 行）
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => exportPage('json')}>
+                    当前页 JSON（{rows.length} 行）
+                  </button>
+                </span>
+              ) : null}
+            </span>
             <span className="dshdb-qbar-spacer" />
+            {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
