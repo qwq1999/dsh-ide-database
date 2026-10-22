@@ -7,11 +7,11 @@
  * it is closed; a restored tab carries no parameters, so it reports that the
  * table has to be opened again instead of guessing.
  */
-import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { formatCell, formatMs } from './format'
-import { PlayIcon, RefreshIcon, TableIcon } from './icons'
+import { FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
 import { readTableTabParams, type TableTabParams } from './tab-open'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -61,6 +61,51 @@ function formatCount(value: number): string {
   return value.toLocaleString('en-US')
 }
 
+/**
+ * A column filter: `like` is the text typed into the filter row, `eq` is an
+ * exact value picked from a cell, `isnull` comes from clicking a NULL cell.
+ */
+interface ColumnFilter {
+  text: string
+  op: 'like' | 'eq' | 'isnull'
+}
+
+type ColumnFilters = Record<string, ColumnFilter>
+
+function isNumericType(typeName: string): boolean {
+  return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
+}
+
+function quoteLiteral(text: string): string {
+  return `'${text.replace(/'/gu, "''")}'`
+}
+
+function filterExpression(dialect: ClientConnection['dialect'], column: ColumnInfo, filter: ColumnFilter): string | undefined {
+  const name = quoteIdent(dialect, column.name)
+  if (filter.op === 'isnull') return `${name} IS NULL`
+  const text = filter.text.trim()
+  if (text === '') return undefined
+  if (filter.op === 'eq') {
+    if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
+    return `${name} = ${quoteLiteral(text)}`
+  }
+  return `${name} LIKE ${quoteLiteral(`%${text}%`)}`
+}
+
+/** Manual WHERE (optional) AND every column filter, joined for one query. */
+function composeWhere(dialect: ClientConnection['dialect'], base: string, columns: ColumnInfo[], filters: ColumnFilters): string {
+  const parts: string[] = []
+  const manual = stripKeyword(base, 'WHERE')
+  if (manual !== '') parts.push(`(${manual})`)
+  for (const column of columns) {
+    const filter = filters[column.name]
+    if (filter === undefined) continue
+    const expression = filterExpression(dialect, column, filter)
+    if (expression !== undefined) parts.push(expression)
+  }
+  return parts.join(' AND ')
+}
+
 async function runSql(id: string, sql: string, maxRows: number): Promise<QueryResult> {
   try {
     return await api.query({ id, sql, maxRows })
@@ -105,6 +150,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [pageSize, setPageSize] = useState(500)
   const [whereText, setWhereText] = useState('')
   const [orderText, setOrderText] = useState('')
+  const [filters, setFilters] = useState<ColumnFilters>({})
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
 
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
@@ -181,15 +229,49 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const rangeEnd = offset + rows.length
   const totalText = total !== undefined ? `/${formatCount(total)}` : hasNext ? `/${formatCount(offset + pageSize)}+` : ''
 
-  const apply = (next: { page?: number; size?: number; where?: string; orderBy?: string }): void => {
+  const apply = (next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters): void => {
     if (connection === null) return
+    const manualWhere = next.where ?? whereText
     void load(connection, {
       page: next.page ?? page,
       size: next.size ?? pageSize,
-      where: next.where ?? whereText,
+      where: composeWhere(connection.dialect, manualWhere, columns, override ?? filters),
       orderBy: next.orderBy ?? orderText,
-      recount: next.where !== undefined || next.size !== undefined,
+      recount: next.where !== undefined || next.size !== undefined || next.page === 0,
     })
+  }
+  applyRef.current = apply
+
+  // Typing in a column filter re-queries on a short delay so each keystroke does
+  // not hit the server. Emptying the last filter re-queries at once, otherwise
+  // the grid would keep showing the narrowed rows.
+  const previousActive = useRef(0)
+  useEffect(() => {
+    if (!filtersOpen || connection === null) return
+    const active = columns.filter((column) => filters[column.name] !== undefined).length
+    const hadFilters = previousActive.current > 0
+    previousActive.current = active
+    if (active === 0) {
+      if (hadFilters) applyRef.current({ page: 0 }, {})
+      return
+    }
+    const timer = setTimeout(() => applyRef.current({ page: 0 }), 400)
+    return () => clearTimeout(timer)
+  }, [filters, filtersOpen, connection, columns])
+
+  const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
+  const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
+    setFilters((previous) => {
+      const next: ColumnFilters = { ...previous }
+      if (filter === undefined) delete next[column.name]
+      else next[column.name] = filter
+      return next
+    })
+  }
+  const clearFilters = (): void => {
+    setFilters({})
+    previousActive.current = 0
+    applyRef.current({ page: 0, where: whereText }, {})
   }
 
   if (error !== null && rows.length === 0) {
@@ -213,6 +295,20 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <span className="dshdb-qbar-spacer" />
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
+        <button
+          type="button"
+          className={`dshdb-pager-btn${filtersOpen ? ' dshdb-pager-btn-active' : ''}`}
+          title={filtersOpen ? '关闭列筛选' : '按列筛选（也可点击单元格按值筛选）'}
+          aria-label="列筛选"
+          aria-pressed={filtersOpen}
+          onClick={() => {
+            setFiltersOpen((open) => !open)
+          }}
+          disabled={loading}
+        >
+          <FilterIcon size={13} />
+          {activeFilterCount > 0 ? <span className="dshdb-filter-count">{activeFilterCount}</span> : null}
+        </button>
         <button
           type="button"
           className="dshdb-pager-btn"
@@ -281,6 +377,51 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   </th>
                 ))}
               </tr>
+              {filtersOpen ? (
+                <tr className="dshdb-filter-row">
+                  <th className="dshdb-num" />
+                  {columns.map((column, index) => {
+                    const filter = filters[column.name]
+                    const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
+                    return (
+                      <th key={`filter-${column.name}-${index}`}>
+                        <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
+                          <input
+                            className="dshdb-filter-input"
+                            placeholder={filter?.op === 'isnull' ? 'NULL' : '包含…'}
+                            aria-label={`筛选 ${column.name}`}
+                            title={filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
+                            value={filter?.op === 'isnull' ? '' : filter?.text ?? ''}
+                            spellCheck={false}
+                            onChange={(event) => {
+                              const text = event.target.value
+                              setColumnFilter(column, text === '' ? undefined : { text, op: 'like' })
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') applyRef.current({ page: 0 })
+                            }}
+                          />
+                          {cleared ? null : (
+                            <button
+                              type="button"
+                              className="dshdb-filter-clear"
+                              aria-label={`清除 ${column.name} 的筛选`}
+                              onClick={() => {
+                                setColumnFilter(column, undefined)
+                                const next: ColumnFilters = { ...filters }
+                                delete next[column.name]
+                                applyRef.current({ page: 0 }, next)
+                              }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      </th>
+                    )
+                  })}
+                </tr>
+              ) : null}
             </thead>
             <tbody>
               {rows.map((row, rowIndex) => (
@@ -289,7 +430,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   {columns.map((column, columnIndex) => {
                     const value: CellValue = row[columnIndex] ?? null
                     return (
-                      <td key={`${column.name}-${columnIndex}`} title={formatCell(value)}>
+                      <td
+                        key={`${column.name}-${columnIndex}`}
+                        title={formatCell(value)}
+                        className={filtersOpen ? 'dshdb-cell-filterable' : undefined}
+                        onClick={() => {
+                          if (!filtersOpen) return
+                          setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
+                        }}
+                      >
                         <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
                       </td>
                     )

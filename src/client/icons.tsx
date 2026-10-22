@@ -293,6 +293,14 @@ export function ClockIcon(props: IconProps): ReactElement {
   )
 }
 
+export function FilterIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+    </Svg>
+  )
+}
+
 export function ClearIcon(props: IconProps): ReactElement {
   return (
     <Svg {...props}>
