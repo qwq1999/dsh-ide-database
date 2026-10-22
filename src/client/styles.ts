@@ -187,6 +187,13 @@ export const CSS = `
   font-size: 11px;
 }
 .dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
+.dshdb-mark {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 20%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .dshdb-row[data-kind="view"] .dshdb-row-icon { color: var(--dsw-alias-state-business-secondary, var(--dsw-alias-label-tertiary)); }
 .dshdb-row[data-kind="datasource"] .dshdb-row-label { font-weight: 500; }
 

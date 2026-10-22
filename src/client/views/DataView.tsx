@@ -3,6 +3,7 @@ import type { ClientConnection, ObjectKind, SchemaInfo, SchemaObject, ServerInfo
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
 import { filterTargets } from '../treefilter'
+import { highlightParts } from '../highlight'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -139,6 +140,22 @@ function DetailFolder({
   )
 }
 
+function Highlight({ text, query }: { text: string; query: string }): ReactElement {
+  return (
+    <>
+      {highlightParts(text, query).map((part, index) =>
+        part.hit ? (
+          <mark key={index} className="dshdb-mark">
+            {part.text}
+          </mark>
+        ) : (
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 function ObjectRow({
   connectionId,
   schema,
@@ -150,6 +167,7 @@ function ObjectRow({
   onSelect,
   onOpen,
   onToggleKey,
+  query,
 }: {
   connectionId: string
   schema: string
@@ -161,6 +179,7 @@ function ObjectRow({
   onSelect: () => void
   onOpen: () => void
   onToggleKey: (key: string) => void
+  query: string
 }): ReactElement {
   const isRelation = object.kind === 'table' || object.kind === 'view'
   const key = `${connectionId}|${schema}.${object.name}`
@@ -199,7 +218,9 @@ function ObjectRow({
           {isRelation ? open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} /> : null}
         </span>
         <span className="dshdb-row-icon">{objectIcon(object.kind)}</span>
-        <span className="dshdb-row-label">{object.name}</span>
+        <span className="dshdb-row-label">
+          <Highlight text={object.name} query={query} />
+        </span>
         {loading ? <Spinner /> : null}
       </button>
 
@@ -440,7 +461,9 @@ export function DataView(props: DataViewProps): ReactElement {
                     <span className="dshdb-row-icon">
                       <DatabaseIcon size={13} />
                     </span>
-                    <span className="dshdb-row-label">{connection.name}</span>
+                    <span className="dshdb-row-label">
+                      <Highlight text={connection.name} query={normalizedFilter} />
+                    </span>
                     <Tag>{DIALECT_LABEL[connection.dialect]}</Tag>
                     {connection.readOnly ? <Tag tone="warn">只读</Tag> : null}
                     {!server && cachedStamp && hasCachedStructure ? (
@@ -515,7 +538,9 @@ export function DataView(props: DataViewProps): ReactElement {
                                   <span className="dshdb-row-icon">
                                     <DatabaseIcon size={13} />
                                   </span>
-                                  <span className="dshdb-row-label">{schema.name}</span>
+                                  <span className="dshdb-row-label">
+                                    <Highlight text={schema.name} query={normalizedFilter} />
+                                  </span>
                                   {schema.system ? <Tag>系统</Tag> : null}
                                   {objectLoading ? <Spinner /> : null}
                                   {!objectLoading && total !== undefined ? (
@@ -594,6 +619,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                                         props.onOpenTable(connection.id, schema.name, object)
                                                       }
                                                       onToggleKey={props.onToggleKey}
+                                                      query={normalizedFilter}
                                                     />
                                                   ))}
                                                 </div>
