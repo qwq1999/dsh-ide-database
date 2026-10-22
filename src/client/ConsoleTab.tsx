@@ -90,6 +90,10 @@ function formatCount(value: number): string {
 }
 
 /** A bare single SELECT can be wrapped into a page; anything else runs whole. */
+/** Batches pulled for a full export, and the ceiling that protects memory. */
+const EXPORT_BATCH = 2000
+const EXPORT_LIMIT = 50000
+
 function pageable(statement: string): boolean {
   const text = statement.trim().replace(/;+\s*$/u, '')
   if (!/^select\b/iu.test(text)) return false
@@ -206,6 +210,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  const [exporting, setExporting] = useState(false)
   const [multiProgress, setMultiProgress] = useState<{ index: number; total: number } | null>(null)
   const [multiNote, setMultiNote] = useState('')
 
@@ -564,6 +569,40 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setExportNote(`${format.toUpperCase()} 已导出 ${visibleRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
+  /** Export every row of the paged statement, not just the current page. */
+  const exportAll = async (format: ExportFormat): Promise<void> => {
+    setExportOpen(false)
+    if (base === '' || selectedId === '' || exporting) return
+    setExporting(true)
+    setFailure(null)
+    try {
+      const collected: Row[] = []
+      let sourcePage = 0
+      while (collected.length < EXPORT_LIMIT) {
+        const sqlText = wrapPage(connection?.dialect ?? 'mysql', base, EXPORT_BATCH, sourcePage)
+        const next = await queryWithRetry(
+          selectedId,
+          sqlText,
+          EXPORT_BATCH,
+          false,
+          `console-export-${Date.now().toString(36)}-${sourcePage}`,
+        )
+        collected.push(...next.rows)
+        if (next.rows.length < EXPORT_BATCH) break
+        sourcePage += 1
+      }
+      const data = collected.slice(0, EXPORT_LIMIT)
+      const text = format === 'csv' ? toCsv(columns, data) : toJson(columns, data)
+      downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
+      setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
+      setTimeout(() => setExportNote(''), 5000)
+    } catch (error) {
+      setFailure(failureText(error))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const hasPrevious = page > 0
   const hasNext = result !== null && rows.length >= pageSize
   const rangeStart = rows.length === 0 ? 0 : offset + 1
@@ -758,11 +797,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               <button
                 type="button"
                 className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}
-                title="导出当前页结果"
+                title={exporting ? '正在导出…' : '导出结果'}
                 aria-label="导出结果"
                 aria-expanded={exportOpen}
                 onClick={() => setExportOpen((open) => !open)}
-                disabled={running || rows.length === 0}
+                disabled={running || exporting || rows.length === 0}
               >
                 <DownloadIcon size={13} />
               </button>
@@ -774,6 +813,16 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                   <button type="button" role="menuitem" onClick={() => exportPage('json')}>
                     当前页 JSON（{visibleRows.length} 行）
                   </button>
+                  {base !== '' ? (
+                    <>
+                      <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
+                        全部 CSV（最多 {EXPORT_LIMIT} 行）
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => void exportAll('json')} disabled={exporting}>
+                        全部 JSON（最多 {EXPORT_LIMIT} 行）
+                      </button>
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </span>

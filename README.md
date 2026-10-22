@@ -28,7 +28,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **多语句执行**：一次粘贴整段脚本也没问题——控制台按分号拆成独立语句逐条执行（字符串、引号标识符与注释里的分号不会误拆），网格展示最后一条的结果，状态栏提示「已顺序执行 N 条语句」；中途失败会指出是第几条并停止。
 - **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL 走 `EXPLAIN`，Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，结果与普通查询一样在网格里展示并标出「执行计划」，看完点「关闭计划」回到编辑器。
 - **SQL 格式化**：查询控制台的「格式化」按钮（或 `Ctrl/⌘ + Shift + F`）会把关键字统一大写，按 `SELECT / FROM / WHERE / GROUP BY / ORDER BY / LIMIT` 等子句换行并缩进子查询；字符串、反引号标识符、`--` 与 `/* */` 注释里的内容一概不动。
-- **结果导出**：查询控制台工具栏的下载按钮可以把当前页结果存成 CSV 或 JSON——CSV 带 BOM，Excel 打开中文不乱码；导出的是网格里正在看的这一页，翻页后再导另一页即可。
+- **结果导出**：查询控制台工具栏的下载按钮可以把结果存成 CSV 或 JSON——CSV 带 BOM，Excel 打开中文不乱码。可分页的查询除了「当前页」，还能选「全部」：按每批 2000 行自动翻页抓取（单次上限 5 万行），导出的就是整条 SQL 的完整结果。
 - **结果排序**：点控制台结果网格的表头，就能按这一列对当前页排序——第一次升序、再一次降序、第三次取消；拼音按 `zh` 排序，空值沉底，导出 CSV/JSON 也会跟着网格的顺序走。
 - **列头菜单**：在结果网格的列头上点右键，可以「按此列升序 / 降序 / 清除排序」，或者「复制列名」「复制本列值」（一行一个值）——数据表标签页和查询控制台都支持。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
@@ -60,6 +60,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 
 ![查询控制台导出当前页](docs/screenshots/database-console-export.png)
+
+![导出整条查询的全部结果](docs/screenshots/database-export-all.png)
 
 ![控制台按 name 降序](docs/screenshots/database-console-sort.png)
 
