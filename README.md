@@ -44,6 +44,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ![拖动调整列宽](docs/screenshots/database-column-widths.png)
 
+![点表头按城市降序](docs/screenshots/database-sort.png)
+
 ![查询控制台历史](docs/screenshots/database-history.png)
 
 ![SQL 格式化](docs/screenshots/database-format.png)
