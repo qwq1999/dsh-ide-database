@@ -23,11 +23,29 @@ export function toCsv(columns: ColumnInfo[], rows: Row[]): string {
   return `${[head, ...body].join('\r\n')}\r\n`
 }
 
+export function jsonValue(value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()
+  }
+  if (value instanceof Date) return value.toISOString()
+  return value
+}
+
+function uniqueKeys(columns: ColumnInfo[]): string[] {
+  const seen = new Map<string, number>()
+  return columns.map((column) => {
+    const count = (seen.get(column.name) ?? 0) + 1
+    seen.set(column.name, count)
+    return count === 1 ? column.name : `${column.name}_${count}`
+  })
+}
+
 export function toJson(columns: ColumnInfo[], rows: Row[]): string {
+  const keys = uniqueKeys(columns)
   const records = rows.map((row) => {
-    const record: Record<string, CellValue> = {}
-    columns.forEach((column, index) => {
-      record[column.name] = row[index] ?? null
+    const record: Record<string, unknown> = {}
+    keys.forEach((key, index) => {
+      record[key] = jsonValue(row[index] ?? null)
     })
     return record
   })
