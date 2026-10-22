@@ -11,7 +11,8 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { formatCell, formatMs } from './format'
-import { FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
+import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
+import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { readTableTabParams, type TableTabParams } from './tab-open'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -152,6 +153,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [orderText, setOrderText] = useState('')
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportNote, setExportNote] = useState('')
   const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
 
   const load = useCallback(
@@ -274,6 +278,49 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     applyRef.current({ page: 0, where: whereText }, {})
   }
 
+  /**
+   * Export what the grid currently shows ("page") or page through the whole
+   * filtered result set, capped so a huge table cannot freeze the browser.
+   */
+  const EXPORT_LIMIT = 50000
+  const exportRows = async (format: ExportFormat, scope: 'page' | 'all'): Promise<void> => {
+    if (connection === null) return
+    setExporting(true)
+    setExportOpen(false)
+    try {
+      const dialect = connection.dialect
+      let exportColumns = columns
+      let exportData = rows
+      if (scope === 'all') {
+        const from = qualifiedName(dialect, params.schema, params.table)
+        const where = composeWhere(dialect, whereText, columns, filters)
+        const orderBy = stripKeyword(orderText, 'ORDER\s+BY')
+        const whereSql = where === '' ? '' : ` WHERE ${where}`
+        const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
+        const batch = 2000
+        const collected: Row[] = []
+        let offset = 0
+        for (;;) {
+          const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
+          const result = await runSql(params.connectionId, sql, batch)
+          if (collected.length === 0) exportColumns = result.columns
+          collected.push(...result.rows)
+          if (result.rows.length < batch || collected.length >= EXPORT_LIMIT) break
+          offset += batch
+        }
+        exportData = collected.slice(0, EXPORT_LIMIT)
+      }
+      const text = format === 'csv' ? toCsv(exportColumns, exportData) : toJson(exportColumns, exportData)
+      downloadText(exportFilename(params.schema, params.table, format), format === 'csv' ? 'text/csv' : 'application/json', text)
+      setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
+      setTimeout(() => setExportNote(''), 5000)
+    } catch (caught) {
+      setError(failureText(caught))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (error !== null && rows.length === 0) {
     return (
       <div className="dshdb-qtab">
@@ -295,6 +342,33 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <span className="dshdb-qbar-spacer" />
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
+        {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+        <span className="dshdb-menu-wrap">
+          <button
+            type="button"
+            className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}
+            title="导出结果"
+            aria-label="导出结果"
+            aria-expanded={exportOpen}
+            onClick={() => setExportOpen((open) => !open)}
+            disabled={loading || exporting || rows.length === 0}
+          >
+            {exporting ? <Spinner /> : <DownloadIcon size={13} />}
+          </button>
+          {exportOpen ? (
+            <span className="dshdb-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'page')}>
+                当前页 CSV（{formatCount(rows.length)} 行）
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
+                全部 CSV
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('json', 'all')}>
+                全部 JSON
+              </button>
+            </span>
+          ) : null}
+        </span>
         <button
           type="button"
           className={`dshdb-pager-btn${filtersOpen ? ' dshdb-pager-btn-active' : ''}`}

@@ -353,6 +353,34 @@ export const CSS = `
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
 }
+.dshdb-menu-wrap { position: relative; display: inline-flex; }
+.dshdb-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-alias-shadow-md, 0 6px 20px rgba(0, 0, 0, 0.14));
+}
+.dshdb-menu button {
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dshdb-menu button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-grid-foot {
   display: flex;
   align-items: center;
