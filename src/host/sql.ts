@@ -7,6 +7,7 @@ import type {
   ConnectionDraft,
   ConnectionTestResult,
   DdlResult,
+  ExplainResult,
   IndexInfo,
   ObjectKind,
   QueryResult,
@@ -403,6 +404,40 @@ export class SqlService {
     }
     const description = await this.describe(connId, schema, table, kind)
     return { schema, table, kind, ddl: generateDdl(dialect, description), source: 'generated', warnings }
+  }
+
+  /** Fetch the execution plan (EXPLAIN) of a statement without running it. */
+  async explain(connId: string, statement: string, options: QueryOptions = {}): Promise<ExplainResult> {
+    const connection = this.requireConnection(connId)
+    if (connection.dialect === 'redis') {
+      throw new DbError('unsupported', 'Redis 连接没有执行计划')
+    }
+    this.requireConnected(connId)
+    const sql = statement.trim()
+    if (sql === '') throw new DbError('invalid', 'SQL 不能为空')
+    const queryOptions: QueryOptions = { maxRows: 500, ...options }
+    const statements: string[] = []
+    if (connection.dialect === 'oracle' || connection.dialect === 'oceanbase-oracle') {
+      const explain = `EXPLAIN PLAN FOR ${sql}`
+      statements.push(explain)
+      await this.query(connId, explain, queryOptions)
+      try {
+        const display = "SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, 'BASIC'))"
+        statements.push(display)
+        const plan = await this.query(connId, display, queryOptions)
+        return { dialect: connection.dialect, statements, plan, warnings: [] }
+      } catch (displayError) {
+        return {
+          dialect: connection.dialect,
+          statements,
+          warnings: [`DBMS_XPLAN 不可用：${errorMessage(displayError)}`],
+        }
+      }
+    }
+    const explain = `EXPLAIN ${sql}`
+    statements.push(explain)
+    const plan = await this.query(connId, explain, queryOptions)
+    return { dialect: connection.dialect, statements, plan, warnings: [] }
   }
 
   async query(connId: string, sql: string, options: QueryOptions = {}): Promise<QueryResult> {

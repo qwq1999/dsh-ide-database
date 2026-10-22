@@ -11,6 +11,7 @@ import type {
   DriverConfig,
   DriverStatus,
   EnvStatus,
+  ExplainResult,
   ObjectListResult,
   QueryResult,
   RedisCommandResult,
@@ -88,6 +89,7 @@ export const api = {
     post<DescribeResult>('/schema/describe', { id, schema, table, kind }),
   ddl: (id: string, schema: string, table: string, kind: string) =>
     post<DdlResult>('/schema/ddl', { id, schema, table, kind }),
+  explain: (id: string, sql: string, schema?: string) => post<ExplainResult>('/explain', { id, sql, schema }),
 
   query: (options: {
     id: string

@@ -14,6 +14,7 @@ import type {
   RedisValue,
   DescribeResult,
   DdlResult,
+  ExplainResult,
   ObjectKind,
   ObjectListResult,
   SchemaInfo,
@@ -294,6 +295,19 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const connection = sqlConnection(deps, id)
       if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接没有 DDL')
       const result: DdlResult = await deps.sql.ddl(id, connection.dialect, schema, table, kind)
+      sendJson(response, 200, { ok: true, data: result })
+      return
+    }
+    case '/explain': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const statement = typeof data.sql === 'string' ? data.sql : ''
+      if (statement.trim() === '') throw new DbError('invalid', 'SQL 不能为空')
+      const schema = typeof data.schema === 'string' ? data.schema : ''
+      sqlConnection(deps, id)
+      const result: ExplainResult = await deps.sql.explain(id, statement, {
+        maxRows: 500,
+        ...(schema === '' ? {} : { schema }),
+      })
       sendJson(response, 200, { ok: true, data: result })
       return
     }

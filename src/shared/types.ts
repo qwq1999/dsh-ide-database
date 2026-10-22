@@ -262,6 +262,14 @@ export interface DescribeResult extends TableDescription {
  * DDL for a table or view: the server's own definition when the dialect can
  * return it, otherwise a reconstruction from the described columns/indexes.
  */
+/** Result of an execution-plan (EXPLAIN) request. */
+export interface ExplainResult {
+  dialect: SqlDialect
+  statements: string[]
+  plan?: QueryResult
+  warnings: string[]
+}
+
 export interface DdlResult {
   schema: string
   table: string

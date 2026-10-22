@@ -12,6 +12,7 @@ import type {
   ClientConnection,
   ColumnInfo,
   DbSettings,
+  ExplainResult,
   QueryResult,
   RedisCommandResult,
   RedisKeyInfo,
@@ -217,6 +218,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const stmtRef = useRef('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
+  const [planRunning, setPlanRunning] = useState(false)
+  const [plan, setPlan] = useState<ExplainResult | null>(null)
   const scanCursorRef = useRef('0')
   const recallRef = useRef(-1)
 
@@ -275,6 +278,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       const stmtKey = `console-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       stmtRef.current = stmtKey
       setRunning(true)
+      setPlan(null)
       setFailure(null)
       try {
         const paged = pageable(text)
@@ -306,6 +310,32 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     }
     setHistory(pushHistory('sql', text))
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
+  }
+
+  /** Show the execution plan of the current (or selected) statement without running it. */
+  const explainPlan = async (): Promise<void> => {
+    const area = inputRef.current
+    const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
+    const text = picked.statement.trim()
+    if (text === '' || selectedId === '' || running) return
+    setPlanRunning(true)
+    setFailure(null)
+    try {
+      const next = await api.explain(selectedId, text)
+      setPlan(next)
+      setResult(next.plan ?? null)
+      setPage(0)
+      setBase('')
+      if (next.plan === undefined) {
+        setFailure({ message: next.warnings.join('；') || '没有返回执行计划', detail: next.statements.join('\n') })
+      }
+    } catch (error) {
+      setPlan(null)
+      setResult(null)
+      setFailure(failureText(error))
+    } finally {
+      setPlanRunning(false)
+    }
   }
 
   /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones.
@@ -629,6 +659,16 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             >
               格式化
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void explainPlan()}
+              loading={planRunning}
+              disabled={statement.trim() === '' || running}
+              title="查看当前语句的执行计划（不会真正执行语句）"
+            >
+              执行计划
+            </Button>
             <span className="dshdb-qbar-spacer" />
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
@@ -673,46 +713,66 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           )}
 
           {result !== null && rows.length > 0 ? (
-            <div className="dshdb-pager">
-              {running ? <Tag tone="business">查询中</Tag> : null}
-              <span className="dshdb-pager-sql" title={result.sql}>
-                {result.sql}
-              </span>
-              <span className="dshdb-pager-spacer" />
-              <PagerButton
-                label="|◀"
-                title="第一页"
-                onClick={() => goPage(0)}
-                disabled={!hasPrevious || running}
-              />
-              <PagerButton
-                label="◀"
-                title="上一页"
-                onClick={() => goPage(Math.max(page - 1, 0))}
-                disabled={!hasPrevious || running}
-              />
-              <span className="dshdb-pager-range">
-                {formatCount(rangeStart)}-{formatCount(rangeEnd)}
-              </span>
-              <select
-                className="dshdb-select dshdb-select-inline dshdb-pager-size"
-                aria-label="每页行数"
-                value={String(pageSize)}
-                disabled={running}
-                onChange={(event) => {
-                  const size = Number(event.target.value)
-                  setPageSize(size)
-                  if (base !== '') void execute({ statement: base, page: 0, size, allowWrite: false })
-                }}
-              >
-                {PAGE_SIZES.map((size) => (
-                  <option key={size} value={size}>
-                    {formatCount(size)}
-                  </option>
-                ))}
-              </select>
-              <PagerButton label="▶" title="下一页" onClick={() => goPage(page + 1)} disabled={!hasNext || running} />
-            </div>
+            plan === null ? (
+              <div className="dshdb-pager">
+                {running ? <Tag tone="business">查询中</Tag> : null}
+                <span className="dshdb-pager-sql" title={result.sql}>
+                  {result.sql}
+                </span>
+                <span className="dshdb-pager-spacer" />
+                <PagerButton
+                  label="|◀"
+                  title="第一页"
+                  onClick={() => goPage(0)}
+                  disabled={!hasPrevious || running}
+                />
+                <PagerButton
+                  label="◀"
+                  title="上一页"
+                  onClick={() => goPage(Math.max(page - 1, 0))}
+                  disabled={!hasPrevious || running}
+                />
+                <span className="dshdb-pager-range">
+                  {formatCount(rangeStart)}-{formatCount(rangeEnd)}
+                </span>
+                <select
+                  className="dshdb-select dshdb-select-inline dshdb-pager-size"
+                  aria-label="每页行数"
+                  value={String(pageSize)}
+                  disabled={running}
+                  onChange={(event) => {
+                    const size = Number(event.target.value)
+                    setPageSize(size)
+                    if (base !== '') void execute({ statement: base, page: 0, size, allowWrite: false })
+                  }}
+                >
+                  {PAGE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {formatCount(size)}
+                    </option>
+                  ))}
+                </select>
+                <PagerButton label="▶" title="下一页" onClick={() => goPage(page + 1)} disabled={!hasNext || running} />
+              </div>
+            ) : (
+              <div className="dshdb-pager">
+                <Tag tone="business">执行计划</Tag>
+                <span className="dshdb-pager-sql" title={plan.statements.join('\n')}>
+                  {plan.statements[plan.statements.length - 1] ?? result.sql}
+                </span>
+                <span className="dshdb-pager-spacer" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setPlan(null)
+                    setResult(null)
+                  }}
+                >
+                  关闭计划
+                </Button>
+              </div>
+            )
           ) : null}
         </>
       )}

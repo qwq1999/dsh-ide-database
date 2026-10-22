@@ -24,6 +24,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **查询控制台**：工具栏的「控制台」按钮会在右侧栏新开一个查询标签页（可同时开多个）。SQL 模式支持多行编辑、`Ctrl+Enter` 执行、取消、行数上限、耗时与分页（把单条 `SELECT` 包成 `LIMIT/OFFSET` 或 `OFFSET … FETCH`）；写语句执行前二次确认，只读连接永远拒绝写。切到 Redis 数据源时变成键表格（键 / 类型 / TTL / 长度）+ 选中键的值面板 + 命令框，写命令二次确认、危险命令（`FLUSHALL` 等）始终拒绝。
 - **执行历史**：控制台会记住最近执行过的 50 条 SQL / Redis 命令（存在浏览器本地，刷新和重开控制台都还在）。「历史」按钮展开列表，点一条即回填到编辑器；SQL 编辑器里 `Ctrl/⌘ + ↑ / ↓` 直接翻历史，Redis 命令框用 `↑ / ↓`，重复的语句会提到最前而不是堆叠。
 - **只执行选中内容**：在 SQL 编辑器里选中一段语句再执行，就只跑选中部分（多语句脚本里挑一句跑很顺手），没选中时仍然执行全文；控制台会提示「已执行选中内容」。
+- **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL 走 `EXPLAIN`，Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，结果与普通查询一样在网格里展示并标出「执行计划」，看完点「关闭计划」回到编辑器。
 - **SQL 格式化**：查询控制台的「格式化」按钮（或 `Ctrl/⌘ + Shift + F`）会把关键字统一大写，按 `SELECT / FROM / WHERE / GROUP BY / ORDER BY / LIMIT` 等子句换行并缩进子查询；字符串、反引号标识符、`--` 与 `/* */` 注释里的内容一概不动。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
 - **Agent 工具**：15 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
@@ -45,6 +46,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ![查询控制台历史](docs/screenshots/database-history.png)
 
 ![SQL 格式化](docs/screenshots/database-format.png)
+
+![执行计划：索引命中情况](docs/screenshots/database-explain.png)
 
 ![表结构 DDL](docs/screenshots/database-ddl.png)
 

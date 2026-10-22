@@ -78,10 +78,6 @@ async function ensureSql(deps: ToolDeps, connection: ConnectionConfig): Promise<
   return deps.sql
 }
 
-function oracleFamily(dialect: SqlDialect): boolean {
-  return dialect === 'oracle' || dialect === 'oceanbase-oracle'
-}
-
 /** Property schema accepted by the local tool authoring shape (JSON Schema-ish). */
 type PropertySchema = Record<string, unknown>
 
@@ -570,33 +566,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
-          if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接没有执行计划')
           const statement = text(args, 'sql')
           const schema = text(args, 'schema', false)
           const sql = await ensureSql(deps, connection)
-          const queryOptions = { maxRows: 500, ...(schema === '' ? {} : { schema }) }
-          const statements: string[] = []
-          if (oracleFamily(connection.dialect)) {
-            const explain = `EXPLAIN PLAN FOR ${statement}`
-            statements.push(explain)
-            await sql.query(connection.id, explain, queryOptions)
-            try {
-              const display = 'SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, \'BASIC\'))'
-              statements.push(display)
-              const plan = await sql.query(connection.id, display, queryOptions)
-              return { dialect: connection.dialect, statements, plan }
-            } catch (displayError) {
-              return {
-                dialect: connection.dialect,
-                statements,
-                warnings: [`DBMS_XPLAN 不可用：${errorMessage(displayError)}`],
-              }
-            }
-          }
-          const explain = connection.dialect === 'dameng' ? `EXPLAIN ${statement}` : `EXPLAIN ${statement}`
-          statements.push(explain)
-          const plan = await sql.query(connection.id, explain, queryOptions)
-          return { dialect: connection.dialect, statements, plan }
+          return await sql.explain(connection.id, statement, schema === '' ? {} : { schema })
         } catch (error) {
           return fail(error)
         }

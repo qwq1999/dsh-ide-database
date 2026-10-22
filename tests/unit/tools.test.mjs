@@ -61,6 +61,7 @@ function harness(initial = {}) {
     sql: {
       isConnected: () => true,
       query,
+      explain: vi.fn(async () => ({ dialect: 'mysql', statements: ['EXPLAIN SELECT 1'], plan: await query(), warnings: [] })),
       schemas: vi.fn(),
       objects: vi.fn(),
       describe: vi.fn(),
@@ -140,6 +141,14 @@ describe('createDatabaseTools', () => {
   it('routes redis connections away from SQL tools', async () => {
     const { byName } = harness()
     await expect(byName('db_query').execute({ connection: 'r1', sql: 'SELECT 1' })).rejects.toThrow(/db_redis_command/)
+  })
+
+  it('delegates execution plans to the sql service', async () => {
+    const { byName, deps } = harness()
+    const value = await byName('db_explain').execute({ connection: 'c1', sql: 'SELECT * FROM users' })
+    expect(deps.sql.explain).toHaveBeenCalledWith('c1', 'SELECT * FROM users', {})
+    expect(value.statements).toEqual(['EXPLAIN SELECT 1'])
+    expect(value.plan.rowCount).toBe(1)
   })
 
   it('creates a connection through the agent tool', async () => {
