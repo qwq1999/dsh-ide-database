@@ -13,6 +13,7 @@ import type {
   RedisScanResult,
   RedisValue,
   DescribeResult,
+  DdlResult,
   ObjectKind,
   ObjectListResult,
   SchemaInfo,
@@ -281,6 +282,18 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       if (schema === '' || table === '') throw new DbError('invalid', '必须提供 schema 与表名')
       const kind = typeof data.kind === 'string' ? (data.kind as ObjectKind) : 'table'
       const result: DescribeResult = await readDescription(deps, id, schema, table, kind)
+      sendJson(response, 200, { ok: true, data: result })
+      return
+    }
+    case '/schema/ddl': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const schema = typeof data.schema === 'string' ? data.schema : ''
+      const table = typeof data.table === 'string' ? data.table : ''
+      if (schema === '' || table === '') throw new DbError('invalid', '必须提供 schema 与表名')
+      const kind = typeof data.kind === 'string' ? (data.kind as ObjectKind) : 'table'
+      const connection = sqlConnection(deps, id)
+      if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接没有 DDL')
+      const result: DdlResult = await deps.sql.ddl(id, connection.dialect, schema, table, kind)
       sendJson(response, 200, { ok: true, data: result })
       return
     }

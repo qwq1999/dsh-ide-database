@@ -37,3 +37,31 @@ export function readTableTabParams(params: unknown): TableTabParams | undefined 
   if (connectionId === '' || table === '') return undefined
   return { connectionId, schema, table }
 }
+
+/** What one query console tab starts with (connection is optional). */
+export interface ConsoleTabParams {
+  connectionId?: string
+}
+
+type ConsoleTabOpener = (params: ConsoleTabParams) => void
+
+let consoleOpener: ConsoleTabOpener | undefined
+
+/** Install (or clear) the console opener owned by the plugin entry. */
+export function setConsoleTabOpener(next: ConsoleTabOpener | undefined): void {
+  consoleOpener = next
+}
+
+/** Open one console tab; does nothing without the native right sidebar. */
+export function openConsoleTab(params: ConsoleTabParams = {}): void {
+  consoleOpener?.(params)
+}
+
+/** Narrow unknown navigation parameters to {@link ConsoleTabParams}. */
+export function readConsoleTabParams(params: unknown): ConsoleTabParams | undefined {
+  if (typeof params !== 'object' || params === null) return undefined
+  const value = params as Record<string, unknown>
+  const { connectionId } = value
+  if (typeof connectionId !== 'string' || connectionId === '') return {}
+  return { connectionId }
+}

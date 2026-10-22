@@ -44,10 +44,9 @@ export interface DataViewProps {
   onToggleFolder: (connectionId: string, schema: string, folder: string) => void
   onToggleKey: (key: string) => void
   onSelectObject: (connectionId: string, schema: string, object: SchemaObject) => void
-  onQueryObject: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
+  onShowDdl: (connectionId: string, schema: string, table: string, kind: string) => void
   /** Double-click on a table/view: open its rows in their own Sidebar tab. */
   onOpenTable: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
-  onOpenRedis: (id: string) => void
 }
 
 type FolderId = 'table' | 'view' | 'routine' | 'sequence' | 'trigger' | 'other'
@@ -388,22 +387,7 @@ export function DataView(props: DataViewProps): ReactElement {
 
                   {isExpanded ? (
                     <div role="group">
-                      {connection.dialect === 'redis' ? (
-                        <button
-                          type="button"
-                          className="dshdb-row"
-                          style={DEPTH_ONE}
-                          data-kind="schema"
-                          onClick={() => props.onOpenRedis(connection.id)}
-                        >
-                          <span className="dshdb-row-toggle" />
-                          <span className="dshdb-row-icon">
-                            <TableIcon size={13} />
-                          </span>
-                          <span className="dshdb-row-label">Redis 控制台</span>
-                          <span className="dshdb-row-meta">键与命令</span>
-                        </button>
-                      ) : !server && !hasCachedStructure ? (
+                      {!server && !hasCachedStructure ? (
                         <button
                           type="button"
                           className="dshdb-row"
@@ -583,9 +567,9 @@ export function DataView(props: DataViewProps): ReactElement {
             detail.kind === 'table' || detail.kind === 'view' ? (
               <Button
                 size="sm"
-                onClick={() => props.onQueryObject(selectedId, detail.schema, { name: detail.table, kind: detail.kind })}
+                onClick={() => props.onShowDdl(selectedId, detail.schema, detail.table, detail.kind)}
               >
-                查询数据
+                DDL
               </Button>
             ) : null
           }

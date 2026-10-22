@@ -6,6 +6,7 @@ import type {
   ConnectionDraft,
   ConnectionTestResult,
   DbSettings,
+  DdlResult,
   DescribeResult,
   DriverConfig,
   DriverStatus,
@@ -85,6 +86,8 @@ export const api = {
   objects: (id: string, schema: string) => post<ObjectListResult>('/schema/objects', { id, schema }),
   describe: (id: string, schema: string, table: string, kind: string) =>
     post<DescribeResult>('/schema/describe', { id, schema, table, kind }),
+  ddl: (id: string, schema: string, table: string, kind: string) =>
+    post<DdlResult>('/schema/ddl', { id, schema, table, kind }),
 
   query: (options: {
     id: string

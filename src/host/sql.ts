@@ -6,6 +6,7 @@ import type {
   ConnectionConfig,
   ConnectionDraft,
   ConnectionTestResult,
+  DdlResult,
   IndexInfo,
   ObjectKind,
   QueryResult,
@@ -13,6 +14,7 @@ import type {
   SchemaInfo,
   SchemaObject,
   ServerInfo,
+  SqlDialect,
   TableDescription,
 } from '../shared/types.js'
 import { BridgeClient } from './bridge.js'
@@ -65,6 +67,52 @@ export function isReadOnlySql(sql: string): boolean {
 
 function parseNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/** Quote one identifier for the dialect (MySQL style backticks, otherwise ANSI quotes). */
+function quoteIdent(dialect: SqlDialect, name: string): string {
+  return dialect === 'mysql'
+    ? `\`${name.replace(/`/g, '``')}\``
+    : `"${name.replace(/"/g, '""')}"`
+}
+
+function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+function qualifies(schema: string, table: string): string {
+  return schema !== '' ? `${schema}.${table}` : table
+}
+
+/**
+ * Best-effort CREATE TABLE for dialects whose metadata cannot return DDL.
+ * Only columns, the primary key and unique indexes are reconstructed; the
+ * answer is marked generated so callers can tell it apart from the real thing.
+ */
+function generateDdl(dialect: SqlDialect, description: TableDescription): string {
+  const name = qualifies(quoteIdent(dialect, description.schema), quoteIdent(dialect, description.table))
+  const commentSupported = dialect === 'mysql'
+  const lines: string[] = []
+  for (const column of description.columns) {
+    const parts = [quoteIdent(dialect, column.name), column.typeName.trim() === '' ? 'VARCHAR(255)' : column.typeName]
+    if (column.nullable === false) parts.push('NOT NULL')
+    const fallback = column.defaultValue?.trim() ?? ''
+    if (fallback !== '') parts.push(`DEFAULT ${fallback}`)
+    if (commentSupported && column.comment !== undefined && column.comment !== '') parts.push(`COMMENT ${quoteLiteral(column.comment)}`)
+    lines.push(`  ${parts.join(' ')}`)
+  }
+  const primary = description.indexes.find((index) => index.primary)
+  if (primary !== undefined && primary.columns.length > 0) {
+    lines.push(`  PRIMARY KEY (${primary.columns.map((column) => quoteIdent(dialect, column)).join(', ')})`)
+  }
+  let ddl = `CREATE TABLE ${name} (\n${lines.join(',\n')}\n)`
+  for (const index of description.indexes) {
+    if (index.primary || !index.unique || index.columns.length === 0) continue
+    ddl += `;\nCREATE UNIQUE INDEX ${quoteIdent(dialect, index.name)} ON ${name} (${index.columns
+      .map((column) => quoteIdent(dialect, column))
+      .join(', ')})`
+  }
+  return ddl
 }
 
 export class SqlService {
@@ -322,6 +370,39 @@ export class SqlService {
       columns: Array.isArray(reply.columns) ? reply.columns : [],
       indexes: Array.isArray(reply.indexes) ? reply.indexes : [],
     }
+  }
+
+  /**
+   * DDL of a table or view: asks the server for its own definition and falls
+   * back to a reconstruction from the described structure when the dialect or
+   * account cannot provide one.
+   */
+  async ddl(connId: string, dialect: SqlDialect, schema: string, table: string, kind: ObjectKind = 'table'): Promise<DdlResult> {
+    this.requireConnected(connId)
+    if (kind !== 'table' && kind !== 'view') {
+      throw new DbError('unsupported', '只有表或视图可以查看 DDL', '例程、序列、触发器的定义请到数据库对象上查看。')
+    }
+    const qualified = qualifies(quoteIdent(dialect, schema), quoteIdent(dialect, table))
+    const warnings: string[] = []
+    try {
+      if (dialect === 'mysql') {
+        const result = await this.query(connId, `SHOW CREATE ${kind === 'view' ? 'VIEW' : 'TABLE'} ${qualified}`, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[1] === 'string' ? result.rows[0][1] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('服务器没有返回 DDL 文本')
+      } else if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+        const objectType = kind === 'view' ? 'VIEW' : 'TABLE'
+        const statement = `SELECT DBMS_METADATA.GET_DDL(${quoteLiteral(objectType)}, ${quoteLiteral(table)}, ${quoteLiteral(schema)}) AS DDL FROM DUAL`
+        const result = await this.query(connId, statement, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('DBMS_METADATA.GET_DDL 没有返回内容')
+      }
+    } catch (error) {
+      warnings.push(`服务器取不到 DDL：${errorMessage(error)}`)
+    }
+    const description = await this.describe(connId, schema, table, kind)
+    return { schema, table, kind, ddl: generateDdl(dialect, description), source: 'generated', warnings }
   }
 
   async query(connId: string, sql: string, options: QueryOptions = {}): Promise<QueryResult> {

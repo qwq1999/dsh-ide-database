@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { ROUTE_PREFIX } from '../shared/presets'
 import type {
   ClientConnection,
   DbSettings,
   DriverStatus,
   EnvStatus,
-  QueryResult,
   SchemaInfo,
   SchemaObject,
   ServerInfo,
@@ -13,19 +12,17 @@ import type {
   TableDescription,
 } from '../shared/types'
 import { api } from './api'
-import { looksLikeWrite } from './format'
-import { PlusIcon, RefreshIcon, SettingsIcon, TrashIcon } from './icons'
+import { PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
 import { DataView } from './views/DataView'
-import { RedisView } from './views/RedisView'
-import { SqlView } from './views/SqlView'
-import { openTableTab } from './tab-open'
+import { openConsoleTab, openTableTab } from './tab-open'
 import {
   Banner,
   Button,
   ConfirmDialog,
+  Modal,
   Spinner,
   StateDot,
   Toast,
@@ -33,19 +30,11 @@ import {
   type ToastState,
 } from './ui'
 
-type ViewKey = 'data' | 'sql' | 'redis'
-
 interface Snapshot {
   connections: ClientConnection[]
   drivers: DriverStatus[]
   settings: DbSettings
   env: EnvStatus
-}
-
-interface QueryState {
-  running: boolean
-  result: QueryResult | null
-  error: { message: string; detail?: string } | null
 }
 
 export interface AppProps {
@@ -55,19 +44,8 @@ export interface AppProps {
 
 const noopTabInfo = (): undefined => undefined
 
-const VIEW_LABELS: [ViewKey, string][] = [
-  ['data', '数据'],
-  ['sql', 'SQL'],
-  ['redis', 'Redis'],
-]
-
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
-  if (dialect === 'mysql') return `\`${schema}\`.\`${table}\``
-  return `"${schema}"."${table}"`
 }
 
 function ToolButton({
@@ -100,7 +78,6 @@ export function App(props: AppProps): ReactElement {
   const [selectedId, setSelectedId] = useState('')
   const [servers, setServers] = useState<Record<string, ServerInfo>>({})
   const [connectingId, setConnectingId] = useState('')
-  const [view, setView] = useState<ViewKey>('data')
 
   const [schemas, setSchemas] = useState<Record<string, SchemaInfo[]>>({})
   const [objects, setObjects] = useState<Record<string, SchemaObject[]>>({})
@@ -114,10 +91,13 @@ export function App(props: AppProps): ReactElement {
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
 
-  const [sql, setSql] = useState('SELECT 1')
-  const [rows, setRows] = useState(200)
-  const [query, setQuery] = useState<QueryState>({ running: false, result: null, error: null })
-  const stmtRef = useRef('')
+  const [ddlModal, setDdlModal] = useState<{ open: boolean; title: string; text: string; loading: boolean; source: string }>({
+    open: false,
+    title: '',
+    text: '',
+    loading: false,
+    source: '',
+  })
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -268,16 +248,11 @@ export function App(props: AppProps): ReactElement {
     const connection = connections.find((item) => item.id === connectionId)
     if (!connection) return
     setConnectingId(connectionId)
-    setQuery({ running: false, result: null, error: null })
     try {
       const connected = await api.connect(connectionId)
       setServers((previous) => ({ ...previous, [connectionId]: connected }))
       notify('连接成功', 'success')
-      if (connection.dialect === 'redis') {
-        setView('redis')
-      } else {
-        await loadSchemas(connectionId)
-      }
+      if (connection.dialect !== 'redis') await loadSchemas(connectionId)
     } catch (error) {
       notify(`连接失败：${errorText(error)}`, 'error')
     } finally {
@@ -303,9 +278,6 @@ export function App(props: AppProps): ReactElement {
 
   function selectConnection(id: string): void {
     setSelectedId(id)
-    const connection = connections.find((item) => item.id === id)
-    if (connection?.dialect === 'redis') setView('redis')
-    else if (view === 'redis') setView('data')
   }
 
   function toggleConnection(id: string): void {
@@ -379,12 +351,26 @@ export function App(props: AppProps): ReactElement {
     setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   }
 
-  function queryObject(connectionId: string, schema: string, object: { name: string; kind: string }): void {
-    const connection = connections.find((item) => item.id === connectionId)
-    if (!connection) return
-    setSelectedId(connectionId)
-    setSql(`SELECT * FROM ${qualifiedName(connection.dialect, schema, object.name)}`)
-    setView('sql')
+  /** 双击表 / DDL 按钮：读取表或视图的建表语句。 */
+  async function showDdl(connectionId: string, schema: string, table: string, kind: string): Promise<void> {
+    const title = `${schema}.${table} · DDL`
+    setDdlModal({ open: true, title, text: '', loading: true, source: '' })
+    try {
+      const result = await api.ddl(connectionId, schema, table, kind)
+      setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source })
+    } catch (error) {
+      setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })
+      notify(`读取 DDL 失败：${errorText(error)}`, 'error')
+    }
+  }
+
+  async function copyDdl(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(ddlModal.text)
+      notify('DDL 已复制', 'success')
+    } catch (error) {
+      notify(`复制失败：${errorText(error)}`, 'error')
+    }
   }
 
   /** Toolbar 刷新：重读选中数据源（未连接则连接，已连接则刷新库表结构）。 */
@@ -403,45 +389,6 @@ export function App(props: AppProps): ReactElement {
     await loadSchemas(selected.id)
     await refresh()
     notify('已刷新数据源', 'success')
-  }
-
-  async function runSql(): Promise<void> {
-    if (!selected || !server) {
-      notify('请先连接数据源', 'error')
-      return
-    }
-    const text = sql.trim()
-    if (text === '') return
-    const isWrite = looksLikeWrite(text)
-    if (isWrite && snapshot?.settings.confirmDestructive) {
-      const ok = await askConfirm('即将执行写语句，可能修改或删除数据。', text)
-      if (!ok) return
-    }
-    const stmtKey = `panel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-    stmtRef.current = stmtKey
-    setQuery({ running: true, result: null, error: null })
-    try {
-      const result = await api.query({
-        id: selected.id,
-        sql: text,
-        maxRows: rows,
-        stmtKey,
-        allowWrite: isWrite,
-      })
-      setQuery({ running: false, result, error: null })
-    } catch (error) {
-      setQuery({ running: false, result: null, error: { message: errorText(error) } })
-    }
-  }
-
-  async function cancelQuery(): Promise<void> {
-    if (stmtRef.current === '') return
-    try {
-      await api.cancel(stmtRef.current)
-      notify('已请求取消', 'info')
-    } catch (error) {
-      notify(`取消失败：${errorText(error)}`, 'error')
-    }
   }
 
   async function saveSettings(next: DbSettings): Promise<void> {
@@ -541,25 +488,17 @@ export function App(props: AppProps): ReactElement {
         >
           删除
         </ToolButton>
+        <ToolButton
+          title="查询控制台"
+          icon={<TerminalIcon size={14} />}
+          onClick={() => openConsoleTab({ connectionId: selected?.id })}
+        >
+          控制台
+        </ToolButton>
         <ToolButton title="设置" icon={<SettingsIcon size={14} />} onClick={() => setSettingsOpen(true)}>
           设置
         </ToolButton>
         <span className="dshdb-toolbar-spacer" />
-        <div className="dshdb-seg" role="tablist" aria-label="视图">
-          {VIEW_LABELS.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view === key}
-              className="dshdb-tab"
-              data-active={view === key}
-              onClick={() => setView(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <main className="dshdb-main">
@@ -577,87 +516,38 @@ export function App(props: AppProps): ReactElement {
         ) : null}
 
         {snapshot ? (
-          <>
-            <div
-              className="dshdb-view"
-              style={{ display: view === 'data' ? 'flex' : 'none', padding: '8px 10px 12px', minHeight: 0 }}
-            >
-              <DataView
-                connections={connections}
-                selectedId={selectedId}
-                servers={servers}
-                connectingId={connectingId}
-                schemas={schemas}
-                objects={objects}
-                expanded={expanded}
-                loadingSchemas={loadingSchemas}
-                loadingObjects={loadingObjects}
-                cachedAt={cachedAt}
-                descriptions={descriptions}
-                loadingDescriptions={loadingDescriptions}
-                detail={detail}
-                detailLoading={detailLoading}
-                selectedKey={selectedKey}
-                onAddConnection={() => setConnModal({ open: true, editing: null })}
-                onSelectConnection={selectConnection}
-                onToggleConnection={toggleConnection}
-                onConnect={(id) => void connect(id)}
-                onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
-                onToggleFolder={toggleFolder}
-                onToggleKey={toggleKey}
-                onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
-                onQueryObject={(connectionId, schema, object) => queryObject(connectionId, schema, object)}
-                onOpenTable={(connectionId, schema, object) => {
-                  setSelectedId(connectionId)
-                  openTableTab({ connectionId, schema, table: object.name })
-                }}
-                onOpenRedis={(id) => {
-                  selectConnection(id)
-                  setView('redis')
-                }}
-              />
-            </div>
-
-            <div
-              className="dshdb-view"
-              style={{ display: view === 'sql' ? 'flex' : 'none', padding: '8px 10px 12px', minHeight: 0 }}
-            >
-              <SqlView
-                connection={selected}
-                server={server}
-                sql={sql}
-                onSqlChange={setSql}
-                running={query.running}
-                result={query.result}
-                error={query.error}
-                elapsedMs={query.result?.elapsedMs}
-                rows={rows}
-                onRowsChange={setRows}
-                onRun={() => void runSql()}
-                onCancel={() => void cancelQuery()}
-                onConnect={() => {
-                  if (selected) void connect(selected.id)
-                }}
-                onClear={() => setSql('')}
-              />
-            </div>
-
-            <div
-              className="dshdb-view"
-              style={{ display: view === 'redis' ? 'flex' : 'none', padding: '8px 10px 12px', minHeight: 0 }}
-            >
-              <RedisView
-                connection={selected}
-                server={server}
-                connecting={connectingId === selectedId}
-                onConnect={() => {
-                  if (selected) void connect(selected.id)
-                }}
-                askConfirm={askConfirm}
-                notify={notify}
-              />
-            </div>
-          </>
+          <div className="dshdb-view" style={{ padding: '8px 10px 12px', minHeight: 0 }}>
+            <DataView
+              connections={connections}
+              selectedId={selectedId}
+              servers={servers}
+              connectingId={connectingId}
+              schemas={schemas}
+              objects={objects}
+              expanded={expanded}
+              loadingSchemas={loadingSchemas}
+              loadingObjects={loadingObjects}
+              cachedAt={cachedAt}
+              descriptions={descriptions}
+              loadingDescriptions={loadingDescriptions}
+              detail={detail}
+              detailLoading={detailLoading}
+              selectedKey={selectedKey}
+              onAddConnection={() => setConnModal({ open: true, editing: null })}
+              onSelectConnection={selectConnection}
+              onToggleConnection={toggleConnection}
+              onConnect={(id) => void connect(id)}
+              onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
+              onToggleFolder={toggleFolder}
+              onToggleKey={toggleKey}
+              onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
+              onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
+              onOpenTable={(connectionId, schema, object) => {
+                setSelectedId(connectionId)
+                openTableTab({ connectionId, schema, table: object.name })
+              }}
+            />
+          </div>
         ) : null}
       </main>
 
@@ -730,6 +620,39 @@ export function App(props: AppProps): ReactElement {
           onDeleteCustomDriver={(driver) => void deleteCustomDriver(driver)}
         />
       ) : null}
+      <Modal
+        open={ddlModal.open}
+        title={ddlModal.title}
+        width={760}
+        onClose={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })}
+        footer={
+          <>
+            <span className="dshdb-muted">
+              {ddlModal.source === 'generated' ? '按结构重建的 DDL' : ddlModal.source === 'server' ? '服务器返回的 DDL' : ''}
+            </span>
+            <span className="dshdb-toolbar-spacer" />
+            <Button size="sm" onClick={() => void copyDdl()} disabled={ddlModal.text === ''}>
+              复制
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })}
+            >
+              关闭
+            </Button>
+          </>
+        }
+      >
+        {ddlModal.loading ? (
+          <div className="dshdb-empty">
+            <Spinner size={16} />
+            <span className="dshdb-muted">正在读取 DDL…</span>
+          </div>
+        ) : (
+          <pre className="dshdb-ddl">{ddlModal.text}</pre>
+        )}
+      </Modal>
       <ConfirmDialog request={confirm?.request ?? null} onConfirm={() => resolveConfirm(true)} onCancel={() => resolveConfirm(false)} />
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>

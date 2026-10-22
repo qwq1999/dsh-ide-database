@@ -14,7 +14,7 @@ import { createDatabaseTools } from './tools.js'
 export const name = 'dsh-ide-database'
 
 /**
- * `webServer` carries the panel API; `tools` registers the eleven agent tools.
+ * `webServer` carries the panel API; `tools` registers the agent tools.
  * Optional services (logger, connection fence) are looked up defensively in
  * `services.ts` instead of being declared here.
  */
@@ -47,7 +47,7 @@ export function apply(ctx: HostContext): void {
   })
 
   ctx.effect(() => {
-    const disposers = createDatabaseTools({ config, drivers, sql, redis, paths }).map((tool) => ctx.tools.register(tool))
+    const disposers = createDatabaseTools({ config, drivers, sql, redis, paths, structure }).map((tool) => ctx.tools.register(tool))
     return () => {
       for (const dispose of disposers) {
         try {

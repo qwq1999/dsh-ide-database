@@ -258,6 +258,19 @@ export interface DescribeResult extends TableDescription {
   fetchedAt?: string
 }
 
+/**
+ * DDL for a table or view: the server's own definition when the dialect can
+ * return it, otherwise a reconstruction from the described columns/indexes.
+ */
+export interface DdlResult {
+  schema: string
+  table: string
+  kind: ObjectKind
+  ddl: string
+  source: 'server' | 'generated'
+  warnings: string[]
+}
+
 export interface SchemaListResult {
   schemas: SchemaInfo[]
   cached?: boolean

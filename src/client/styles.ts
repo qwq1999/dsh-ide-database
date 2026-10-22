@@ -51,18 +51,6 @@ export const CSS = `
 .dshdb-toolbtn svg { flex: none; color: var(--dsw-alias-label-tertiary); }
 .dshdb-toolbtn:hover:not(:disabled) svg { color: var(--dsw-alias-label-primary); }
 
-.dshdb-seg {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-  padding: 1px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
-}
-.dshdb-seg .dshdb-tab { height: 20px; padding: 0 8px; }
-
 .dshdb-tab {
   height: 24px;
   padding: 0 9px;
@@ -751,6 +739,53 @@ export const CSS = `
 .dshdb-pager-total { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 .dshdb-pager-size { width: auto; height: 20px; padding: 0 18px 0 4px; font-size: 10.5px; }
 .dshdb-tabtitle { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Console tab: an SQL editor on pager chrome, or a Redis key grid plus command box. */
+.dshdb-console-input {
+  flex: none;
+  height: 96px;
+  padding: 8px 10px;
+  font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.dshdb-console-select { max-width: 220px; }
+.dshdb-console-value {
+  flex: none;
+  max-height: 150px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dshdb-grid tbody tr[data-active="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary);
+}
+.dshdb-ddl {
+  margin: 0;
+  max-height: 380px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre;
+  tab-size: 2;
+}
 `;
 
 const STYLE_ID = 'dsh-ide-database/styles';
