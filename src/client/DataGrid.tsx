@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import type { CellValue, ColumnInfo, Row } from '../shared/types'
+import type { ColumnMenuItem } from './colmenu'
 import { clearWidths, readWidths, writeWidths } from './columnWidths'
 import { formatCell } from './format'
 
@@ -37,6 +38,8 @@ export interface DataGridProps {
   sort?: { column: string; direction: 'asc' | 'desc' } | null
   /** Clicking a header asks the page to sort by that column. */
   onSort?: (column: ColumnInfo) => void
+  /** Right-click menu entries per column; headers open a context menu when set. */
+  headerMenu?: (column: ColumnInfo) => ColumnMenuItem[]
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -100,7 +103,8 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
 }
 
 export function DataGrid(props: DataGridProps): ReactElement {
-  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort } = props
+  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu } = props
+  const [menu, setMenu] = useState<{ column: ColumnInfo; x: number; y: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const { range, onScroll } = useVirtualRange(rows.length, containerRef)
@@ -164,6 +168,22 @@ export function DataGrid(props: DataGridProps): ReactElement {
     if (storageKey !== undefined) clearWidths(storageKey)
   }, [storageKey])
 
+  useEffect(() => {
+    if (menu === null) return undefined
+    const close = (): void => setMenu(null)
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+    }
+  }, [menu])
+
   return (
     <div className="dshdb-grid-wrap" ref={containerRef} onScroll={onScroll}>
       <table className={`dshdb-grid${widths === null ? '' : ' dshdb-grid-sized'}`} ref={tableRef}>
@@ -190,6 +210,20 @@ export function DataGrid(props: DataGridProps): ReactElement {
                     : (event) => {
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
                         onSort(column)
+                      }
+                }
+                onContextMenu={
+                  headerMenu === undefined
+                    ? undefined
+                    : (event) => {
+                        event.preventDefault()
+                        const width = 200
+                        const height = 24 * headerMenu(column).length + 12
+                        setMenu({
+                          column,
+                          x: Math.min(event.clientX, window.innerWidth - width - 8),
+                          y: Math.min(event.clientY, window.innerHeight - height - 8),
+                        })
                       }
                 }
               >
@@ -246,6 +280,29 @@ export function DataGrid(props: DataGridProps): ReactElement {
           ) : null}
         </tbody>
       </table>
+      {menu !== null && headerMenu !== undefined ? (
+        <div
+          className="dshdb-hmenu"
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {headerMenu(menu.column).map((item, index) => (
+            <button
+              key={`${item.label}-${index}`}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled === true}
+              onClick={() => {
+                setMenu(null)
+                item.run()
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

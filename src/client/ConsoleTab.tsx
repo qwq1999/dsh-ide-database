@@ -25,6 +25,7 @@ import { DataGrid } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
+import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
@@ -488,6 +489,21 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const rows = result?.rows ?? []
   // Sorting only reshapes the current page; a new query or page resets it.
   const visibleRows = sortRows(columns, rows, rowSort)
+  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
+    const active = rowSort?.column === column.name ? rowSort.direction : null
+    const index = columns.findIndex((item) => item.name === column.name)
+    return [
+      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
+      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
+      { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
+      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+      {
+        label: `复制本列值（${visibleRows.length} 行）`,
+        disabled: visibleRows.length === 0 || index < 0,
+        run: () => void copyText(columnValues(visibleRows, index)),
+      },
+    ]
+  }
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
   const exportPage = (format: ExportFormat): void => {
     setExportOpen(false)
@@ -742,6 +758,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               storageKey="console:sql"
               sort={rowSort}
               onSort={(column) => setRowSort((current) => nextRowSort(current, column.name))}
+              headerMenu={columnMenu}
             />
           ) : (
             <div className="dshdb-grid-wrap">

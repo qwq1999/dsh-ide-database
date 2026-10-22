@@ -15,6 +15,7 @@ import { formatCell, formatMs } from './format'
 import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { readTableTabParams, type TableTabParams } from './tab-open'
+import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -234,6 +235,31 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const next = nextOrderBy(stripKeyword(orderText, 'ORDER\\s+BY'), column.name, quoteSortColumn(dialect, column.name))
     setOrderText(next)
     apply({ orderBy: next, page: 0 })
+  }
+  const sortBy = (column: ColumnInfo, direction: 'asc' | 'desc'): void => {
+    const dialect = connection?.dialect ?? 'mysql'
+    const next = `${quoteSortColumn(dialect, column.name)} ${direction.toUpperCase()}`
+    setOrderText(next)
+    apply({ orderBy: next, page: 0 })
+  }
+  const clearSort = (): void => {
+    setOrderText('')
+    apply({ orderBy: '', page: 0 })
+  }
+  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
+    const active = activeSort?.column === column.name ? activeSort.direction : null
+    const index = columns.findIndex((item) => item.name === column.name)
+    return [
+      { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
+      { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
+      { label: '清除排序', disabled: activeSort === undefined, run: clearSort },
+      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+      {
+        label: `复制本列值（${rows.length} 行）`,
+        disabled: rows.length === 0 || index < 0,
+        run: () => void copyText(columnValues(rows, index)),
+      },
+    ]
   }
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
@@ -457,6 +483,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           offset={offset}
           storageKey={`table:${params.schema}.${params.table}`}
           sort={activeSort ?? null}
+          headerMenu={columnMenu}
           onSort={sortTable}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
                 <th className="dshdb-num" />

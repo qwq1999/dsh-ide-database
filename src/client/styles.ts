@@ -423,6 +423,32 @@ export const CSS = `
   cursor: pointer;
 }
 .dshdb-menu button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-hmenu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-alias-shadow-md, 0 6px 20px rgba(0, 0, 0, 0.14));
+}
+.dshdb-hmenu button {
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dshdb-hmenu button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-hmenu button:disabled { color: var(--dsw-alias-label-tertiary); cursor: default; }
 .dshdb-grid-foot {
   display: flex;
   align-items: center;
