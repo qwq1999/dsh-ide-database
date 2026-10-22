@@ -872,6 +872,26 @@ export const CSS = `
   text-align: left;
   cursor: pointer;
 }
+.dshdb-history-group { display: flex; flex-direction: column; gap: 2px; }
+.dshdb-history-line { display: flex; align-items: center; gap: 2px; }
+.dshdb-history-line .dshdb-history-row { flex: 1; min-width: 0; }
+.dshdb-history-star {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+.dshdb-history-star:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
+.dshdb-history-star[data-pinned="true"] { color: var(--dsw-alias-state-business-primary); }
+.dshdb-history-empty { padding: 6px 4px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
 .dshdb-history-row:hover { background: var(--dsw-alias-bg-layer-2); }
 .dshdb-history-sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshdb-history-time { flex: none; color: var(--dsw-alias-label-tertiary); font-family: inherit; font-size: 10px; }

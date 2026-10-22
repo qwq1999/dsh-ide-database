@@ -14,7 +14,9 @@ export interface HistoryEntry {
 }
 
 const KEY = 'dsh-ide-database.history.v1'
+const PIN_KEY = 'dsh-ide-database.history.pinned.v1'
 const LIMIT = 50
+const PIN_LIMIT = 20
 
 type History = Record<HistoryKind, HistoryEntry[]>
 
@@ -89,4 +91,51 @@ export function historyAgo(at: number, now: number = Date.now()): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours} 小时前`
   return `${Math.floor(hours / 24)} 天前`
+}
+
+type Pinned = Record<HistoryKind, HistoryEntry[]>
+
+function readPinned(): Pinned {
+  const empty: Pinned = { sql: [], redis: [] }
+  const raw = storage()?.getItem(PIN_KEY)
+  if (raw === null || raw === undefined) return empty
+  try {
+    const parsed = JSON.parse(raw) as Partial<Pinned> | null
+    return {
+      sql: Array.isArray(parsed?.sql) ? parsed.sql.filter(isEntry).slice(0, PIN_LIMIT) : [],
+      redis: Array.isArray(parsed?.redis) ? parsed.redis.filter(isEntry).slice(0, PIN_LIMIT) : [],
+    }
+  } catch {
+    return empty
+  }
+}
+
+function writePinned(entries: Pinned): void {
+  try {
+    storage()?.setItem(PIN_KEY, JSON.stringify(entries))
+  } catch {
+    // Storage may be full or disabled; pins are a convenience only.
+  }
+}
+
+/** Statements starred by the user, newest first. */
+export function readPins(kind: HistoryKind): HistoryEntry[] {
+  return readPinned()[kind]
+}
+
+export function isPinned(kind: HistoryKind, statement: string): boolean {
+  return readPinned()[kind].some((entry) => entry.statement === statement.trim())
+}
+
+/** Add or remove a star; returns true when the statement is now pinned. */
+export function togglePin(kind: HistoryKind, statement: string): boolean {
+  const text = statement.trim()
+  if (text === '') return false
+  const pinned = readPinned()
+  const existing = pinned[kind].some((entry) => entry.statement === text)
+  pinned[kind] = existing
+    ? pinned[kind].filter((entry) => entry.statement !== text)
+    : [{ statement: text, at: Date.now() }, ...pinned[kind]].slice(0, PIN_LIMIT)
+  writePinned(pinned)
+  return !existing
 }
