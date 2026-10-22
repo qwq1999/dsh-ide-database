@@ -62,6 +62,7 @@ export interface DataSources {
   toggleConnection: (id: string) => void
   toggleFolder: (connectionId: string, schema: string, folder: string) => void
   toggleSchema: (connectionId: string, schema: string) => Promise<void>
+  loadObjects: (connectionId: string, schema: string) => Promise<void>
   toggleKey: (key: string) => void
   selectObject: (connectionId: string, schema: string, object: SchemaObject) => Promise<void>
   updateDrivers: (drivers: DriverStatus[]) => void
@@ -271,6 +272,30 @@ export function useDataSources(notify: Notify): DataSources {
     [expanded, objects, notify],
   )
 
+  // Load a schema's objects without touching its expansion state: the tree
+  // filter uses this to search inside collapsed schemas before deciding what
+  // to open. Failures stay silent so typing in the filter cannot spam toasts.
+  const loadObjects = useCallback(
+    async (connectionId: string, schema: string): Promise<void> => {
+      const key = `${connectionId}:${schema}`
+      if (objects[key] !== undefined || loadingObjects[key] === true) return
+      setLoadingObjects((previous) => ({ ...previous, [key]: true }))
+      try {
+        const result = await api.objects(connectionId, schema)
+        setObjects((previous) => ({ ...previous, [key]: result.objects }))
+        if (result.fetchedAt !== undefined) {
+          const stamp = result.fetchedAt
+          setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
+        }
+      } catch {
+        // leave the schema unloaded; the filter falls back to cached data
+      } finally {
+        setLoadingObjects((previous) => ({ ...previous, [key]: false }))
+      }
+    },
+    [objects, loadingObjects],
+  )
+
   const selectObject = useCallback(
     async (connectionId: string, schema: string, object: SchemaObject): Promise<void> => {
       const key = `${connectionId}|${schema}.${object.name}`
@@ -374,6 +399,7 @@ export function useDataSources(notify: Notify): DataSources {
     toggleConnection,
     toggleFolder,
     toggleSchema,
+    loadObjects,
     toggleKey,
     selectObject,
     updateDrivers,

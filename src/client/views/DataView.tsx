@@ -1,7 +1,8 @@
-import { useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import type { ClientConnection, ObjectKind, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
+import { filterTargets } from '../treefilter'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -41,6 +42,7 @@ export interface DataViewProps {
   onToggleConnection: (id: string) => void
   onConnect: (id: string) => void
   onToggleSchema: (connectionId: string, schema: string) => void
+  onLoadObjects: (connectionId: string, schema: string) => void
   onToggleFolder: (connectionId: string, schema: string, folder: string) => void
   onToggleKey: (key: string) => void
   onSelectObject: (connectionId: string, schema: string, object: SchemaObject) => void
@@ -294,6 +296,57 @@ export function DataView(props: DataViewProps): ReactElement {
   const normalizedFilter = filter.trim().toLowerCase()
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
 
+  // Search inside collapsed schemas: fetch their object lists once per filter
+  // so matches can be found even when the branch was never opened before.
+  const searched = useRef<Set<string>>(new Set())
+  const lastFilter = useRef('')
+  useEffect(() => {
+    if (lastFilter.current !== normalizedFilter) {
+      lastFilter.current = normalizedFilter
+      searched.current = new Set()
+    }
+    if (normalizedFilter === '') return
+    for (const connection of connections) {
+      const schemaList = schemas[connection.id]
+      if (!schemaList || schemaList.length > 64) continue
+      if (searched.current.has(connection.id)) continue
+      // Offline data sources only have what the structure cache kept; wait for
+      // the connection status before searching so the attempt can retry later.
+      if (servers[connection.id] === undefined) continue
+      searched.current.add(connection.id)
+      for (const schema of schemaList) props.onLoadObjects(connection.id, schema.name)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedFilter, connections, schemas, servers])
+
+  // While filtering, open the branches that contain a match so hits are not
+  // hidden inside collapsed data sources or schemas.
+  useEffect(() => {
+    if (normalizedFilter === '') return
+    const timer = window.setTimeout(() => {
+      const targets = filterTargets(filter, connections, schemas, objects, expanded)
+      for (const id of targets.connections) props.onToggleConnection(id)
+      for (const key of targets.schemas) {
+        const separator = key.indexOf(':')
+        void props.onToggleSchema(key.slice(0, separator), key.slice(separator + 1))
+      }
+      // Folders inside a matching schema open too, so the hit is one click away.
+      for (const [key, list] of Object.entries(objects)) {
+        const hits = list.filter((object) => matches(object.name))
+        if (hits.length === 0) continue
+        const separator = key.indexOf(':')
+        const connectionId = key.slice(0, separator)
+        const schema = key.slice(separator + 1)
+        for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
+          if (expanded[`${key}#${folder}`] === true) continue
+          props.onToggleFolder(connectionId, schema, folder)
+        }
+      }
+    }, 300)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedFilter, connections, schemas, objects, expanded])
+
   const grouped = useMemo(() => {
     const cache: Record<string, Record<FolderId, SchemaObject[]>> = {}
     for (const [key, list] of Object.entries(objects)) {
@@ -348,8 +401,21 @@ export function DataView(props: DataViewProps): ReactElement {
               const connecting = props.connectingId === connection.id
               const loading = props.loadingSchemas[connection.id] === true
               const cachedStamp = cachedAt[connection.id]
-              const list = (schemas[connection.id] ?? []).filter((schema) => matches(schema.name))
-              const hasCachedStructure = (schemas[connection.id]?.length ?? 0) > 0
+              const allSchemas = schemas[connection.id] ?? []
+              // A schema stays visible when it or any of its loaded objects matches.
+              const list = allSchemas.filter((schema) => {
+                if (matches(schema.name)) return true
+                const buckets = grouped[`${connection.id}:${schema.name}`]
+                return buckets !== undefined && FOLDERS.some((folder) => buckets[folder.id].length > 0)
+              })
+              const hasCachedStructure = allSchemas.length > 0
+              const visible =
+                normalizedFilter === '' ||
+                matches(connection.name) ||
+                list.length > 0 ||
+                (allSchemas.length === 0 && server === undefined && !loading)
+
+              if (!visible) return null
 
               return (
                 <div key={connection.id}>

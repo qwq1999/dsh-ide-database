@@ -118,6 +118,7 @@ export function App(props: AppProps): ReactElement {
     toggleConnection,
     toggleFolder,
     toggleSchema,
+    loadObjects,
     toggleKey,
     selectObject,
     updateDrivers,
@@ -301,6 +302,7 @@ export function App(props: AppProps): ReactElement {
               onToggleConnection={toggleConnection}
               onConnect={(id) => void connect(id)}
               onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
+              onLoadObjects={(connectionId, schema) => void loadObjects(connectionId, schema)}
               onToggleFolder={toggleFolder}
               onToggleKey={toggleKey}
               onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
