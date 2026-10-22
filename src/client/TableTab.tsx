@@ -16,6 +16,7 @@ import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './ic
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
+import { cellCopyText, rowToTsv } from './cellmenu'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { composeWhere, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
@@ -466,6 +467,34 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 })}
               </tr> : null}
           cellClass={() => (filtersOpen ? 'dshdb-cell-filterable' : undefined)}
+          cellMenu={(cell) => [
+            {
+              label: '复制单元格值',
+              run: () => void copyText(cellCopyText(cell.value)),
+            },
+            {
+              label: `复制整行（${columns.length} 列，制表符分隔）`,
+              run: () => void copyText(rowToTsv(columns, cell.row)),
+            },
+            {
+              label: '按此值筛选',
+              run: () => {
+                setFiltersOpen(true)
+                setColumnFilter(
+                  cell.column,
+                  cell.value === null ? { text: '', op: 'isnull' } : { text: formatCell(cell.value), op: 'eq' },
+                )
+              },
+            },
+            {
+              label: `取消「${cell.column.name}」列的筛选`,
+              disabled: filters[cell.column.name] === undefined,
+              run: () => {
+                setColumnFilter(cell.column, undefined)
+                apply({ page: 0 })
+              },
+            },
+          ]}
           onCellClick={
             filtersOpen
               ? (column, value) => {

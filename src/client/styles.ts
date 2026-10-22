@@ -996,6 +996,44 @@ export const CSS = `
   white-space: pre;
   tab-size: 2;
 }
+.dshdb-redis-value {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 120px;
+  overflow: hidden;
+  border-top: 1px solid var(--dshdb-border);
+  padding-top: 4px;
+}
+
+.dshdb-redis-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.dshdb-redis-key {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dshdb-muted);
+  font-family: var(--dshdb-mono);
+}
+
+.dshdb-redis-keys {
+  flex: 0 1 auto;
+  max-height: 38%;
+}
+
+.dshdb-redis-table {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 `;
 
 const STYLE_ID = 'dsh-ide-database/styles';

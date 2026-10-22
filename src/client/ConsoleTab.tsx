@@ -26,6 +26,8 @@ import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJso
 import { clearHistory, historyAgo, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
+import { cellCopyText, rowToTsv } from './cellmenu'
+import { redisTtlLabel, redisValueTable } from './redisvalue'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
@@ -228,6 +230,51 @@ function KeyGrid({
         ))}
       </tbody>
     </table>
+  )
+}
+
+function RedisValuePanel({ value }: { value: RedisValue }): ReactElement {
+  const table = redisValueTable(value)
+  return (
+    <div className="dshdb-redis-value">
+      <div className="dshdb-redis-meta">
+        <Tag>{value.type}</Tag>
+        <span className="dshdb-muted">{redisTtlLabel(value.ttl)}</span>
+        {value.size === undefined ? null : <span className="dshdb-muted">{formatCount(value.size)} 条</span>}
+        {value.truncated ? <Tag tone="warn">已截断</Tag> : null}
+        <span className="dshdb-redis-key" title={value.key}>
+          {value.key}
+        </span>
+      </div>
+      {table === null ? (
+        <pre className="dshdb-console-value">{stringifyJson(value.value)}</pre>
+      ) : (
+        <div className="dshdb-grid-wrap dshdb-redis-table">
+          <table className="dshdb-grid">
+            <thead>
+              <tr>
+                <th className="dshdb-num">#</th>
+                {table.headers.map((header) => (
+                  <th key={header}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, index) => (
+                <tr key={index}>
+                  <td className="dshdb-num">{index + 1}</td>
+                  {row.map((cell, column) => (
+                    <td key={column} title={cell}>
+                      <span className="dshdb-mono">{cell}</span>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -743,7 +790,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             </Banner>
           ) : null}
 
-          <div className="dshdb-grid-wrap">
+          <div className={value === null ? 'dshdb-grid-wrap' : 'dshdb-grid-wrap dshdb-redis-keys'}>
             {scan === null || scan.keys.length === 0 ? (
               scanning ? (
                 <div className="dshdb-empty">
@@ -758,11 +805,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             )}
           </div>
 
-          {value !== null ? (
-            <pre className="dshdb-console-value" title={value.key}>
-              {stringifyJson(value.value)}
-            </pre>
-          ) : null}
+          {value !== null ? <RedisValuePanel value={value} /> : null}
 
           <div className="dshdb-qfilter">
             <span className="dshdb-qfilter-label">命令</span>
@@ -932,6 +975,10 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               sort={rowSort}
               onSort={(column) => setRowSort((current) => nextRowSort(current, column.name))}
               headerMenu={columnMenu}
+              cellMenu={(cell) => [
+                { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
+                { label: `复制整行（${columns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(columns, cell.row)) },
+              ]}
             />
           ) : (
             <div className="dshdb-grid-wrap">

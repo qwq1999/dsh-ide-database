@@ -54,6 +54,12 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ![点表头按城市降序](docs/screenshots/database-sort.png)
 
+### Redis 值表格化
+
+选中键后按类型展示成表格：hash 拆成「字段 / 值」，list、set 带序号，zset 展示「成员 / 分数」，stream 展示「ID / 字段」；表头显示类型、TTL（`永久` 表示无过期）与条目数，未知类型回退为原始 JSON。截图为 `shop:customer:42` 的 hash。
+
+![Redis 值以表格展示](docs/screenshots/database-redis-value.png)
+
 ![查询控制台历史](docs/screenshots/database-history.png)
 
 ![把常用语句收藏到历史顶部](docs/screenshots/database-history-pins.png)

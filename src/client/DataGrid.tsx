@@ -17,6 +17,13 @@ export const GRID_ROW_HEIGHT = 22
 const VIRTUAL_THRESHOLD = 200
 const OVERSCAN = 8
 
+export interface CellMenuTarget {
+  column: ColumnInfo
+  value: CellValue
+  row: Row
+  rowIndex: number
+}
+
 interface VirtualRange {
   start: number
   end: number
@@ -40,6 +47,8 @@ export interface DataGridProps {
   onSort?: (column: ColumnInfo) => void
   /** Right-click menu entries per column; headers open a context menu when set. */
   headerMenu?: (column: ColumnInfo) => ColumnMenuItem[]
+  /** Right-click menu entries for a result cell. */
+  cellMenu?: (cell: CellMenuTarget) => ColumnMenuItem[]
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -103,12 +112,22 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
 }
 
 export function DataGrid(props: DataGridProps): ReactElement {
-  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu } = props
-  const [menu, setMenu] = useState<{ column: ColumnInfo; x: number; y: number } | null>(null)
+  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu, cellMenu } = props
+  const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const { range, onScroll } = useVirtualRange(rows.length, containerRef)
   const visible = rows.slice(range.start, range.end)
+
+  const openMenu = useCallback((items: ColumnMenuItem[], clientX: number, clientY: number): void => {
+    const width = 200
+    const height = 24 * items.length + 12
+    setMenu({
+      items,
+      x: Math.min(clientX, window.innerWidth - width - 8),
+      y: Math.min(clientY, window.innerHeight - height - 8),
+    })
+  }, [])
 
   const [widths, setWidths] = useState<number[] | null>(() =>
     storageKey === undefined ? null : readWidths(storageKey, columns.length),
@@ -217,13 +236,7 @@ export function DataGrid(props: DataGridProps): ReactElement {
                     ? undefined
                     : (event) => {
                         event.preventDefault()
-                        const width = 200
-                        const height = 24 * headerMenu(column).length + 12
-                        setMenu({
-                          column,
-                          x: Math.min(event.clientX, window.innerWidth - width - 8),
-                          y: Math.min(event.clientY, window.innerHeight - height - 8),
-                        })
+                        openMenu(headerMenu(column), event.clientX, event.clientY)
                       }
                 }
               >
@@ -265,6 +278,14 @@ export function DataGrid(props: DataGridProps): ReactElement {
                       title={formatCell(value)}
                       className={cellClass?.(column, value)}
                       onClick={onCellClick === undefined ? undefined : () => onCellClick(column, value)}
+                      onContextMenu={
+                        cellMenu === undefined
+                          ? undefined
+                          : (event) => {
+                              event.preventDefault()
+                              openMenu(cellMenu({ column, value, row, rowIndex }), event.clientX, event.clientY)
+                            }
+                      }
                     >
                       <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
                     </td>
@@ -280,14 +301,14 @@ export function DataGrid(props: DataGridProps): ReactElement {
           ) : null}
         </tbody>
       </table>
-      {menu !== null && headerMenu !== undefined ? (
+      {menu !== null ? (
         <div
           className="dshdb-hmenu"
           role="menu"
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          {headerMenu(menu.column).map((item, index) => (
+          {menu.items.map((item, index) => (
             <button
               key={`${item.label}-${index}`}
               type="button"
