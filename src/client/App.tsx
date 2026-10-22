@@ -1,17 +1,8 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { useCallback, useState, type CSSProperties, type ReactElement } from 'react'
 import { ROUTE_PREFIX } from '../shared/presets'
-import type {
-  ClientConnection,
-  DbSettings,
-  DriverStatus,
-  EnvStatus,
-  SchemaInfo,
-  SchemaObject,
-  ServerInfo,
-  StructureSnapshot,
-  TableDescription,
-} from '../shared/types'
+import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
+import { useDataSources } from './hooks/useDataSources'
 import { PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
@@ -30,13 +21,6 @@ import {
   type ToastState,
 } from './ui'
 
-interface Snapshot {
-  connections: ClientConnection[]
-  drivers: DriverStatus[]
-  settings: DbSettings
-  env: EnvStatus
-}
-
 export interface AppProps {
   useTabInfo?: () => { tab?: { visible?: boolean } } | undefined
   sessionId?: string
@@ -49,20 +33,27 @@ function errorText(error: unknown): string {
 }
 
 function ToolButton({
-  icon,
-  children,
   title,
+  icon,
   onClick,
   disabled,
+  children,
 }: {
-  icon: ReactNode
-  children: ReactNode
   title: string
+  icon: ReactElement
   onClick: () => void
   disabled?: boolean
+  children: string
 }): ReactElement {
   return (
-    <button type="button" className="dshdb-toolbtn" title={title} aria-label={title} onClick={onClick} disabled={disabled}>
+    <button
+      type="button"
+      className="dshdb-toolbtn"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {icon}
       <span>{children}</span>
     </button>
@@ -72,32 +63,6 @@ function ToolButton({
 export function App(props: AppProps): ReactElement {
   const info = (props.useTabInfo ?? noopTabInfo)()
   const hidden = info?.tab?.visible === false
-
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
-  const [loadError, setLoadError] = useState('')
-  const [selectedId, setSelectedId] = useState('')
-  const [servers, setServers] = useState<Record<string, ServerInfo>>({})
-  const [connectingId, setConnectingId] = useState('')
-
-  const [schemas, setSchemas] = useState<Record<string, SchemaInfo[]>>({})
-  const [objects, setObjects] = useState<Record<string, SchemaObject[]>>({})
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [loadingSchemas, setLoadingSchemas] = useState<Record<string, boolean>>({})
-  const [loadingObjects, setLoadingObjects] = useState<Record<string, boolean>>({})
-  const [cachedAt, setCachedAt] = useState<Record<string, string>>({})
-  const [descriptions, setDescriptions] = useState<Record<string, TableDescription>>({})
-  const [loadingDescriptions, setLoadingDescriptions] = useState<Record<string, boolean>>({})
-  const [detail, setDetail] = useState<TableDescription | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [selectedKey, setSelectedKey] = useState('')
-
-  const [ddlModal, setDdlModal] = useState<{ open: boolean; title: string; text: string; loading: boolean; source: string }>({
-    open: false,
-    title: '',
-    text: '',
-    loading: false,
-    source: '',
-  })
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -113,10 +78,51 @@ export function App(props: AppProps): ReactElement {
     open: false,
     editing: null,
   })
+  const [ddlModal, setDdlModal] = useState<{ open: boolean; title: string; text: string; loading: boolean; source: string }>({
+    open: false,
+    title: '',
+    text: '',
+    loading: false,
+    source: '',
+  })
 
   const notify = useCallback((text: string, tone: 'info' | 'success' | 'error' = 'info') => {
     setToast({ text, tone, seq: Date.now() })
   }, [])
+
+  const {
+    snapshot,
+    loadError,
+    selectedId,
+    selectConnection,
+    selected,
+    server,
+    servers,
+    connectingId,
+    connections,
+    schemas,
+    objects,
+    expanded,
+    loadingSchemas,
+    loadingObjects,
+    cachedAt,
+    descriptions,
+    loadingDescriptions,
+    detail,
+    detailLoading,
+    selectedKey,
+    refresh,
+    connect,
+    disconnect,
+    refreshSelected,
+    toggleConnection,
+    toggleFolder,
+    toggleSchema,
+    toggleKey,
+    selectObject,
+    updateDrivers,
+    applySettings,
+  } = useDataSources(notify)
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
@@ -127,228 +133,9 @@ export function App(props: AppProps): ReactElement {
     })
   }, [])
 
-  const resolveConfirm = (ok: boolean) => {
+  const resolveConfirm = (ok: boolean): void => {
     confirm?.resolve(ok)
     setConfirm(null)
-  }
-
-  const refresh = useCallback(async () => {
-    try {
-      const data = await api.status()
-      setSnapshot({ connections: data.config.connections, drivers: data.drivers, settings: data.config.settings, env: data.env })
-      setLoadError('')
-    } catch (error) {
-      setLoadError(errorText(error))
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  // Cached structure lets the tree render before (or without) a connection.
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      try {
-        const { structures } = await api.structure()
-        if (!alive) return
-        applyStructures(structures)
-      } catch {
-        // A missing cache only means an empty tree until the first connect.
-      }
-    })()
-    return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  function applyStructures(structures: StructureSnapshot): void {
-    const nextSchemas: Record<string, SchemaInfo[]> = {}
-    const nextObjects: Record<string, SchemaObject[]> = {}
-    const nextCached: Record<string, string> = {}
-    const nextDescriptions: Record<string, TableDescription> = {}
-    for (const [connectionId, entry] of Object.entries(structures)) {
-      if (entry.schemas.length > 0) nextSchemas[connectionId] = entry.schemas
-      for (const [schema, list] of Object.entries(entry.objects)) {
-        nextObjects[`${connectionId}:${schema}`] = list
-      }
-      for (const [key, description] of Object.entries(entry.descriptions ?? {})) {
-        nextDescriptions[`${connectionId}|${key}`] = description
-      }
-      nextCached[connectionId] = entry.fetchedAt
-    }
-    setSchemas((previous) => ({ ...nextSchemas, ...previous }))
-    setObjects((previous) => ({ ...nextObjects, ...previous }))
-    setDescriptions((previous) => ({ ...nextDescriptions, ...previous }))
-    setCachedAt((previous) => ({ ...nextCached, ...previous }))
-  }
-
-  useEffect(() => {
-    if (!snapshot) return
-    const exists = snapshot.connections.some((connection) => connection.id === selectedId)
-    if (!exists) {
-      // Keep cached structures: they are keyed by connection id and the tree
-      // filters by `snapshot.connections`, so stale entries are harmless.
-      setSelectedId(snapshot.connections[0]?.id ?? '')
-      setServers({})
-      setDetail(null)
-      setSelectedKey('')
-    }
-  }, [snapshot, selectedId])
-
-  useEffect(() => {
-    setDetail(null)
-    setSelectedKey('')
-  }, [selectedId])
-
-  const connections = snapshot?.connections ?? []
-  const selected = connections.find((connection) => connection.id === selectedId)
-  const server = selected ? servers[selected.id] : undefined
-
-  async function loadSchemas(connectionId: string): Promise<void> {
-    setLoadingSchemas((previous) => ({ ...previous, [connectionId]: true }))
-    try {
-      const result = await api.schemas(connectionId)
-      setSchemas((previous) => ({ ...previous, [connectionId]: result.schemas }))
-      if (result.fetchedAt !== undefined) {
-        const stamp = result.fetchedAt
-        setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
-      }
-      setObjects((previous) => {
-        const next = { ...previous }
-        for (const key of Object.keys(next)) {
-          if (key.startsWith(`${connectionId}:`)) delete next[key]
-        }
-        return next
-      })
-      setDescriptions((previous) => {
-        const next = { ...previous }
-        for (const key of Object.keys(next)) {
-          if (key.startsWith(`${connectionId}|`)) delete next[key]
-        }
-        return next
-      })
-      setExpanded((previous) => {
-        const next = { ...previous }
-        for (const key of Object.keys(next)) {
-          if (key.startsWith(`${connectionId}:`)) delete next[key]
-        }
-        return next
-      })
-    } catch (error) {
-      notify(`加载 schema 失败：${errorText(error)}`, 'error')
-    } finally {
-      setLoadingSchemas((previous) => ({ ...previous, [connectionId]: false }))
-    }
-  }
-
-  async function connect(connectionId: string): Promise<void> {
-    const connection = connections.find((item) => item.id === connectionId)
-    if (!connection) return
-    setConnectingId(connectionId)
-    try {
-      const connected = await api.connect(connectionId)
-      setServers((previous) => ({ ...previous, [connectionId]: connected }))
-      notify('连接成功', 'success')
-      if (connection.dialect !== 'redis') await loadSchemas(connectionId)
-    } catch (error) {
-      notify(`连接失败：${errorText(error)}`, 'error')
-    } finally {
-      setConnectingId('')
-    }
-  }
-
-  async function disconnect(connectionId: string): Promise<void> {
-    try {
-      await api.disconnect(connectionId)
-      setServers((previous) => {
-        const next = { ...previous }
-        delete next[connectionId]
-        return next
-      })
-      setDetail(null)
-      setSelectedKey('')
-      notify('已断开', 'info')
-    } catch (error) {
-      notify(`断开失败：${errorText(error)}`, 'error')
-    }
-  }
-
-  function selectConnection(id: string): void {
-    setSelectedId(id)
-  }
-
-  function toggleConnection(id: string): void {
-    const isExpanded = expanded[id] === true
-    setExpanded((previous) => ({ ...previous, [id]: !isExpanded }))
-  }
-
-  function toggleFolder(connectionId: string, schema: string, folder: string): void {
-    const key = `${connectionId}:${schema}#${folder}`
-    setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
-  }
-
-  async function toggleSchema(connectionId: string, schema: string): Promise<void> {
-    const key = `${connectionId}:${schema}`
-    const isExpanded = expanded[key] === true
-    setExpanded((previous) => ({ ...previous, [key]: !isExpanded }))
-    if (isExpanded || objects[key] !== undefined) return
-    setLoadingObjects((previous) => ({ ...previous, [key]: true }))
-    try {
-      const result = await api.objects(connectionId, schema)
-      setObjects((previous) => ({ ...previous, [key]: result.objects }))
-      if (result.fetchedAt !== undefined) {
-        const stamp = result.fetchedAt
-        setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
-      }
-    } catch (error) {
-      notify(`加载对象失败：${errorText(error)}`, 'error')
-    } finally {
-      setLoadingObjects((previous) => ({ ...previous, [key]: false }))
-    }
-  }
-
-  async function selectObject(connectionId: string, schema: string, object: SchemaObject): Promise<void> {
-    const key = `${connectionId}|${schema}.${object.name}`
-    setSelectedId(connectionId)
-    setSelectedKey(key)
-    // Routines, sequences and triggers have no column structure of their own.
-    if (object.kind !== 'table' && object.kind !== 'view') {
-      setDetailLoading(false)
-      setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
-      return
-    }
-    const known = descriptions[key]
-    if (known !== undefined) {
-      setDetailLoading(false)
-      setDetail(known)
-      return
-    }
-    if (!servers[connectionId]) {
-      setDetailLoading(false)
-      setDetail(null)
-      notify('数据源未连接，连接后可查看表结构', 'info')
-      return
-    }
-    setDetailLoading(true)
-    setLoadingDescriptions((previous) => ({ ...previous, [key]: true }))
-    try {
-      const description = await api.describe(connectionId, schema, object.name, object.kind)
-      setDescriptions((previous) => ({ ...previous, [key]: description }))
-      setDetail(description)
-    } catch (error) {
-      setDetail(null)
-      notify(`读取表结构失败：${errorText(error)}`, 'error')
-    } finally {
-      setDetailLoading(false)
-      setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
-    }
-  }
-
-  function toggleKey(key: string): void {
-    setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   }
 
   /** 双击表 / DDL 按钮：读取表或视图的建表语句。 */
@@ -373,31 +160,11 @@ export function App(props: AppProps): ReactElement {
     }
   }
 
-  /** Toolbar 刷新：重读选中数据源（未连接则连接，已连接则刷新库表结构）。 */
-  async function refreshSelected(): Promise<void> {
-    setDetail(null)
-    setSelectedKey('')
-    if (!selected) {
-      await refresh()
-      return
-    }
-    if (!servers[selected.id] || selected.dialect === 'redis') {
-      await connect(selected.id)
-      await refresh()
-      return
-    }
-    await loadSchemas(selected.id)
-    await refresh()
-    notify('已刷新数据源', 'success')
-  }
-
   async function saveSettings(next: DbSettings): Promise<void> {
     setSavingSettings(true)
     try {
       const result = await api.updateSettings(next)
-      setSnapshot((previous) =>
-        previous ? { ...previous, settings: result.settings, env: result.env } : previous,
-      )
+      applySettings(result.settings, result.env)
       notify('设置已保存', 'success')
       void refresh()
     } catch (error) {
@@ -411,11 +178,7 @@ export function App(props: AppProps): ReactElement {
     setDownloading(driverId)
     try {
       const status = await api.downloadDriver(driverId)
-      setSnapshot((previous) =>
-        previous
-          ? { ...previous, drivers: previous.drivers.map((driver) => (driver.id === status.id ? status : driver)) }
-          : previous,
-      )
+      updateDrivers((snapshot?.drivers ?? []).map((driver) => (driver.id === status.id ? status : driver)))
       notify('驱动依赖已就绪', 'success')
     } catch (error) {
       notify(`下载失败：${errorText(error)}`, 'error')
@@ -429,7 +192,7 @@ export function App(props: AppProps): ReactElement {
     if (!ok) return
     try {
       const result = await api.deleteCustomDriver(driver.id)
-      setSnapshot((previous) => (previous ? { ...previous, drivers: result.drivers } : previous))
+      updateDrivers(result.drivers)
       notify('自定义驱动已删除', 'success')
     } catch (error) {
       notify(`删除失败：${errorText(error)}`, 'error')
@@ -543,7 +306,7 @@ export function App(props: AppProps): ReactElement {
               onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
               onOpenTable={(connectionId, schema, object) => {
-                setSelectedId(connectionId)
+                selectConnection(connectionId)
                 openTableTab({ connectionId, schema, table: object.name })
               }}
             />
@@ -600,7 +363,7 @@ export function App(props: AppProps): ReactElement {
         open={driverModal.open}
         editing={driverModal.editing}
         onClose={() => setDriverModal({ open: false, editing: null })}
-        onSaved={(drivers) => setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))}
+        onSaved={updateDrivers}
         notify={notify}
       />
       {snapshot ? (
