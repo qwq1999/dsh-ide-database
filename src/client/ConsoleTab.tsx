@@ -20,6 +20,7 @@ import type {
   Row,
 } from '../shared/types'
 import { ApiError, api } from './api'
+import { DataGrid } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
 import { ClockIcon, ClearIcon, DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
@@ -117,38 +118,6 @@ async function withConnection<T>(id: string, action: () => Promise<T>): Promise<
 
 async function queryWithRetry(id: string, sql: string, maxRows: number, allowWrite: boolean, stmtKey: string): Promise<QueryResult> {
   return withConnection(id, () => api.query({ id, sql, maxRows, allowWrite, stmtKey }))
-}
-
-function Grid({ columns, rows, offset }: { columns: ColumnInfo[]; rows: Row[]; offset: number }): ReactElement {
-  return (
-    <table className="dshdb-grid">
-      <thead>
-        <tr>
-          <th className="dshdb-num">#</th>
-          {columns.map((column, index) => (
-            <th key={`${column.name}-${index}`} title={`${column.name} ${column.typeName}`}>
-              {column.name}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, rowIndex) => (
-          <tr key={rowIndex}>
-            <td className="dshdb-num">{offset + rowIndex + 1}</td>
-            {columns.map((column, columnIndex) => {
-              const value: CellValue = row[columnIndex] ?? null
-              return (
-                <td key={`${column.name}-${columnIndex}`} title={formatCell(value)}>
-                  <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
-                </td>
-              )
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
 }
 
 function KeyGrid({
@@ -656,23 +625,25 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             </Banner>
           ) : null}
 
-          <div className="dshdb-grid-wrap">
-            {result === null ? (
-              <EmptyState
-                icon={<TerminalIcon size={22} />}
-                title="等待执行"
-                description="上面的语句会在当前数据源上运行，结果按页展示。"
-              />
-            ) : rows.length === 0 ? (
-              <EmptyState
-                icon={<TerminalIcon size={22} />}
-                title={typeof result.updateCount === 'number' ? '影响行数' : '没有返回行'}
-                description={typeof result.updateCount === 'number' ? `${formatCount(result.updateCount)} 行受影响` : result.sql}
-              />
-            ) : (
-              <Grid columns={columns} rows={rows} offset={offset} />
-            )}
-          </div>
+          {result !== null && rows.length > 0 ? (
+            <DataGrid columns={columns} rows={rows} offset={offset} />
+          ) : (
+            <div className="dshdb-grid-wrap">
+              {result === null ? (
+                <EmptyState
+                  icon={<TerminalIcon size={22} />}
+                  title="等待执行"
+                  description="上面的语句会在当前数据源上运行，结果按页展示。"
+                />
+              ) : (
+                <EmptyState
+                  icon={<TerminalIcon size={22} />}
+                  title={typeof result.updateCount === 'number' ? '影响行数' : '没有返回行'}
+                  description={typeof result.updateCount === 'number' ? `${formatCount(result.updateCount)} 行受影响` : result.sql}
+                />
+              )}
+            </div>
+          )}
 
           {result !== null && rows.length > 0 ? (
             <div className="dshdb-pager">

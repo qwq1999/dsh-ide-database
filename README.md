@@ -19,6 +19,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **双击打开数据表**：树里双击表或视图，会在右侧栏新开一个数据表标签页分页浏览数据（标签页标题是表名，正文顶部显示 `schema.table`）；顶部 `WHERE` / `ORDER BY` 输入框回车即生效，底栏显示实际执行的 SQL、当前区间、总行数与翻页按钮，每页 50 / 100 / 200 / 500 / 1000 行可切，同一张表可重复打开互不影响。
 - **列筛选**：数据表标签页的漏斗按钮打开列筛选行，每列一个输入框，输入即按 `LIKE` 过滤（回车立即生效，400ms 自动刷新）；开着筛选行时点任意单元格可按该值精确筛选，点 NULL 单元格筛 `IS NULL`，筛选条件与顶部手写 `WHERE` 用 `AND` 组合，生效的筛选项数显示在漏斗徽标上，逐列 × 或再次收起即可恢复。
 - **结果导出**：数据表标签页的下载按钮导出 CSV（当前页 / 全部）与 JSON（全部）。CSV 带 UTF-8 BOM、遇逗号引号换行自动加引号，Excel 直接打开不乱码；JSON 保留数字与 `null` 类型。导出内容与当前 `WHERE`、列筛选条件一致，分页抓取，单次上限 5 万行。
+- **大结果集虚拟滚动**：数据表与 SQL 控制台的网格只渲染可视区域加少量缓冲行（超过 200 行自动启用），500 / 2000 行一页也只保留几十个 `<tr>`，滚动条长度与行号仍是真实数据；表头 sticky、行高固定 22px，翻页或换页后自动回到顶部。
 - **查询控制台**：工具栏的「控制台」按钮会在右侧栏新开一个查询标签页（可同时开多个）。SQL 模式支持多行编辑、`Ctrl+Enter` 执行、取消、行数上限、耗时与分页（把单条 `SELECT` 包成 `LIMIT/OFFSET` 或 `OFFSET … FETCH`）；写语句执行前二次确认，只读连接永远拒绝写。切到 Redis 数据源时变成键表格（键 / 类型 / TTL / 长度）+ 选中键的值面板 + 命令框，写命令二次确认、危险命令（`FLUSHALL` 等）始终拒绝。
 - **执行历史**：控制台会记住最近执行过的 50 条 SQL / Redis 命令（存在浏览器本地，刷新和重开控制台都还在）。「历史」按钮展开列表，点一条即回填到编辑器；SQL 编辑器里 `Ctrl/⌘ + ↑ / ↓` 直接翻历史，Redis 命令框用 `↑ / ↓`，重复的语句会提到最前而不是堆叠。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
@@ -33,6 +34,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ![按城市列筛选 customers](docs/screenshots/database-filters.png)
 
 ![导出筛选结果](docs/screenshots/database-export.png)
+
+![600 行结果滚动到中段](docs/screenshots/database-virtual.png)
 
 ![查询控制台历史](docs/screenshots/database-history.png)
 

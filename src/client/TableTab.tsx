@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
+import { DataGrid } from './DataGrid'
 import { formatCell, formatMs } from './format'
 import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
@@ -437,92 +438,68 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </Banner>
       ) : null}
 
-      <div className="dshdb-grid-wrap">
-        {rows.length === 0 && !loading ? (
+      {rows.length === 0 && !loading ? (
+        <div className="dshdb-grid-wrap">
           <EmptyState icon={<TableIcon size={22} />} title="没有匹配的行" description={sqlText} />
-        ) : (
-          <table className="dshdb-grid">
-            <thead>
-              <tr>
-                <th className="dshdb-num">#</th>
-                {columns.map((column, index) => (
-                  <th key={`${column.name}-${index}`} title={`${column.name} ${column.typeName}`}>
-                    {column.name}
-                  </th>
-                ))}
-              </tr>
-              {filtersOpen ? (
-                <tr className="dshdb-filter-row">
-                  <th className="dshdb-num" />
-                  {columns.map((column, index) => {
-                    const filter = filters[column.name]
-                    const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
-                    return (
-                      <th key={`filter-${column.name}-${index}`}>
-                        <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
-                          <input
-                            className="dshdb-filter-input"
-                            placeholder={filter?.op === 'isnull' ? 'NULL' : '包含…'}
-                            aria-label={`筛选 ${column.name}`}
-                            title={filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
-                            value={filter?.op === 'isnull' ? '' : filter?.text ?? ''}
-                            spellCheck={false}
-                            onChange={(event) => {
-                              const text = event.target.value
-                              setColumnFilter(column, text === '' ? undefined : { text, op: 'like' })
+        </div>
+      ) : (
+        <DataGrid
+          columns={columns}
+          rows={rows}
+          offset={offset}
+          headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
+                <th className="dshdb-num" />
+                {columns.map((column, index) => {
+                  const filter = filters[column.name]
+                  const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
+                  return (
+                    <th key={`filter-${column.name}-${index}`}>
+                      <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
+                        <input
+                          className="dshdb-filter-input"
+                          placeholder={filter?.op === 'isnull' ? 'NULL' : '包含…'}
+                          aria-label={`筛选 ${column.name}`}
+                          title={filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
+                          value={filter?.op === 'isnull' ? '' : filter?.text ?? ''}
+                          spellCheck={false}
+                          onChange={(event) => {
+                            const text = event.target.value
+                            setColumnFilter(column, text === '' ? undefined : { text, op: 'like' })
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') applyRef.current({ page: 0 })
+                          }}
+                        />
+                        {cleared ? null : (
+                          <button
+                            type="button"
+                            className="dshdb-filter-clear"
+                            aria-label={`清除 ${column.name} 的筛选`}
+                            onClick={() => {
+                              setColumnFilter(column, undefined)
+                              const next: ColumnFilters = { ...filters }
+                              delete next[column.name]
+                              applyRef.current({ page: 0 }, next)
                             }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') applyRef.current({ page: 0 })
-                            }}
-                          />
-                          {cleared ? null : (
-                            <button
-                              type="button"
-                              className="dshdb-filter-clear"
-                              aria-label={`清除 ${column.name} 的筛选`}
-                              onClick={() => {
-                                setColumnFilter(column, undefined)
-                                const next: ColumnFilters = { ...filters }
-                                delete next[column.name]
-                                applyRef.current({ page: 0 }, next)
-                              }}
-                            >
-                              ×
-                            </button>
-                          )}
-                        </span>
-                      </th>
-                    )
-                  })}
-                </tr>
-              ) : null}
-            </thead>
-            <tbody>
-              {rows.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  <td className="dshdb-num">{offset + rowIndex + 1}</td>
-                  {columns.map((column, columnIndex) => {
-                    const value: CellValue = row[columnIndex] ?? null
-                    return (
-                      <td
-                        key={`${column.name}-${columnIndex}`}
-                        title={formatCell(value)}
-                        className={filtersOpen ? 'dshdb-cell-filterable' : undefined}
-                        onClick={() => {
-                          if (!filtersOpen) return
-                          setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
-                        }}
-                      >
-                        <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    </th>
+                  )
+                })}
+              </tr> : null}
+          cellClass={() => (filtersOpen ? 'dshdb-cell-filterable' : undefined)}
+          onCellClick={
+            filtersOpen
+              ? (column, value) => {
+                  setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
+                }
+              : undefined
+          }
+        />
+      )}
 
       <div className="dshdb-pager">
         {loading ? <Tag tone="business">查询中</Tag> : null}

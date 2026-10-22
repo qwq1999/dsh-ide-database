@@ -273,23 +273,31 @@ export const CSS = `
   position: sticky;
   top: 0;
   z-index: 1;
+  height: 24px;
+  box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-2);
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  padding: 4px 8px;
+  padding: 0 8px;
   text-align: left;
   color: var(--dsw-alias-label-secondary);
   font-weight: 500;
+  line-height: 23px;
   white-space: nowrap;
 }
 .dshdb-grid td {
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
-  padding: 3px 8px;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 8px;
   color: var(--dsw-alias-label-primary);
+  line-height: 21px;
   white-space: nowrap;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.dshdb-grid tbody tr { height: 22px; }
+.dshdb-vpad td { padding: 0 !important; border: 0 !important; }
 .dshdb-grid tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-grid .dshdb-num {
   color: var(--dsw-alias-label-dimmed);
@@ -301,9 +309,11 @@ export const CSS = `
 .dshdb-cell-filterable { cursor: pointer; }
 .dshdb-filter-row th {
   position: sticky;
-  top: 22px;
+  top: 24px;
   z-index: 1;
+  height: 26px;
   padding: 2px 4px;
+  line-height: normal;
   background: var(--dsw-alias-bg-layer-2);
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
 }
