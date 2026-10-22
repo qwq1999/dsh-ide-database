@@ -23,6 +23,7 @@ import { ApiError, api } from './api'
 import { DataGrid } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
+import { formatSql } from './sqlformat'
 import { ClockIcon, ClearIcon, DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -576,7 +577,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         <>
           <textarea
             className="dshdb-input dshdb-console-input"
-            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行，Ctrl/⌘ + ↑↓ 切换历史"
+            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
             value={statement}
             spellCheck={false}
             onChange={(event) => setStatement(event.target.value)}
@@ -584,6 +585,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault()
                 void run()
+                return
+              }
+              if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
+                event.preventDefault()
+                setStatement((prev) => formatSql(prev))
                 return
               }
               if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -602,6 +608,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             </Button>
             <Button size="sm" variant="ghost" icon={<ClockIcon size={12} />} onClick={() => setHistoryOpen((open) => !open)} disabled={history.length === 0}>
               历史
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setStatement((prev) => formatSql(prev))}
+              disabled={statement.trim() === ''}
+              title="整理关键字大小写与换行（Ctrl/⌘ + Shift + F）"
+            >
+              格式化
             </Button>
             <span className="dshdb-qbar-spacer" />
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
