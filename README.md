@@ -25,6 +25,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **查询控制台**：工具栏的「控制台」按钮会在右侧栏新开一个查询标签页（可同时开多个）。SQL 模式支持多行编辑、`Ctrl+Enter` 执行、取消、行数上限、耗时与分页（把单条 `SELECT` 包成 `LIMIT/OFFSET` 或 `OFFSET … FETCH`）；写语句执行前二次确认，只读连接永远拒绝写。切到 Redis 数据源时变成键表格（键 / 类型 / TTL / 长度）+ 选中键的值面板 + 命令框，写命令二次确认、危险命令（`FLUSHALL` 等）始终拒绝。
 - **执行历史**：控制台会记住最近执行过的 50 条 SQL / Redis 命令（存在浏览器本地，刷新和重开控制台都还在）。「历史」按钮展开列表，点一条即回填到编辑器；SQL 编辑器里 `Ctrl/⌘ + ↑ / ↓` 直接翻历史，Redis 命令框用 `↑ / ↓`，重复的语句会提到最前而不是堆叠。
 - **只执行选中内容**：在 SQL 编辑器里选中一段语句再执行，就只跑选中部分（多语句脚本里挑一句跑很顺手），没选中时仍然执行全文；控制台会提示「已执行选中内容」。
+- **多语句执行**：一次粘贴整段脚本也没问题——控制台按分号拆成独立语句逐条执行（字符串、引号标识符与注释里的分号不会误拆），网格展示最后一条的结果，状态栏提示「已顺序执行 N 条语句」；中途失败会指出是第几条并停止。
 - **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL 走 `EXPLAIN`，Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，结果与普通查询一样在网格里展示并标出「执行计划」，看完点「关闭计划」回到编辑器。
 - **SQL 格式化**：查询控制台的「格式化」按钮（或 `Ctrl/⌘ + Shift + F`）会把关键字统一大写，按 `SELECT / FROM / WHERE / GROUP BY / ORDER BY / LIMIT` 等子句换行并缩进子查询；字符串、反引号标识符、`--` 与 `/* */` 注释里的内容一概不动。
 - **结果导出**：查询控制台工具栏的下载按钮可以把当前页结果存成 CSV 或 JSON——CSV 带 BOM，Excel 打开中文不乱码；导出的是网格里正在看的这一页，翻页后再导另一页即可。
@@ -54,6 +55,9 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ![SQL 格式化](docs/screenshots/database-format.png)
 
 ![执行计划：索引命中情况](docs/screenshots/database-explain.png)
+
+![多语句顺序执行：最后一条的查询结果](docs/screenshots/database-multi-statement.png)
+
 
 ![查询控制台导出当前页](docs/screenshots/database-console-export.png)
 
@@ -202,7 +206,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 
 - SQL Server / PostgreSQL 等未内置预设，可通过「自定义驱动」接入。
 - 不提供 SSH 隧道、数据库导出/导入、执行计划可视化（仅表格）。
-- 单次只执行一条语句（`;` 分隔的多语句会被驱动拒绝或只执行首条，按驱动行为）。
+- 驱动层一次只接受一条语句：控制台会把分号分隔的脚本拆开逐条执行（`db_query` 等 Agent 工具仍按单条提交）。
 - Oracle 仅 thin 模式，不支持 thick（OCI）模式。
 - Redis 命令白名单以只读命令 + 常用写命令为主，未覆盖的命令请通过 `db_redis_command` 的完整命令参数使用（仍受只读/危险命令限制）。
 

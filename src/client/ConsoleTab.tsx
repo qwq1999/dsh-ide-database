@@ -28,6 +28,7 @@ import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
+import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
@@ -205,6 +206,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  const [multiProgress, setMultiProgress] = useState<{ index: number; total: number } | null>(null)
+  const [multiNote, setMultiNote] = useState('')
 
   const [pattern, setPattern] = useState('*')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
@@ -287,6 +290,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       setRunning(true)
       setPlan(null)
       setFailure(null)
+      setMultiNote('')
       try {
         const paged = pageable(text)
         const sqlText = paged ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
@@ -304,6 +308,45 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     [connection?.dialect, selectedId],
   )
 
+  /** Run several statements in order, then show the result of the last one. */
+  const executeScript = async (parts: string[]): Promise<void> => {
+    setRowSort(null)
+    if (selectedId === '') return
+    setRunning(true)
+    setPlan(null)
+    setFailure(null)
+    setMultiNote('')
+    setExportOpen(false)
+    let last: QueryResult | null = null
+    try {
+      for (const [index, part] of parts.entries()) {
+        setMultiProgress({ index: index + 1, total: parts.length })
+        const stmtKey = `console-${Date.now().toString(36)}-${index}`
+        stmtRef.current = stmtKey
+        try {
+          last = await queryWithRetry(selectedId, part, pageSize, looksLikeWrite(part), stmtKey)
+        } catch (error) {
+          const failure = failureText(error)
+          setFailure({ message: `第 ${index + 1}/${parts.length} 条语句执行失败：${failure.message}`, detail: failure.detail ?? part })
+          if (last !== null) {
+            setResult(last)
+            setPage(0)
+            setBase('')
+          }
+          return
+        }
+      }
+      setResult(last)
+      setPage(0)
+      setBase('')
+      setMultiNote(`已顺序执行 ${parts.length} 条语句`)
+      setHistory(pushHistory('sql', parts.join(';\n')))
+    } finally {
+      setMultiProgress(null)
+      setRunning(false)
+    }
+  }
+
   const run = async (): Promise<void> => {
     setExportOpen(false)
     const area = inputRef.current
@@ -311,11 +354,18 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     const text = picked.statement.trim()
     if (text === '') return
     setSelectedRun(picked.selected)
-    const isWrite = looksLikeWrite(text)
+    const parts = splitStatements(text)
+    if (parts.length === 0) return
+    const isWrite = parts.some((part) => looksLikeWrite(part))
     if (isWrite && settings?.confirmDestructive === true) {
-      const ok = await askConfirm('即将执行写语句，可能修改或删除数据。', text)
+      const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', text)
       if (!ok) return
     }
+    if (parts.length > 1) {
+      await executeScript(parts)
+      return
+    }
+    setMultiNote('')
     setHistory(pushHistory('sql', text))
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
   }
@@ -328,6 +378,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     if (text === '' || selectedId === '' || running) return
     setPlanRunning(true)
     setFailure(null)
+    setMultiNote('')
     try {
       const next = await api.explain(selectedId, text)
       setPlan(next)
@@ -728,6 +779,12 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             </span>
             <span className="dshdb-qbar-spacer" />
             {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+            {multiProgress !== null ? (
+              <span className="dshdb-qmeta">
+                正在执行 {multiProgress.index}/{multiProgress.total}…
+              </span>
+            ) : null}
+            {multiNote !== '' ? <Tag tone="business">{multiNote}</Tag> : null}
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
