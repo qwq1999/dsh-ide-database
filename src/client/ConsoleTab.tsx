@@ -24,6 +24,7 @@ import { DataGrid } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
+import { pickStatement } from './sqlselection'
 import { ClockIcon, ClearIcon, DatabaseIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -214,6 +215,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const stmtRef = useRef('')
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [selectedRun, setSelectedRun] = useState(false)
   const scanCursorRef = useRef('0')
   const recallRef = useRef(-1)
 
@@ -291,8 +294,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   )
 
   const run = async (): Promise<void> => {
-    const text = statement.trim()
+    const area = inputRef.current
+    const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
+    const text = picked.statement.trim()
     if (text === '') return
+    setSelectedRun(picked.selected)
     const isWrite = looksLikeWrite(text)
     if (isWrite && settings?.confirmDestructive === true) {
       const ok = await askConfirm('即将执行写语句，可能修改或删除数据。', text)
@@ -302,7 +308,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
   }
 
-  /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones. */
+  /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones.
+   *  Execution reuses the shared console runner. */
   const recallHistory = (delta: 1 | -1): void => {
     if (history.length === 0) return
     const next = Math.min(history.length - 1, Math.max(0, recallRef.current + delta))
@@ -577,10 +584,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         <>
           <textarea
             className="dshdb-input dshdb-console-input"
-            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+            ref={inputRef}
             value={statement}
             spellCheck={false}
-            onChange={(event) => setStatement(event.target.value)}
+            onChange={(event) => {
+              setSelectedRun(false)
+              setStatement(event.target.value)
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault()
@@ -600,7 +611,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           />
 
           <div className="dshdb-qbar">
-            <Button size="sm" variant="primary" icon={<PlayIcon size={12} />} onClick={() => void run()} loading={running}>
+            <Button size="sm" variant="primary" icon={<PlayIcon size={12} />} onClick={() => void run()} loading={running} title="有选中内容时只执行选中部分">
               执行
             </Button>
             <Button size="sm" variant="ghost" icon={<StopIcon size={12} />} onClick={() => void cancel()} disabled={!running}>
@@ -619,6 +630,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               格式化
             </Button>
             <span className="dshdb-qbar-spacer" />
+            {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
 
