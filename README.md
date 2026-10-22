@@ -6,26 +6,28 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ![数据源树](docs/screenshots/database-tree.png)
 
-![MySQL 查询](docs/screenshots/mysql-query.png)
+![SQL 查询控制台](docs/screenshots/database-console.png)
 
 ## 功能
 
 - **右侧边栏入口**：在右侧边栏的「+」新标签页菜单里选择「数据库」，或在 Guide 页点击「数据库」胶囊；标签页会保持挂载，切换会话不丢状态。
 - **预设数据源**：MySQL、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板。
 - **自定义驱动**：填写驱动名、方言、驱动类、URL 模板和 Maven 坐标（可多个 jar），点击下载即可从 Maven Central / 阿里云镜像拉取并缓存，无需手动放置 jar。
-- **数据浏览**：仿 JetBrains Database 工具窗口——工具栏「新增 / 刷新 / 设置」左对齐，下方是所有数据源 → Schema → 表 / 视图 / 例程 / 序列 / 触发器 的树，每类按文件夹分组并显示数量；选中表在下方显示列、默认值、主键、索引与注释。工具栏右侧是「数据 / SQL / Redis」视图切换。
+- **数据浏览**：仿 JetBrains Database 工具窗口——工具栏「新增 / 刷新 / 删除 / 控制台 / 设置」左对齐，下方是所有数据源 → Schema → 表 / 视图 / 例程 / 序列 / 触发器 的树，每类按文件夹分组并显示数量；选中表在下方显示列、默认值、主键、索引与注释，右上角的「DDL」按钮弹出该表的建表语句。
 - **结构缓存**：连接过一次后，Schema、对象清单与表结构（列 / 键 / 索引）会写入插件数据目录的 `structure.json`；之后即使不连接（数据库下线、断网、只想离线看结构）也能展开浏览缓存的树，再次连接时自动用最新结构覆盖，离线状态在树上有明确标注。
 - **表下钻**：树里展开表即可看到「列 / 键 / 索引」三个分组——列带类型与主键标记，键与索引带所属列，不用点开详情面板就能看清结构。
 - **双击打开数据表**：树里双击表或视图，会在右侧栏新开一个数据表标签页分页浏览数据（标签页标题是表名，正文顶部显示 `schema.table`）；顶部 `WHERE` / `ORDER BY` 输入框回车即生效，底栏显示实际执行的 SQL、当前区间、总行数与翻页按钮，每页 50 / 100 / 200 / 500 / 1000 行可切，同一张表可重复打开互不影响。
-- **SQL 控制台**：多行编辑、`Ctrl+Enter` 执行、可取消、行数上限、耗时、列类型、NULL 高亮；写语句执行前二次确认；只读连接永远拒绝写操作。
-- **Redis 控制台**：游标 SCAN、按类型过滤、键详情（string/hash/list/set/zset/stream）、TTL、命令执行；写命令二次确认，危险命令（FLUSHALL 等）始终拒绝。
-- **Agent 工具**：11 个 `db_*` 工具，Agent 可列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`。
+- **查询控制台**：工具栏的「控制台」按钮会在右侧栏新开一个查询标签页（可同时开多个）。SQL 模式支持多行编辑、`Ctrl+Enter` 执行、取消、行数上限、耗时与分页（把单条 `SELECT` 包成 `LIMIT/OFFSET` 或 `OFFSET … FETCH`）；写语句执行前二次确认，只读连接永远拒绝写。切到 Redis 数据源时变成键表格（键 / 类型 / TTL / 长度）+ 选中键的值面板 + 命令框，写命令二次确认、危险命令（`FLUSHALL` 等）始终拒绝。
+- **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
+- **Agent 工具**：15 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
 - **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
 
 ![展开表查看列、键与索引](docs/screenshots/database-columns.png)
 
 ![双击表打开分页查询标签页](docs/screenshots/database-table-tab.png)
+
+![表结构 DDL](docs/screenshots/database-ddl.png)
 
 ![结构缓存：断开后仍可浏览](docs/screenshots/database-cache.png)
 
@@ -113,9 +115,13 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | 工具 | 用途 |
 | --- | --- |
 | `db_list_connections` | 列出已配置连接、设置与驱动状态；Agent 可用连接 id 或名称引用 |
+| `db_create_connection` | 新增数据源（密码写入 secret store）；默认值来自预设，可不带 host/port |
+| `db_update_connection` | 编辑已保存的数据源；只改传入的字段，`clearPassword` 清空密码 |
+| `db_delete_connection` | 删除数据源并断开连接、清理结构缓存；必须显式 `confirm: true` |
+| `db_refresh_connection` | 重连并重新拉取 Schema 到结构缓存（Redis 为重连） |
 | `db_test_connection` | 测试保存的连接或临时草稿（不落盘） |
 | `db_list_databases` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
-| `db_list_objects` | 列出指定 Schema 下的表/视图 |
+| `db_list_objects` | 列出指定 Schema 下的表、视图、例程、序列与触发器 |
 | `db_describe_table` | 列、类型、可空、主键、索引、注释 |
 | `db_query` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写 |
 | `db_explain` | MySQL `EXPLAIN`、Oracle/达梦执行计划 |
