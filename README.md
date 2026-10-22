@@ -28,6 +28,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL 走 `EXPLAIN`，Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，结果与普通查询一样在网格里展示并标出「执行计划」，看完点「关闭计划」回到编辑器。
 - **SQL 格式化**：查询控制台的「格式化」按钮（或 `Ctrl/⌘ + Shift + F`）会把关键字统一大写，按 `SELECT / FROM / WHERE / GROUP BY / ORDER BY / LIMIT` 等子句换行并缩进子查询；字符串、反引号标识符、`--` 与 `/* */` 注释里的内容一概不动。
 - **结果导出**：查询控制台工具栏的下载按钮可以把当前页结果存成 CSV 或 JSON——CSV 带 BOM，Excel 打开中文不乱码；导出的是网格里正在看的这一页，翻页后再导另一页即可。
+- **结果排序**：点控制台结果网格的表头，就能按这一列对当前页排序——第一次升序、再一次降序、第三次取消；拼音按 `zh` 排序，空值沉底，导出 CSV/JSON 也会跟着网格的顺序走。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。
 - **Agent 工具**：15 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
@@ -54,6 +55,8 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ![执行计划：索引命中情况](docs/screenshots/database-explain.png)
 
 ![查询控制台导出当前页](docs/screenshots/database-console-export.png)
+
+![控制台按 name 降序](docs/screenshots/database-console-sort.png)
 
 ![表结构 DDL](docs/screenshots/database-ddl.png)
 

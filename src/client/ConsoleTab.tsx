@@ -25,6 +25,7 @@ import { DataGrid } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
+import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
@@ -200,6 +201,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
   const [base, setBase] = useState('')
+  const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
 
@@ -276,6 +278,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
     async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
+      setRowSort(null)
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
       const stmtKey = `console-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -483,13 +486,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const offset = page * pageSize
   const columns = result?.columns ?? []
   const rows = result?.rows ?? []
+  // Sorting only reshapes the current page; a new query or page resets it.
+  const visibleRows = sortRows(columns, rows, rowSort)
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
   const exportPage = (format: ExportFormat): void => {
     setExportOpen(false)
-    if (rows.length === 0) return
-    const text = format === 'csv' ? toCsv(columns, rows) : toJson(columns, rows)
+    if (visibleRows.length === 0) return
+    const text = format === 'csv' ? toCsv(columns, visibleRows) : toJson(columns, visibleRows)
     downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
-    setExportNote(`${format.toUpperCase()} 已导出 ${rows.length} 行`)
+    setExportNote(`${format.toUpperCase()} 已导出 ${visibleRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
   const hasPrevious = page > 0
@@ -697,10 +702,10 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
               {exportOpen ? (
                 <span className="dshdb-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => exportPage('csv')}>
-                    当前页 CSV（{rows.length} 行）
+                    当前页 CSV（{visibleRows.length} 行）
                   </button>
                   <button type="button" role="menuitem" onClick={() => exportPage('json')}>
-                    当前页 JSON（{rows.length} 行）
+                    当前页 JSON（{visibleRows.length} 行）
                   </button>
                 </span>
               ) : null}
@@ -730,7 +735,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           ) : null}
 
           {result !== null && rows.length > 0 ? (
-            <DataGrid columns={columns} rows={rows} offset={offset} storageKey="console:sql" />
+            <DataGrid
+              columns={columns}
+              rows={visibleRows}
+              offset={offset}
+              storageKey="console:sql"
+              sort={rowSort}
+              onSort={(column) => setRowSort((current) => nextRowSort(current, column.name))}
+            />
           ) : (
             <div className="dshdb-grid-wrap">
               {result === null ? (

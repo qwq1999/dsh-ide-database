@@ -1,0 +1,44 @@
+/**
+ * In-place sorting for the console's result grid.
+ *
+ * The console keeps no cursor, so it can only sort the page it already holds;
+ * doing it in the browser is instant and never re-runs the statement. Sorting
+ * is purely a view concern: the rows sent to the CSV/JSON export follow the
+ * same order as the grid.
+ */
+import type { CellValue, ColumnInfo, Row } from '../shared/types'
+
+export type RowSortDirection = 'asc' | 'desc'
+
+export interface RowSort {
+  column: string
+  direction: RowSortDirection
+}
+
+/** Header clicks cycle none -> ascending -> descending -> none. */
+export function nextRowSort(current: RowSort | null, column: string): RowSort | null {
+  if (current === null || current.column !== column) return { column, direction: 'asc' }
+  return current.direction === 'asc' ? { column, direction: 'desc' } : null
+}
+
+function order(left: CellValue, right: CellValue): number {
+  if (typeof left === 'number' && typeof right === 'number') return left - right
+  if (typeof left === 'boolean' && typeof right === 'boolean') return Number(left) - Number(right)
+  return String(left).localeCompare(String(right), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+}
+
+/** Sort a page of rows by one column; empty cells always sink to the bottom. */
+export function sortRows(columns: ColumnInfo[], rows: Row[], sort: RowSort | null): Row[] {
+  if (sort === null) return rows
+  const index = columns.findIndex((column) => column.name === sort.column)
+  if (index < 0) return rows
+  const factor = sort.direction === 'asc' ? 1 : -1
+  return [...rows].sort((left, right) => {
+    const a = left[index]
+    const b = right[index]
+    const aEmpty = a === null || a === undefined
+    const bEmpty = b === null || b === undefined
+    if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
+    return factor * order(a, b)
+  })
+}
