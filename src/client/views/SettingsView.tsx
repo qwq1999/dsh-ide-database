@@ -81,7 +81,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     { value: '', label: '自动（按 JAVA_HOME、PATH、JDK 目录查找）' },
     ...javaCandidates.map((candidate, index) => ({
       value: candidate.path,
-      label: `Java ${candidate.major} · ${candidate.version}${index === 0 ? ' · 最新' : ''}`,
+      label: `Java ${candidate.major} · ${candidate.version}${candidate.source === 'bundled' ? '（内置）' : ''}${
+        index === 0 ? ' · 最新' : ''
+      }`,
     })),
     ...(customJavaPath !== undefined ? [{ value: customJavaPath, label: customJavaPath }] : []),
   ]
@@ -159,7 +161,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
             </Field>
             <Field
               label="Java 可执行文件"
-              hint="优先使用所选版本；留空时按 JAVA_HOME、PATH、常见 JDK 目录的顺序自动查找"
+              hint="留空时优先使用随包内置的 Java，再按 JAVA_HOME、PATH、常见 JDK 目录查找"
               span
             >
               {javaOptions.length > 1 ? (

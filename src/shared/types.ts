@@ -173,7 +173,7 @@ export interface JavaStatus {
   path?: string
   version?: string
   major?: number
-  source: 'setting' | 'JAVA_HOME' | 'PATH' | 'jdks' | 'missing'
+  source: 'setting' | 'bundled' | 'JAVA_HOME' | 'PATH' | 'jdks' | 'missing'
   message?: string
   /** Every runtime discovery found, newest major first, for the settings picker. */
   candidates?: JavaCandidate[]

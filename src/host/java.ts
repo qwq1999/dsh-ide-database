@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type { JavaStatus } from '../shared/types.js'
 
@@ -81,6 +82,17 @@ function jdkCandidates(): string[] {
 }
 
 /**
+ * A runtime shipped inside the package: `jre/bin/java` next to `lib/`.
+ * Release tooling can drop a jlink image there, which keeps installs
+ * independent of whatever Java the machine happens to have.
+ */
+export function bundledJavaPath(pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')): string | undefined {
+  const executable = process.platform === 'win32' ? 'java.exe' : 'java'
+  const candidate = join(pluginRoot, 'jre', 'bin', executable)
+  return isFile(candidate) ? candidate : undefined
+}
+
+/**
  * Java discovery is deliberately driver-agnostic: the bridge targets Java 8,
  * so any runtime >= 8 works and the newest installed JDK is preferred when
  * JAVA_HOME is unset.
@@ -100,6 +112,7 @@ export class JavaLocator {
       attempted.push({ candidate: trimmed, source })
     }
     addCandidate(settingsPath, 'setting')
+    addCandidate(bundledJavaPath() ?? '', 'bundled')
     addCandidate(process.env.JAVA_HOME ?? '', 'JAVA_HOME')
     attempted.push({ candidate: 'java', source: 'PATH' })
     for (const candidate of jdkCandidates()) attempted.push({ candidate, source: 'jdks' })

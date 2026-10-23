@@ -104,6 +104,7 @@ SQL 控制台工具条的「事务」发送 `BEGIN`；之后「提交」「回�
 
 - DeepSeek Harness `>= 0.1.6-alpha.2`（当前在 0.2.1 上开发验证）。
 - 关系型数据库需要本机可用的 Java（`JAVA_HOME`、`PATH` 或「设置 → Java 路径」显式指定），**Java 8+** 即可；驱动与桥接 jar 都按 Java 8 字节码编译。
+- 也可以随包内置运行时：把 jlink 生成的 JRE 放到插件根目录的 `jre/`（即 `jre/bin/java`），启动时会优先使用它，其次才回退到系统 Java。`jre/` 已加入 npm 发布文件列表。
 - 首次使用某个预设驱动时需要联网下载 jar（可在设置中切换 Maven 中央仓库 / 阿里云镜像）。
 - Redis 走纯 JS 客户端，不需要 Java。
 

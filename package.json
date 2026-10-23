@@ -14,6 +14,7 @@
     "lib",
     "bridge/dsh-db-bridge.jar",
     "bridge/src",
+    "jre",
     "assets",
     "cordis.patch.yml",
     "dsh.plugin.json",
