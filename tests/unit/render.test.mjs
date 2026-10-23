@@ -301,4 +301,39 @@ describe('DataView 渲染', () => {
     expect(text).toContain('张伟')
     expect(text).toContain('北京')
   })
+
+  it('函数详情直接展示服务器返回的 DDL', () => {
+    const text = strip(
+      render({
+        connections: [connection()],
+        selectedId: 'c1',
+        selectedKey: 'c1|shop.fn_customer_total',
+        detail: {
+          schema: 'shop',
+          table: 'fn_customer_total',
+          kind: 'function',
+          columns: [],
+          indexes: [],
+          ddl: 'CREATE DEFINER=`root`@`%` FUNCTION `fn_customer_total`() RETURNS decimal(12,2) RETURN 0',
+          ddlSource: 'server',
+          ddlWarnings: [],
+        },
+      }),
+    )
+    expect(text).toContain('CREATE DEFINER')
+    expect(text).toContain('来自服务器的定义')
+    expect(text).not.toContain('没有列结构')
+  })
+
+  it('取不到定义的例程仍给出控制台提示', () => {
+    const text = strip(
+      render({
+        connections: [connection()],
+        selectedId: 'c1',
+        selectedKey: 'c1|shop.sp_top_products',
+        detail: { schema: 'shop', table: 'sp_top_products', kind: 'procedure', columns: [], indexes: [] },
+      }),
+    )
+    expect(text).toContain('未读取到存储过程定义')
+  })
 })

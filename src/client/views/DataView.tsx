@@ -1135,13 +1135,14 @@ export function DataView(props: DataViewProps): ReactElement {
           bodyClassName="dshdb-panel-body-pad"
           scroll
         >
-          {detail.columns.length === 0 ? (
+          {detail.columns.length === 0 && (detail.ddl === undefined || detail.ddl === '') ? (
             <div className="dshdb-muted" style={{ padding: '4px 0' }}>
               {detail.kind === 'table' || detail.kind === 'view'
                 ? '没有读取到列结构。'
-                : `${objectKindLabel(detail.kind)}没有列结构，可在 SQL 控制台查看定义。`}
+                : `未读取到${objectKindLabel(detail.kind)}定义，请在 SQL 控制台查看。`}
             </div>
-          ) : (
+          ) : null}
+          {detail.columns.length > 0 ? (
             <div className="dshdb-grid-wrap" style={{ maxHeight: 220 }}>
               <table className="dshdb-grid">
                 <thead>
@@ -1169,7 +1170,18 @@ export function DataView(props: DataViewProps): ReactElement {
                 </tbody>
               </table>
             </div>
-          )}
+          ) : null}
+          {typeof detail.ddl === 'string' && detail.ddl !== '' ? (
+            <div style={{ marginTop: detail.columns.length > 0 ? 10 : 0 }}>
+              <pre className="dshdb-ddl" style={{ maxHeight: 280 }}>{detail.ddl}</pre>
+              <div className="dshdb-muted" style={{ marginTop: 4 }}>
+                {detail.ddlSource === 'generated' ? '根据列结构生成的 DDL' : '来自服务器的定义'}
+                {detail.ddlWarnings !== undefined && detail.ddlWarnings.length > 0
+                  ? `；${detail.ddlWarnings.join('；')}`
+                  : ''}
+              </div>
+            </div>
+          ) : null}
           {detail.indexes.length > 0 ? (
             <div className="dshdb-kv" style={{ padding: '8px 0 0' }}>
               {detail.indexes.map((index) => (
@@ -1189,7 +1201,7 @@ export function DataView(props: DataViewProps): ReactElement {
         <div className="dshdb-muted" style={{ padding: '0 2px' }}>
           {selected?.dialect === 'redis'
             ? '展开 Redis 数据源和逻辑库，选择键可查看值、TTL 与长度；行尾按钮可选择显示的数据库。'
-            : '展开数据源，选择表或视图可查看列、索引等结构信息；行尾按钮可选择显示的架构。'}
+            : '展开数据源，选择表或视图可查看列、索引等结构信息；选择函数、存储过程、触发器可查看定义；行尾按钮可选择显示的架构。'}
         </div>
       ) : null}
     </div>

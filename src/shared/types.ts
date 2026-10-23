@@ -337,6 +337,13 @@ export interface TableDescription {
   kind: ObjectKind
   columns: ColumnDetail[]
   indexes: IndexInfo[]
+  /**
+   * Inline DDL for objects without a column structure (routines, sequences,
+   * triggers), fetched on demand so the detail panel can show its definition.
+   */
+  ddl?: string
+  ddlSource?: 'server' | 'generated'
+  ddlWarnings?: string[]
 }
 
 export interface ServerInfo {

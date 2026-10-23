@@ -21,6 +21,7 @@ import type {
   TableDescription,
 } from '../../shared/types'
 import { api } from '../api'
+import { objectKindLabel } from '../format'
 
 export interface Snapshot {
   connections: ClientConnection[]
@@ -164,6 +165,7 @@ export function useDataSources(notify: Notify): DataSources {
   const [redisDetailDb, setRedisDetailDb] = useState(-1)
   const [redisDetailLoading, setRedisDetailLoading] = useState(false)
   const redisRequest = useRef(0)
+  const detailRequest = useRef(0)
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
 
@@ -513,20 +515,52 @@ export function useDataSources(notify: Notify): DataSources {
   const selectObject = useCallback(
     async (connectionId: string, schema: string, object: SchemaObject): Promise<void> => {
       const key = `${connectionId}|${schema}.${object.name}`
+      const request = detailRequest.current + 1
+      detailRequest.current = request
       setSelectedId(connectionId)
       setRedisDetail(null)
       setRedisDetailDb(-1)
       setSelectedKey(key)
-      // Routines, sequences and triggers have no column structure of their own.
-      if (object.kind !== 'table' && object.kind !== 'view') {
-        setDetailLoading(false)
-        setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
-        return
-      }
       const known = descriptions[key]
       if (known !== undefined) {
         setDetailLoading(false)
         setDetail(known)
+        return
+      }
+      // Routines, sequences and triggers have no column structure; their
+      // definition is what the panel shows instead.
+      if (object.kind !== 'table' && object.kind !== 'view') {
+        if (!servers[connectionId]) {
+          setDetailLoading(false)
+          setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
+          notify(`数据源未连接，连接后可查看${objectKindLabel(object.kind)}定义`, 'info')
+          return
+        }
+        setDetailLoading(true)
+        setLoadingDescriptions((previous) => ({ ...previous, [key]: true }))
+        try {
+          const result = await api.ddl(connectionId, schema, object.name, object.kind)
+          const described: TableDescription = {
+            schema,
+            table: object.name,
+            kind: object.kind,
+            columns: [],
+            indexes: [],
+            ddl: result.ddl,
+            ddlSource: result.source,
+            ddlWarnings: result.warnings,
+          }
+          setDescriptions((previous) => ({ ...previous, [key]: described }))
+          if (detailRequest.current === request) setDetail(described)
+        } catch (error) {
+          if (detailRequest.current === request) {
+            setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
+            notify(`读取${objectKindLabel(object.kind)}定义失败：${errorText(error)}`, 'error')
+          }
+        } finally {
+          if (detailRequest.current === request) setDetailLoading(false)
+          setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
+        }
         return
       }
       if (!servers[connectionId]) {
@@ -540,12 +574,12 @@ export function useDataSources(notify: Notify): DataSources {
       try {
         const description = await api.describe(connectionId, schema, object.name, object.kind)
         setDescriptions((previous) => ({ ...previous, [key]: description }))
-        setDetail(description)
+        if (detailRequest.current === request) setDetail(description)
       } catch (error) {
-        setDetail(null)
+        if (detailRequest.current === request) setDetail(null)
         notify(`读取表结构失败：${errorText(error)}`, 'error')
       } finally {
-        setDetailLoading(false)
+        if (detailRequest.current === request) setDetailLoading(false)
         setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
       }
     },
@@ -561,6 +595,7 @@ export function useDataSources(notify: Notify): DataSources {
    * on the chevron so a click never collapses the branch being read.
    */
   const selectSchema = useCallback((connectionId: string, schema: string): void => {
+    detailRequest.current += 1
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
@@ -569,6 +604,7 @@ export function useDataSources(notify: Notify): DataSources {
   }, [])
 
   const selectFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
+    detailRequest.current += 1
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
@@ -577,6 +613,7 @@ export function useDataSources(notify: Notify): DataSources {
   }, [])
 
   const selectRedisDb = useCallback((connectionId: string, db: number): void => {
+    detailRequest.current += 1
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
@@ -600,6 +637,7 @@ export function useDataSources(notify: Notify): DataSources {
   /** Read one key's value for the tree's detail panel. */
   const selectRedisKey = useCallback(
     async (connectionId: string, db: number, key: string): Promise<void> => {
+      detailRequest.current += 1
       setSelectedId(connectionId)
       setDetail(null)
       setRedisDetail(null)
