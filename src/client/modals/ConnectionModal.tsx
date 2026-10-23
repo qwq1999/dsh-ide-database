@@ -264,8 +264,9 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
             <TextInput
               type="password"
               value={password}
+              autoComplete="new-password"
               onChange={(event) => setPassword(event.target.value)}
-              placeholder={editing?.hasPassword ? '••••••••' : '密码'}
+              placeholder={editing?.hasPassword ? '留空则保持不变' : '密码'}
             />
           </Field>
           {editing?.hasPassword ? (

@@ -3,7 +3,7 @@ import { ROUTE_PREFIX } from '../shared/presets'
 import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
 import { useDataSources } from './hooks/useDataSources'
-import { PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
+import { EditIcon, PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
@@ -252,6 +252,16 @@ export function App(props: AppProps): ReactElement {
           onClick={() => setConnModal({ open: true, editing: null })}
         >
           新增
+        </ToolButton>
+        <ToolButton
+          title="编辑选中的数据源"
+          icon={<EditIcon size={14} />}
+          onClick={() => {
+            if (selected) setConnModal({ open: true, editing: selected })
+          }}
+          disabled={!selected || deleting}
+        >
+          编辑
         </ToolButton>
         <ToolButton
           title="刷新选中的数据源"
