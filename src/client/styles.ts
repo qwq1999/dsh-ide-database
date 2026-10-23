@@ -180,6 +180,17 @@ export const CSS = `
   flex: none;
   color: var(--dsw-alias-label-tertiary);
 }
+.dshdb-row-toggle-action {
+  width: 16px;
+  height: 16px;
+  margin: 0 -1px;
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+}
+.dshdb-row-toggle-action:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}
 .dshdb-row-label {
   flex: 1;
   min-width: 0;

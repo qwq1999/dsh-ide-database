@@ -64,6 +64,8 @@ export interface DataViewProps {
   onToggleFolder: (connectionId: string, schema: string, folder: string) => void
   onToggleKey: (key: string) => void
   onSelectObject: (connectionId: string, schema: string, object: SchemaObject) => void
+  onSelectSchema: (connectionId: string, schema: string) => void
+  onSelectFolder: (connectionId: string, schema: string, folder: string) => void
   onSelectRedisKey: (connectionId: string, key: string) => void
   onLoadRedisKeys: (connectionId: string, more?: boolean) => void
   onShowDdl: (connectionId: string, schema: string, table: string, kind: string) => void
@@ -119,6 +121,36 @@ const DEPTH_THREE = { '--dshdb-depth': 3 } as CSSProperties
 const DEPTH_FOUR = { '--dshdb-depth': 4 } as CSSProperties
 const DEPTH_FIVE = { '--dshdb-depth': 5 } as CSSProperties
 
+/**
+ * Expanding is reserved for the chevron: clicking a row's name only selects it,
+ * so browsing never collapses the branch being read. Clicking the chevron also
+ * selects the row, the way JetBrains trees behave.
+ */
+function RowToggle({
+  open,
+  title,
+  onToggle,
+}: {
+  open: boolean
+  title: string
+  onToggle: () => void
+}): ReactElement {
+  return (
+    <span
+      className="dshdb-row-toggle dshdb-row-toggle-action"
+      role="presentation"
+      title={title}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+    </span>
+  )
+}
+
 function DetailFolder({
   label,
   icon,
@@ -126,6 +158,7 @@ function DetailFolder({
   depth,
   open,
   onToggle,
+  onSelect,
   children,
 }: {
   label: string
@@ -134,6 +167,7 @@ function DetailFolder({
   depth: CSSProperties
   open: boolean
   onToggle: () => void
+  onSelect?: () => void
   children: ReactNode
 }): ReactElement {
   return (
@@ -145,11 +179,9 @@ function DetailFolder({
         aria-expanded={open}
         data-kind="folder"
         style={depth}
-        onClick={onToggle}
+        onClick={onSelect}
       >
-        <span className="dshdb-row-toggle">
-          {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-        </span>
+        <RowToggle open={open} title={open ? `收起${label}` : `展开${label}`} onToggle={onToggle} />
         <span className="dshdb-row-icon">{icon}</span>
         <span className="dshdb-row-label">{label}</span>
         <span className="dshdb-row-meta">{count}</span>
@@ -221,11 +253,9 @@ function ObjectRow({
         style={DEPTH_THREE}
         title={object.comment ? `${object.name} — ${object.comment}` : `${object.name}（${objectKindLabel(object.kind)}）`}
         onClick={(event) => {
-          // A double-click opens the table tab, so the second click must not
-          // collapse what the first one expanded.
+          // A double-click opens the table tab, so ignore the second click.
           if (event.detail > 1) return
           onSelect()
-          if (isRelation) onToggleKey(key)
         }}
         onDoubleClick={() => {
           if (!isRelation) return
@@ -233,9 +263,18 @@ function ObjectRow({
           onOpen()
         }}
       >
-        <span className="dshdb-row-toggle">
-          {isRelation ? open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} /> : null}
-        </span>
+        {isRelation ? (
+          <RowToggle
+            open={open}
+            title={open ? '收起结构' : '展开结构'}
+            onToggle={() => {
+              onSelect()
+              onToggleKey(key)
+            }}
+          />
+        ) : (
+          <span className="dshdb-row-toggle" />
+        )}
         <span className="dshdb-row-icon">{objectIcon(object.kind)}</span>
         <span className="dshdb-row-label">
           <Highlight text={object.name} query={query} />
@@ -264,6 +303,7 @@ function ObjectRow({
                 depth={DEPTH_FOUR}
                 open={expanded[columnFolderKey] === true}
                 onToggle={() => onToggleKey(columnFolderKey)}
+                onSelect={onSelect}
               >
                 {description.columns.map((column) => (
                   <div key={column.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="column">
@@ -286,6 +326,7 @@ function ObjectRow({
                   depth={DEPTH_FOUR}
                   open={expanded[keyFolderKey] === true}
                   onToggle={() => onToggleKey(keyFolderKey)}
+                  onSelect={onSelect}
                 >
                   {keys.map((index) => (
                     <div key={index.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="key">
@@ -308,6 +349,7 @@ function ObjectRow({
                   depth={DEPTH_FOUR}
                   open={expanded[indexFolderKey] === true}
                   onToggle={() => onToggleKey(indexFolderKey)}
+                  onSelect={onSelect}
                 >
                   {indexes.map((index) => (
                     <div key={index.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="index">
@@ -455,12 +497,14 @@ export function DataView(props: DataViewProps): ReactElement {
     }
     if (active === null || !rows.includes(active as HTMLButtonElement)) return
     const expandedAttr = active.getAttribute('aria-expanded')
-    if (event.key === 'ArrowRight' && expandedAttr === 'false') {
+    const expanding = event.key === 'ArrowRight' && expandedAttr === 'false'
+    const collapsing = event.key === 'ArrowLeft' && expandedAttr === 'true'
+    if (expanding || collapsing) {
+      // Expansion belongs to the chevron; clicking the row itself only selects.
+      const toggle = active.querySelector<HTMLElement>('.dshdb-row-toggle-action')
+      if (toggle === null) return
       event.preventDefault()
-      active.click()
-    } else if (event.key === 'ArrowLeft' && expandedAttr === 'true') {
-      event.preventDefault()
-      active.click()
+      toggle.click()
     }
   }
 
@@ -628,14 +672,16 @@ export function DataView(props: DataViewProps): ReactElement {
                     title={`${connection.name} · ${connection.host}:${connection.port}${
                       connection.dialect === 'redis' ? ` · db${connection.redisDb}` : ''
                     }${cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''}`}
-                    onClick={() => {
-                      props.onSelectConnection(connection.id)
-                      props.onToggleConnection(connection.id)
-                    }}
+                    onClick={() => props.onSelectConnection(connection.id)}
                   >
-                    <span className="dshdb-row-toggle">
-                      {isExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-                    </span>
+                    <RowToggle
+                      open={isExpanded}
+                      title={isExpanded ? '收起数据源' : '展开数据源'}
+                      onToggle={() => {
+                        props.onSelectConnection(connection.id)
+                        props.onToggleConnection(connection.id)
+                      }}
+                    />
                     <span className="dshdb-row-icon">
                       <DatabaseIcon size={13} />
                     </span>
@@ -718,13 +764,19 @@ export function DataView(props: DataViewProps): ReactElement {
                                   className="dshdb-row"
                                   role="treeitem"
                                   aria-expanded={schemaExpanded}
+                                  data-active={props.selectedKey === `${connection.id}|schema:${schema.name}`}
                                   data-kind="schema"
                                   style={DEPTH_ONE}
-                                  onClick={() => props.onToggleSchema(connection.id, schema.name)}
+                                  onClick={() => props.onSelectSchema(connection.id, schema.name)}
                                 >
-                                  <span className="dshdb-row-toggle">
-                                    {schemaExpanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-                                  </span>
+                                  <RowToggle
+                                    open={schemaExpanded}
+                                    title={schemaExpanded ? '收起 Schema' : '展开 Schema'}
+                                    onToggle={() => {
+                                      props.onSelectSchema(connection.id, schema.name)
+                                      void props.onToggleSchema(connection.id, schema.name)
+                                    }}
+                                  />
                                   <span className="dshdb-row-icon">
                                     <DatabaseIcon size={13} />
                                   </span>
@@ -764,19 +816,23 @@ export function DataView(props: DataViewProps): ReactElement {
                                                 className="dshdb-row"
                                                 role="treeitem"
                                                 aria-expanded={folderExpanded}
+                                                data-active={
+                                                  props.selectedKey === `${connection.id}|${schema.name}#${folder.id}`
+                                                }
                                                 data-kind="folder"
                                                 style={DEPTH_TWO}
                                                 onClick={() =>
-                                                  props.onToggleFolder(connection.id, schema.name, folder.id)
+                                                  props.onSelectFolder(connection.id, schema.name, folder.id)
                                                 }
                                               >
-                                                <span className="dshdb-row-toggle">
-                                                  {folderExpanded ? (
-                                                    <ChevronDownIcon size={12} />
-                                                  ) : (
-                                                    <ChevronRightIcon size={12} />
-                                                  )}
-                                                </span>
+                                                <RowToggle
+                                                  open={folderExpanded}
+                                                  title={folderExpanded ? `收起${folder.label}` : `展开${folder.label}`}
+                                                  onToggle={() => {
+                                                    props.onSelectFolder(connection.id, schema.name, folder.id)
+                                                    props.onToggleFolder(connection.id, schema.name, folder.id)
+                                                  }}
+                                                />
                                                 <span className="dshdb-row-icon">{folder.icon}</span>
                                                 <span className="dshdb-row-label">{folder.label}</span>
                                                 <span className="dshdb-row-meta">{items.length}</span>

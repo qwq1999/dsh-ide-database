@@ -127,6 +127,8 @@ export function App(props: AppProps): ReactElement {
     loadRedisKeys,
     toggleKey,
     selectObject,
+    selectSchema,
+    selectFolder,
     selectRedisKey,
     updateDrivers,
     applySettings,
@@ -318,6 +320,8 @@ export function App(props: AppProps): ReactElement {
               onToggleFolder={toggleFolder}
               onToggleKey={toggleKey}
               onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
+              onSelectSchema={selectSchema}
+              onSelectFolder={selectFolder}
               onSelectRedisKey={(connectionId, key) => void selectRedisKey(connectionId, key)}
               onLoadRedisKeys={(connectionId, more) => void loadRedisKeys(connectionId, more)}
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}

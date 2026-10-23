@@ -69,6 +69,8 @@ function render(props = {}) {
       onToggleFolder: noop,
       onToggleKey: noop,
       onSelectObject: noop,
+      onSelectSchema: noop,
+      onSelectFolder: noop,
       onSelectRedisKey: noop,
       onLoadRedisKeys: noop,
       onShowDdl: noop,

@@ -75,6 +75,8 @@ export interface DataSources {
   loadRedisKeys: (connectionId: string, more?: boolean) => Promise<void>
   toggleKey: (key: string) => void
   selectObject: (connectionId: string, schema: string, object: SchemaObject) => Promise<void>
+  selectSchema: (connectionId: string, schema: string) => void
+  selectFolder: (connectionId: string, schema: string, folder: string) => void
   selectRedisKey: (connectionId: string, key: string) => Promise<void>
   updateDrivers: (drivers: DriverStatus[]) => void
   applySettings: (settings: DbSettings, env: EnvStatus) => void
@@ -413,6 +415,24 @@ export function useDataSources(notify: Notify): DataSources {
     setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   }, [])
 
+  /**
+   * Selecting a schema or a folder only highlights that row; expanding stays
+   * on the chevron so a click never collapses the branch being read.
+   */
+  const selectSchema = useCallback((connectionId: string, schema: string): void => {
+    setSelectedId(connectionId)
+    setDetail(null)
+    setRedisDetail(null)
+    setSelectedKey(`${connectionId}|schema:${schema}`)
+  }, [])
+
+  const selectFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
+    setSelectedId(connectionId)
+    setDetail(null)
+    setRedisDetail(null)
+    setSelectedKey(`${connectionId}|${schema}#${folder}`)
+  }, [])
+
   /** Read one key's value for the tree's detail panel. */
   const selectRedisKey = useCallback(
     async (connectionId: string, key: string): Promise<void> => {
@@ -519,6 +539,8 @@ export function useDataSources(notify: Notify): DataSources {
     loadRedisKeys,
     toggleKey,
     selectObject,
+    selectSchema,
+    selectFolder,
     selectRedisKey,
     updateDrivers,
     applySettings,
