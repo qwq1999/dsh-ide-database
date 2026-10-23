@@ -180,6 +180,7 @@ function DetailFolder({
         data-kind="folder"
         style={depth}
         onClick={onSelect}
+        onDoubleClick={onToggle}
       >
         <RowToggle open={open} title={open ? `收起${label}` : `展开${label}`} onToggle={onToggle} />
         <span className="dshdb-row-icon">{icon}</span>
@@ -673,6 +674,7 @@ export function DataView(props: DataViewProps): ReactElement {
                       connection.dialect === 'redis' ? ` · db${connection.redisDb}` : ''
                     }${cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''}`}
                     onClick={() => props.onSelectConnection(connection.id)}
+                    onDoubleClick={() => props.onToggleConnection(connection.id)}
                   >
                     <RowToggle
                       open={isExpanded}
@@ -768,6 +770,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                   data-kind="schema"
                                   style={DEPTH_ONE}
                                   onClick={() => props.onSelectSchema(connection.id, schema.name)}
+                                  onDoubleClick={() => void props.onToggleSchema(connection.id, schema.name)}
                                 >
                                   <RowToggle
                                     open={schemaExpanded}
@@ -823,6 +826,9 @@ export function DataView(props: DataViewProps): ReactElement {
                                                 style={DEPTH_TWO}
                                                 onClick={() =>
                                                   props.onSelectFolder(connection.id, schema.name, folder.id)
+                                                }
+                                                onDoubleClick={() =>
+                                                  props.onToggleFolder(connection.id, schema.name, folder.id)
                                                 }
                                               >
                                                 <RowToggle

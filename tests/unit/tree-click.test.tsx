@@ -72,7 +72,10 @@ function Harness({ calls }: { calls: Calls }): JSX.Element {
     redisDetailLoading: false,
     onAddConnection: () => bump('add'),
     onSelectConnection: () => bump('selectConnection'),
-    onToggleConnection: () => bump('toggleConnection'),
+    onToggleConnection: () => {
+      bump('toggleConnection')
+      toggle('c1')
+    },
     onConnect: () => bump('connect'),
     onToggleSchema: (_connectionId, schema) => {
       bump('toggleSchema')
@@ -188,5 +191,43 @@ describe('数据源树：选中与展开分离', () => {
     expect(columns.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(columns.querySelector('.dshdb-row-toggle-action') as HTMLElement)
     expect(columns.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.dblClick(tree().getByText('列'))
+    expect(columns.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('双击数据源、Schema、分组行同样展开收起', () => {
+    const { calls } = setup()
+    const row = (text: string): HTMLButtonElement =>
+      tree().getByText(text).closest('button') as HTMLButtonElement
+
+    fireEvent.dblClick(row('演示 MySQL'))
+    expect(calls.toggleConnection).toBe(1)
+    expect(row('演示 MySQL').getAttribute('aria-expanded')).toBe('false')
+    fireEvent.dblClick(row('演示 MySQL'))
+    expect(row('演示 MySQL').getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.dblClick(row('crm'))
+    expect(calls.toggleSchema).toBe(1)
+    expect(row('crm').getAttribute('aria-expanded')).toBe('false')
+    fireEvent.dblClick(row('crm'))
+    expect(row('crm').getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.dblClick(row('表'))
+    expect(calls.toggleFolder).toBe(1)
+    expect(row('表').getAttribute('aria-expanded')).toBe('false')
+    fireEvent.dblClick(row('表'))
+    expect(row('表').getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('双击表仍是打开数据表标签页，不展开也不折叠', () => {
+    const { calls } = setup()
+    const row = tree().getByText('customers').closest('button') as HTMLButtonElement
+
+    fireEvent.dblClick(tree().getByText('customers'))
+    expect(calls.openTable).toBe(1)
+    expect(calls.selectObject).toBe(1)
+    expect(calls.toggleKey).toBeUndefined()
+    expect(row.getAttribute('aria-expanded')).toBe('false')
   })
 })
