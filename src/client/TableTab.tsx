@@ -222,10 +222,16 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   // Typing in a column filter re-queries on a short delay so each keystroke does
   // not hit the server. Emptying the last filter re-queries at once, otherwise
   // the grid would keep showing the narrowed rows.
+  //
+  // `columns` is deliberately read through a ref: every successful query stores
+  // a fresh columns array, so depending on it here made the effect re-run after
+  // each load and schedule the next query forever (a filter would poll).
+  const columnsRef = useRef<ColumnInfo[]>([])
+  columnsRef.current = columns
   const previousActive = useRef(0)
   useEffect(() => {
     if (!filtersOpen || connection === null) return
-    const active = columns.filter((column) => filters[column.name] !== undefined).length
+    const active = columnsRef.current.filter((column) => filters[column.name] !== undefined).length
     const hadFilters = previousActive.current > 0
     previousActive.current = active
     if (active === 0) {
@@ -234,7 +240,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     }
     const timer = setTimeout(() => applyRef.current({ page: 0 }), 400)
     return () => clearTimeout(timer)
-  }, [filters, filtersOpen, connection, columns])
+  }, [filters, filtersOpen, connection])
 
   const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
