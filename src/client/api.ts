@@ -15,6 +15,7 @@ import type {
   ObjectListResult,
   QueryResult,
   RedisCommandResult,
+  RedisDatabasesResult,
   RedisScanResult,
   RedisValue,
   SchemaListResult,
@@ -102,9 +103,11 @@ export const api = {
   }) => post<QueryResult>('/query', options),
   cancel: (stmtKey: string) => post<{ cancelled: boolean }>('/query/cancel', { stmtKey }),
 
-  redisScan: (options: { id: string; cursor?: string; pattern?: string; type?: string; count?: number }) =>
+  redisScan: (options: { id: string; db?: number; cursor?: string; pattern?: string; type?: string; count?: number }) =>
     post<RedisScanResult>('/redis/scan', options),
-  redisKey: (id: string, key: string) => post<RedisValue>('/redis/key', { id, key }),
+  redisKey: (id: string, key: string, db?: number) =>
+    post<RedisValue>('/redis/key', { id, key, ...(db === undefined ? {} : { db }) }),
+  redisDatabases: (id: string) => post<RedisDatabasesResult>('/redis/databases', { id }),
   redisCommand: (id: string, command: string, allowWrite: boolean) =>
     post<RedisCommandResult>('/redis/command', { id, command, allowWrite }),
 

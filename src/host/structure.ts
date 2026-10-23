@@ -5,11 +5,17 @@ import type {
   ColumnDetail,
   IndexInfo,
   ObjectKind,
+  RedisDbCache,
+  RedisKeyInfo,
+  RedisStructureCache,
   SchemaInfo,
   SchemaObject,
   StructureSnapshot,
   TableDescription,
 } from '../shared/types.js'
+
+/** Keep the offline key cache bounded; a huge keyspace stops caching past this. */
+const MAX_CACHED_KEYS = 2000
 
 function normalizeKind(value: unknown): ObjectKind {
   switch (value) {
@@ -120,6 +126,47 @@ function normalizeDescriptions(value: unknown): Record<string, TableDescription>
 }
 
 /**
+ * Redis key metadata cached offline. Values are data, not structure, so only
+ * the key list and its scan cursor survive a restart.
+ */
+function normalizeRedisKeys(value: unknown): RedisKeyInfo[] {
+  if (!Array.isArray(value)) return []
+  const out: RedisKeyInfo[] = []
+  for (const entry of value) {
+    if (entry === null || typeof entry !== 'object') continue
+    const record = entry as Record<string, unknown>
+    const key = typeof record.key === 'string' ? record.key : ''
+    if (key === '') continue
+    out.push({
+      key,
+      type: typeof record.type === 'string' ? record.type : 'string',
+      ttl: typeof record.ttl === 'number' ? record.ttl : -1,
+      size: typeof record.size === 'number' ? record.size : undefined,
+    })
+  }
+  return out
+}
+
+function normalizeRedis(value: unknown): RedisStructureCache | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  const databases = typeof record.databases === 'number' && record.databases > 0 ? Math.trunc(record.databases) : 16
+  const dbs: Record<string, RedisDbCache> = {}
+  if (record.dbs !== null && typeof record.dbs === 'object' && !Array.isArray(record.dbs)) {
+    for (const [db, entry] of Object.entries(record.dbs as Record<string, unknown>)) {
+      if (entry === null || typeof entry !== 'object') continue
+      const entryRecord = entry as Record<string, unknown>
+      dbs[db] = {
+        keys: normalizeRedisKeys(entryRecord.keys),
+        cursor: typeof entryRecord.cursor === 'string' ? entryRecord.cursor : '0',
+        fetchedAt: typeof entryRecord.fetchedAt === 'string' ? entryRecord.fetchedAt : new Date(0).toISOString(),
+      }
+    }
+  }
+  return { databases, dbs }
+}
+
+/**
  * Persisted "last known structure" per connection. Survives restarts so the data
  * source tree stays browsable while disconnected, and is replaced on the next
  * successful read (IDEA keeps the same contract).
@@ -146,11 +193,13 @@ export class StructureStore {
       for (const [connectionId, value] of Object.entries(raw)) {
         if (value === null || typeof value !== 'object') continue
         const record = value as Record<string, unknown>
+        const redis = normalizeRedis(record.redis)
         next[connectionId] = {
           fetchedAt: typeof record.fetchedAt === 'string' ? record.fetchedAt : new Date(0).toISOString(),
           schemas: normalizeSchemas(record.schemas),
           objects: normalizeObjects(record.objects),
           descriptions: normalizeDescriptions(record.descriptions),
+          ...(redis === undefined ? {} : { redis }),
         }
       }
       this.data = next
@@ -180,6 +229,7 @@ export class StructureStore {
       schemas,
       objects,
       descriptions: previous?.descriptions ?? {},
+      ...(previous?.redis === undefined ? {} : { redis: previous.redis }),
     }
     this.schedule()
   }
@@ -214,6 +264,50 @@ export class StructureStore {
   getDescription(connectionId: string, schema: string, table: string): TableDescription | undefined {
     const description = this.data[connectionId]?.descriptions[`${schema}.${table}`]
     return description === undefined ? undefined : (JSON.parse(JSON.stringify(description)) as TableDescription)
+  }
+
+  private redisEntry(connectionId: string): CachedStructure {
+    const entry =
+      this.data[connectionId] ?? {
+        fetchedAt: new Date().toISOString(),
+        schemas: [],
+        objects: {},
+        descriptions: {},
+      }
+    if (entry.redis === undefined) entry.redis = { databases: 16, dbs: {} }
+    return entry
+  }
+
+  /** Cache the server's database count so the picker works offline too. */
+  putRedisDatabases(connectionId: string, databases: number): void {
+    if (!Number.isFinite(databases) || databases <= 0) return
+    const entry = this.redisEntry(connectionId)
+    entry.redis!.databases = Math.trunc(databases)
+    entry.fetchedAt = new Date().toISOString()
+    this.data[connectionId] = entry
+    this.schedule()
+  }
+
+  /**
+   * Cache one page of a Redis database's keys. `replace` starts a fresh scan
+   * (first page) and drops keys the server no longer has; later pages merge.
+   */
+  putRedisKeys(connectionId: string, db: number, keys: RedisKeyInfo[], cursor: string, replace: boolean): void {
+    const entry = this.redisEntry(connectionId)
+    const id = String(db)
+    const previous = replace ? [] : (entry.redis!.dbs[id]?.keys ?? [])
+    const merged = new Map(previous.map((key) => [key.key, key]))
+    for (const key of keys) merged.set(key.key, key)
+    const cached = [...merged.values()].slice(0, MAX_CACHED_KEYS)
+    entry.redis!.dbs[id] = {
+      keys: cached,
+      // A capped cache stops paging: there is no room to remember more keys.
+      cursor: cached.length >= MAX_CACHED_KEYS ? '0' : cursor,
+      fetchedAt: new Date().toISOString(),
+    }
+    entry.fetchedAt = new Date().toISOString()
+    this.data[connectionId] = entry
+    this.schedule()
   }
 
   clear(connectionId: string): void {

@@ -10,6 +10,7 @@ import type {
   JavaStatus,
   QueryResult,
   RedisCommandResult,
+  RedisDatabasesResult,
   RedisScanResult,
   RedisValue,
   DescribeResult,
@@ -336,21 +337,52 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const id = typeof data.id === 'string' ? data.id : ''
       const connection = sqlConnection(deps, id)
       if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
+      const db = typeof data.db === 'number' && Number.isFinite(data.db) ? Math.trunc(data.db) : connection.redisDb
+      const cursor = typeof data.cursor === 'string' ? data.cursor : '0'
       const result: RedisScanResult = await deps.redis.scan(
         id,
-        typeof data.cursor === 'string' ? data.cursor : '0',
+        db,
+        cursor,
         typeof data.pattern === 'string' ? data.pattern : '*',
         typeof data.type === 'string' ? data.type : undefined,
         typeof data.count === 'number' ? data.count : deps.config.settings().redisScanCount,
       )
+      // Offline browsing mirrors the SQL structure cache: the key list is kept,
+      // replacing it whenever a new scan starts from cursor 0.
+      deps.structure.putRedisDatabases(id, deps.structure.get(id)?.redis?.databases ?? 16)
+      deps.structure.putRedisKeys(id, db, result.keys, result.cursor, cursor === '0')
       sendJson(response, 200, { ok: true, data: result })
+      return
+    }
+    case '/redis/databases': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const connection = sqlConnection(deps, id)
+      if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
+      try {
+        const databases = await deps.redis.databases(id)
+        deps.structure.putRedisDatabases(id, databases)
+        sendJson(response, 200, {
+          ok: true,
+          data: { databases, redisDb: connection.redisDb, cached: false } satisfies RedisDatabasesResult,
+        })
+      } catch (error) {
+        const cached = deps.structure.get(id)?.redis
+        if (cached === undefined) throw error
+        sendJson(response, 200, {
+          ok: true,
+          data: { databases: cached.databases, redisDb: connection.redisDb, cached: true, error: errorText(error) } satisfies RedisDatabasesResult,
+        })
+      }
       return
     }
     case '/redis/key': {
       const id = typeof data.id === 'string' ? data.id : ''
+      const connection = sqlConnection(deps, id)
+      if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
+      const db = typeof data.db === 'number' && Number.isFinite(data.db) ? Math.trunc(data.db) : connection.redisDb
       const key = typeof data.key === 'string' ? data.key : ''
       if (key === '') throw new DbError('invalid', '必须提供 key')
-      const result: RedisValue = await deps.redis.inspect(id, key)
+      const result: RedisValue = await deps.redis.inspect(id, db, key)
       sendJson(response, 200, { ok: true, data: result })
       return
     }

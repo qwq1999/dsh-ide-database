@@ -56,12 +56,22 @@ export interface DataSources {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
-  /** Keys scanned for a Redis data source, in scan order. */
-  redisKeys: Record<string, RedisKeyInfo[]>
-  /** Scan cursor still pending per Redis data source; `0` or missing means done. */
-  redisCursor: Record<string, string>
-  loadingRedisKeys: Record<string, boolean>
+  /** Keys scanned per connection and logical database. */
+  redisKeys: Record<string, Record<string, RedisKeyInfo[]>>
+  /** Scan cursor still pending per connection and database; `0`/missing means done. */
+  redisCursor: Record<string, Record<string, string>>
+  loadingRedisKeys: Record<string, Record<string, boolean>>
+  /** Number of logical databases reported by the server. */
+  redisDatabases: Record<string, number>
+  /** Logical databases currently displayed in the tree. */
+  redisDbs: Record<string, number[]>
+  /**
+   * Schemas hidden from the tree per connection. `null` means "all", a list is
+   * the explicit selection persisted in localStorage.
+   */
+  visibleSchemas: Record<string, string[] | null>
   redisDetail: RedisValue | null
+  redisDetailDb: number
   redisDetailLoading: boolean
   refresh: () => Promise<void>
   connect: (connectionId: string) => Promise<void>
@@ -72,14 +82,57 @@ export interface DataSources {
   toggleFolder: (connectionId: string, schema: string, folder: string) => void
   toggleSchema: (connectionId: string, schema: string) => Promise<void>
   loadObjects: (connectionId: string, schema: string) => Promise<void>
-  loadRedisKeys: (connectionId: string, more?: boolean) => Promise<void>
+  loadRedisDatabases: (connectionId: string) => Promise<void>
+  loadRedisKeys: (connectionId: string, db: number, more?: boolean) => Promise<void>
+  toggleRedisDb: (connectionId: string, db: number) => void
   toggleKey: (key: string) => void
   selectObject: (connectionId: string, schema: string, object: SchemaObject) => Promise<void>
   selectSchema: (connectionId: string, schema: string) => void
   selectFolder: (connectionId: string, schema: string, folder: string) => void
-  selectRedisKey: (connectionId: string, key: string) => Promise<void>
+  selectRedisDb: (connectionId: string, db: number) => void
+  selectRedisKey: (connectionId: string, db: number, key: string) => Promise<void>
+  toggleSchemaVisible: (connectionId: string, schema: string) => void
+  toggleAllSchemasVisible: (connectionId: string, all: boolean) => void
+  toggleRedisDbVisible: (connectionId: string, db: number) => void
+  toggleAllRedisDbsVisible: (connectionId: string, all: boolean) => void
   updateDrivers: (drivers: DriverStatus[]) => void
   applySettings: (settings: DbSettings, env: EnvStatus) => void
+}
+
+const VISIBLE_SCHEMAS_KEY = 'dsh-ide-database:visible-schemas:'
+const VISIBLE_REDIS_DBS_KEY = 'dsh-ide-database:visible-redis-dbs:'
+
+function readStoredList(key: string): string[] | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(key)
+    if (raw === null) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter((item): item is string => typeof item === 'string')
+  } catch {
+    return null
+  }
+}
+
+function writeStoredList(key: string, value: string[] | null): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Private mode / quota errors must not break the tree.
+  }
+}
+
+function readStoredDbs(key: string): number[] | null {
+  const stored = readStoredList(key)
+  if (stored === null) return null
+  return stored.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 0)
+}
+
+function writeStoredDbs(key: string, value: number[] | null): void {
+  writeStoredList(key, value === null ? null : value.map(String))
 }
 
 export function useDataSources(notify: Notify): DataSources {
@@ -101,10 +154,14 @@ export function useDataSources(notify: Notify): DataSources {
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
 
-  const [redisKeys, setRedisKeys] = useState<Record<string, RedisKeyInfo[]>>({})
-  const [redisCursor, setRedisCursor] = useState<Record<string, string>>({})
-  const [loadingRedisKeys, setLoadingRedisKeys] = useState<Record<string, boolean>>({})
+  const [redisKeys, setRedisKeys] = useState<Record<string, Record<string, RedisKeyInfo[]>>>({})
+  const [redisCursor, setRedisCursor] = useState<Record<string, Record<string, string>>>({})
+  const [loadingRedisKeys, setLoadingRedisKeys] = useState<Record<string, Record<string, boolean>>>({})
+  const [redisDatabases, setRedisDatabases] = useState<Record<string, number>>({})
+  const [redisDbs, setRedisDbs] = useState<Record<string, number[]>>({})
+  const [visibleSchemas, setVisibleSchemas] = useState<Record<string, string[] | null>>({})
   const [redisDetail, setRedisDetail] = useState<RedisValue | null>(null)
+  const [redisDetailDb, setRedisDetailDb] = useState(-1)
   const [redisDetailLoading, setRedisDetailLoading] = useState(false)
   const redisRequest = useRef(0)
   const selectedRef = useRef(selectedId)
@@ -129,6 +186,9 @@ export function useDataSources(notify: Notify): DataSources {
     const nextObjects: Record<string, SchemaObject[]> = {}
     const nextCached: Record<string, string> = {}
     const nextDescriptions: Record<string, TableDescription> = {}
+    const nextRedisKeys: Record<string, Record<string, RedisKeyInfo[]>> = {}
+    const nextRedisCursor: Record<string, Record<string, string>> = {}
+    const nextRedisDatabases: Record<string, number> = {}
     for (const [connectionId, entry] of Object.entries(structures)) {
       if (entry.schemas.length > 0) nextSchemas[connectionId] = entry.schemas
       for (const [schema, list] of Object.entries(entry.objects)) {
@@ -137,12 +197,36 @@ export function useDataSources(notify: Notify): DataSources {
       for (const [key, description] of Object.entries(entry.descriptions ?? {})) {
         nextDescriptions[`${connectionId}|${key}`] = description
       }
+      if (entry.redis !== undefined) {
+        nextRedisDatabases[connectionId] = entry.redis.databases
+        const keys: Record<string, RedisKeyInfo[]> = {}
+        const cursors: Record<string, string> = {}
+        for (const [db, cache] of Object.entries(entry.redis.dbs)) {
+          keys[db] = cache.keys
+          cursors[db] = cache.cursor
+        }
+        nextRedisKeys[connectionId] = keys
+        nextRedisCursor[connectionId] = cursors
+        const cachedDbs = Object.keys(keys)
+          .map(Number)
+          .filter((db) => Number.isInteger(db) && db >= 0)
+          .sort((left, right) => left - right)
+        setRedisDbs((previous) => {
+          if (previous[connectionId] !== undefined) return previous
+          const stored = readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`)
+          const chosen = stored ?? (cachedDbs.length > 0 ? cachedDbs : [0])
+          return { ...previous, [connectionId]: chosen }
+        })
+      }
       nextCached[connectionId] = entry.fetchedAt
     }
     setSchemas((previous) => ({ ...nextSchemas, ...previous }))
     setObjects((previous) => ({ ...nextObjects, ...previous }))
     setDescriptions((previous) => ({ ...nextDescriptions, ...previous }))
     setCachedAt((previous) => ({ ...nextCached, ...previous }))
+    setRedisDatabases((previous) => ({ ...nextRedisDatabases, ...previous }))
+    setRedisKeys((previous) => ({ ...nextRedisKeys, ...previous }))
+    setRedisCursor((previous) => ({ ...nextRedisCursor, ...previous }))
   }, [])
 
   // Cached structure lets the tree render before (or without) a connection.
@@ -179,6 +263,35 @@ export function useDataSources(notify: Notify): DataSources {
   const connections = snapshot?.connections ?? []
   const selected = connections.find((connection) => connection.id === selectedId)
   const server = selected ? servers[selected.id] : undefined
+
+  // Restore which logical databases each Redis connection shows. The persisted
+  // choice wins; otherwise fall back to the databases found in the cache, then
+  // to the connection's own default database.
+  useEffect(() => {
+    if (!snapshot) return
+    const missing: Record<string, number[]> = {}
+    for (const connection of snapshot.connections) {
+      if (connection.dialect !== 'redis' || redisDbs[connection.id] !== undefined) continue
+      const stored = readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connection.id}`)
+      const cached = Object.keys(redisKeys[connection.id] ?? {})
+        .map(Number)
+        .filter((db) => Number.isInteger(db) && db >= 0)
+        .sort((left, right) => left - right)
+      missing[connection.id] = stored ?? (cached.length > 0 ? cached : [connection.redisDb])
+    }
+    if (Object.keys(missing).length > 0) setRedisDbs((previous) => ({ ...missing, ...previous }))
+  }, [snapshot, redisDbs, redisKeys])
+
+  // Same for the SQL schema selection.
+  useEffect(() => {
+    if (!snapshot) return
+    const missing: Record<string, string[] | null> = {}
+    for (const connection of snapshot.connections) {
+      if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
+      missing[connection.id] = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`)
+    }
+    if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
+  }, [snapshot, visibleSchemas])
 
   /**
    * Selecting another data source drops the detail of the previous one. This
@@ -236,29 +349,57 @@ export function useDataSources(notify: Notify): DataSources {
     [notify],
   )
 
+  /** Read the server's logical-database count; the cached value is enough offline. */
+  const loadRedisDatabases = useCallback(async (connectionId: string): Promise<void> => {
+    try {
+      const result = await api.redisDatabases(connectionId)
+      setRedisDatabases((previous) => ({ ...previous, [connectionId]: result.databases }))
+      setRedisDbs((previous) => {
+        const current = previous[connectionId]
+        if (current === undefined) return previous
+        const pruned = current.filter((db) => db < result.databases)
+        if (pruned.length === current.length) return previous
+        const next = pruned.length > 0 ? pruned : [0]
+        writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, next)
+        return { ...previous, [connectionId]: next }
+      })
+    } catch {
+      // Offline: the cached count (or the 16 default) still renders a picker.
+    }
+  }, [])
+
   /**
-   * Scan one page of a Redis data source's keys. The connection is a single
-   * Redis database (its configured `redisDb`), so the cursor is all the tree
-   * needs to page through the keyspace.
+   * Scan one page of a Redis logical database. Each database keeps its own
+   * cursor and key list, mirroring how `SCAN` works per `SELECT`-ed db.
    */
   const loadRedisKeys = useCallback(
-    async (connectionId: string, more = false): Promise<void> => {
-      if (loadingRedisKeys[connectionId] === true) return
-      const cursor = more ? redisCursor[connectionId] : '0'
-      if (more && (cursor === undefined || cursor === '0')) return
-      setLoadingRedisKeys((previous) => ({ ...previous, [connectionId]: true }))
+    async (connectionId: string, db: number, more = false): Promise<void> => {
+      if (loadingRedisKeys[connectionId]?.[db] === true) return
+      const cursor = more ? (redisCursor[connectionId]?.[db] ?? '0') : '0'
+      if (more && cursor === '0') return
+      setLoadingRedisKeys((previous) => ({
+        ...previous,
+        [connectionId]: { ...(previous[connectionId] ?? {}), [db]: true },
+      }))
       try {
-        const result = await api.redisScan({ id: connectionId, cursor })
+        const result = await api.redisScan({ id: connectionId, db, cursor })
         setRedisKeys((previous) => {
-          const merged = new Map((more ? previous[connectionId] ?? [] : []).map((key) => [key.key, key]))
+          const byDb = previous[connectionId] ?? {}
+          const merged = new Map((more ? (byDb[db] ?? []) : []).map((key) => [key.key, key]))
           for (const key of result.keys) merged.set(key.key, key)
-          return { ...previous, [connectionId]: [...merged.values()] }
+          return { ...previous, [connectionId]: { ...byDb, [db]: [...merged.values()] } }
         })
-        setRedisCursor((previous) => ({ ...previous, [connectionId]: result.cursor }))
+        setRedisCursor((previous) => ({
+          ...previous,
+          [connectionId]: { ...(previous[connectionId] ?? {}), [db]: result.cursor },
+        }))
       } catch (error) {
         notify(`扫描 Redis 键失败：${errorText(error)}`, 'error')
       } finally {
-        setLoadingRedisKeys((previous) => ({ ...previous, [connectionId]: false }))
+        setLoadingRedisKeys((previous) => ({
+          ...previous,
+          [connectionId]: { ...(previous[connectionId] ?? {}), [db]: false },
+        }))
       }
     },
     [loadingRedisKeys, redisCursor, notify],
@@ -273,15 +414,22 @@ export function useDataSources(notify: Notify): DataSources {
         const connected = await api.connect(connectionId)
         setServers((previous) => ({ ...previous, [connectionId]: connected }))
         notify('连接成功', 'success')
-        if (connection.dialect === 'redis') await loadRedisKeys(connectionId)
-        else await loadSchemas(connectionId)
+        if (connection.dialect === 'redis') {
+          await loadRedisDatabases(connectionId)
+          const shown = redisDbs[connectionId]
+          const dbs = shown === undefined || shown.length === 0 ? [connection.redisDb] : shown
+          if (shown === undefined) setRedisDbs((previous) => ({ ...previous, [connectionId]: dbs }))
+          for (const db of dbs) await loadRedisKeys(connectionId, db)
+        } else {
+          await loadSchemas(connectionId)
+        }
       } catch (error) {
         notify(`连接失败：${errorText(error)}`, 'error')
       } finally {
         setConnectingId('')
       }
     },
-    [connections, loadSchemas, loadRedisKeys, notify],
+    [connections, loadSchemas, loadRedisDatabases, loadRedisKeys, redisDbs, notify],
   )
 
   const disconnect = useCallback(
@@ -295,17 +443,9 @@ export function useDataSources(notify: Notify): DataSources {
         })
         setDetail(null)
         setRedisDetail(null)
+        setRedisDetailDb(-1)
         setSelectedKey('')
-        setRedisKeys((previous) => {
-          const next = { ...previous }
-          delete next[connectionId]
-          return next
-        })
-        setRedisCursor((previous) => {
-          const next = { ...previous }
-          delete next[connectionId]
-          return next
-        })
+        // The scanned keys stay as an offline cache; only live state is dropped.
         notify('已断开', 'info')
       } catch (error) {
         notify(`断开失败：${errorText(error)}`, 'error')
@@ -375,6 +515,7 @@ export function useDataSources(notify: Notify): DataSources {
       const key = `${connectionId}|${schema}.${object.name}`
       setSelectedId(connectionId)
       setRedisDetail(null)
+      setRedisDetailDb(-1)
       setSelectedKey(key)
       // Routines, sequences and triggers have no column structure of their own.
       if (object.kind !== 'table' && object.kind !== 'view') {
@@ -423,6 +564,7 @@ export function useDataSources(notify: Notify): DataSources {
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|schema:${schema}`)
   }, [])
 
@@ -430,16 +572,39 @@ export function useDataSources(notify: Notify): DataSources {
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|${schema}#${folder}`)
   }, [])
 
+  const selectRedisDb = useCallback((connectionId: string, db: number): void => {
+    setSelectedId(connectionId)
+    setDetail(null)
+    setRedisDetail(null)
+    setRedisDetailDb(-1)
+    setSelectedKey(`${connectionId}|redisdb:${db}`)
+  }, [])
+
+  const toggleRedisDb = useCallback(
+    (connectionId: string, db: number): void => {
+      const key = `${connectionId}:redis:db${db}`
+      const open = expanded[key] !== false
+      setExpanded((previous) => ({ ...previous, [key]: !open }))
+      if (open) return
+      if (servers[connectionId] !== undefined && redisKeys[connectionId]?.[db] === undefined) {
+        void loadRedisKeys(connectionId, db)
+      }
+    },
+    [expanded, servers, redisKeys, loadRedisKeys],
+  )
+
   /** Read one key's value for the tree's detail panel. */
   const selectRedisKey = useCallback(
-    async (connectionId: string, key: string): Promise<void> => {
+    async (connectionId: string, db: number, key: string): Promise<void> => {
       setSelectedId(connectionId)
       setDetail(null)
       setRedisDetail(null)
-      setSelectedKey(`${connectionId}|redis:${key}`)
+      setRedisDetailDb(db)
+      setSelectedKey(`${connectionId}|redis:${db}:${key}`)
       if (!servers[connectionId]) {
         setRedisDetailLoading(false)
         notify('数据源未连接，连接后可查看键值', 'info')
@@ -449,7 +614,7 @@ export function useDataSources(notify: Notify): DataSources {
       redisRequest.current = request
       setRedisDetailLoading(true)
       try {
-        const value = await api.redisKey(connectionId, key)
+        const value = await api.redisKey(connectionId, key, db)
         if (redisRequest.current === request) setRedisDetail(value)
       } catch (error) {
         if (redisRequest.current === request) {
@@ -463,9 +628,63 @@ export function useDataSources(notify: Notify): DataSources {
     [servers, notify],
   )
 
+  /**
+   * The row-end picker writes the visible list to localStorage so the choice
+   * survives restarts, like DataGrip's database selector.
+   */
+  const toggleSchemaVisible = useCallback(
+    (connectionId: string, schema: string): void => {
+      const all = (schemas[connectionId] ?? []).map((item) => item.name)
+      setVisibleSchemas((previous) => {
+        const current = previous[connectionId] ?? all
+        const list = current.includes(schema) ? current.filter((name) => name !== schema) : [...current, schema]
+        const normalized = all.length > 0 && list.length === all.length ? null : list
+        writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, normalized)
+        return { ...previous, [connectionId]: normalized }
+      })
+    },
+    [schemas],
+  )
+
+  const toggleAllSchemasVisible = useCallback(
+    (connectionId: string, all: boolean): void => {
+      const value = all ? null : []
+      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, value)
+      setVisibleSchemas((previous) => ({ ...previous, [connectionId]: value }))
+    },
+    [],
+  )
+
+  const toggleRedisDbVisible = useCallback(
+    (connectionId: string, db: number): void => {
+      const fallback = connections.find((connection) => connection.id === connectionId)?.redisDb ?? 0
+      const current = redisDbs[connectionId] ?? [fallback]
+      const list = current.includes(db) ? current.filter((item) => item !== db) : [...current, db].sort((left, right) => left - right)
+      writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, list)
+      setRedisDbs((previous) => ({ ...previous, [connectionId]: list }))
+      // Adding a database loads its first page right away, like DataGrip does
+      // when a schema is switched on.
+      if (!current.includes(db) && servers[connectionId] !== undefined && redisKeys[connectionId]?.[db] === undefined) {
+        void loadRedisKeys(connectionId, db)
+      }
+    },
+    [connections, redisDbs, servers, redisKeys, loadRedisKeys],
+  )
+
+  const toggleAllRedisDbsVisible = useCallback(
+    (connectionId: string, all: boolean): void => {
+      const count = redisDatabases[connectionId] ?? 16
+      const list = all ? Array.from({ length: count }, (_, index) => index) : []
+      writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, list)
+      setRedisDbs((previous) => ({ ...previous, [connectionId]: list }))
+    },
+    [redisDatabases],
+  )
+
   const resetDetail = useCallback((): void => {
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailDb(-1)
     setSelectedKey('')
   }, [])
 
@@ -478,8 +697,14 @@ export function useDataSources(notify: Notify): DataSources {
       return
     }
     if (selected.dialect === 'redis') {
-      if (servers[selected.id]) await loadRedisKeys(selected.id)
-      else await connect(selected.id)
+      if (servers[selected.id]) {
+        await loadRedisDatabases(selected.id)
+        const shown = redisDbs[selected.id] ?? [selected.redisDb]
+        for (const db of shown) await loadRedisKeys(selected.id, db)
+        notify('已刷新数据源', 'success')
+      } else {
+        await connect(selected.id)
+      }
       await refresh()
       return
     }
@@ -491,7 +716,7 @@ export function useDataSources(notify: Notify): DataSources {
     await loadSchemas(selected.id)
     await refresh()
     notify('已刷新数据源', 'success')
-  }, [selected, servers, refresh, connect, loadSchemas, loadRedisKeys, notify])
+  }, [selected, servers, redisDbs, refresh, connect, loadSchemas, loadRedisDatabases, loadRedisKeys, notify])
 
   const updateDrivers = useCallback((drivers: DriverStatus[]): void => {
     setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))
@@ -525,7 +750,11 @@ export function useDataSources(notify: Notify): DataSources {
     redisKeys,
     redisCursor,
     loadingRedisKeys,
+    redisDatabases,
+    redisDbs,
+    visibleSchemas,
     redisDetail,
+    redisDetailDb,
     redisDetailLoading,
     refresh,
     connect,
@@ -536,12 +765,19 @@ export function useDataSources(notify: Notify): DataSources {
     toggleFolder,
     toggleSchema,
     loadObjects,
+    loadRedisDatabases,
     loadRedisKeys,
+    toggleRedisDb,
     toggleKey,
     selectObject,
     selectSchema,
     selectFolder,
+    selectRedisDb,
     selectRedisKey,
+    toggleSchemaVisible,
+    toggleAllSchemasVisible,
+    toggleRedisDbVisible,
+    toggleAllRedisDbsVisible,
     updateDrivers,
     applySettings,
   }

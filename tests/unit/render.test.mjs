@@ -59,7 +59,11 @@ function render(props = {}) {
       redisKeys: {},
       redisCursor: {},
       loadingRedisKeys: {},
+      redisDatabases: {},
+      redisDbs: {},
+      visibleSchemas: {},
       redisDetail: null,
+      redisDetailDb: -1,
       redisDetailLoading: false,
       onAddConnection: noop,
       onSelectConnection: noop,
@@ -71,8 +75,14 @@ function render(props = {}) {
       onSelectObject: noop,
       onSelectSchema: noop,
       onSelectFolder: noop,
+      onSelectRedisDb: noop,
       onSelectRedisKey: noop,
+      onToggleRedisDb: noop,
       onLoadRedisKeys: noop,
+      onToggleSchemaVisible: noop,
+      onToggleAllSchemasVisible: noop,
+      onToggleRedisDbVisible: noop,
+      onToggleAllRedisDbsVisible: noop,
       onShowDdl: noop,
       onOpenTable: noop,
       ...props,
@@ -144,26 +154,31 @@ describe('DataView 渲染', () => {
     expect(text).not.toContain('离线缓存')
   })
 
-  it('未连接的 Redis 展开后给出连接入口，而不是「没有 schema」', () => {
+  it('未连接的 Redis 数据源在行尾给出连接按钮', () => {
     const text = strip(render({ connections: [redisConnection()], expanded: { r1: true } }))
     expect(text).toContain('演示 Redis')
+    expect(text).toContain('连接')
     expect(text).toContain('连接到 127.0.0.1:6380')
     expect(text).not.toContain('没有 schema')
   })
 
-  it('已连接的 Redis 以 db0 + 键行展示键空间', () => {
+  it('已连接的 Redis 以可展开的 db0 + 键行展示键空间', () => {
     const text = strip(
       render({
         connections: [redisConnection()],
         servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
         expanded: { r1: true },
+        redisDatabases: { r1: 16 },
+        redisDbs: { r1: [0] },
         redisKeys: {
-          r1: [
-            { key: 'shop:customer:42', type: 'hash', ttl: -1, size: 2 },
-            { key: 'shop:orders:queue', type: 'list', ttl: 3600, size: 3 },
-          ],
+          r1: {
+            '0': [
+              { key: 'shop:customer:42', type: 'hash', ttl: -1, size: 2 },
+              { key: 'shop:orders:queue', type: 'list', ttl: 3600, size: 3 },
+            ],
+          },
         },
-        redisCursor: { r1: '0' },
+        redisCursor: { r1: { '0': '0' } },
       }),
     )
     expect(text).toContain('db0')
@@ -174,14 +189,55 @@ describe('DataView 渲染', () => {
     expect(text).not.toContain('没有 schema')
   })
 
+  it('多个逻辑库各自展示键与游标', () => {
+    const text = strip(
+      render({
+        connections: [redisConnection()],
+        servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
+        expanded: { r1: true },
+        redisDatabases: { r1: 16 },
+        redisDbs: { r1: [0, 6] },
+        redisKeys: {
+          r1: {
+            '0': [{ key: 'demo:zero', type: 'string', ttl: -1 }],
+            '6': [{ key: 'demo:six', type: 'hash', ttl: -1 }],
+          },
+        },
+        redisCursor: { r1: { '0': '0', '6': '21' } },
+      }),
+    )
+    expect(text).toContain('db0')
+    expect(text).toContain('db6')
+    expect(text).toContain('demo:zero')
+    expect(text).toContain('demo:six')
+    expect(text).toContain('加载更多键')
+  })
+
+  it('收起的 db 节点只显示库行，不展开键', () => {
+    const text = strip(
+      render({
+        connections: [redisConnection()],
+        servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
+        expanded: { r1: true, 'r1:redis:db0': false },
+        redisDatabases: { r1: 16 },
+        redisDbs: { r1: [0] },
+        redisKeys: { r1: { '0': [{ key: 'hidden:key', type: 'string', ttl: -1 }] } },
+        redisCursor: { r1: { '0': '0' } },
+      }),
+    )
+    expect(text).toContain('db0')
+    expect(text).not.toContain('hidden:key')
+  })
+
   it('扫描到更多键时显示「加载更多键」', () => {
     const text = strip(
       render({
         connections: [redisConnection()],
         servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
         expanded: { r1: true },
-        redisKeys: { r1: [{ key: 'a', type: 'string', ttl: -1 }] },
-        redisCursor: { r1: '17' },
+        redisDbs: { r1: [0] },
+        redisKeys: { r1: { '0': [{ key: 'a', type: 'string', ttl: -1 }] } },
+        redisCursor: { r1: { '0': '17' } },
       }),
     )
     expect(text).toContain('加载更多键')
@@ -193,11 +249,29 @@ describe('DataView 渲染', () => {
         connections: [redisConnection()],
         servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
         expanded: { r1: true },
-        redisKeys: { r1: [] },
-        redisCursor: { r1: '0' },
+        redisDbs: { r1: [0] },
+        redisKeys: { r1: { '0': [] } },
+        redisCursor: { r1: { '0': '0' } },
       }),
     )
     expect(text).toContain('没有键')
+  })
+
+  it('已缓存的 Redis 键空间在离线时仍可浏览', () => {
+    const text = strip(
+      render({
+        connections: [redisConnection()],
+        cachedAt: { r1: new Date().toISOString() },
+        expanded: { r1: true },
+        redisDatabases: { r1: 16 },
+        redisDbs: { r1: [0] },
+        redisKeys: { r1: { '0': [{ key: 'cached:key', type: 'string', ttl: -1 }] } },
+        redisCursor: { r1: { '0': '0' } },
+      }),
+    )
+    expect(text).toContain('缓存')
+    expect(text).toContain('cached:key')
+    expect(text).not.toContain('连接到 127.0.0.1:6380')
   })
 
   it('选中的 Redis 键在下方展开值和类型', () => {
@@ -206,9 +280,11 @@ describe('DataView 渲染', () => {
         connections: [redisConnection()],
         servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
         expanded: { r1: true },
-        redisKeys: { r1: [{ key: 'shop:customer:42', type: 'hash', ttl: -1, size: 2 }] },
-        redisCursor: { r1: '0' },
-        selectedKey: 'r1|redis:shop:customer:42',
+        redisDbs: { r1: [0] },
+        redisKeys: { r1: { '0': [{ key: 'shop:customer:42', type: 'hash', ttl: -1, size: 2 }] } },
+        redisCursor: { r1: { '0': '0' } },
+        selectedKey: 'r1|redis:0:shop:customer:42',
+        redisDetailDb: 0,
         redisDetail: {
           key: 'shop:customer:42',
           type: 'hash',

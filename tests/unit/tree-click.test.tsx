@@ -68,7 +68,11 @@ function Harness({ calls }: { calls: Calls }): JSX.Element {
     redisKeys: {},
     redisCursor: {},
     loadingRedisKeys: {},
+    redisDatabases: {},
+    redisDbs: {},
+    visibleSchemas: {},
     redisDetail: null,
+    redisDetailDb: -1,
     redisDetailLoading: false,
     onAddConnection: () => bump('add'),
     onSelectConnection: () => bump('selectConnection'),
@@ -106,8 +110,14 @@ function Harness({ calls }: { calls: Calls }): JSX.Element {
       setSelectedKey(`${connectionId}|${schema}#${folder}`)
       setDetail(null)
     },
+    onSelectRedisDb: () => bump('selectRedisDb'),
     onSelectRedisKey: () => bump('selectRedisKey'),
+    onToggleRedisDb: () => bump('toggleRedisDb'),
     onLoadRedisKeys: () => bump('loadRedisKeys'),
+    onToggleSchemaVisible: () => bump('toggleSchemaVisible'),
+    onToggleAllSchemasVisible: () => bump('toggleAllSchemasVisible'),
+    onToggleRedisDbVisible: () => bump('toggleRedisDbVisible'),
+    onToggleAllRedisDbsVisible: () => bump('toggleAllRedisDbsVisible'),
     onShowDdl: () => bump('showDdl'),
     onOpenTable: () => bump('openTable'),
   }

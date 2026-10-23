@@ -204,6 +204,89 @@ export const CSS = `
   font-size: 11px;
 }
 .dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
+
+/* Row-end affordances: connect text and the database/schema visibility picker. */
+.dshdb-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-xs);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.dshdb-row:hover .dshdb-row-action,
+.dshdb-row-action:focus-visible { opacity: 1; }
+.dshdb-row-action:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}
+.dshdb-connect-action {
+  color: var(--dsw-alias-state-business-primary);
+  opacity: 1;
+  font-weight: 500;
+}
+.dshdb-picker-anchor { position: relative; display: inline-flex; flex: none; }
+.dshdb-picker {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: 280px;
+  padding: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  box-shadow: var(--dsw-alias-shadow-md);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  text-align: left;
+}
+.dshdb-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dshdb-picker-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-picker-item input {
+  margin: 0;
+  flex: none;
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+.dshdb-picker-all {
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-xs) var(--dsw-radius-xs) 0 0;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  font-weight: 500;
+}
+.dshdb-picker-all em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.dshdb-picker-scroll { overflow: auto; min-height: 0; }
+.dshdb-picker-hint {
+  margin-top: 2px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
 .dshdb-mark {
   background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 20%, transparent);
   color: inherit;

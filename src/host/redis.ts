@@ -16,6 +16,12 @@ import type { SecretStore } from './secrets.js'
 interface Session {
   client: Redis
   readOnly: boolean
+  db: number
+}
+
+/** One session per connection *and* logical database (`SELECT`). */
+function sessionKey(connId: string, db: number): string {
+  return `${connId}\u0000${db}`
 }
 
 function messageOf(error: unknown): string {
@@ -136,8 +142,11 @@ export class RedisManager {
   ) {}
 
   isConnected(connId: string): boolean {
-    const session = this.sessions.get(connId)
-    return session !== undefined && (session.client.status === 'ready' || session.client.status === 'connect')
+    const prefix = `${connId}\u0000`
+    for (const [key, session] of this.sessions) {
+      if (key.startsWith(prefix) && (session.client.status === 'ready' || session.client.status === 'connect')) return true
+    }
+    return false
   }
 
   private connection(connId: string): ConnectionConfig {
@@ -147,7 +156,7 @@ export class RedisManager {
     return conn
   }
 
-  private options(conn: ConnectionConfig): Record<string, unknown> {
+  private options(conn: ConnectionConfig, db: number): Record<string, unknown> {
     const settings = this.config.settings()
     const password = conn.secretName === undefined ? undefined : this.secrets.resolve(conn.secretName)?.value
     return {
@@ -155,7 +164,7 @@ export class RedisManager {
       port: conn.port,
       ...(conn.user === '' ? {} : { username: conn.user }),
       ...(password === undefined ? {} : { password }),
-      db: conn.redisDb,
+      db,
       connectTimeout: settings.connectTimeoutSec * 1000,
       commandTimeout: settings.queryTimeoutSec,
       lazyConnect: true,
@@ -169,8 +178,11 @@ export class RedisManager {
 
   async connect(connId: string): Promise<ServerInfo> {
     const conn = this.connection(connId)
-    if (this.sessions.has(connId)) return this.serverInfo(conn, this.sessions.get(connId)!.client)
-    const client = new Redis(this.options(conn) as never)
+    const db = conn.redisDb
+    const key = sessionKey(connId, db)
+    const existing = this.sessions.get(key)
+    if (existing !== undefined) return this.serverInfo(conn, existing.client)
+    const client = new Redis(this.options(conn, db) as never)
     try {
       await client.connect()
       await client.ping()
@@ -178,9 +190,34 @@ export class RedisManager {
       client.disconnect()
       throw new DbError('connect-failed', `无法连接 Redis ${conn.host}:${conn.port}：${messageOf(error)}`)
     }
-    this.sessions.set(connId, { client, readOnly: conn.readOnly })
+    this.sessions.set(key, { client, readOnly: conn.readOnly, db })
     this.config.touchConnection(connId)
     return this.serverInfo(conn, client)
+  }
+
+  /**
+   * Another logical database is reached with its own pooled client, opened on
+   * demand once the connection itself is live. Keeping one session per db avoids
+   * `SELECT` racing between a scan and a key inspection.
+   */
+  private async ensureSession(connId: string, db: number): Promise<Session> {
+    const conn = this.connection(connId)
+    const key = sessionKey(connId, db)
+    const existing = this.sessions.get(key)
+    if (existing !== undefined && existing.client.status === 'ready') return existing
+    const live = [...this.sessions.keys()].some((entry) => entry.startsWith(`${connId}\u0000`))
+    if (!live) throw new DbError('not-connected', '连接尚未打开')
+    const client = new Redis(this.options(conn, db) as never)
+    try {
+      await client.connect()
+      await client.ping()
+    } catch (error) {
+      client.disconnect()
+      throw new DbError('connect-failed', `无法打开 Redis db${db}：${messageOf(error)}`)
+    }
+    const session: Session = { client, readOnly: conn.readOnly, db }
+    this.sessions.set(key, session)
+    return session
   }
 
   private async serverInfo(conn: ConnectionConfig, client: Redis): Promise<ServerInfo> {
@@ -202,22 +239,43 @@ export class RedisManager {
   }
 
   async disconnect(connId: string): Promise<void> {
-    const session = this.sessions.get(connId)
-    if (session === undefined) return
-    this.sessions.delete(connId)
-    try {
-      await session.client.quit()
-    } catch {
-      session.client.disconnect()
-    }
+    const prefix = `${connId}\u0000`
+    const closing = [...this.sessions.entries()].filter(([key]) => key.startsWith(prefix))
+    for (const [key] of closing) this.sessions.delete(key)
+    await Promise.all(
+      closing.map(async ([, session]) => {
+        try {
+          await session.client.quit()
+        } catch {
+          session.client.disconnect()
+        }
+      }),
+    )
   }
 
-  private session(connId: string): Session {
-    const session = this.sessions.get(connId)
+  private session(connId: string, db?: number): Session {
+    const session = db === undefined
+      ? [...this.sessions.entries()].find(([key]) => key.startsWith(`${connId}\u0000`))?.[1]
+      : this.sessions.get(sessionKey(connId, db))
     if (session === undefined || session.client.status !== 'ready') {
       throw new DbError('not-connected', '连接尚未打开')
     }
     return session
+  }
+
+  /** Logical database count, read from the server (`CONFIG GET databases`). */
+  async databases(connId: string): Promise<number> {
+    const session = this.session(connId)
+    try {
+      const reply = (await session.client.call('CONFIG', 'GET', 'databases')) as unknown
+      if (Array.isArray(reply) && reply.length >= 2) {
+        const count = Number(reply[1])
+        if (Number.isFinite(count) && count > 0) return Math.trunc(count)
+      }
+    } catch {
+      // Managed providers can disable CONFIG; Redis' historical default is 16.
+    }
+    return 16
   }
 
   private async keyInfo(client: Redis, key: string): Promise<RedisKeyInfo> {
@@ -251,8 +309,15 @@ export class RedisManager {
     }
   }
 
-  async scan(connId: string, cursor: string, pattern: string, type: string | undefined, limit: number): Promise<RedisScanResult> {
-    const session = this.session(connId)
+  async scan(
+    connId: string,
+    db: number,
+    cursor: string,
+    pattern: string,
+    type: string | undefined,
+    limit: number,
+  ): Promise<RedisScanResult> {
+    const session = await this.ensureSession(connId, db)
     const count = Math.max(10, Math.min(Math.trunc(limit) || 200, 10_000))
     const match = pattern.trim() === '' ? '*' : pattern.trim()
     const args: string[] = [cursor === '' ? '0' : cursor, 'MATCH', match, 'COUNT', String(count)]
@@ -274,8 +339,8 @@ export class RedisManager {
     return { cursor: nextCursor, done: nextCursor === '0', keys: filtered, scanned: keys.length }
   }
 
-  async inspect(connId: string, key: string): Promise<RedisValue> {
-    const session = this.session(connId)
+  async inspect(connId: string, db: number, key: string): Promise<RedisValue> {
+    const session = await this.ensureSession(connId, db)
     const client = session.client
     const type = String(await client.type(key))
     if (type === 'none') throw new DbError('not-found', `键不存在：${key}`)

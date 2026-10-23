@@ -114,7 +114,11 @@ export function App(props: AppProps): ReactElement {
     redisKeys,
     redisCursor,
     loadingRedisKeys,
+    redisDatabases,
+    redisDbs,
+    visibleSchemas,
     redisDetail,
+    redisDetailDb,
     redisDetailLoading,
     refresh,
     connect,
@@ -125,11 +129,17 @@ export function App(props: AppProps): ReactElement {
     toggleSchema,
     loadObjects,
     loadRedisKeys,
+    toggleRedisDb,
     toggleKey,
     selectObject,
     selectSchema,
     selectFolder,
+    selectRedisDb,
     selectRedisKey,
+    toggleSchemaVisible,
+    toggleAllSchemasVisible,
+    toggleRedisDbVisible,
+    toggleAllRedisDbsVisible,
     updateDrivers,
     applySettings,
   } = useDataSources(notify)
@@ -309,7 +319,11 @@ export function App(props: AppProps): ReactElement {
               redisKeys={redisKeys}
               redisCursor={redisCursor}
               loadingRedisKeys={loadingRedisKeys}
+              redisDatabases={redisDatabases}
+              redisDbs={redisDbs}
+              visibleSchemas={visibleSchemas}
               redisDetail={redisDetail}
+              redisDetailDb={redisDetailDb}
               redisDetailLoading={redisDetailLoading}
               onAddConnection={() => setConnModal({ open: true, editing: null })}
               onSelectConnection={selectConnection}
@@ -322,8 +336,14 @@ export function App(props: AppProps): ReactElement {
               onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
               onSelectSchema={selectSchema}
               onSelectFolder={selectFolder}
-              onSelectRedisKey={(connectionId, key) => void selectRedisKey(connectionId, key)}
-              onLoadRedisKeys={(connectionId, more) => void loadRedisKeys(connectionId, more)}
+              onSelectRedisDb={selectRedisDb}
+              onSelectRedisKey={(connectionId, db, key) => void selectRedisKey(connectionId, db, key)}
+              onToggleRedisDb={toggleRedisDb}
+              onLoadRedisKeys={(connectionId, db, more) => void loadRedisKeys(connectionId, db, more)}
+              onToggleSchemaVisible={toggleSchemaVisible}
+              onToggleAllSchemasVisible={toggleAllSchemasVisible}
+              onToggleRedisDbVisible={toggleRedisDbVisible}
+              onToggleAllRedisDbsVisible={toggleAllRedisDbsVisible}
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
               onOpenTable={(connectionId, schema, object) => {
                 selectConnection(connectionId)

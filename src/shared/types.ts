@@ -247,6 +247,30 @@ export interface CachedStructure {
   objects: Record<string, SchemaObject[]>
   /** `schema.table` → described columns and indexes, kept for offline browsing. */
   descriptions: Record<string, TableDescription>
+  /** Redis key-space cache, per logical database. */
+  redis?: RedisStructureCache
+}
+
+export interface RedisDbCache {
+  /** Keys last seen by SCAN, in scan order. */
+  keys: RedisKeyInfo[]
+  /** Cursor to continue paging from, `0` when the scan finished. */
+  cursor: string
+  fetchedAt: string
+}
+
+export interface RedisStructureCache {
+  /** Number of logical databases (`CONFIG GET databases`). */
+  databases: number
+  dbs: Record<string, RedisDbCache>
+}
+
+export interface RedisDatabasesResult {
+  databases: number
+  /** The database the connection opens by default. */
+  redisDb: number
+  cached?: boolean
+  error?: string
 }
 
 export interface StructureSnapshot {

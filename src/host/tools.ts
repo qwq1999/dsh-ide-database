@@ -583,6 +583,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Redis connection id or name.' },
+          db: { type: 'number', description: 'Redis logical database (default: the connection redisDb).' },
           cursor: { type: 'string', description: 'SCAN cursor (default "0").' },
           pattern: { type: 'string', description: 'MATCH pattern (default "*").' },
           type: { type: 'string', description: 'Optional TYPE filter (string, hash, list, set, zset, stream).' },
@@ -597,8 +598,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           const settings = deps.config.settings()
           await deps.redis.connect(connection.id)
+          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
           const result = await deps.redis.scan(
             connection.id,
+            db,
             text(args, 'cursor', false) || '0',
             text(args, 'pattern', false) || '*',
             text(args, 'type', false) || undefined,
@@ -618,6 +621,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Redis connection id or name.' },
+          db: { type: 'number', description: 'Redis logical database (default: the connection redisDb).' },
           key: { type: 'string', description: 'Key to inspect.' },
         },
         required: ['connection', 'key'],
@@ -628,7 +632,8 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           await deps.redis.connect(connection.id)
-          return { connection: { id: connection.id, name: connection.name }, ...(await deps.redis.inspect(connection.id, text(args, 'key'))) }
+          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
+          return { connection: { id: connection.id, name: connection.name }, ...(await deps.redis.inspect(connection.id, db, text(args, 'key'))) }
         } catch (error) {
           return fail(error)
         }
