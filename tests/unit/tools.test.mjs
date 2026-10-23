@@ -143,6 +143,13 @@ describe('createDatabaseTools', () => {
     await expect(byName('db_query').execute({ connection: 'r1', sql: 'SELECT 1' })).rejects.toThrow(/db_redis_command/)
   })
 
+  it('forwards the chosen redis logical database to commands', async () => {
+    const { byName, deps } = harness()
+    deps.redis.command.mockResolvedValue({ command: 'GET a', value: 'x', elapsedMs: 1, readOnly: true })
+    await byName('db_redis_command').execute({ connection: 'r1', command: 'GET a', db: 3 })
+    expect(deps.redis.command).toHaveBeenCalledWith('r1', 3, 'GET a', false)
+  })
+
   it('delegates execution plans to the sql service', async () => {
     const { byName, deps } = harness()
     const value = await byName('db_explain').execute({ connection: 'c1', sql: 'SELECT * FROM users' })

@@ -19,6 +19,7 @@ import type {
   RedisScanResult,
   RedisValue,
   Row,
+  SchemaInfo,
 } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid } from './DataGrid'
@@ -186,8 +187,10 @@ async function withConnection<T>(id: string, action: () => Promise<T>): Promise<
   }
 }
 
-async function queryWithRetry(id: string, sql: string, maxRows: number, allowWrite: boolean, stmtKey: string): Promise<QueryResult> {
-  return withConnection(id, () => api.query({ id, sql, maxRows, allowWrite, stmtKey }))
+async function queryWithRetry(id: string, sql: string, maxRows: number, allowWrite: boolean, stmtKey: string, schema = ''): Promise<QueryResult> {
+  return withConnection(id, () =>
+    api.query({ id, sql, maxRows, allowWrite, stmtKey, ...(schema === '' ? {} : { schema }) }),
+  )
 }
 
 function KeyGrid({
@@ -259,6 +262,13 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [selectedId, setSelectedId] = useState(initialConnectionId ?? '')
   const [loadError, setLoadError] = useState('')
 
+  /** The SQL schema (MySQL database) the console runs in; '' keeps the login default. */
+  const [schema, setSchema] = useState('')
+  const [schemas, setSchemas] = useState<SchemaInfo[]>([])
+  /** Redis logical database; null keeps the data source's configured db. */
+  const [redisDb, setRedisDb] = useState<number | null>(null)
+  const [redisDatabases, setRedisDatabases] = useState<number | null>(null)
+
   const [statement, setStatement] = useState('')
   const [result, setResult] = useState<QueryResult | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -298,11 +308,21 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [txBusy, setTxBusy] = useState(false)
   const [txNote, setTxNote] = useState('')
   const scanCursorRef = useRef('0')
+  const redisDatabasesLoaded = useRef(false)
   const recallRef = useRef(-1)
 
   const connection = connections.find((item) => item.id === selectedId)
   const isRedis = connection?.dialect === 'redis'
   const historyKind = isRedis ? 'redis' : 'sql'
+  /** The logical database every Redis call in this console targets. */
+  const activeRedisDb = redisDb ?? connection?.redisDb ?? 0
+  /** The schema SQL runs in when the user has not picked another one. */
+  const defaultSchema =
+    connection === undefined
+      ? ''
+      : connection.dialect === 'mysql' || connection.dialect === 'generic'
+        ? connection.database
+        : connection.user
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
@@ -353,6 +373,23 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setPins(readPins(historyKind))
   }
 
+  // Database/Schema choices come from the host cache when the source is offline,
+  // and from a live listing once it is connected.
+  const loadSchemaList = useCallback(async (id: string): Promise<void> => {
+    if (id === '') return
+    try {
+      const list = await api.schemas(id)
+      setSchemas(list.schemas)
+    } catch {
+      // Keep the login default; the list retries after the first successful query.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedId === '' || isRedis) return
+    void loadSchemaList(selectedId)
+  }, [isRedis, loadSchemaList, selectedId])
+
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
     async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
@@ -368,10 +405,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       try {
         const paged = pageable(text)
         const sqlText = paged ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
-        const next = await queryWithRetry(selectedId, sqlText, target.size, target.allowWrite, stmtKey)
+        const next = await queryWithRetry(selectedId, sqlText, target.size, target.allowWrite, stmtKey, schema)
         setResult(next)
         setPage(paged ? target.page : 0)
         setBase(paged ? text : '')
+        void loadSchemaList(selectedId)
       } catch (error) {
         setResult(null)
         setFailure(failureText(error))
@@ -379,7 +417,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         setRunning(false)
       }
     },
-    [connection?.dialect, selectedId],
+    [connection?.dialect, loadSchemaList, schema, selectedId],
   )
 
   /** Run several statements in order, then show the result of the last one. */
@@ -398,7 +436,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         const stmtKey = `console-${Date.now().toString(36)}-${index}`
         stmtRef.current = stmtKey
         try {
-          last = await queryWithRetry(selectedId, part, pageSize, looksLikeWrite(part), stmtKey)
+          last = await queryWithRetry(selectedId, part, pageSize, looksLikeWrite(part), stmtKey, schema)
         } catch (error) {
           const failure = failureText(error)
           setFailure({ message: `第 ${index + 1}/${parts.length} 条语句执行失败：${failure.message}`, detail: failure.detail ?? part })
@@ -415,6 +453,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       setBase('')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
+      void loadSchemaList(selectedId)
     } finally {
       setMultiProgress(null)
       setRunning(false)
@@ -484,7 +523,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setFailure(null)
     setMultiNote('')
     try {
-      const next = await api.explain(selectedId, text)
+      const next = await api.explain(selectedId, text, schema === '' ? undefined : schema)
       setPlan(next)
       setResult(next.plan ?? null)
       setPage(0)
@@ -538,8 +577,16 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       try {
         const cursor = append ? scanCursorRef.current : '0'
         const next = await withConnection(selectedId, () =>
-          api.redisScan({ id: selectedId, cursor, pattern: pattern.trim() === '' ? '*' : pattern.trim() }),
+          api.redisScan({ id: selectedId, db: activeRedisDb, cursor, pattern: pattern.trim() === '' ? '*' : pattern.trim() }),
         )
+        if (!redisDatabasesLoaded.current) {
+          void api.redisDatabases(selectedId)
+            .then((info) => {
+              redisDatabasesLoaded.current = true
+              setRedisDatabases(info.databases)
+            })
+            .catch(() => undefined)
+        }
         scanCursorRef.current = next.cursor
         setScan((previous) =>
           append && previous !== null && next.cursor !== '0'
@@ -552,7 +599,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         setScanning(false)
       }
     },
-    [pattern, selectedId],
+    [activeRedisDb, pattern, selectedId],
   )
 
   const runCommand = async (): Promise<void> => {
@@ -567,7 +614,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setCommandRunning(true)
     setValueError(null)
     try {
-      const next = await withConnection(selectedId, () => api.redisCommand(selectedId, text, isWrite && connection?.readOnly !== true))
+      const next = await withConnection(selectedId, () =>
+        api.redisCommand(selectedId, text, isWrite && connection?.readOnly !== true, activeRedisDb),
+      )
       setCommandResult(next)
       if (isWrite) await loadKeys(false)
     } catch (error) {
@@ -591,7 +640,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setValueError(null)
     if (selectedId === '') return
     try {
-      const next = await withConnection(selectedId, () => api.redisKey(selectedId, key.key))
+      const next = await withConnection(selectedId, () => api.redisKey(selectedId, key.key, activeRedisDb))
       setValue(next)
     } catch (error) {
       setValueError(failureText(error))
@@ -610,14 +659,32 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setValue(null)
     setValueError(null)
     setCommandResult(null)
+    setSchema(
+      connection === undefined
+        ? ''
+        : connection.dialect === 'mysql' || connection.dialect === 'generic'
+          ? connection.database
+          : connection.user,
+    )
+    setSchemas([])
+    setRedisDb(null)
+    setRedisDatabases(null)
+    redisDatabasesLoaded.current = false
     scanCursorRef.current = '0'
+    // Only a source switch resets the chosen schema; a background status refresh must keep it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
 
   useEffect(() => {
     if (selectedId === '' || !isRedis) return
+    setScan(null)
+    setSelectedKey('')
+    setValue(null)
+    setCommandResult(null)
+    scanCursorRef.current = '0'
     void loadKeys(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, isRedis])
+  }, [selectedId, isRedis, activeRedisDb])
 
   if (loadError !== '') {
     return (
@@ -685,6 +752,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           EXPORT_BATCH,
           false,
           `console-export-${Date.now().toString(36)}-${sourcePage}`,
+          schema,
         )
         collected.push(...next.rows)
         if (next.rows.length < EXPORT_BATCH) break
@@ -730,6 +798,40 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             </option>
           ))}
         </select>
+        {connection === undefined ? null : isRedis ? (
+          <select
+            className="dshdb-select dshdb-select-inline dshdb-console-select"
+            aria-label="Redis 逻辑库"
+            title="控制台扫描键和执行命令所用的逻辑库"
+            value={activeRedisDb}
+            onChange={(event) => setRedisDb(Number(event.target.value))}
+          >
+            {Array.from({ length: Math.max(1, redisDatabases ?? 16) }, (_, index) => (
+              <option key={index} value={index}>
+                db{index}
+                {index === connection.redisDb ? '（默认）' : ''}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            className="dshdb-select dshdb-select-inline dshdb-console-select"
+            aria-label="数据库"
+            title="控制台执行的默认数据库/Schema；选了它就不用给表名加库名前缀"
+            value={schema}
+            onChange={(event) => setSchema(event.target.value)}
+          >
+            <option value={defaultSchema}>默认{defaultSchema === '' ? '' : `（${defaultSchema}）`}</option>
+            {schemas
+              .filter((item) => item.name !== defaultSchema)
+              .map((item) => (
+                <option key={item.name} value={item.name}>
+                  {item.name}
+                  {item.system === true ? '（系统）' : ''}
+                </option>
+              ))}
+          </select>
+        )}
         <span className="dshdb-qbar-spacer" />
         {running || scanning || commandRunning ? <Spinner /> : null}
         {result !== null && !running ? <span className="dshdb-qmeta">{formatMs(result.elapsedMs)}</span> : null}

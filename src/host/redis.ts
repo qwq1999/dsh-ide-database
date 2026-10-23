@@ -440,8 +440,8 @@ export class RedisManager {
     }
   }
 
-  async command(connId: string, input: string, allowWrite: boolean): Promise<RedisCommandResult> {
-    const session = this.session(connId)
+  async command(connId: string, db: number, input: string, allowWrite: boolean): Promise<RedisCommandResult> {
+    const session = await this.ensureSession(connId, db)
     const tokens = tokenizeCommand(input)
     if (tokens.length === 0) throw new DbError('invalid', '命令不能为空')
     const command = tokens[0].toUpperCase()

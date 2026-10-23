@@ -108,8 +108,8 @@ export const api = {
   redisKey: (id: string, key: string, db?: number) =>
     post<RedisValue>('/redis/key', { id, key, ...(db === undefined ? {} : { db }) }),
   redisDatabases: (id: string) => post<RedisDatabasesResult>('/redis/databases', { id }),
-  redisCommand: (id: string, command: string, allowWrite: boolean) =>
-    post<RedisCommandResult>('/redis/command', { id, command, allowWrite }),
+  redisCommand: (id: string, command: string, allowWrite: boolean, db?: number) =>
+    post<RedisCommandResult>('/redis/command', { id, command, allowWrite, ...(db === undefined ? {} : { db }) }),
 
   downloadDriver: (driverId: string) => post<DriverStatus>('/drivers/download', { driverId }),
   saveCustomDriver: (driver: Partial<DriverConfig> & { jars?: unknown }) =>

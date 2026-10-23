@@ -390,8 +390,10 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const id = typeof data.id === 'string' ? data.id : ''
       const command = typeof data.command === 'string' ? data.command : ''
       const connection = sqlConnection(deps, id)
+      if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
+      const db = typeof data.db === 'number' && Number.isFinite(data.db) ? Math.trunc(data.db) : connection.redisDb
       const allowWrite = data.allowWrite === true && !connection.readOnly
-      const result: RedisCommandResult = await deps.redis.command(id, command, allowWrite)
+      const result: RedisCommandResult = await deps.redis.command(id, db, command, allowWrite)
       sendJson(response, 200, { ok: true, data: result })
       return
     }

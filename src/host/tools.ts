@@ -648,6 +648,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Redis connection id or name.' },
+          db: { type: 'number', description: 'Redis logical database (default: the connection redisDb).' },
           command: { type: 'string', description: 'Full command line, split like a shell.' },
         },
         required: ['connection', 'command'],
@@ -659,8 +660,9 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           const settings = deps.config.settings()
           await deps.redis.connect(connection.id)
+          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
-          const result = await deps.redis.command(connection.id, text(args, 'command'), allowWrite)
+          const result = await deps.redis.command(connection.id, db, text(args, 'command'), allowWrite)
           return { connection: { id: connection.id, name: connection.name }, ...result }
         } catch (error) {
           return fail(error)
