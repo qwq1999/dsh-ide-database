@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import type { ClientConnection, ObjectKind, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
 import { filterTargets } from '../treefilter'
+import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import {
   ChevronDownIcon,
@@ -314,6 +324,30 @@ export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
 
+  // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
+  // edges, and Left/Right collapse/expand the focused row.
+  const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button.dshdb-row'))
+    if (rows.length === 0) return
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const current = active === null ? -1 : rows.indexOf(active as HTMLButtonElement)
+    const target = nextRowIndex(current, rows.length, event.key)
+    if (target !== null) {
+      event.preventDefault()
+      rows[target].focus()
+      return
+    }
+    if (active === null || !rows.includes(active as HTMLButtonElement)) return
+    const expandedAttr = active.getAttribute('aria-expanded')
+    if (event.key === 'ArrowRight' && expandedAttr === 'false') {
+      event.preventDefault()
+      active.click()
+    } else if (event.key === 'ArrowLeft' && expandedAttr === 'true') {
+      event.preventDefault()
+      active.click()
+    }
+  }
+
   const normalizedFilter = filter.trim().toLowerCase()
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
 
@@ -414,7 +448,12 @@ export function DataView(props: DataViewProps): ReactElement {
         />
       ) : (
         <Panel className="dshdb-grow" bodyClassName="dshdb-panel-body-pad">
-          <div className="dshdb-tree dshdb-scroll-thin" role="tree" aria-label="数据源">
+          <div
+            className="dshdb-tree dshdb-scroll-thin"
+            role="tree"
+            aria-label="数据源"
+            onKeyDown={handleTreeKey}
+          >
             {connections.map((connection) => {
               const isSelected = connection.id === selectedId
               const isExpanded = expanded[connection.id] === true

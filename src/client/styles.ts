@@ -159,6 +159,12 @@ export const CSS = `
   cursor: pointer;
 }
 .dshdb-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-row:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
 .dshdb-row[data-active="true"] {
   background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 14%, transparent);
   color: var(--dsw-alias-label-primary);

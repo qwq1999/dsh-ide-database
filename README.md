@@ -54,6 +54,12 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ![点表头按城市降序](docs/screenshots/database-sort.png)
 
+### 键盘操作
+
+数据源树可以用键盘操作：`↑`/`↓` 在行之间移动，`Home`/`End` 跳到首尾，`→` 展开、`←` 收起当前行，`Enter` 或空格执行该行（连接、展开、打开表）。焦点所在行有清晰的焦点框，方便只用键盘浏览库表。
+
+![键盘操作数据源树](docs/screenshots/database-keyboard.png)
+
 ### 手动事务
 
 SQL 控制台工具条的「事务」发送 `BEGIN`；之后「提交」「回滚」才可用，工具条同时显示「事务进行中」与操作结果提示。切换数据源或关闭标签页时，未提交的事务会被自动回滚。JDBC 桥接按连接复用同一个数据库会话，因此多条语句共享事务。
