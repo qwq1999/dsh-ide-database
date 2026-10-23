@@ -8,12 +8,14 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
-import type { ClientConnection, ObjectKind, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
+import type { ClientConnection, ObjectKind, RedisKeyInfo, RedisValue, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
 import { filterTargets } from '../treefilter'
 import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
+import { redisTtlLabel } from '../redisvalue'
+import { RedisValuePanel } from '../redisview'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -48,6 +50,11 @@ export interface DataViewProps {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
+  redisKeys: Record<string, RedisKeyInfo[]>
+  redisCursor: Record<string, string>
+  loadingRedisKeys: Record<string, boolean>
+  redisDetail: RedisValue | null
+  redisDetailLoading: boolean
   onAddConnection: () => void
   onSelectConnection: (id: string) => void
   onToggleConnection: (id: string) => void
@@ -57,6 +64,8 @@ export interface DataViewProps {
   onToggleFolder: (connectionId: string, schema: string, folder: string) => void
   onToggleKey: (key: string) => void
   onSelectObject: (connectionId: string, schema: string, object: SchemaObject) => void
+  onSelectRedisKey: (connectionId: string, key: string) => void
+  onLoadRedisKeys: (connectionId: string, more?: boolean) => void
   onShowDdl: (connectionId: string, schema: string, table: string, kind: string) => void
   /** Double-click on a table/view: open its rows in their own Sidebar tab. */
   onOpenTable: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
@@ -320,9 +329,116 @@ function ObjectRow({
   )
 }
 
+function RedisBranch({
+  connection,
+  keys,
+  cursor,
+  loading,
+  selectedKey,
+  query,
+  onLoadMore,
+  onRefresh,
+  onSelect,
+}: {
+  connection: ClientConnection
+  keys: RedisKeyInfo[] | undefined
+  cursor: string | undefined
+  loading: boolean
+  selectedKey: string
+  query: string
+  onLoadMore: () => void
+  onRefresh: () => void
+  onSelect: (key: string) => void
+}): ReactElement {
+  const list = (keys ?? []).filter((key) => query === '' || key.key.toLowerCase().includes(query))
+  const hasMore = cursor !== undefined && cursor !== '0'
+  const dbRowStyle = { ...DEPTH_ONE, cursor: 'default' } as CSSProperties
+
+  return (
+    <div role="group">
+      <div
+        className="dshdb-row"
+        data-kind="schema"
+        style={dbRowStyle}
+        title={`Redis 逻辑库 db${connection.redisDb}，可在连接设置里切换`}
+      >
+        <span className="dshdb-row-toggle" />
+        <span className="dshdb-row-icon">
+          <DatabaseIcon size={13} />
+        </span>
+        <span className="dshdb-row-label dshdb-mono">db{connection.redisDb}</span>
+        {loading ? <Spinner /> : null}
+        {!loading && keys !== undefined ? <span className="dshdb-row-meta">{keys.length} 个键</span> : null}
+      </div>
+
+      {keys === undefined && loading ? (
+        <div className="dshdb-muted dshdb-inline" style={{ padding: '4px 6px 4px 26px' }}>
+          <Spinner /> 正在扫描键…
+        </div>
+      ) : null}
+      {keys === undefined && !loading ? (
+        <button
+          type="button"
+          className="dshdb-row"
+          style={DEPTH_TWO}
+          data-kind="folder"
+          onClick={onRefresh}
+        >
+          <span className="dshdb-row-toggle" />
+          <span className="dshdb-row-label dshdb-muted">扫描键</span>
+        </button>
+      ) : null}
+      {keys !== undefined && list.length === 0 ? (
+        <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px' }}>
+          {query ? '没有匹配的键' : '没有键'}
+        </div>
+      ) : null}
+
+      {list.map((key) => (
+        <button
+          key={key.key}
+          type="button"
+          className="dshdb-row"
+          role="treeitem"
+          data-active={selectedKey === `${connection.id}|redis:${key.key}`}
+          data-kind="redis-key"
+          style={DEPTH_TWO}
+          title={`${key.key} · ${key.type} · TTL ${redisTtlLabel(key.ttl)}`}
+          onClick={() => onSelect(key.key)}
+        >
+          <span className="dshdb-row-toggle" />
+          <span className="dshdb-row-icon">
+            <KeyIcon size={13} />
+          </span>
+          <span className="dshdb-row-label">
+            <Highlight text={key.key} query={query} />
+          </span>
+          <Tag>{key.type}</Tag>
+          {key.size === undefined ? null : <span className="dshdb-row-meta">{key.size}</span>}
+        </button>
+      ))}
+
+      {hasMore ? (
+        <button
+          type="button"
+          className="dshdb-row"
+          style={DEPTH_TWO}
+          data-kind="folder"
+          disabled={loading}
+          onClick={onLoadMore}
+        >
+          <span className="dshdb-row-toggle" />
+          <span className="dshdb-row-label dshdb-muted">{loading ? '正在加载…' : '加载更多键'}</span>
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
+  const selected = connections.find((connection) => connection.id === selectedId)
 
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
@@ -354,11 +470,13 @@ export function DataView(props: DataViewProps): ReactElement {
   // Search inside collapsed schemas: fetch their object lists once per filter
   // so matches can be found even when the branch was never opened before.
   const searched = useRef<Set<string>>(new Set())
+  const searchedRedis = useRef<Set<string>>(new Set())
   const lastFilter = useRef('')
   useEffect(() => {
     if (lastFilter.current !== normalizedFilter) {
       lastFilter.current = normalizedFilter
       searched.current = new Set()
+      searchedRedis.current = new Set()
     }
     if (normalizedFilter === '') return
     for (const connection of connections) {
@@ -370,6 +488,15 @@ export function DataView(props: DataViewProps): ReactElement {
       if (servers[connection.id] === undefined) continue
       searched.current.add(connection.id)
       for (const schema of schemaList) props.onLoadObjects(connection.id, schema.name)
+    }
+    // Redis has no schema: scan its keys once so the filter can match them.
+    for (const connection of connections) {
+      if (connection.dialect !== 'redis') continue
+      if (searchedRedis.current.has(connection.id)) continue
+      if (servers[connection.id] === undefined) continue
+      if (props.redisKeys[connection.id] !== undefined) continue
+      searchedRedis.current.add(connection.id)
+      props.onLoadRedisKeys(connection.id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFilter, connections, schemas, servers])
@@ -397,10 +524,17 @@ export function DataView(props: DataViewProps): ReactElement {
           props.onToggleFolder(connectionId, schema, folder)
         }
       }
+      // A Redis key hit opens its data source, which then shows the key rows.
+      for (const connection of connections) {
+        if (connection.dialect !== 'redis' || expanded[connection.id] === true) continue
+        const keys = props.redisKeys[connection.id]
+        if (keys === undefined || !keys.some((key) => matches(key.key))) continue
+        props.onToggleConnection(connection.id)
+      }
     }, 300)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedFilter, connections, schemas, objects, expanded])
+  }, [normalizedFilter, connections, schemas, objects, expanded, props.redisKeys])
 
   const grouped = useMemo(() => {
     const cache: Record<string, Record<FolderId, SchemaObject[]>> = {}
@@ -423,14 +557,14 @@ export function DataView(props: DataViewProps): ReactElement {
         <TextInput
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="筛选库表…"
-          aria-label="筛选库表"
+          placeholder={selected?.dialect === 'redis' ? '筛选键…' : '筛选库表…'}
+          aria-label={selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}
           style={{ width: 132 }}
         />
         <span className="dshdb-toolbar-spacer" />
-        {props.detailLoading ? (
+        {props.detailLoading || props.redisDetailLoading ? (
           <span className="dshdb-muted dshdb-inline">
-            <Spinner /> 读取结构
+            <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
           </span>
         ) : null}
       </div>
@@ -469,10 +603,15 @@ export function DataView(props: DataViewProps): ReactElement {
                 return buckets !== undefined && FOLDERS.some((folder) => buckets[folder.id].length > 0)
               })
               const hasCachedStructure = allSchemas.length > 0
+              const redisKeys = connection.dialect === 'redis' ? props.redisKeys[connection.id] : undefined
+              const redisMatches =
+                connection.dialect === 'redis' &&
+                (redisKeys === undefined || redisKeys.some((key) => matches(key.key)))
               const visible =
                 normalizedFilter === '' ||
                 matches(connection.name) ||
                 list.length > 0 ||
+                redisMatches ||
                 (allSchemas.length === 0 && server === undefined && !loading)
 
               if (!visible) return null
@@ -487,8 +626,8 @@ export function DataView(props: DataViewProps): ReactElement {
                     data-active={isSelected}
                     data-kind="datasource"
                     title={`${connection.name} · ${connection.host}:${connection.port}${
-                      cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''
-                    }`}
+                      connection.dialect === 'redis' ? ` · db${connection.redisDb}` : ''
+                    }${cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''}`}
                     onClick={() => {
                       props.onSelectConnection(connection.id)
                       props.onToggleConnection(connection.id)
@@ -532,6 +671,18 @@ export function DataView(props: DataViewProps): ReactElement {
                             {connecting ? '正在连接…' : `连接到 ${connection.host}:${connection.port}`}
                           </span>
                         </button>
+                      ) : connection.dialect === 'redis' ? (
+                        <RedisBranch
+                          connection={connection}
+                          keys={props.redisKeys[connection.id]}
+                          cursor={props.redisCursor[connection.id]}
+                          loading={props.loadingRedisKeys[connection.id] === true}
+                          selectedKey={props.selectedKey}
+                          query={normalizedFilter}
+                          onLoadMore={() => props.onLoadRedisKeys(connection.id, true)}
+                          onRefresh={() => props.onLoadRedisKeys(connection.id)}
+                          onSelect={(key) => props.onSelectRedisKey(connection.id, key)}
+                        />
                       ) : (
                         <>
                           {loading ? (
@@ -683,6 +834,22 @@ export function DataView(props: DataViewProps): ReactElement {
         </Panel>
       )}
 
+      {props.redisDetail ? (
+        <Panel
+          title={
+            <span className="dshdb-inline">
+              <KeyIcon size={13} />
+              <span className="dshdb-mono">{props.redisDetail.key}</span>
+              <Tag>{props.redisDetail.type}</Tag>
+            </span>
+          }
+          bodyClassName="dshdb-panel-body-pad"
+          scroll
+        >
+          <RedisValuePanel value={props.redisDetail} showKey={false} />
+        </Panel>
+      ) : null}
+
       {detail ? (
         <Panel
           title={
@@ -757,9 +924,11 @@ export function DataView(props: DataViewProps): ReactElement {
         </Panel>
       ) : null}
 
-      {!detail && !detailLoading && connections.length > 0 ? (
+      {!detail && !props.redisDetail && !detailLoading && !props.redisDetailLoading && connections.length > 0 ? (
         <div className="dshdb-muted" style={{ padding: '0 2px' }}>
-          展开数据源，选择表或视图可查看列、索引等结构信息。
+          {selected?.dialect === 'redis'
+            ? '展开 Redis 数据源，选择键可查看值、TTL 与长度。'
+            : '展开数据源，选择表或视图可查看列、索引等结构信息。'}
         </div>
       ) : null}
     </div>

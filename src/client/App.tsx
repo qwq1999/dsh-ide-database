@@ -111,6 +111,11 @@ export function App(props: AppProps): ReactElement {
     detail,
     detailLoading,
     selectedKey,
+    redisKeys,
+    redisCursor,
+    loadingRedisKeys,
+    redisDetail,
+    redisDetailLoading,
     refresh,
     connect,
     disconnect,
@@ -119,8 +124,10 @@ export function App(props: AppProps): ReactElement {
     toggleFolder,
     toggleSchema,
     loadObjects,
+    loadRedisKeys,
     toggleKey,
     selectObject,
+    selectRedisKey,
     updateDrivers,
     applySettings,
   } = useDataSources(notify)
@@ -297,6 +304,11 @@ export function App(props: AppProps): ReactElement {
               detail={detail}
               detailLoading={detailLoading}
               selectedKey={selectedKey}
+              redisKeys={redisKeys}
+              redisCursor={redisCursor}
+              loadingRedisKeys={loadingRedisKeys}
+              redisDetail={redisDetail}
+              redisDetailLoading={redisDetailLoading}
               onAddConnection={() => setConnModal({ open: true, editing: null })}
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
@@ -306,6 +318,8 @@ export function App(props: AppProps): ReactElement {
               onToggleFolder={toggleFolder}
               onToggleKey={toggleKey}
               onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
+              onSelectRedisKey={(connectionId, key) => void selectRedisKey(connectionId, key)}
+              onLoadRedisKeys={(connectionId, more) => void loadRedisKeys(connectionId, more)}
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
               onOpenTable={(connectionId, schema, object) => {
                 selectConnection(connectionId)
@@ -325,7 +339,11 @@ export function App(props: AppProps): ReactElement {
             <span className="dshdb-mono">
               {selected.host}:{selected.port}
             </span>
-            {selected.database ? <span className="dshdb-mono">/{selected.database}</span> : null}
+            {selected.dialect === 'redis' ? (
+              <span className="dshdb-mono">/db{selected.redisDb}</span>
+            ) : selected.database ? (
+              <span className="dshdb-mono">/{selected.database}</span>
+            ) : null}
             {server ? (
               <Button size="sm" variant="ghost" onClick={() => void disconnect(selected.id)}>
                 断开

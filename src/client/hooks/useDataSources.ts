@@ -6,12 +6,14 @@
  * loaded schema/object trees, the per-table descriptions and the structure
  * cache that keeps the tree browsable while offline.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ClientConnection,
   DbSettings,
   DriverStatus,
   EnvStatus,
+  RedisKeyInfo,
+  RedisValue,
   SchemaInfo,
   SchemaObject,
   ServerInfo,
@@ -54,6 +56,13 @@ export interface DataSources {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
+  /** Keys scanned for a Redis data source, in scan order. */
+  redisKeys: Record<string, RedisKeyInfo[]>
+  /** Scan cursor still pending per Redis data source; `0` or missing means done. */
+  redisCursor: Record<string, string>
+  loadingRedisKeys: Record<string, boolean>
+  redisDetail: RedisValue | null
+  redisDetailLoading: boolean
   refresh: () => Promise<void>
   connect: (connectionId: string) => Promise<void>
   disconnect: (connectionId: string) => Promise<void>
@@ -63,8 +72,10 @@ export interface DataSources {
   toggleFolder: (connectionId: string, schema: string, folder: string) => void
   toggleSchema: (connectionId: string, schema: string) => Promise<void>
   loadObjects: (connectionId: string, schema: string) => Promise<void>
+  loadRedisKeys: (connectionId: string, more?: boolean) => Promise<void>
   toggleKey: (key: string) => void
   selectObject: (connectionId: string, schema: string, object: SchemaObject) => Promise<void>
+  selectRedisKey: (connectionId: string, key: string) => Promise<void>
   updateDrivers: (drivers: DriverStatus[]) => void
   applySettings: (settings: DbSettings, env: EnvStatus) => void
 }
@@ -87,6 +98,15 @@ export function useDataSources(notify: Notify): DataSources {
   const [detail, setDetail] = useState<TableDescription | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
+
+  const [redisKeys, setRedisKeys] = useState<Record<string, RedisKeyInfo[]>>({})
+  const [redisCursor, setRedisCursor] = useState<Record<string, string>>({})
+  const [loadingRedisKeys, setLoadingRedisKeys] = useState<Record<string, boolean>>({})
+  const [redisDetail, setRedisDetail] = useState<RedisValue | null>(null)
+  const [redisDetailLoading, setRedisDetailLoading] = useState(false)
+  const redisRequest = useRef(0)
+  const selectedRef = useRef(selectedId)
+  selectedRef.current = selectedId
 
   const refresh = useCallback(async () => {
     try {
@@ -149,18 +169,30 @@ export function useDataSources(notify: Notify): DataSources {
       setSelectedId(snapshot.connections[0]?.id ?? '')
       setServers({})
       setDetail(null)
+      setRedisDetail(null)
       setSelectedKey('')
     }
   }, [snapshot, selectedId])
 
-  useEffect(() => {
-    setDetail(null)
-    setSelectedKey('')
-  }, [selectedId])
-
   const connections = snapshot?.connections ?? []
   const selected = connections.find((connection) => connection.id === selectedId)
   const server = selected ? servers[selected.id] : undefined
+
+  /**
+   * Selecting another data source drops the detail of the previous one. This
+   * lives in the setter rather than a `selectedId` effect so selecting an
+   * object or a Redis key in one go (which sets both the id and the detail) is
+   * not wiped right after it happens.
+   */
+  const selectConnection = useCallback((id: string): void => {
+    if (selectedRef.current !== id) {
+      setDetail(null)
+      setRedisDetail(null)
+      setSelectedKey('')
+    }
+    selectedRef.current = id
+    setSelectedId(id)
+  }, [])
 
   const loadSchemas = useCallback(
     async (connectionId: string): Promise<void> => {
@@ -202,6 +234,34 @@ export function useDataSources(notify: Notify): DataSources {
     [notify],
   )
 
+  /**
+   * Scan one page of a Redis data source's keys. The connection is a single
+   * Redis database (its configured `redisDb`), so the cursor is all the tree
+   * needs to page through the keyspace.
+   */
+  const loadRedisKeys = useCallback(
+    async (connectionId: string, more = false): Promise<void> => {
+      if (loadingRedisKeys[connectionId] === true) return
+      const cursor = more ? redisCursor[connectionId] : '0'
+      if (more && (cursor === undefined || cursor === '0')) return
+      setLoadingRedisKeys((previous) => ({ ...previous, [connectionId]: true }))
+      try {
+        const result = await api.redisScan({ id: connectionId, cursor })
+        setRedisKeys((previous) => {
+          const merged = new Map((more ? previous[connectionId] ?? [] : []).map((key) => [key.key, key]))
+          for (const key of result.keys) merged.set(key.key, key)
+          return { ...previous, [connectionId]: [...merged.values()] }
+        })
+        setRedisCursor((previous) => ({ ...previous, [connectionId]: result.cursor }))
+      } catch (error) {
+        notify(`扫描 Redis 键失败：${errorText(error)}`, 'error')
+      } finally {
+        setLoadingRedisKeys((previous) => ({ ...previous, [connectionId]: false }))
+      }
+    },
+    [loadingRedisKeys, redisCursor, notify],
+  )
+
   const connect = useCallback(
     async (connectionId: string): Promise<void> => {
       const connection = connections.find((item) => item.id === connectionId)
@@ -211,14 +271,15 @@ export function useDataSources(notify: Notify): DataSources {
         const connected = await api.connect(connectionId)
         setServers((previous) => ({ ...previous, [connectionId]: connected }))
         notify('连接成功', 'success')
-        if (connection.dialect !== 'redis') await loadSchemas(connectionId)
+        if (connection.dialect === 'redis') await loadRedisKeys(connectionId)
+        else await loadSchemas(connectionId)
       } catch (error) {
         notify(`连接失败：${errorText(error)}`, 'error')
       } finally {
         setConnectingId('')
       }
     },
-    [connections, loadSchemas, notify],
+    [connections, loadSchemas, loadRedisKeys, notify],
   )
 
   const disconnect = useCallback(
@@ -231,7 +292,18 @@ export function useDataSources(notify: Notify): DataSources {
           return next
         })
         setDetail(null)
+        setRedisDetail(null)
         setSelectedKey('')
+        setRedisKeys((previous) => {
+          const next = { ...previous }
+          delete next[connectionId]
+          return next
+        })
+        setRedisCursor((previous) => {
+          const next = { ...previous }
+          delete next[connectionId]
+          return next
+        })
         notify('已断开', 'info')
       } catch (error) {
         notify(`断开失败：${errorText(error)}`, 'error')
@@ -300,6 +372,7 @@ export function useDataSources(notify: Notify): DataSources {
     async (connectionId: string, schema: string, object: SchemaObject): Promise<void> => {
       const key = `${connectionId}|${schema}.${object.name}`
       setSelectedId(connectionId)
+      setRedisDetail(null)
       setSelectedKey(key)
       // Routines, sequences and triggers have no column structure of their own.
       if (object.kind !== 'table' && object.kind !== 'view') {
@@ -340,19 +413,57 @@ export function useDataSources(notify: Notify): DataSources {
     setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   }, [])
 
+  /** Read one key's value for the tree's detail panel. */
+  const selectRedisKey = useCallback(
+    async (connectionId: string, key: string): Promise<void> => {
+      setSelectedId(connectionId)
+      setDetail(null)
+      setRedisDetail(null)
+      setSelectedKey(`${connectionId}|redis:${key}`)
+      if (!servers[connectionId]) {
+        setRedisDetailLoading(false)
+        notify('数据源未连接，连接后可查看键值', 'info')
+        return
+      }
+      const request = redisRequest.current + 1
+      redisRequest.current = request
+      setRedisDetailLoading(true)
+      try {
+        const value = await api.redisKey(connectionId, key)
+        if (redisRequest.current === request) setRedisDetail(value)
+      } catch (error) {
+        if (redisRequest.current === request) {
+          setRedisDetail(null)
+          notify(`读取键值失败：${errorText(error)}`, 'error')
+        }
+      } finally {
+        if (redisRequest.current === request) setRedisDetailLoading(false)
+      }
+    },
+    [servers, notify],
+  )
+
   const resetDetail = useCallback((): void => {
     setDetail(null)
+    setRedisDetail(null)
     setSelectedKey('')
   }, [])
 
   const refreshSelected = useCallback(async (): Promise<void> => {
     setDetail(null)
+    setRedisDetail(null)
     setSelectedKey('')
     if (!selected) {
       await refresh()
       return
     }
-    if (!servers[selected.id] || selected.dialect === 'redis') {
+    if (selected.dialect === 'redis') {
+      if (servers[selected.id]) await loadRedisKeys(selected.id)
+      else await connect(selected.id)
+      await refresh()
+      return
+    }
+    if (!servers[selected.id]) {
       await connect(selected.id)
       await refresh()
       return
@@ -360,7 +471,7 @@ export function useDataSources(notify: Notify): DataSources {
     await loadSchemas(selected.id)
     await refresh()
     notify('已刷新数据源', 'success')
-  }, [selected, servers, refresh, connect, loadSchemas, notify])
+  }, [selected, servers, refresh, connect, loadSchemas, loadRedisKeys, notify])
 
   const updateDrivers = useCallback((drivers: DriverStatus[]): void => {
     setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))
@@ -374,7 +485,7 @@ export function useDataSources(notify: Notify): DataSources {
     snapshot,
     loadError,
     selectedId,
-    selectConnection: setSelectedId,
+    selectConnection,
     selected,
     server,
     servers,
@@ -391,6 +502,11 @@ export function useDataSources(notify: Notify): DataSources {
     detail,
     detailLoading,
     selectedKey,
+    redisKeys,
+    redisCursor,
+    loadingRedisKeys,
+    redisDetail,
+    redisDetailLoading,
     refresh,
     connect,
     disconnect,
@@ -400,8 +516,10 @@ export function useDataSources(notify: Notify): DataSources {
     toggleFolder,
     toggleSchema,
     loadObjects,
+    loadRedisKeys,
     toggleKey,
     selectObject,
+    selectRedisKey,
     updateDrivers,
     applySettings,
   }

@@ -27,7 +27,7 @@ import { clearHistory, historyAgo, pushHistory, readHistory, readPins, togglePin
 import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
-import { redisTtlLabel, redisValueTable } from './redisvalue'
+import { RedisValuePanel } from './redisview'
 import { txButtonDisabled, txStatement, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
@@ -231,51 +231,6 @@ function KeyGrid({
         ))}
       </tbody>
     </table>
-  )
-}
-
-function RedisValuePanel({ value }: { value: RedisValue }): ReactElement {
-  const table = redisValueTable(value)
-  return (
-    <div className="dshdb-redis-value">
-      <div className="dshdb-redis-meta">
-        <Tag>{value.type}</Tag>
-        <span className="dshdb-muted">{redisTtlLabel(value.ttl)}</span>
-        {value.size === undefined ? null : <span className="dshdb-muted">{formatCount(value.size)} 条</span>}
-        {value.truncated ? <Tag tone="warn">已截断</Tag> : null}
-        <span className="dshdb-redis-key" title={value.key}>
-          {value.key}
-        </span>
-      </div>
-      {table === null ? (
-        <pre className="dshdb-console-value">{stringifyJson(value.value)}</pre>
-      ) : (
-        <div className="dshdb-grid-wrap dshdb-redis-table">
-          <table className="dshdb-grid">
-            <thead>
-              <tr>
-                <th className="dshdb-num">#</th>
-                {table.headers.map((header) => (
-                  <th key={header}>{header}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((row, index) => (
-                <tr key={index}>
-                  <td className="dshdb-num">{index + 1}</td>
-                  {row.map((cell, column) => (
-                    <td key={column} title={cell}>
-                      <span className="dshdb-mono">{cell}</span>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
   )
 }
 
