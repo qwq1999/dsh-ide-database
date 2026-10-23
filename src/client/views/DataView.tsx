@@ -237,7 +237,7 @@ function RowPicker({
               </label>
             ))}
           </div>
-          <div className="dshdb-picker-hint">按 Enter 或点击列表外部以应用</div>
+          <div className="dshdb-picker-hint">勾选后立即生效，点击列表外关闭</div>
         </div>
       ) : null}
     </span>

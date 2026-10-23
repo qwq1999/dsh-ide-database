@@ -9,6 +9,7 @@ interface Probe {
   path: string
   version: string
   major: number
+  source: Exclude<JavaStatus['source'], 'missing'>
 }
 
 function isFile(path: string): boolean {
@@ -40,7 +41,7 @@ function javaExecutable(candidate: string): string | undefined {
   return undefined
 }
 
-function probe(candidate: string, source: JavaStatus['source']): Probe | undefined {
+function probe(candidate: string, source: Probe['source']): Probe | undefined {
   const executable = candidate === 'java' ? 'java' : javaExecutable(candidate)
   if (executable === undefined) return undefined
   try {
@@ -52,7 +53,7 @@ function probe(candidate: string, source: JavaStatus['source']): Probe | undefin
     const version = match[1]
     const major = version.startsWith('1.') ? Number(version.split('.')[1]) : Number(version.split('.')[0])
     if (!Number.isInteger(major) || major < 8) return undefined
-    return { path: executable, version, major }
+    return { path: executable, version, major, source }
   } catch {
     return undefined
   }
@@ -92,38 +93,59 @@ export class JavaLocator {
     const key = settingsPath
     if (this.lastKey === key && this.lastStatus !== undefined) return this.lastStatus
     const failures: string[] = []
-    const tryCandidate = (candidate: string, source: JavaStatus['source']): JavaStatus | undefined => {
-      const result = probe(candidate, source)
+    const attempted: { candidate: string; source: Probe['source'] }[] = []
+    const addCandidate = (candidate: string, source: Probe['source']): void => {
+      const trimmed = candidate.trim()
+      if (trimmed === '') return
+      attempted.push({ candidate: trimmed, source })
+    }
+    addCandidate(settingsPath, 'setting')
+    addCandidate(process.env.JAVA_HOME ?? '', 'JAVA_HOME')
+    attempted.push({ candidate: 'java', source: 'PATH' })
+    for (const candidate of jdkCandidates()) attempted.push({ candidate, source: 'jdks' })
+
+    const probes: Probe[] = []
+    for (const entry of attempted) {
+      const result = probe(entry.candidate, entry.source)
       if (result === undefined) {
-        if (candidate !== '' && candidate !== 'java') failures.push(`${candidate} 不可用`)
-        return undefined
+        if (entry.candidate !== 'java') failures.push(`${entry.candidate} 不可用`)
+        continue
       }
-      return { available: true, path: result.path, version: result.version, major: result.major, source }
+      probes.push(result)
     }
 
-    let status: JavaStatus | undefined
-    if (settingsPath.trim() !== '') status = tryCandidate(settingsPath.trim(), 'setting')
-    const javaHome = process.env.JAVA_HOME?.trim()
-    if (status === undefined && javaHome !== undefined && javaHome !== '') status = tryCandidate(javaHome, 'JAVA_HOME')
-    if (status === undefined) status = tryCandidate('java', 'PATH')
-    if (status === undefined) {
-      const candidates = jdkCandidates()
-        .map((candidate) => ({ candidate, probe: probe(candidate, 'jdks') }))
-        .filter((entry): entry is { candidate: string; probe: Probe } => entry.probe !== undefined)
-        .sort((a, b) => b.probe.major - a.probe.major)
-      const best = candidates[0]
-      if (best !== undefined) {
-        status = { available: true, path: best.probe.path, version: best.probe.version, major: best.probe.major, source: 'jdks' }
-      }
+    const seen = new Set<string>()
+    const unique: Probe[] = []
+    for (const entry of probes) {
+      const dedupeKey = process.platform === 'win32' ? entry.path.toLowerCase() : entry.path
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
+      unique.push(entry)
     }
 
-    if (status === undefined) {
-      status = {
-        available: false,
-        source: 'missing',
-        message: `未找到 Java（需要 8 及以上）。${failures.length > 0 ? failures.join('；') : '请安装 JDK 或在“设置”中填写 java 路径。'}`,
-      }
-    }
+    // `unique` keeps discovery priority (setting → JAVA_HOME → PATH → JDK roots),
+    // while the picker lists every runtime newest major first.
+    const preferred = unique[0]
+    const candidates = [...unique]
+      .sort((a, b) => b.major - a.major || a.path.localeCompare(b.path))
+      .map((entry) => ({ path: entry.path, version: entry.version, major: entry.major, source: entry.source }))
+
+    const status: JavaStatus =
+      preferred !== undefined
+        ? {
+            available: true,
+            path: preferred.path,
+            version: preferred.version,
+            major: preferred.major,
+            source: preferred.source,
+            candidates,
+          }
+        : {
+            available: false,
+            source: 'missing',
+            candidates,
+            message: `未找到 Java（需要 8 及以上）。${failures.length > 0 ? failures.join('；') : '请安装 JDK 或在“设置”中填写 java 路径。'}`,
+          }
     this.lastKey = key
     this.lastStatus = status
     return status

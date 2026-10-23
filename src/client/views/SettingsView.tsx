@@ -73,6 +73,19 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     else update(key, 1)
   }
 
+  const javaCandidates = props.env.java.candidates ?? []
+  const knownJavaPaths = new Set(javaCandidates.map((candidate) => candidate.path))
+  const customJavaPath =
+    draft.javaPath.trim() !== '' && !knownJavaPaths.has(draft.javaPath) ? draft.javaPath : undefined
+  const javaOptions = [
+    { value: '', label: '自动（按 JAVA_HOME、PATH、JDK 目录查找）' },
+    ...javaCandidates.map((candidate, index) => ({
+      value: candidate.path,
+      label: `Java ${candidate.major} · ${candidate.version}${index === 0 ? ' · 最新' : ''}`,
+    })),
+    ...(customJavaPath !== undefined ? [{ value: customJavaPath, label: customJavaPath }] : []),
+  ]
+
   const presets = props.drivers.filter((driver) => driver.preset !== null)
   const customs = props.drivers.filter((driver) => driver.preset === null)
 
@@ -144,7 +157,18 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 onChange={(event) => updateNumber('redisScanCount', event.target.value)}
               />
             </Field>
-            <Field label="Java 可执行文件" hint="留空时自动查找 JAVA_HOME、PATH 与常见 JDK 目录" span>
+            <Field
+              label="Java 可执行文件"
+              hint="优先使用所选版本；留空时按 JAVA_HOME、PATH、常见 JDK 目录的顺序自动查找"
+              span
+            >
+              {javaOptions.length > 1 ? (
+                <Select
+                  options={javaOptions}
+                  value={draft.javaPath}
+                  onValueChange={(value) => update('javaPath', value)}
+                />
+              ) : null}
               <TextInput
                 value={draft.javaPath}
                 placeholder="例如 C:\\Program Files\\Java\\jdk-21\\bin\\java.exe"

@@ -161,6 +161,13 @@ export interface ClientConfig {
   settings: DbSettings
 }
 
+export interface JavaCandidate {
+  path: string
+  version: string
+  major: number
+  source: Exclude<JavaStatus['source'], 'missing'>
+}
+
 export interface JavaStatus {
   available: boolean
   path?: string
@@ -168,6 +175,8 @@ export interface JavaStatus {
   major?: number
   source: 'setting' | 'JAVA_HOME' | 'PATH' | 'jdks' | 'missing'
   message?: string
+  /** Every runtime discovery found, newest major first, for the settings picker. */
+  candidates?: JavaCandidate[]
 }
 
 export interface EnvStatus {

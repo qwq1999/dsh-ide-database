@@ -48,7 +48,7 @@ export const CSS = `
   color: var(--dsw-alias-label-primary);
 }
 .dshdb-toolbtn:disabled { opacity: 0.45; cursor: default; }
-.dshdb-toolbtn svg { flex: none; color: var(--dsw-alias-label-tertiary); }
+.dshdb-toolbtn svg { flex: none; color: inherit; }
 .dshdb-toolbtn:hover:not(:disabled) svg { color: var(--dsw-alias-label-primary); }
 
 .dshdb-tab {
