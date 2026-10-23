@@ -28,6 +28,7 @@ import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { redisTtlLabel, redisValueTable } from './redisvalue'
+import { txButtonDisabled, txStatement, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
@@ -338,6 +339,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [selectedRun, setSelectedRun] = useState(false)
   const [planRunning, setPlanRunning] = useState(false)
   const [plan, setPlan] = useState<ExplainResult | null>(null)
+  const [tx, setTx] = useState<TxState>('idle')
+  const [txBusy, setTxBusy] = useState(false)
+  const [txNote, setTxNote] = useState('')
   const scanCursorRef = useRef('0')
   const recallRef = useRef(-1)
 
@@ -483,6 +487,36 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setMultiNote('')
     setHistory(pushHistory('sql', text))
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
+  }
+
+  /** BEGIN / COMMIT / ROLLBACK; the note tells the user what happened. */
+  useEffect(
+    () => () => {
+      if (tx !== 'open' || selectedId === '') return
+      void api.query({ id: selectedId, sql: txStatement('rollback'), maxRows: 0, allowWrite: true, stmtKey: `tx-close-${Date.now()}` }).catch(() => undefined)
+    },
+    [tx, selectedId],
+  )
+
+  const runTx = async (action: TxAction): Promise<void> => {
+    if (selectedId === '' || txBusy) return
+    setTxBusy(true)
+    setFailure(null)
+    try {
+      const statementText = txStatement(action)
+      await withConnection(selectedId, () =>
+        api.query({ id: selectedId, sql: statementText, maxRows: 0, allowWrite: true, stmtKey: `tx-${action}-${Date.now()}` }),
+      )
+      setTx(action === 'start' ? 'open' : 'idle')
+      setPlan(null)
+      setResult(null)
+      setBase('')
+      setTxNote(action === 'start' ? '事务已开始，提交前可回滚' : action === 'commit' ? '事务已提交' : '事务已回滚')
+    } catch (error) {
+      setFailure(failureText(error))
+    } finally {
+      setTxBusy(false)
+    }
   }
 
   /** Show the execution plan of the current (or selected) statement without running it. */
@@ -725,7 +759,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           className="dshdb-select dshdb-select-inline dshdb-console-select"
           aria-label="数据源"
           value={selectedId}
-          onChange={(event) => setSelectedId(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value
+            if (tx === 'open' && selectedId !== '') {
+              void api.query({ id: selectedId, sql: txStatement('rollback'), maxRows: 0, allowWrite: true, stmtKey: `tx-switch-${Date.now()}` }).catch(() => undefined)
+            }
+            setTx('idle')
+            setTxNote('')
+            setSelectedId(next)
+          }}
         >
           {connections.map((item) => (
             <option key={item.id} value={item.id}>
@@ -901,6 +943,33 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             >
               执行计划
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void runTx('start')}
+              disabled={txButtonDisabled(tx, 'start') || txBusy || selectedId === ''}
+              title="发送 BEGIN，开启手动事务"
+            >
+              事务
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void runTx('commit')}
+              disabled={txButtonDisabled(tx, 'commit') || txBusy}
+              title="提交当前事务"
+            >
+              提交
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void runTx('rollback')}
+              disabled={txButtonDisabled(tx, 'rollback') || txBusy}
+              title="回滚当前事务"
+            >
+              回滚
+            </Button>
             <span className="dshdb-menu-wrap">
               <button
                 type="button"
@@ -943,6 +1012,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             ) : null}
             {multiNote !== '' ? <Tag tone="business">{multiNote}</Tag> : null}
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
+            {tx === 'open' ? <Tag tone="warn">事务进行中</Tag> : null}
+            {txNote !== '' ? <Tag tone="business">{txNote}</Tag> : null}
             {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
 

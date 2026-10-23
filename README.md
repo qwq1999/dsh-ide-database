@@ -54,6 +54,12 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ![点表头按城市降序](docs/screenshots/database-sort.png)
 
+### 手动事务
+
+SQL 控制台工具条的「事务」发送 `BEGIN`；之后「提交」「回滚」才可用，工具条同时显示「事务进行中」与操作结果提示。切换数据源或关闭标签页时，未提交的事务会被自动回滚。JDBC 桥接按连接复用同一个数据库会话，因此多条语句共享事务。
+
+![事务进行中](docs/screenshots/database-transaction.png)
+
 ### Redis 值表格化
 
 选中键后按类型展示成表格：hash 拆成「字段 / 值」，list、set 带序号，zset 展示「成员 / 分数」，stream 展示「ID / 字段」；表头显示类型、TTL（`永久` 表示无过期）与条目数，未知类型回退为原始 JSON。截图为 `shop:customer:42` 的 hash。
