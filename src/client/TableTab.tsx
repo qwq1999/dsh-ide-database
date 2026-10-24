@@ -18,7 +18,7 @@ import { readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { composeWhere, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -488,6 +488,13 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             {
               label: `复制整行（${columns.length} 列，制表符分隔）`,
               run: () => void copyText(rowToTsv(columns, cell.row)),
+            },
+            {
+              label: '复制 INSERT 语句',
+              run: () => {
+                if (connection === null) return
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, columns, cell.row))
+              },
             },
             {
               label: '按此值筛选',

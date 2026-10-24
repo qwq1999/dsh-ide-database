@@ -3,7 +3,7 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { ClientConnection, ColumnInfo } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo } from '../shared/types'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
  * exact value picked from a cell, `isnull` comes from clicking a NULL cell. */
@@ -43,6 +43,32 @@ export function isNumericType(typeName: string): boolean {
 
 export function quoteLiteral(text: string): string {
   return `'${text.replace(/'/gu, "''")}'`
+}
+
+/**
+ * One row as an INSERT statement for the table tab's context menu. Numeric
+ * columns keep the exact text the driver returned (decimals arrive as strings
+ * to avoid float rounding), everything else is quoted; NULL stays NULL.
+ */
+export function insertStatement(
+  dialect: ClientConnection['dialect'],
+  schema: string,
+  table: string,
+  columns: ColumnInfo[],
+  row: CellValue[],
+): string {
+  const names = columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
+  const values = columns.map((column, index) => insertLiteral(column, row[index] ?? null)).join(', ')
+  return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
+}
+
+function insertLiteral(column: ColumnInfo, value: CellValue): string {
+  if (value === null) return 'NULL'
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  if (typeof value === 'number') return String(value)
+  const text = String(value)
+  if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
+  return quoteLiteral(text)
 }
 
 export function filterExpression(

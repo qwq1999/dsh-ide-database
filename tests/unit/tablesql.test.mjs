@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   composeWhere,
   filterExpression,
+  insertStatement,
   isNumericType,
   pageClause,
   qualifiedName,
@@ -83,5 +84,30 @@ describe('isNumericType', () => {
     expect(isNumericType('decimal(10,2)')).toBe(true)
     expect(isNumericType('varchar(20)')).toBe(false)
     expect(isNumericType('datetime')).toBe(false)
+  })
+})
+
+describe('insertStatement', () => {
+  const columns = [
+    column('id', 'int'),
+    column('name', 'varchar(20)'),
+    column('price', 'decimal(10,2)'),
+    column('note', 'varchar(100)'),
+    column('active', 'tinyint(1)'),
+  ]
+
+  it('builds a MySQL INSERT with quoted literals, NULL and exact decimals', () => {
+    expect(
+      insertStatement('mysql', 'shop', 'orders', columns, [7, "O'Brien", '12.50', null, true]),
+    ).toBe(
+      "INSERT INTO `shop`.`orders` (`id`, `name`, `price`, `note`, `active`) VALUES (7, 'O''Brien', 12.50, NULL, TRUE);",
+    )
+  })
+
+  it('uses double quotes for Oracle identifiers and keeps numeric strings raw', () => {
+    const oracleColumns = [column('ID', 'NUMBER'), column('NAME', 'VARCHAR2(20)')]
+    expect(insertStatement('oracle', 'SHOP', 'ORDERS', oracleColumns, ['7', '手机'])).toBe(
+      'INSERT INTO "SHOP"."ORDERS" ("ID", "NAME") VALUES (7, \'手机\');',
+    )
   })
 })
