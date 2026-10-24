@@ -302,6 +302,36 @@ describe('DataView 渲染', () => {
     expect(text).toContain('北京')
   })
 
+  it('zset 值面板展示全部成员和分数', () => {
+    const html = render({
+      connections: [redisConnection()],
+      servers: { r1: { connected: true, dialect: 'redis', version: '7.2.0' } },
+      expanded: { r1: true, 'r1:redis:db0': true },
+      redisDbs: { r1: [0] },
+      redisKeys: { r1: { '0': [{ key: 'shop:product:rank', type: 'zset', ttl: -1, size: 3 }] } },
+      redisCursor: { r1: { '0': '0' } },
+      selectedKey: 'r1|redis:0:shop:product:rank',
+      redisDetailDb: 0,
+      redisDetail: {
+        key: 'shop:product:rank',
+        type: 'zset',
+        ttl: -1,
+        size: 3,
+        value: [
+          { member: 'SKU-0031', score: 155 },
+          { member: 'SKU-0042', score: 120.5 },
+          { member: 'SKU-0100', score: 99 },
+        ],
+        truncated: false,
+        preview: '',
+      },
+    })
+    expect(html).toContain('dshdb-redis-detail')
+    for (const member of ['SKU-0031', 'SKU-0042', 'SKU-0100']) expect(html).toContain(member)
+    expect(html).toContain('120.5')
+    expect(html).toContain('99')
+  })
+
   it('函数详情直接展示服务器返回的 DDL', () => {
     const text = strip(
       render({

@@ -1092,6 +1092,7 @@ export function DataView(props: DataViewProps): ReactElement {
 
       {props.redisDetail ? (
         <Panel
+          className="dshdb-redis-detail"
           title={
             <span className="dshdb-inline">
               <KeyIcon size={13} />

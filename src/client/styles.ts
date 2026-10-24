@@ -97,6 +97,7 @@ export const CSS = `
   flex-direction: column;
   flex: none;
   min-height: 0;
+  min-width: 0;
   border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
@@ -129,6 +130,7 @@ export const CSS = `
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   flex: 1;
 }
 .dshdb-panel-body-pad { padding: 8px; }
@@ -363,6 +365,8 @@ export const CSS = `
 
 .dshdb-grid-wrap {
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: auto;
   overscroll-behavior: contain;
   border: 0.5px solid var(--dsw-alias-border-l1);
@@ -1138,7 +1142,17 @@ export const CSS = `
 .dshdb-redis-table {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
 }
+
+/* 树下方的键值面板：固定占下部空间并内部滚动，避免把表格撑出窗口或被状态栏遮住。 */
+.dshdb-redis-detail {
+  flex: 0 0 40%;
+  min-height: 168px;
+  max-height: 46%;
+}
+.dshdb-redis-detail .dshdb-panel-body { overflow: auto; }
+.dshdb-redis-detail .dshdb-redis-value { min-width: 0; }
 
 `;
 
