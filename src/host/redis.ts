@@ -46,6 +46,28 @@ function truncateText(text: string, limit: number): { text: string; truncated: b
   return text.length > limit ? { text: text.slice(0, limit), truncated: true } : { text, truncated: false }
 }
 
+/**
+ * Normalise a `ZRANGE ... WITHSCORES` reply into member/score pairs.
+ *
+ * ioredis normally returns a flat `[member, score, member, score, ...]` list,
+ * but RESP3 connections (and raw `CALL`) return `[[member, score], ...]`.
+ */
+export function zsetEntries(reply: unknown): Array<{ member: string; score: number }> {
+  const flat: string[] = []
+  if (Array.isArray(reply)) {
+    for (const entry of reply) {
+      if (Array.isArray(entry)) flat.push(...entry.map((cell) => String(cell)))
+      else flat.push(String(entry))
+    }
+  }
+  const items: Array<{ member: string; score: number }> = []
+  for (let index = 0; index + 1 < flat.length; index += 2) {
+    const score = Number(flat[index + 1])
+    items.push({ member: flat[index], score: Number.isFinite(score) ? score : 0 })
+  }
+  return items
+}
+
 const READ_ONLY_COMMANDS = new Set([
   'get',
   'mget',
@@ -404,14 +426,9 @@ export class RedisManager {
           break
         }
         case 'zset': {
-          const reply = (await client.call('ZRANGE', key, '0', String(maxRows), 'WITHSCORES')) as unknown
-          const flat = Array.isArray(reply) ? reply.map((item) => String(item)) : []
-          const items: JsonValue[] = []
-          for (let index = 0; index + 1 < flat.length; index += 2) {
-            items.push({ member: flat[index], score: Number(flat[index + 1]) })
-          }
+          const reply = (await client.zrange(key, '0', String(maxRows), 'WITHSCORES')) as unknown
+          value = zsetEntries(reply) as JsonValue[]
           if (Number(await client.zcard(key)) > maxRows) truncated = true
-          value = items
           break
         }
         case 'stream': {
