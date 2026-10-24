@@ -9,6 +9,7 @@ import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
 import { DataView } from './views/DataView'
 import { openConsoleTab, openTableTab } from './tab-open'
+import { formatDdl } from './sqlformat'
 import {
   Banner,
   Button,
@@ -164,7 +165,7 @@ export function App(props: AppProps): ReactElement {
     setDdlModal({ open: true, title, text: '', loading: true, source: '' })
     try {
       const result = await api.ddl(connectionId, schema, table, kind)
-      setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source })
+      setDdlModal({ open: true, title, text: formatDdl(result.ddl), loading: false, source: result.source })
     } catch (error) {
       setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })
       notify(`读取 DDL 失败：${errorText(error)}`, 'error')
