@@ -29,6 +29,7 @@ import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { RedisValuePanel } from './redisview'
+import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, txStatement, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
@@ -280,6 +281,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
   const [exporting, setExporting] = useState(false)
+  const exportAnchor = useRef<HTMLSpanElement>(null)
+  const closeExport = useCallback(() => setExportOpen(false), [])
+  usePopoverDismiss(exportOpen, closeExport, exportAnchor)
   const [multiProgress, setMultiProgress] = useState<{ index: number; total: number } | null>(null)
   const [multiNote, setMultiNote] = useState('')
 
@@ -1027,7 +1031,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             >
               回滚
             </Button>
-            <span className="dshdb-menu-wrap">
+            <span className="dshdb-menu-wrap" ref={exportAnchor}>
               <button
                 type="button"
                 className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}

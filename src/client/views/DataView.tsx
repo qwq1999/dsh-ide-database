@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -16,6 +17,7 @@ import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
+import { usePopoverDismiss } from '../popover'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -184,14 +186,8 @@ function RowPicker({
 }): ReactElement {
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent): void => {
-      if (anchor.current !== null && !anchor.current.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
+  const close = useCallback(() => setOpen(false), [])
+  usePopoverDismiss(open, close, anchor)
   const allVisible = visible === null || (items.length > 0 && items.every((item) => visible.includes(item.id)))
   return (
     <span className="dshdb-picker-anchor" ref={anchor}>

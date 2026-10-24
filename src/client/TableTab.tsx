@@ -19,6 +19,7 @@ import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { composeWhere, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
 /** What the tab body receives: the framework's tab reader. */
@@ -97,6 +98,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  const exportAnchor = useRef<HTMLSpanElement>(null)
+  const closeExport = useCallback(() => setExportOpen(false), [])
+  usePopoverDismiss(exportOpen, closeExport, exportAnchor)
   const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
 
   const load = useCallback(
@@ -322,7 +326,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
         {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
-        <span className="dshdb-menu-wrap">
+        <span className="dshdb-menu-wrap" ref={exportAnchor}>
           <button
             type="button"
             className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}
@@ -338,6 +342,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             <span className="dshdb-menu" role="menu">
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'page')}>
                 当前页 CSV（{formatCount(rows.length)} 行）
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('json', 'page')}>
+                当前页 JSON（{formatCount(rows.length)} 行）
               </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
                 全部 CSV
