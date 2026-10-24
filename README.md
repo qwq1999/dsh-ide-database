@@ -64,7 +64,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 ### 手动事务
 
-SQL 控制台工具条的「事务」发送 `BEGIN`；之后「提交」「回滚」才可用，工具条同时显示「事务进行中」与操作结果提示。切换数据源或关闭标签页时，未提交的事务会被自动回滚。JDBC 桥接按连接复用同一个数据库会话，因此多条语句共享事务。
+SQL 控制台工具条的「事务」通过 JDBC 关闭连接的 auto-commit 来开启事务，不再依赖 `BEGIN` 语句（Oracle 没有 `BEGIN`，只有 PL/SQL 块开头，直接发送会报 `ORA-06550`）；「提交」「回滚」调用驱动的 `commit()` / `rollback()`，完成后恢复 auto-commit，MySQL、Oracle、达梦等都适用。开启后「提交」「回滚」才可用，工具条同时显示「事务进行中」与操作结果提示。切换数据源或关闭标签页时，未提交的事务会被自动回滚。JDBC 桥接按连接复用同一个数据库会话，因此多条语句共享事务。
 
 ![事务进行中](docs/screenshots/database-transaction.png)
 

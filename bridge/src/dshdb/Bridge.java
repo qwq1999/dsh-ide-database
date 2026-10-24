@@ -150,6 +150,9 @@ public final class Bridge {
         if ("query".equals(method)) {
             return executor.query(params);
         }
+        if ("tx".equals(method)) {
+            return executor.transaction(params);
+        }
         if ("cancel".equals(method)) {
             Map<String, Object> data = new LinkedHashMap<String, Object>();
             data.put(

@@ -485,6 +485,17 @@ export class SqlService {
     return { dialect: connection.dialect, statements, plan, warnings: [] }
   }
 
+  /**
+   * Explicit transaction control. Switches the JDBC connection out of
+   * auto-commit instead of posting SQL text, because Oracle has no `BEGIN`
+   * statement (only a PL/SQL block opener).
+   */
+  async transaction(connId: string, action: 'start' | 'commit' | 'rollback'): Promise<void> {
+    this.requireConnected(connId)
+    const bridge = await this.ensureBridge()
+    await bridge.request('tx', { connId, action }, 30_000)
+  }
+
   async query(connId: string, sql: string, options: QueryOptions = {}): Promise<QueryResult> {
     this.requireConnected(connId)
     const statement = sql.trim()

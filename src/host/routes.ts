@@ -350,6 +350,16 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       sendJson(response, 200, { ok: true, data: result })
       return
     }
+    case '/tx': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const action = data.action
+      if (action !== 'start' && action !== 'commit' && action !== 'rollback') {
+        throw new DbError('invalid', 'action 必须是 start、commit 或 rollback')
+      }
+      await deps.sql.transaction(id, action)
+      sendJson(response, 200, { ok: true, data: { ok: true } })
+      return
+    }
     case '/query/cancel': {
       const stmtKey = typeof data.stmtKey === 'string' ? data.stmtKey : ''
       const cancelled = await deps.sql.cancel(stmtKey)

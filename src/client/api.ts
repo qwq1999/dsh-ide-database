@@ -91,6 +91,7 @@ export const api = {
   ddl: (id: string, schema: string, table: string, kind: string) =>
     post<DdlResult>('/schema/ddl', { id, schema, table, kind }),
   explain: (id: string, sql: string, schema?: string) => post<ExplainResult>('/explain', { id, sql, schema }),
+  tx: (id: string, action: 'start' | 'commit' | 'rollback') => post<{ ok: boolean }>('/tx', { id, action }),
 
   query: (options: {
     id: string

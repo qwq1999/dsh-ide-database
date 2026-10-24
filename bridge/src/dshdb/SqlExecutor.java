@@ -203,6 +203,41 @@ final class SqlExecutor {
         }
     }
 
+    /**
+     * Explicit transaction control through JDBC. Oracle has no {@code BEGIN}
+     * statement (only a PL/SQL block opener), so the console must switch the
+     * connection out of auto-commit instead of sending SQL text.
+     */
+    Map<String, Object> transaction(Map<String, Object> params) throws SQLException {
+        String connId = Json.string(params.get("connId"), "");
+        String action = Json.string(params.get("action"), "").trim().toLowerCase(Locale.ROOT);
+        Conn entry = conn(connId);
+        entry.lock.lock();
+        try {
+            Connection connection = entry.connection;
+            if ("start".equals(action)) {
+                connection.setAutoCommit(false);
+            } else if ("commit".equals(action)) {
+                if (!connection.getAutoCommit()) {
+                    connection.commit();
+                    connection.setAutoCommit(true);
+                }
+            } else if ("rollback".equals(action)) {
+                if (!connection.getAutoCommit()) {
+                    connection.rollback();
+                    connection.setAutoCommit(true);
+                }
+            } else {
+                throw new IllegalArgumentException("action must be start, commit or rollback");
+            }
+        } finally {
+            entry.lock.unlock();
+        }
+        Map<String, Object> data = new LinkedHashMap<String, Object>();
+        data.put("ok", Boolean.TRUE);
+        return data;
+    }
+
     private void applySchema(Conn entry, String schema) throws SQLException {
         if (schema == null || schema.trim().isEmpty()) {
             return;

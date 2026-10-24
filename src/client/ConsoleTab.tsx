@@ -31,7 +31,7 @@ import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
-import { txButtonDisabled, txStatement, type TxAction, type TxState } from './transaction'
+import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
@@ -506,11 +506,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
   }
 
-  /** BEGIN / COMMIT / ROLLBACK; the note tells the user what happened. */
+  /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
   useEffect(
     () => () => {
       if (tx !== 'open' || selectedId === '') return
-      void api.query({ id: selectedId, sql: txStatement('rollback'), maxRows: 0, allowWrite: true, stmtKey: `tx-close-${Date.now()}` }).catch(() => undefined)
+      void api.tx(selectedId, 'rollback').catch(() => undefined)
     },
     [tx, selectedId],
   )
@@ -520,10 +520,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setTxBusy(true)
     setFailure(null)
     try {
-      const statementText = txStatement(action)
-      await withConnection(selectedId, () =>
-        api.query({ id: selectedId, sql: statementText, maxRows: 0, allowWrite: true, stmtKey: `tx-${action}-${Date.now()}` }),
-      )
+      await withConnection(selectedId, () => api.tx(selectedId, action))
       setTx(action === 'start' ? 'open' : 'idle')
       setPlan(null)
       setResult(null)
@@ -851,7 +848,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
           onChange={(event) => {
             const next = event.target.value
             if (tx === 'open' && selectedId !== '') {
-              void api.query({ id: selectedId, sql: txStatement('rollback'), maxRows: 0, allowWrite: true, stmtKey: `tx-switch-${Date.now()}` }).catch(() => undefined)
+              void api.tx(selectedId, 'rollback').catch(() => undefined)
             }
             setTx('idle')
             setTxNote('')
