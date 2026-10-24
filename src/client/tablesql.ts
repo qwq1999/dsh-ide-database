@@ -83,6 +83,24 @@ export function insertStatements(
   return `${rows.map((row) => insertStatement(dialect, schema, table, columns, row)).join('\n')}\n`
 }
 
+function unquoteIdentifier(part: string): string {
+  return part.trim().replace(/^[`"[]/u, '').replace(/[`"\]]$/u, '')
+}
+
+/**
+ * The table a statement reads from or writes to, used by the console's SQL
+ * export. Returns null for statements without a plain table (functions,
+ * multi-statement scripts, SELECTs over subqueries only).
+ */
+export function tableFromStatement(statement: string): { schema: string; table: string } | null {
+  const match =
+    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(statement)
+  if (match === null) return null
+  const parts = match[1].split('.').map(unquoteIdentifier)
+  if (parts.length >= 2) return { schema: parts[parts.length - 2] ?? '', table: parts[parts.length - 1] ?? '' }
+  return { schema: '', table: parts[0] ?? '' }
+}
+
 export function filterExpression(
   dialect: ClientConnection['dialect'],
   column: ColumnInfo,

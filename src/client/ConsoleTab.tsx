@@ -36,6 +36,7 @@ import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
+import { insertStatements, tableFromStatement } from './tablesql'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon, StarIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -51,6 +52,10 @@ interface Failure {
 }
 
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
+/** Pseudo page size meaning "run the statement once and show everything". */
+const ALL_PAGE_SIZE = 0
+/** The host caps one response at 5,000 rows; "全部" takes that whole ceiling. */
+const ALL_ROWS = 5000
 
 const noTabInfo = (): undefined => undefined
 
@@ -278,6 +283,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
   const [base, setBase] = useState('')
+  const [sourceSql, setSourceSql] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [columnOrder, setColumnOrder] = useState<number[] | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
@@ -410,11 +416,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       setMultiNote('')
       try {
         const paged = pageable(text)
-        const sqlText = paged ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
-        const next = await queryWithRetry(selectedId, sqlText, target.size, target.allowWrite, stmtKey, schema)
+        const showAll = target.size === ALL_PAGE_SIZE
+        const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
+        const maxRows = showAll ? ALL_ROWS : target.size
+        const next = await queryWithRetry(selectedId, sqlText, maxRows, target.allowWrite, stmtKey, schema)
         setResult(next)
-        setPage(paged ? target.page : 0)
+        setPage(paged && !showAll ? target.page : 0)
         setBase(paged ? text : '')
+        setSourceSql(text)
         void loadSchemaList(selectedId)
       } catch (error) {
         setResult(null)
@@ -442,7 +451,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         const stmtKey = `console-${Date.now().toString(36)}-${index}`
         stmtRef.current = stmtKey
         try {
-          last = await queryWithRetry(selectedId, part, pageSize, looksLikeWrite(part), stmtKey, schema)
+          last = await queryWithRetry(
+            selectedId,
+            part,
+            pageSize === ALL_PAGE_SIZE ? ALL_ROWS : pageSize,
+            looksLikeWrite(part),
+            stmtKey,
+            schema,
+          )
         } catch (error) {
           const failure = failureText(error)
           setFailure({ message: `第 ${index + 1}/${parts.length} 条语句执行失败：${failure.message}`, detail: failure.detail ?? part })
@@ -457,6 +473,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
       setResult(last)
       setPage(0)
       setBase('')
+      setSourceSql(parts[parts.length - 1] ?? '')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
       void loadSchemaList(selectedId)
@@ -741,12 +758,33 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     )
   }
 
+  /** The table the console statement targets, for INSERT export. */
+  const tableTarget = (): { schema: string; table: string } | null => {
+    const parsed = tableFromStatement(sourceSql !== '' ? sourceSql : base)
+    if (parsed === null) return null
+    return parsed.schema === '' ? { schema, table: parsed.table } : parsed
+  }
+  const noTableNote = (): void => {
+    setExportNote('当前语句没有目标表，无法导出 SQL')
+    setTimeout(() => setExportNote(''), 5000)
+  }
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
   const exportPage = (format: ExportFormat): void => {
     setExportOpen(false)
     if (displayRows.length === 0) return
-    const text = format === 'csv' ? toCsv(displayColumns, displayRows) : toJson(displayColumns, displayRows)
-    downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
+    const target = format === 'sql' ? tableTarget() : null
+    if (format === 'sql' && target === null) {
+      noTableNote()
+      return
+    }
+    const text =
+      format === 'sql'
+        ? insertStatements(connection?.dialect ?? 'mysql', target?.schema ?? '', target?.table ?? '', displayColumns, displayRows)
+        : format === 'csv'
+          ? toCsv(displayColumns, displayRows)
+          : toJson(displayColumns, displayRows)
+    const mime = format === 'sql' ? 'application/sql' : format === 'csv' ? 'text/csv' : 'application/json'
+    downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), mime, text)
     setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
@@ -754,6 +792,11 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const exportAll = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     if (base === '' || selectedId === '' || exporting) return
+    const target = format === 'sql' ? tableTarget() : null
+    if (format === 'sql' && target === null) {
+      noTableNote()
+      return
+    }
     setExporting(true)
     setFailure(null)
     try {
@@ -774,8 +817,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         sourcePage += 1
       }
       const data = orderRows(collected.slice(0, EXPORT_LIMIT), columnOrder)
-      const text = format === 'csv' ? toCsv(orderColumns(columns, columnOrder), data) : toJson(orderColumns(columns, columnOrder), data)
-      downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
+      const cols = orderColumns(columns, columnOrder)
+      const text =
+        format === 'sql'
+          ? insertStatements(connection?.dialect ?? 'mysql', target?.schema ?? '', target?.table ?? '', cols, data)
+          : format === 'csv'
+            ? toCsv(cols, data)
+            : toJson(cols, data)
+      const mime = format === 'sql' ? 'application/sql' : format === 'csv' ? 'text/csv' : 'application/json'
+      downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), mime, text)
       setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
       setTimeout(() => setExportNote(''), 5000)
     } catch (error) {
@@ -785,8 +835,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     }
   }
 
+  const allRows = pageSize === ALL_PAGE_SIZE
   const hasPrevious = page > 0
-  const hasNext = result !== null && rows.length >= pageSize
+  const hasNext = !allRows && result !== null && rows.length >= pageSize
   const rangeStart = rows.length === 0 ? 0 : offset + 1
   const rangeEnd = offset + rows.length
 
@@ -1062,6 +1113,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                   <button type="button" role="menuitem" onClick={() => exportPage('json')}>
                     当前页 JSON（{visibleRows.length} 行）
                   </button>
+                  <button type="button" role="menuitem" onClick={() => exportPage('sql')}>
+                    当前页 SQL（{visibleRows.length} 行）
+                  </button>
                   {base !== '' ? (
                     <>
                       <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
@@ -1069,6 +1123,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                       </button>
                       <button type="button" role="menuitem" onClick={() => void exportAll('json')} disabled={exporting}>
                         全部 JSON（最多 {EXPORT_LIMIT} 行）
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => void exportAll('sql')} disabled={exporting}>
+                        全部 SQL（最多 {EXPORT_LIMIT} 行）
                       </button>
                     </>
                   ) : null}
@@ -1086,7 +1143,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}
             {tx === 'open' ? <Tag tone="warn">事务进行中</Tag> : null}
             {txNote !== '' ? <Tag tone="business">{txNote}</Tag> : null}
-            {base !== '' ? <span className="dshdb-qmeta">可分页查询</span> : null}
+            {base !== '' && !allRows ? <span className="dshdb-qmeta">可分页查询</span> : null}
           </div>
 
           {historyOpen ? (
@@ -1156,13 +1213,13 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                   label="|◀"
                   title="第一页"
                   onClick={() => goPage(0)}
-                  disabled={!hasPrevious || running}
+                  disabled={!hasPrevious || running || allRows}
                 />
                 <PagerButton
                   label="◀"
                   title="上一页"
                   onClick={() => goPage(Math.max(page - 1, 0))}
-                  disabled={!hasPrevious || running}
+                  disabled={!hasPrevious || running || allRows}
                 />
                 <span className="dshdb-pager-range">
                   {formatCount(rangeStart)}-{formatCount(rangeEnd)}
@@ -1183,8 +1240,17 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                       {formatCount(size)}
                     </option>
                   ))}
+                  <option value={ALL_PAGE_SIZE} title={`一次取回全部结果（最多 ${formatCount(ALL_ROWS)} 行）`}>
+                    全部
+                  </option>
                 </select>
-                <PagerButton label="▶" title="下一页" onClick={() => goPage(page + 1)} disabled={!hasNext || running} />
+                {allRows ? <span className="dshdb-qmeta">上限 {formatCount(ALL_ROWS)} 行</span> : null}
+                <PagerButton
+                  label="▶"
+                  title="下一页"
+                  onClick={() => goPage(page + 1)}
+                  disabled={!hasNext || running || allRows}
+                />
               </div>
             ) : (
               <div className="dshdb-pager">

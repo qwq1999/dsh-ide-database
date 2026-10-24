@@ -10,6 +10,7 @@ import {
   quoteIdent,
   quoteLiteral,
   stripKeyword,
+  tableFromStatement,
 } from '../../src/client/tablesql.ts'
 
 const column = (name, typeName) => ({ name, typeName, nullable: true, defaultValue: '', comment: '', primary: false })
@@ -85,6 +86,22 @@ describe('isNumericType', () => {
     expect(isNumericType('decimal(10,2)')).toBe(true)
     expect(isNumericType('varchar(20)')).toBe(false)
     expect(isNumericType('datetime')).toBe(false)
+  })
+})
+
+describe('tableFromStatement', () => {
+  it('finds the table of plain SELECT / UPDATE / INSERT statements', () => {
+    expect(tableFromStatement('select * from orders')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('SELECT * FROM `shop`.`orders` WHERE id > 3')).toEqual({ schema: 'shop', table: 'orders' })
+    expect(tableFromStatement('update "shop"."orders" set status = \'paid\'')).toEqual({ schema: 'shop', table: 'orders' })
+    expect(tableFromStatement('insert into [shop].[orders] (id) values (1)')).toEqual({ schema: 'shop', table: 'orders' })
+  })
+
+  it('skips subqueries without a plain table and returns null otherwise', () => {
+    const nested = 'select * from (select * from shop.orders) x'
+    expect(tableFromStatement(nested)).toEqual({ schema: 'shop', table: 'orders' })
+    expect(tableFromStatement('select 1 + 1')).toBeNull()
+    expect(tableFromStatement('begin')).toBeNull()
   })
 })
 
