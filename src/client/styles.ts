@@ -1103,8 +1103,7 @@ export const CSS = `
   font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
   font-size: 11.5px;
   line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
   tab-size: 2;
 }
 .dshdb-redis-value {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDdl, formatSql } from '../../src/client/sqlformat.ts'
+import { formatSql } from '../../src/client/sqlformat.ts'
 
 describe('formatSql', () => {
   it('大写关键字并给主要子句换行', () => {
@@ -51,37 +51,5 @@ describe('formatSql', () => {
 
   it('多条语句各占一行', () => {
     expect(formatSql('select 1; select 2')).toBe('SELECT 1;\nSELECT 2')
-  })
-})
-
-describe('formatDdl', () => {
-  it('序列的每个选项单独换行', () => {
-    const ddl =
-      'CREATE SEQUENCE "SDHALL0"."CST_USERCHANNEL_SEQ" MINVALUE 1 MAXVALUE 9999999999999999999999999999 INCREMENT BY 1 START WITH 1 CACHE 20 NOORDER NOCYCLE NOKEEP NOSCALE GLOBAL'
-    expect(formatDdl(ddl)).toBe(
-      [
-        'CREATE SEQUENCE "SDHALL0"."CST_USERCHANNEL_SEQ"',
-        '  MINVALUE 1',
-        '  MAXVALUE 9999999999999999999999999999',
-        '  INCREMENT BY 1',
-        '  START WITH 1',
-        '  CACHE 20',
-        '  NOORDER',
-        '  NOCYCLE',
-        '  NOKEEP',
-        '  NOSCALE',
-        '  GLOBAL',
-      ].join('\n'),
-    )
-  })
-
-  it('NO MINVALUE / NO CACHE 作为一整行', () => {
-    expect(formatDdl('create sequence s no minvalue no cache cycle')).toBe(
-      ['CREATE SEQUENCE s', '  NO MINVALUE', '  NO CACHE', '  CYCLE'].join('\n'),
-    )
-  })
-
-  it('非序列 DDL 仍用通用 SQL 排版', () => {
-    expect(formatDdl('create table t (id int)')).toBe('CREATE TABLE t(id int)')
   })
 })

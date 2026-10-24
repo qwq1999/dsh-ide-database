@@ -17,7 +17,6 @@ import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
-import { formatDdl } from '../sqlformat'
 import { usePopoverDismiss } from '../popover'
 import {
   ChevronDownIcon,
@@ -1171,7 +1170,7 @@ export function DataView(props: DataViewProps): ReactElement {
           ) : null}
           {typeof detail.ddl === 'string' && detail.ddl !== '' ? (
             <div style={{ marginTop: detail.columns.length > 0 ? 10 : 0 }}>
-              <pre className="dshdb-ddl" style={{ maxHeight: 280 }}>{formatDdl(detail.ddl)}</pre>
+              <pre className="dshdb-ddl" style={{ maxHeight: 280 }}>{detail.ddl}</pre>
               <div className="dshdb-muted" style={{ marginTop: 4 }}>
                 {detail.ddlSource === 'generated' ? '根据列结构生成的 DDL' : '来自服务器的定义'}
                 {detail.ddlWarnings !== undefined && detail.ddlWarnings.length > 0
