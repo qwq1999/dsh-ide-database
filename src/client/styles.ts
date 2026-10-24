@@ -364,6 +364,7 @@ export const CSS = `
 .dshdb-grid-wrap {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
@@ -372,7 +373,8 @@ export const CSS = `
 .dshdb-grid {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
   font-size: 11.5px;
 }
@@ -404,9 +406,13 @@ export const CSS = `
   text-overflow: ellipsis;
 }
 .dshdb-grid tbody tr { height: 22px; }
-.dshdb-grid.dshdb-grid-sized { table-layout: fixed; width: 100%; }
+.dshdb-grid.dshdb-grid-sized { table-layout: fixed; width: max-content; min-width: 100%; }
 .dshdb-th-sortable { cursor: pointer; user-select: none; }
 .dshdb-th-sortable:hover { color: var(--dsw-alias-label-primary); }
+.dshdb-th-draggable { cursor: grab; }
+.dshdb-th-draggable:active { cursor: grabbing; }
+.dshdb-th-dragging { opacity: 0.45; }
+.dshdb-th-drop-target { box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary); }
 .dshdb-grid th[data-sorted] { color: var(--dsw-alias-label-primary); }
 .dshdb-sort-arrow {
   margin-left: 4px;

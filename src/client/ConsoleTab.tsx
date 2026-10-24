@@ -6,7 +6,7 @@
  * keys on top, the selected value below) plus a command box, which is how IDEA
  * presents Redis.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type {
   CellValue,
   ClientConnection,
@@ -28,6 +28,7 @@ import { clearHistory, historyAgo, pushHistory, readHistory, readPins, togglePin
 import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
+import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, txStatement, type TxAction, type TxState } from './transaction'
@@ -278,6 +279,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [pageSize, setPageSize] = useState(500)
   const [base, setBase] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
+  const [columnOrder, setColumnOrder] = useState<number[] | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -690,6 +692,35 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, isRedis, activeRedisDb])
 
+  // Derived values and the column-reorder hooks must stay above the early
+  // returns below, otherwise the hook order changes once a data source loads.
+  const offset = page * pageSize
+  const columns = result?.columns ?? []
+  const rows = result?.rows ?? []
+  // Sorting only reshapes the current page; a new query or page resets it.
+  const visibleRows = sortRows(columns, rows, rowSort)
+  const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
+  const displayRows = useMemo(() => orderRows(visibleRows, columnOrder), [visibleRows, columnOrder])
+  const signature = columnSignature(columns)
+  useEffect(() => {
+    setColumnOrder(null)
+  }, [signature])
+  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
+    const active = rowSort?.column === column.name ? rowSort.direction : null
+    const index = columns.findIndex((item) => item.name === column.name)
+    return [
+      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
+      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
+      { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
+      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+      {
+        label: `复制本列值（${visibleRows.length} 行）`,
+        disabled: visibleRows.length === 0 || index < 0,
+        run: () => void copyText(columnValues(visibleRows, index)),
+      },
+    ]
+  }
+
   if (loadError !== '') {
     return (
       <div className="dshdb-qtab">
@@ -710,33 +741,13 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     )
   }
 
-  const offset = page * pageSize
-  const columns = result?.columns ?? []
-  const rows = result?.rows ?? []
-  // Sorting only reshapes the current page; a new query or page resets it.
-  const visibleRows = sortRows(columns, rows, rowSort)
-  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
-    const active = rowSort?.column === column.name ? rowSort.direction : null
-    const index = columns.findIndex((item) => item.name === column.name)
-    return [
-      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
-      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
-      { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
-      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
-      {
-        label: `复制本列值（${visibleRows.length} 行）`,
-        disabled: visibleRows.length === 0 || index < 0,
-        run: () => void copyText(columnValues(visibleRows, index)),
-      },
-    ]
-  }
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
   const exportPage = (format: ExportFormat): void => {
     setExportOpen(false)
-    if (visibleRows.length === 0) return
-    const text = format === 'csv' ? toCsv(columns, visibleRows) : toJson(columns, visibleRows)
+    if (displayRows.length === 0) return
+    const text = format === 'csv' ? toCsv(displayColumns, displayRows) : toJson(displayColumns, displayRows)
     downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
-    setExportNote(`${format.toUpperCase()} 已导出 ${visibleRows.length} 行`)
+    setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
   /** Export every row of the paged statement, not just the current page. */
@@ -762,8 +773,8 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
         if (next.rows.length < EXPORT_BATCH) break
         sourcePage += 1
       }
-      const data = collected.slice(0, EXPORT_LIMIT)
-      const text = format === 'csv' ? toCsv(columns, data) : toJson(columns, data)
+      const data = orderRows(collected.slice(0, EXPORT_LIMIT), columnOrder)
+      const text = format === 'csv' ? toCsv(orderColumns(columns, columnOrder), data) : toJson(orderColumns(columns, columnOrder), data)
       downloadText(exportFilename('', 'console', format), format === 'csv' ? 'text/csv' : 'application/json', text)
       setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
       setTimeout(() => setExportNote(''), 5000)
@@ -1100,16 +1111,19 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
 
           {result !== null && rows.length > 0 ? (
             <DataGrid
-              columns={columns}
-              rows={visibleRows}
+              columns={displayColumns}
+              rows={displayRows}
               offset={offset}
               storageKey="console:sql"
               sort={rowSort}
               onSort={(column) => setRowSort((current) => nextRowSort(current, column.name))}
+              onReorderColumns={(from, to) => {
+                setColumnOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
+              }}
               headerMenu={columnMenu}
               cellMenu={(cell) => [
                 { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
-                { label: `复制整行（${columns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(columns, cell.row)) },
+                { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
               ]}
             />
           ) : (

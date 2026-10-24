@@ -49,6 +49,8 @@ export interface DataGridProps {
   headerMenu?: (column: ColumnInfo) => ColumnMenuItem[]
   /** Right-click menu entries for a result cell. */
   cellMenu?: (cell: CellMenuTarget) => ColumnMenuItem[]
+  /** Drag a header onto another to change the display order. */
+  onReorderColumns?: (from: number, to: number) => void
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -112,8 +114,12 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
 }
 
 export function DataGrid(props: DataGridProps): ReactElement {
-  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu, cellMenu } = props
+  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu, cellMenu, onReorderColumns } =
+    props
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const dragIndex = useRef<number | null>(null)
+  const dragged = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const { range, onScroll } = useVirtualRange(rows.length, containerRef)
@@ -221,12 +227,50 @@ export function DataGrid(props: DataGridProps): ReactElement {
               <th
                 key={`${column.name}-${index}`}
                 title={onSort === undefined ? `${column.name} ${column.typeName}` : `按 ${column.name} 排序`}
-                className={onSort === undefined ? undefined : 'dshdb-th-sortable'}
+                className={[
+                  onSort === undefined ? '' : 'dshdb-th-sortable',
+                  onReorderColumns === undefined ? '' : 'dshdb-th-draggable',
+                  dropIndex === index ? 'dshdb-th-drop-target' : '',
+                  dragIndex.current === index ? 'dshdb-th-dragging' : '',
+                ]
+                  .filter((value) => value !== '')
+                  .join(' ') || undefined}
                 data-sorted={sort !== null && sort !== undefined && sort.column === column.name ? sort.direction : undefined}
+                draggable={onReorderColumns !== undefined}
+                onDragStart={(event) => {
+                  if (onReorderColumns === undefined) return
+                  dragIndex.current = index
+                  dragged.current = true
+                  event.dataTransfer?.setData('text/plain', String(index))
+                  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(event) => {
+                  if (onReorderColumns === undefined) return
+                  event.preventDefault()
+                  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+                  setDropIndex(index)
+                }}
+                onDragLeave={() => setDropIndex((current) => (current === index ? null : current))}
+                onDrop={(event) => {
+                  if (onReorderColumns === undefined) return
+                  event.preventDefault()
+                  const from = dragIndex.current
+                  dragIndex.current = null
+                  setDropIndex(null)
+                  if (from !== null && from !== index) onReorderColumns(from, index)
+                }}
+                onDragEnd={() => {
+                  dragIndex.current = null
+                  setDropIndex(null)
+                }}
                 onClick={
                   onSort === undefined
                     ? undefined
                     : (event) => {
+                        if (dragged.current) {
+                          dragged.current = false
+                          return
+                        }
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
                         onSort(column)
                       }

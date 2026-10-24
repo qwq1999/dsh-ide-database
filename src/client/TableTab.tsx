@@ -7,7 +7,7 @@
  * it is closed; a restored tab carries no parameters, so it reports that the
  * table has to be opened again instead of guessing.
  */
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid } from './DataGrid'
@@ -17,6 +17,7 @@ import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from '
 import { readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
+import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
@@ -95,6 +96,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [orderText, setOrderText] = useState('')
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [order, setOrder] = useState<number[] | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
@@ -102,6 +104,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
   const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
+
+  // Column drag order is display-only; reset it when the result set changes shape.
+  const signature = columnSignature(columns)
+  useEffect(() => {
+    setOrder(null)
+  }, [signature])
+  const displayColumns = useMemo(() => orderColumns(columns, order), [columns, order])
+  const displayRows = useMemo(() => orderRows(rows, order), [rows, order])
 
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
@@ -272,8 +282,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setExportOpen(false)
     try {
       const dialect = connection.dialect
-      let exportColumns = columns
-      let exportData = rows
+      let exportColumns = displayColumns
+      let exportData = displayRows
       if (scope === 'all') {
         const from = qualifiedName(dialect, params.schema, params.table)
         const where = composeWhere(dialect, whereText, columns, filters)
@@ -291,7 +301,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           if (result.rows.length < batch || collected.length >= EXPORT_LIMIT) break
           offset += batch
         }
-        exportData = collected.slice(0, EXPORT_LIMIT)
+        exportData = orderRows(collected.slice(0, EXPORT_LIMIT), order)
+        exportColumns = orderColumns(exportColumns, order)
       }
       const text =
         format === 'sql'
@@ -441,16 +452,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </div>
       ) : (
         <DataGrid
-          columns={columns}
-          rows={rows}
+          columns={displayColumns}
+          rows={displayRows}
           offset={offset}
           storageKey={`table:${params.schema}.${params.table}`}
           sort={activeSort ?? null}
           headerMenu={columnMenu}
           onSort={sortTable}
+          onReorderColumns={(from, to) => {
+            setOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
+          }}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
                 <th className="dshdb-num" />
-                {columns.map((column, index) => {
+                {displayColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
                   return (
@@ -498,14 +512,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               run: () => void copyText(cellCopyText(cell.value)),
             },
             {
-              label: `复制整行（${columns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(columns, cell.row)),
+              label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
+              run: () => void copyText(rowToTsv(displayColumns, cell.row)),
             },
             {
               label: '复制 INSERT 语句',
               run: () => {
                 if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, columns, cell.row))
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row))
               },
             },
             {
