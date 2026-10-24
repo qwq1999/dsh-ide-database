@@ -15,11 +15,14 @@ import java.sql.NClob;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -236,6 +239,76 @@ final class SqlExecutor {
         Map<String, Object> data = new LinkedHashMap<String, Object>();
         data.put("ok", Boolean.TRUE);
         return data;
+    }
+
+    /**
+     * Execution plan through the vendor API. DM's JDBC driver does not return a
+     * ResultSet for EXPLAIN; DmdbConnection.getExplainInfo(sql) is the documented
+     * way to read the plan text.
+     */
+    Map<String, Object> explain(Map<String, Object> params) throws Exception {
+        String connId = Json.string(params.get("connId"), "");
+        String sql = Json.string(params.get("sql"), "").trim();
+        if (sql.isEmpty()) {
+            throw new IllegalArgumentException("sql is required");
+        }
+        Conn entry = conn(connId);
+        entry.lock.lock();
+        long started = System.nanoTime();
+        try {
+            String plan = dmExplainText(entry.connection, sql);
+            List<Object> columns = new ArrayList<Object>();
+            Map<String, Object> column = new LinkedHashMap<String, Object>();
+            column.put("name", "执行计划");
+            column.put("typeName", "VARCHAR");
+            column.put("jdbcType", Integer.valueOf(Types.VARCHAR));
+            column.put("nullable", Boolean.TRUE);
+            columns.add(column);
+            List<Object> rows = new ArrayList<Object>();
+            String[] lines = plan.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+            for (String line : lines) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+                List<Object> row = new ArrayList<Object>(1);
+                row.add(line);
+                rows.add(row);
+            }
+            Map<String, Object> data = new LinkedHashMap<String, Object>();
+            data.put("columns", columns);
+            data.put("rows", rows);
+            data.put("rowCount", Integer.valueOf(rows.size()));
+            data.put("truncated", Boolean.FALSE);
+            data.put("elapsedMs", Long.valueOf(elapsedMs(started)));
+            data.put("sql", "EXPLAIN " + sql);
+            return data;
+        } finally {
+            entry.lock.unlock();
+        }
+    }
+
+    private static String dmExplainText(Connection connection, String sql) throws Exception {
+        Class<?> iface;
+        try {
+            iface = Class.forName(
+                    "dm.jdbc.driver.DmdbConnection", true, connection.getClass().getClassLoader());
+        } catch (ClassNotFoundException missing) {
+            throw new SQLException("当前达梦 JDBC 驱动不支持执行计划接口");
+        }
+        Method method = iface.getMethod("getExplainInfo", String.class);
+        try {
+            Object value = method.invoke(connection, sql);
+            if (value == null) {
+                throw new SQLException("达梦驱动没有返回执行计划");
+            }
+            return value.toString();
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception) {
+                throw (Exception) cause;
+            }
+            throw new SQLException("获取达梦执行计划失败", cause);
+        }
     }
 
     private void applySchema(Conn entry, String schema) throws SQLException {
