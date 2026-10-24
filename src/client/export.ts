@@ -9,7 +9,7 @@
 import type { CellValue, ColumnInfo, Row } from '../shared/types'
 import { formatCell } from './format'
 
-export type ExportFormat = 'csv' | 'json'
+export type ExportFormat = 'csv' | 'json' | 'sql'
 
 function csvCell(value: CellValue): string {
   const text = formatCell(value)

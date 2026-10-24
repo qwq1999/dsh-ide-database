@@ -18,7 +18,7 @@ import { readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -293,8 +293,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         }
         exportData = collected.slice(0, EXPORT_LIMIT)
       }
-      const text = format === 'csv' ? toCsv(exportColumns, exportData) : toJson(exportColumns, exportData)
-      downloadText(exportFilename(params.schema, params.table, format), format === 'csv' ? 'text/csv' : 'application/json', text)
+      const text =
+        format === 'sql'
+          ? insertStatements(dialect, params.schema, params.table, exportColumns, exportData)
+          : format === 'csv'
+            ? toCsv(exportColumns, exportData)
+            : toJson(exportColumns, exportData)
+      const mime = format === 'csv' ? 'text/csv' : format === 'json' ? 'application/json' : 'application/sql'
+      downloadText(exportFilename(params.schema, params.table, format), mime, text)
       setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
       setTimeout(() => setExportNote(''), 5000)
     } catch (caught) {
@@ -346,11 +352,17 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               <button type="button" role="menuitem" onClick={() => void exportRows('json', 'page')}>
                 当前页 JSON（{formatCount(rows.length)} 行）
               </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'page')}>
+                当前页 SQL（{formatCount(rows.length)} 行）
+              </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
                 全部 CSV
               </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('json', 'all')}>
                 全部 JSON
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'all')}>
+                全部 SQL
               </button>
             </span>
           ) : null}

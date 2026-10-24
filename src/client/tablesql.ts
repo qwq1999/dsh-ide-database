@@ -71,6 +71,18 @@ function insertLiteral(column: ColumnInfo, value: CellValue): string {
   return quoteLiteral(text)
 }
 
+/** Many rows as one INSERT-per-line SQL script, for the export menu. */
+export function insertStatements(
+  dialect: ClientConnection['dialect'],
+  schema: string,
+  table: string,
+  columns: ColumnInfo[],
+  rows: CellValue[][],
+): string {
+  if (rows.length === 0) return ''
+  return `${rows.map((row) => insertStatement(dialect, schema, table, columns, row)).join('\n')}\n`
+}
+
 export function filterExpression(
   dialect: ClientConnection['dialect'],
   column: ColumnInfo,

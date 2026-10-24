@@ -3,6 +3,7 @@ import {
   composeWhere,
   filterExpression,
   insertStatement,
+  insertStatements,
   isNumericType,
   pageClause,
   qualifiedName,
@@ -109,5 +110,13 @@ describe('insertStatement', () => {
     expect(insertStatement('oracle', 'SHOP', 'ORDERS', oracleColumns, ['7', '手机'])).toBe(
       'INSERT INTO "SHOP"."ORDERS" ("ID", "NAME") VALUES (7, \'手机\');',
     )
+  })
+
+  it('writes one INSERT per row and a trailing newline for the SQL export', () => {
+    const exportColumns = [column('id', 'int'), column('name', 'varchar(20)')]
+    expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [[1, '手机'], [2, null]])).toBe(
+      "INSERT INTO `shop`.`categories` (`id`, `name`) VALUES (1, '手机');\nINSERT INTO `shop`.`categories` (`id`, `name`) VALUES (2, NULL);\n",
+    )
+    expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [])).toBe('')
   })
 })

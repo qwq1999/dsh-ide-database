@@ -85,9 +85,11 @@ describe('table export menu', () => {
 
     fireEvent.click(trigger)
     expect(await screen.findByRole('menuitem', { name: /当前页 JSON/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /当前页 SQL/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /当前页 CSV/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /全部 CSV/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /全部 JSON/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /全部 SQL/ })).toBeTruthy()
 
     fireEvent.pointerDown(document.body)
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())

@@ -32,5 +32,6 @@ describe('jsonValue', () => {
 describe('exportFilename', () => {
   it('stamps schema.table with the export time', () => {
     expect(exportFilename('shop', 'orders', 'json', new Date(2026, 9, 23, 1, 2, 3))).toBe('shop.orders-20261023-010203.json')
+    expect(exportFilename('shop', 'orders', 'sql', new Date(2026, 9, 23, 1, 2, 3))).toBe('shop.orders-20261023-010203.sql')
   })
 })
