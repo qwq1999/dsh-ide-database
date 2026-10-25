@@ -71,8 +71,8 @@ const settings = {
 
 const tab = () => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })
 
-function commandInput(): HTMLInputElement {
-  return screen.getByPlaceholderText('例如 GET shop:customer:42') as HTMLInputElement
+async function commandInput(): Promise<HTMLInputElement> {
+  return (await screen.findByPlaceholderText('例如 GET shop:customer:42')) as HTMLInputElement
 }
 
 function press(input: HTMLInputElement, key: string): void {
@@ -107,7 +107,7 @@ describe('redis command history', () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
 
-    const input = commandInput()
+    const input = await commandInput()
     fireEvent.change(input, { target: { value: 'GET c' } })
 
     press(input, 'ArrowUp')
@@ -128,7 +128,7 @@ describe('redis command history', () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
 
-    const input = commandInput()
+    const input = await commandInput()
     fireEvent.change(input, { target: { value: 'PING' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(mocks.redisCommand).toHaveBeenCalled())
