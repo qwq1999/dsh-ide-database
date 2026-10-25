@@ -24,6 +24,9 @@ describe('commandCompletion', () => {
   it('offers the command names the host knows about', () => {
     expect(REDIS_COMMANDS).toContain('HGETALL')
     expect(REDIS_COMMANDS).toContain('SCAN')
+    for (const command of ['GETDEL', 'ZRANK', 'HRANDFIELD', 'LTRIM', 'XINFO']) {
+      expect(REDIS_COMMANDS).toContain(command)
+    }
   })
 })
 
