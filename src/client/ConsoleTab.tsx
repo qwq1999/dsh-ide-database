@@ -1220,6 +1220,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           {connections.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name} · {item.dialect}
+              {item.readOnly ? ' · 只读' : ''}
             </option>
           ))}
         </select>

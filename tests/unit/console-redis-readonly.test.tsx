@@ -80,4 +80,10 @@ describe('read-only Redis connection', () => {
     expect(await screen.findByText(/这是一条只读连接/)).toBeTruthy()
     expect(mocks.redisCommand).not.toHaveBeenCalled()
   })
+
+  it('marks the read-only source in the picker', async () => {
+    render(consoleTab())
+    await waitForConsoleSource(mocks)
+    expect(screen.getByRole('option', { name: /本地 Redis · redis · 只读/ })).toBeTruthy()
+  })
 })
