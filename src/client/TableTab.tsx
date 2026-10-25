@@ -25,6 +25,7 @@ import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, se
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
+import { DdlModal } from './DdlModal'
 import { cellValueView, type CellValueView } from './cellvalue'
 import { tableDumpText } from './tabledump'
 
@@ -101,6 +102,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [order, setOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
+  const [ddl, setDdl] = useState<{ title: string; text: string } | null>(null)
+  const [ddlBusy, setDdlBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
@@ -294,6 +297,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     },
     [displayColumns.length, hiddenView.positions],
   )
+  const openDdl = useCallback(async (): Promise<void> => {
+    if (connection === null) return
+    setDdlBusy(true)
+    try {
+      const result = await api.ddl(params.connectionId, params.schema, params.table, 'table')
+      setDdl({ title: `${params.schema}.${params.table} 的建表语句`, text: result.ddl })
+    } catch (caught) {
+      setError(failureText(caught))
+    } finally {
+      setDdlBusy(false)
+    }
+  }, [connection, params.connectionId, params.schema, params.table])
+
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))
   }, [])
@@ -650,6 +666,16 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <button
           type="button"
           className="dshdb-pager-btn"
+          title="查看建表语句"
+          aria-label="查看建表语句"
+          onClick={() => void openDdl()}
+          disabled={ddlBusy}
+        >
+          <TableIcon size={13} />
+        </button>
+        <button
+          type="button"
+          className="dshdb-pager-btn"
           title="刷新"
           aria-label="刷新"
           onClick={() => apply({ recount: true })}
@@ -862,6 +888,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </button>
       </div>
 
+      <DdlModal title={ddl?.title ?? ''} text={ddl?.text ?? null} onClose={() => setDdl(null)} />
       <CellValueModal view={cellView} onClose={() => setCellView(null)} />
     </div>
   )
