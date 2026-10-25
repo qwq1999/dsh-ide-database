@@ -7,6 +7,10 @@
  * cache that keeps the tree browsable while offline.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { readText, writeText } from '../prefs'
+
+/** Remembered so reopening the panel lands on the same data source. */
+const LAST_CONNECTION_KEY = 'dsh-ide-database.last-connection.v1'
 import type {
   ClientConnection,
   DbSettings,
@@ -254,7 +258,9 @@ export function useDataSources(notify: Notify): DataSources {
     if (!exists) {
       // Keep cached structures: they are keyed by connection id and the tree
       // filters by `snapshot.connections`, so stale entries are harmless.
-      setSelectedId(snapshot.connections[0]?.id ?? '')
+      const stored = readText(LAST_CONNECTION_KEY)
+      const preferred = snapshot.connections.find((connection) => connection.id === stored)
+      setSelectedId((preferred ?? snapshot.connections[0])?.id ?? '')
       setServers({})
       setDetail(null)
       setRedisDetail(null)
@@ -309,6 +315,7 @@ export function useDataSources(notify: Notify): DataSources {
     }
     selectedRef.current = id
     setSelectedId(id)
+    writeText(LAST_CONNECTION_KEY, id)
   }, [])
 
   const loadSchemas = useCallback(

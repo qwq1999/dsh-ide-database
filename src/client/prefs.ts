@@ -48,3 +48,22 @@ export function writeFlag(key: string, value: boolean): void {
     // ignore
   }
 }
+
+/** Stored string, or the fallback when nothing usable is saved. */
+export function readText(key: string, fallback = ''): string {
+  try {
+    const stored = window.localStorage.getItem(key)
+    return stored === null || stored === '' ? fallback : stored
+  } catch {
+    return fallback
+  }
+}
+
+/** Persisting is best effort, same as writeNumber. */
+export function writeText(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // ignore
+  }
+}
