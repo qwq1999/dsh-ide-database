@@ -928,6 +928,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   // The text filter is a view over the page: exports of "current page" follow it.
   const filteredIndexes = useMemo(() => filterRowIndexes(visibleRows, rowFilter), [visibleRows, rowFilter])
   const filteredRows = useMemo(() => filteredIndexes.map((index) => visibleRows[index] as Row), [filteredIndexes, visibleRows])
+  // A fresh array on every render re-renders the memoised grid on every keystroke.
+  const rowNumbers = useMemo(
+    () => filteredIndexes.map((index) => offset + (sorted.order[index] ?? index) + 1),
+    [filteredIndexes, offset, sorted.order],
+  )
 
   /** `EXPLAIN FORMAT=TREE` style plans: one text column, rendered as preformatted text. */
   const planText = useMemo(() => planTextOf(plan?.plan), [plan])
@@ -1780,7 +1785,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 columns={shownColumns}
                 rows={shownRows}
                 offset={offset}
-                rowNumbers={filteredIndexes.map((index) => offset + (sorted.order[index] ?? index) + 1)}
+                rowNumbers={rowNumbers}
                 storageKey="console:sql"
                 sort={rowSort}
                 onSort={gridSort}
