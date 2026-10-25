@@ -20,6 +20,13 @@ export function toggleHidden(hidden: string[] | null, name: string): string[] | 
   return next.length === 0 ? null : next
 }
 
+/** Hide every column except one, so a wide result can be narrowed to a single field. */
+export function onlyColumn(columns: ColumnInfo[], name: string): string[] | null {
+  if (columns.length <= 1) return null
+  if (!columns.some((column) => column.name === name)) return null
+  return columns.filter((column) => column.name !== name).map((column) => column.name)
+}
+
 /** Drop remembered names that the current result no longer has. */
 export function pruneHidden(hidden: string[] | null, columns: ColumnInfo[]): string[] | null {
   if (hidden === null) return null

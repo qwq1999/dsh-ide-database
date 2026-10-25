@@ -18,7 +18,7 @@ import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-o
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
-import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
@@ -284,6 +284,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           label: `隐藏列「${column.name}」`,
           disabled: shownColumns.length <= 1,
           run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+        },
+        {
+          label: '只看这一列',
+          disabled: displayColumns.length <= 1,
+          run: () => setHiddenColumns(onlyColumn(displayColumns, column.name)),
         },
         {
           label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,

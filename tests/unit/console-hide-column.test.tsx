@@ -132,4 +132,16 @@ describe('console column hiding', () => {
     await waitFor(() => expect(hasHeader('name')).toBe(true), { timeout: 4000 })
     expect(window.localStorage.getItem(`${HIDDEN_STORAGE_PREFIX}console:sql`)).toBeNull()
   })
+
+  it('can keep only the column the menu was opened on', async () => {
+    await runQuery()
+
+    fireEvent.contextMenu(header('total'))
+    fireEvent.click(screen.getByRole('menuitem', { name: '只看这一列' }))
+
+    await waitFor(() => expect(hasHeader('id')).toBe(false), { timeout: 4000 })
+    expect(hasHeader('name')).toBe(false)
+    expect(hasHeader('total')).toBe(true)
+    expect(window.localStorage.getItem(`${HIDDEN_STORAGE_PREFIX}console:sql`)).toBe('["id","name"]')
+  })
 })

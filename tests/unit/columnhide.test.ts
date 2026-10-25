@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { hideColumns, isHidden, pruneHidden, toggleHidden, HIDDEN_STORAGE_PREFIX, readHidden, writeHidden } from '../../src/client/columnhide'
+import { hideColumns, isHidden, onlyColumn, pruneHidden, toggleHidden, HIDDEN_STORAGE_PREFIX, readHidden, writeHidden } from '../../src/client/columnhide'
 
 const columns = [
   { name: 'id', typeName: 'INT' },
@@ -23,6 +23,12 @@ describe('column hiding helpers', () => {
     expect(isHidden(null, 'name')).toBe(false)
     expect(isHidden(['name'], 'name')).toBe(true)
     expect(isHidden(['total'], 'name')).toBe(false)
+  })
+
+  it('hides every other column when one column is isolated', () => {
+    expect(onlyColumn(columns, 'name')).toEqual(['id', 'total'])
+    expect(onlyColumn(columns, 'missing')).toBeNull()
+    expect(onlyColumn([columns[0]!], 'id')).toBeNull()
   })
 
   it('drops remembered names the current result no longer has', () => {

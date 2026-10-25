@@ -29,7 +29,7 @@ import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
-import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
@@ -891,6 +891,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         label: `隐藏列「${column.name}」`,
         disabled: shownColumns.length <= 1,
         run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+      },
+      {
+        label: '只看这一列',
+        disabled: displayColumns.length <= 1,
+        run: () => setHiddenColumns(onlyColumn(displayColumns, column.name)),
       },
       {
         label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,
