@@ -44,6 +44,21 @@ describe('redis key grid sorting', () => {
     expect(header.getAttribute('aria-sort')).toBe('descending')
   })
 
+  it('sorts the length column without touching the name order', () => {
+    render(<KeyGrid keys={keys} selectedKey="" onSelect={vi.fn()} />)
+    expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
+
+    fireEvent.click(screen.getByText('长度'))
+    expect(keyOrder()).toEqual(['user:9', 'order:1', 'user:10'])
+    expect(screen.getByRole('columnheader', { name: /^长度/ }).getAttribute('aria-sort')).toBe('ascending')
+
+    fireEvent.click(screen.getByText('长度'))
+    expect(keyOrder()).toEqual(['user:10', 'order:1', 'user:9'])
+
+    fireEvent.click(screen.getByText('长度'))
+    expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
+  })
+
   it('keeps the selection working after sorting', () => {
     const onSelect = vi.fn()
     render(<KeyGrid keys={keys} selectedKey="user:9" onSelect={onSelect} />)

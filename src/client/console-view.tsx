@@ -10,7 +10,7 @@ import { ClearIcon, CopyIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
 import { formatCount, formatTtl } from './format'
 import { copyText } from './colmenu'
-import { nextKeySort, sortKeys, type KeySort } from './redissort'
+import { nextKeySort, sortKeys, sortKeysBySize, type KeySort } from './redissort'
 
 export { formatCount }
 
@@ -171,7 +171,8 @@ export const KeyGrid = memo(function KeyGrid({
   onSelect: (key: RedisKeyInfo) => void
 }): ReactElement {
   const [sort, setSort] = useState<KeySort>('none')
-  const rows = useMemo(() => sortKeys(keys, sort), [keys, sort])
+  const [sizeSort, setSizeSort] = useState<KeySort>('none')
+  const rows = useMemo(() => sortKeysBySize(sortKeys(keys, sort), sizeSort), [keys, sort, sizeSort])
   return (
     <table className="dshdb-grid">
       <thead>
@@ -189,7 +190,16 @@ export const KeyGrid = memo(function KeyGrid({
           </th>
           <th>类型</th>
           <th>TTL</th>
-          <th>长度</th>
+          <th
+            className="dshdb-th-sortable"
+            title={sizeSort === 'none' ? '按长度升序' : sizeSort === 'asc' ? '按长度降序' : '恢复扫描顺序'}
+            data-sorted={sizeSort === 'none' ? undefined : sizeSort}
+            aria-sort={sizeSort === 'asc' ? 'ascending' : sizeSort === 'desc' ? 'descending' : 'none'}
+            onClick={() => setSizeSort(nextKeySort(sizeSort))}
+          >
+            长度
+            {sizeSort === 'none' ? null : <span className="dshdb-sort-arrow">{sizeSort === 'asc' ? '▲' : '▼'}</span>}
+          </th>
         </tr>
       </thead>
       <tbody>

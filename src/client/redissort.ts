@@ -1,4 +1,6 @@
 /** Cycle a key column between scan order, ascending, and descending. */
+import type { RedisKeyInfo } from '../shared/types'
+
 export type KeySort = 'none' | 'asc' | 'desc'
 
 // Key names are usually ASCII, so compare them case-insensitively and treat
@@ -18,5 +20,17 @@ export function sortKeys<T extends { key: string }>(keys: T[], sort: KeySort): T
   sorted.sort((left, right) =>
     sort === 'asc' ? COLLATOR.compare(left.key, right.key) : COLLATOR.compare(right.key, left.key),
   )
+  return sorted
+}
+
+/** Return a copy ordered by value length; entries of equal size keep their order. */
+export function sortKeysBySize(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInfo[] {
+  if (sort === 'none') return keys
+  const sorted = [...keys]
+  sorted.sort((left, right) => {
+    const leftSize = left.size ?? 0
+    const rightSize = right.size ?? 0
+    return sort === 'asc' ? leftSize - rightSize : rightSize - leftSize
+  })
   return sorted
 }
