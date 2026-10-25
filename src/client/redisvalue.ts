@@ -1,6 +1,6 @@
 /** Turn a stored Redis value into a two-or-three column table, like IDEA's data viewer. */
 import type { JsonValue, RedisValue } from '../shared/types'
-import { stringifyJson } from './format'
+import { formatTtl, stringifyJson } from './format'
 
 export interface RedisTable {
   headers: string[]
@@ -93,5 +93,8 @@ export function redisValueTable(value: RedisValue): RedisTable | null {
 export function redisTtlLabel(ttl: number): string {
   if (ttl === -1) return '永久'
   if (ttl === -2) return '已过期'
+  // Under a minute keep the precise seconds the server reported; longer spans read
+  // better in the same units the key table uses.
+  if (ttl >= 60) return formatTtl(ttl)
   return `${Math.max(0, Math.round(ttl))}s`
 }
