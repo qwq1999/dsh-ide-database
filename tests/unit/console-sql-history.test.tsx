@@ -104,17 +104,23 @@ describe('sql editor history recall', () => {
   it('walks the executed statements and returns to the draft', async () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
+    // The schemas call can land a tick before React commits the editor, so wait
+    // for the field itself instead of reading it synchronously.
+    const box = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
 
-    fireEvent.change(editor(), { target: { value: 'SELECT 99' } })
-    expect(editor().value).toBe('SELECT 99')
+    fireEvent.change(box, { target: { value: 'SELECT 99' } })
+    expect(box.value).toBe('SELECT 99')
 
-    recall('ArrowUp')
-    expect(editor().value).toBe('SELECT 2')
-    recall('ArrowUp')
-    expect(editor().value).toBe('SELECT 1')
-    recall('ArrowDown')
-    expect(editor().value).toBe('SELECT 2')
-    recall('ArrowDown')
-    expect(editor().value).toBe('SELECT 99')
+    const recallIn = (key: 'ArrowUp' | 'ArrowDown'): void => {
+      fireEvent.keyDown(box, { key, ctrlKey: true })
+    }
+    recallIn('ArrowUp')
+    expect(box.value).toBe('SELECT 2')
+    recallIn('ArrowUp')
+    expect(box.value).toBe('SELECT 1')
+    recallIn('ArrowDown')
+    expect(box.value).toBe('SELECT 2')
+    recallIn('ArrowDown')
+    expect(box.value).toBe('SELECT 99')
   })
 })
