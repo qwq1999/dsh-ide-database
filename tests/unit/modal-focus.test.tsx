@@ -51,6 +51,16 @@ describe('Modal focus', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '确定' }))
   })
 
+  it('locks the page scroll while the dialog is open', () => {
+    render(<Harness />)
+    const trigger = screen.getByRole('button', { name: '打开' })
+    fireEvent.click(trigger)
+    expect(document.body.style.overflow).toBe('hidden')
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '关闭' }), { key: 'Escape' })
+    expect(document.body.style.overflow).toBe('')
+  })
+
   it('returns focus to the trigger after closing with Escape', () => {
     render(<Harness />)
     const trigger = screen.getByRole('button', { name: '打开' })

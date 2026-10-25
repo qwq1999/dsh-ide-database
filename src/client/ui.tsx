@@ -307,6 +307,9 @@ export function Modal({
       }
     }
     document.addEventListener('keydown', onKeyDown, true)
+    // The page behind the overlay must not scroll while the dialog is up.
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const start = box?.querySelector<HTMLElement>(
       'input, textarea, select, button:not([aria-label="关闭"])',
     )
@@ -314,6 +317,7 @@ export function Modal({
     else box?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
+      document.body.style.overflow = previousOverflow
       if (previous !== null && previous.isConnected) previous.focus()
     }
   }, [open])
