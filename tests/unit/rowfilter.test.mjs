@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterRowIndexes, filterRows, rowMatches } from '../../src/client/rowfilter'
+import { filterRowIndexes, rowMatches } from '../../src/client/rowfilter'
 
 describe('rowMatches', () => {
   it('matches any cell by its displayed text', () => {
@@ -30,19 +30,3 @@ describe('filterRowIndexes', () => {
   })
 })
 
-describe('filterRows', () => {
-  it('returns the same array for a blank or whitespace-only needle', () => {
-    const rows = [['a'], ['b']]
-    expect(filterRows(rows, '')).toBe(rows)
-    expect(filterRows(rows, '   ')).toBe(rows)
-  })
-
-  it('keeps only matching rows and preserves their order', () => {
-    const rows = [['one', 1], ['two', 2], ['three', 3]]
-    expect(filterRows(rows, 't')).toEqual([['two', 2], ['three', 3]])
-  })
-
-  it('trims the needle before matching', () => {
-    expect(filterRows([[' abc ']], '  abc  ')).toEqual([[' abc ']])
-  })
-})

@@ -31,9 +31,3 @@ export function filterRowIndexes(rows: Row[], needle: string): number[] {
   })
   return indexes
 }
-
-export function filterRows(rows: Row[], needle: string): Row[] {
-  const trimmed = needle.trim()
-  if (trimmed === '') return rows
-  return rows.filter((row) => rowMatches(row, trimmed))
-}
