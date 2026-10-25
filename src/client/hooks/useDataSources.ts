@@ -740,7 +740,8 @@ export function useDataSources(notify: Notify): DataSources {
       if (servers[selected.id]) {
         await loadRedisDatabases(selected.id)
         const shown = redisDbs[selected.id] ?? [selected.redisDb]
-        for (const db of shown) await loadRedisKeys(selected.id, db)
+        // Each database is an independent SCAN; refreshing them sequentially just adds round trips.
+        await Promise.all(shown.map((db) => loadRedisKeys(selected.id, db)))
         notify('已刷新数据源', 'success')
       } else {
         await connect(selected.id)
