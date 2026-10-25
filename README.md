@@ -275,6 +275,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 npm run build:bridge   # javac --release 8（JDK 8 用 -source/-target 8）→ bridge/dsh-db-bridge.jar
 npm run build:host     # tsc → lib/
 npm run build:client   # esbuild → lib/client.js（window.__ModuleLoader__ 格式）
+npm run verify         # typecheck + 单元测试 + 更新日志是否过期，提交前跑一遍
 npm run typecheck
 npm test               # vitest：host 单元测试 + 客户端工具函数
 ```
