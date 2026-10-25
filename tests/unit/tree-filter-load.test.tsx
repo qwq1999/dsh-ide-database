@@ -139,6 +139,13 @@ describe('筛选时加载对象列表', () => {
     await waitFor(() => expect(screen.getByText('没有匹配的对象')).toBeTruthy())
   })
 
+  it('reports how many objects matched', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('cus')
+    await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
+  })
+
   it('does not ask again while the same list is still loading', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)

@@ -276,23 +276,24 @@ export function DataView(props: DataViewProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFilter, connections, schemas, servers])
 
-  // An empty tree under a filter looks like a loading state; say what happened.
-  const filteredHits = useMemo(
-    () =>
-      normalizedFilter === ''
-        ? -1
-        : connections.reduce((total, connection) => {
-            const schemaNames = schemas[connection.id] ?? []
-            if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) return total + 1
-            for (const [key, list] of Object.entries(objects)) {
-              if (!key.startsWith(`${connection.id}:`)) continue
-              const schemaName = key.slice(connection.id.length + 1)
-              if (list.some((object) => matchesFilteredObject(filterQuery, schemaName, object.name))) return total + 1
-            }
-            return total
-          }, 0),
-    [normalizedFilter, connections, schemas, objects, filterQuery],
-  )
+  // A filtered tree needs a quick answer to "did anything match": count the
+  // connections and objects that survived the filter.
+  const filterSummary = useMemo(() => {
+    if (normalizedFilter === '') return null
+    const summary = { connections: 0, objects: 0 }
+    for (const connection of connections) {
+      const schemaNames = schemas[connection.id] ?? []
+      if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) summary.connections += 1
+      for (const [key, list] of Object.entries(objects)) {
+        if (!key.startsWith(`${connection.id}:`)) continue
+        const schemaName = key.slice(connection.id.length + 1)
+        const matched = list.filter((object) => matchesFilteredObject(filterQuery, schemaName, object.name))
+        summary.objects += matched.length
+      }
+    }
+    summary.connections = Math.max(summary.connections, summary.objects > 0 ? 1 : 0)
+    return summary
+  }, [normalizedFilter, connections, schemas, objects, filterQuery])
 
   // While filtering, open the branches that contain a match so hits are not
   // hidden inside collapsed data sources or schemas.
@@ -413,7 +414,12 @@ export function DataView(props: DataViewProps): ReactElement {
             aria-label="数据源"
             onKeyDown={handleTreeKey}
           >
-            {filteredHits === 0 ? <span className="dshdb-filter-empty">没有匹配的对象</span> : null}
+            {filterSummary !== null && filterSummary.connections === 0 ? (
+              <span className="dshdb-filter-empty">没有匹配的对象</span>
+            ) : null}
+            {filterSummary !== null && filterSummary.objects > 0 ? (
+              <span className="dshdb-filter-empty">{filterSummary.objects} 个对象匹配</span>
+            ) : null}
             {connections.map((connection) => {
               const isSelected = connection.id === selectedId
               const isExpanded = expanded[connection.id] === true
