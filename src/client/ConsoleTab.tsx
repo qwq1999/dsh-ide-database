@@ -39,7 +39,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
-import { groupCountSql, inListOf, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
+import { groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
   completionCandidates,
@@ -1680,6 +1680,18 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 JSON
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const target = tableTarget()
+                      if (target === null) return
+                      void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows))
+                    }}
+                    disabled={filteredRows.length === 0 || tableTarget() === null}
+                  >
+                    复制当前页 SQL
                   </button>
                   {base !== '' ? (
                     <>

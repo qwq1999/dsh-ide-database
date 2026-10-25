@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -683,6 +683,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               </button>
               <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows))}>
                 复制当前页 JSON
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() =>
+                  void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows))
+                }
+              >
+                复制当前页 SQL
               </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
                 全部 CSV
