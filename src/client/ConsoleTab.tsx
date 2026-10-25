@@ -1698,7 +1698,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 headerMenu={columnMenu}
                 cellMenu={gridCellMenu}
                 onCellOpen={gridCellOpen}
-                emptyText="这条语句没有返回任何行"
+                emptyText={
+                  rowFilter.trim() !== "" && visibleRows.length > 0 && filteredRows.length === 0
+                    ? "当前页没有匹配筛选条件的行"
+                    : "这条语句没有返回任何行"
+                }
               />
             )
           ) : (

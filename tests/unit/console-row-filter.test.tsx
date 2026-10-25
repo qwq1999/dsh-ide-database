@@ -147,6 +147,14 @@ describe('console row filter', () => {
     expect((screen.getByLabelText('筛选结果') as HTMLInputElement).value).toBe('')
   })
 
+  it('says the filter matched nothing instead of claiming the query was empty', async () => {
+    await runQuery()
+    fireEvent.change(screen.getByLabelText('筛选结果'), { target: { value: 'zzz' } })
+    const message = await screen.findByText('当前页没有匹配筛选条件的行')
+    expect(message).toBeTruthy()
+    expect(screen.queryByText('这条语句没有返回任何行')).toBeNull()
+  })
+
   it('restores every row when Escape clears the filter', async () => {
     await runQuery()
     const input = screen.getByLabelText('筛选结果')
