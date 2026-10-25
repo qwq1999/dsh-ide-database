@@ -6,6 +6,7 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import type { CellValueView } from './cellvalue'
 import { copyText } from './colmenu'
+import { useCopyFlash } from './copyflash'
 import { Button, Modal } from './ui'
 
 export interface CellValueModalProps {
@@ -15,14 +16,14 @@ export interface CellValueModalProps {
 }
 
 export function CellValueModal({ view, onClose }: CellValueModalProps): ReactElement | null {
-  const [copied, setCopied] = useState(false)
+  const flash = useCopyFlash()
   useEffect(() => {
-    setCopied(false)
-  }, [view])
+    flash.reset()
+  }, [flash.reset, view])
   if (view === null) return null
 
   const copy = async (): Promise<void> => {
-    if (await copyText(view.text)) setCopied(true)
+    flash.flash(await copyText(view.text))
   }
 
   return (
@@ -35,7 +36,7 @@ export function CellValueModal({ view, onClose }: CellValueModalProps): ReactEle
         <>
           <div className="dshdb-modal-foot-spacer" />
           <Button size="sm" onClick={() => void copy()}>
-            {copied ? '已复制' : '复制'}
+            {flash.copied ? '已复制' : '复制'}
           </Button>
           <Button size="sm" variant="primary" onClick={onClose}>
             关闭

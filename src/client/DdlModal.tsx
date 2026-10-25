@@ -5,6 +5,7 @@
  */
 import { useEffect, useState, type ReactElement } from 'react'
 import { copyText } from './colmenu'
+import { useCopyFlash } from './copyflash'
 import { Button, Modal } from './ui'
 
 export interface DdlModalProps {
@@ -17,10 +18,10 @@ export interface DdlModalProps {
 }
 
 export function DdlModal({ title, text, warnings = [], onClose }: DdlModalProps): ReactElement | null {
-  const [copied, setCopied] = useState(false)
+  const flash = useCopyFlash()
   useEffect(() => {
-    setCopied(false)
-  }, [text])
+    flash.reset()
+  }, [flash.reset, text])
   if (text === null) return null
 
   return (
@@ -35,10 +36,10 @@ export function DdlModal({ title, text, warnings = [], onClose }: DdlModalProps)
           <Button
             size="sm"
             onClick={() => {
-              void copyText(text).then((ok) => setCopied(ok))
+              void copyText(text).then((ok) => flash.flash(ok))
             }}
           >
-            {copied ? '已复制' : '复制'}
+            {flash.copied ? '已复制' : '复制'}
           </Button>
           <Button size="sm" variant="primary" onClick={onClose}>
             关闭

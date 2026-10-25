@@ -28,6 +28,7 @@ import { clearHistory, pushHistory, readHistory, readPins, togglePin, type Histo
 import { formatSql } from './sqlformat'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
+import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
@@ -867,15 +868,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   )
 
   const [valueRefreshing, setValueRefreshing] = useState(false)
-  const [copiedResult, setCopiedResult] = useState(false)
+  const resultFlash = useCopyFlash()
   useEffect(() => {
-    setCopiedResult(false)
-  }, [commandResult])
-  useEffect(() => {
-    if (!copiedResult) return undefined
-    const timer = setTimeout(() => setCopiedResult(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copiedResult])
+    resultFlash.reset()
+  }, [commandResult, resultFlash.reset])
 
   /** Re-read the selected key so a TTL countdown or a changed payload can be picked up. */
   const refreshValue = useCallback(async (): Promise<void> => {
@@ -1495,12 +1491,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   variant="ghost"
                   onClick={() => {
                     void copyText(redisValueText(commandResult.value)).then((ok) => {
-                      if (ok) setCopiedResult(true)
+                      if (ok) resultFlash.flash(true)
                     })
                   }}
-                  title={copiedResult ? '已复制这条命令的结果' : '复制这条命令的结果'}
+                  title={resultFlash.copied ? '已复制这条命令的结果' : '复制这条命令的结果'}
                 >
-                  {copiedResult ? '已复制' : '复制结果'}
+                  {resultFlash.copied ? '已复制' : '复制结果'}
                 </Button>
               </div>
             </>

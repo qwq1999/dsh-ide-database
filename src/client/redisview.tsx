@@ -3,11 +3,12 @@
  * tabulated payload. Shared by the console and the data tree so both present a
  * key the same way.
  */
-import { memo, useEffect, useState, type ReactElement } from 'react'
+import { memo, type ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
 import { copyText } from './colmenu'
 import { formatCount } from './format'
 import { CheckIcon, CopyIcon, RefreshIcon } from './icons'
+import { useCopyFlash } from './copyflash'
 import { redisTtlLabel, redisValueTable, redisValueText } from './redisvalue'
 import { Tag } from './ui'
 
@@ -23,18 +24,10 @@ export const RedisValuePanel = memo(function RedisValuePanel({
   onRefresh?: () => void
 }): ReactElement {
   const table = redisValueTable(value)
-  const [copied, setCopied] = useState(false)
-  const [copiedValue, setCopiedValue] = useState(false)
-  useEffect(() => {
-    if (!copied) return undefined
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-  useEffect(() => {
-    if (!copiedValue) return undefined
-    const timer = setTimeout(() => setCopiedValue(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copiedValue])
+  const keyFlash = useCopyFlash()
+  const valueFlash = useCopyFlash()
+  const copied = keyFlash.copied
+  const copiedValue = valueFlash.copied
   return (
     <div className="dshdb-redis-value">
       <div className="dshdb-redis-meta">
@@ -60,7 +53,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
           title={copiedValue ? '已复制值' : '复制值'}
           aria-label={copiedValue ? '值已复制' : '复制值'}
           onClick={() => {
-            void copyText(redisValueText(value.value)).then((ok) => setCopiedValue(ok))
+            void copyText(redisValueText(value.value)).then((ok) => valueFlash.flash(ok))
           }}
         >
           {copiedValue ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
@@ -76,7 +69,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
               title={copied ? '已复制键名' : '复制键名'}
               aria-label={copied ? '键名已复制' : '复制键名'}
               onClick={() => {
-                void copyText(value.key).then((ok) => setCopied(ok))
+                void copyText(value.key).then((ok) => keyFlash.flash(ok))
               }}
             >
               {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
