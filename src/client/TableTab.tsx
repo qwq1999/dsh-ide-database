@@ -91,6 +91,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [elapsed, setElapsed] = useState<number | undefined>(undefined)
   const [sqlText, setSqlText] = useState('')
   const [loading, setLoading] = useState(false)
+  /** Auto-refresh period in ms; 0 means off. */
+  const [autoMs, setAutoMs] = useState(0)
   const [error, setError] = useState<Failure | null>(null)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
@@ -111,7 +113,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const exportAnchor = useRef<HTMLSpanElement>(null)
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
-  const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
+  const applyRef = useRef<
+    (next: { page?: number; size?: number; where?: string; orderBy?: string; recount?: boolean }, override?: ColumnFilters) => void
+  >(() => undefined)
   /** Latest load wins: an older page must not overwrite a newer one. */
   const loadToken = useRef(0)
 
@@ -230,6 +234,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   applyRef.current = apply
   const orderTextRef = useRef(orderText)
   orderTextRef.current = orderText
+  const loadingRef = useRef(loading)
+  loadingRef.current = loading
 
   // Stable grid callbacks: typing into the WHERE / ORDER BY boxes must not
   // repaint the whole result grid on every keystroke.
@@ -297,6 +303,16 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     },
     [displayColumns.length, hiddenView.positions],
   )
+  // Auto refresh reuses the current page/filter/sort; a tick is skipped while
+  // the previous load is still running so slow queries do not pile up.
+  useEffect(() => {
+    if (autoMs === 0 || connection === null) return undefined
+    const timer = setInterval(() => {
+      if (!loadingRef.current) applyRef.current({ recount: false })
+    }, autoMs)
+    return () => clearInterval(timer)
+  }, [autoMs, connection])
+
   const openDdl = useCallback(async (): Promise<void> => {
     if (connection === null) return
     setDdlBusy(true)
@@ -663,6 +679,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         >
           <TerminalIcon size={13} />
         </button>
+        <select
+          className="dshdb-input dshdb-qfilter-input"
+          aria-label="自动刷新"
+          title="定时重新查询当前页"
+          value={autoMs}
+          onChange={(event) => setAutoMs(Number(event.target.value))}
+        >
+          <option value={0}>不自动刷新</option>
+          <option value={5000}>每 5 秒刷新</option>
+          <option value={10000}>每 10 秒刷新</option>
+          <option value={30000}>每 30 秒刷新</option>
+        </select>
         <button
           type="button"
           className="dshdb-pager-btn"
