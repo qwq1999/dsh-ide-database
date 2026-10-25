@@ -82,7 +82,9 @@ describe('Redis command output', () => {
     expect(screen.getByText('7 ms')).toBeTruthy()
     expect(screen.queryByText(/写命令/)).toBeNull()
 
+    mocks.copies.mockResolvedValue(true)
     fireEvent.click(screen.getByRole('button', { name: '复制结果' }))
     expect(mocks.copies).toHaveBeenCalledWith('hello')
+    expect(await screen.findByRole('button', { name: '已复制' })).toBeTruthy()
   })
 })

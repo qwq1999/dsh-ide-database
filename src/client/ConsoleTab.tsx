@@ -844,6 +844,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   )
 
   const [valueRefreshing, setValueRefreshing] = useState(false)
+  const [copiedResult, setCopiedResult] = useState(false)
+  useEffect(() => {
+    setCopiedResult(false)
+  }, [commandResult])
+  useEffect(() => {
+    if (!copiedResult) return undefined
+    const timer = setTimeout(() => setCopiedResult(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copiedResult])
 
   /** Re-read the selected key so a TTL countdown or a changed payload can be picked up. */
   const refreshValue = useCallback(async (): Promise<void> => {
@@ -1461,10 +1470,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => void copyText(redisValueText(commandResult.value))}
-                  title="复制这条命令的结果"
+                  onClick={() => {
+                    void copyText(redisValueText(commandResult.value)).then((ok) => {
+                      if (ok) setCopiedResult(true)
+                    })
+                  }}
+                  title={copiedResult ? '已复制这条命令的结果' : '复制这条命令的结果'}
                 >
-                  复制结果
+                  {copiedResult ? '已复制' : '复制结果'}
                 </Button>
               </div>
             </>
