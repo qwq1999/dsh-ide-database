@@ -102,4 +102,16 @@ describe('detail panel', () => {
 
     await waitFor(() => expect(copy).toHaveBeenCalledWith('id, total'))
   })
+
+  it('copies a SELECT that lists every column', async () => {
+    render(<DataView {...props()} />)
+
+    const [button] = screen.getAllByTitle('复制一条把列名写全的 SELECT')
+    if (button === undefined) throw new Error('copy-query button missing')
+    fireEvent.click(button)
+
+    await waitFor(() =>
+      expect(copy).toHaveBeenLastCalledWith('SELECT `id`, `total` FROM `shop`.`orders`'),
+    )
+  })
 })

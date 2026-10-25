@@ -18,6 +18,7 @@ import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
 import { copyText } from '../colmenu'
+import { selectColumnsSql } from '../tablesql'
 import { tableSelectSql } from '../tablesql'
 import { RedisDatabases } from './redis-databases'
 import { OBJECT_PAGE, objectWindow } from './objectlimit'
@@ -839,12 +840,27 @@ export function DataView(props: DataViewProps): ReactElement {
                 </Button>
               ) : null}
               {detail.kind === 'table' || detail.kind === 'view' ? (
-                <Button
-                  size="sm"
-                  onClick={() => props.onShowDdl(selectedId, detail.schema, detail.table, detail.kind)}
-                >
-                  DDL
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="复制一条把列名写全的 SELECT"
+                    aria-label="复制查询语句"
+                    onClick={() => {
+                      const connection = props.connections.find((item) => item.id === selectedId)
+                      if (connection === undefined) return
+                      void copyText(selectColumnsSql(connection.dialect, detail.schema, detail.table, detail.columns))
+                    }}
+                  >
+                    复制查询
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => props.onShowDdl(selectedId, detail.schema, detail.table, detail.kind)}
+                  >
+                    DDL
+                  </Button>
+                </>
               ) : null}
             </>
           }
