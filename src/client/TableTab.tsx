@@ -40,10 +40,11 @@ interface Failure {
 }
 
 import { TABLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
-import { readAllowedNumber, writeNumber } from './prefs'
+import { readAllowedNumber, readFlag, writeFlag, writeNumber } from './prefs'
 
 const PAGE_SIZES = [100, 200, 500, 1000, 2000, 5000]
 const AUTO_REFRESH_KEY = 'dsh-ide-database.auto-refresh.v1'
+const FILTERS_OPEN_KEY = 'dsh-ide-database.table.filters-open.v1'
 const AUTO_REFRESH_OPTIONS = [0, 5000, 10000, 30000] as const
 
 const noTabInfo = (): undefined => undefined
@@ -105,7 +106,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [whereText, setWhereText] = useState('')
   const [orderText, setOrderText] = useState('')
   const [filters, setFilters] = useState<ColumnFilters>({})
-  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
   const [order, setOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
@@ -730,7 +731,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           aria-label="列筛选"
           aria-pressed={filtersOpen}
           onClick={() => {
-            setFiltersOpen((open) => !open)
+            setFiltersOpen((open) => {
+              const next = !open
+              writeFlag(FILTERS_OPEN_KEY, next)
+              return next
+            })
           }}
           disabled={loading}
         >

@@ -59,6 +59,7 @@ const columns = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.localStorage.clear()
   mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
   mocks.query.mockImplementation(async (request: { sql: string }) => ({
     sql: request.sql,
@@ -107,5 +108,14 @@ describe('column filter row focus', () => {
     await waitFor(() => expect(screen.queryByLabelText('筛选 id')).toBeNull())
     const last = mocks.query.mock.calls[mocks.query.mock.calls.length - 1]?.[0] as { sql: string }
     expect(last.sql).toContain('id')
+  })
+
+  it('opens the filter row again on the next visit', async () => {
+    window.localStorage.setItem('dsh-ide-database.table.filters-open.v1', '1')
+    render(
+      <TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    expect(await screen.findByLabelText('筛选 id')).toBeTruthy()
   })
 })
