@@ -164,3 +164,10 @@ export function redisValuePreview(value: unknown): string {
   if (Array.isArray(value)) return `[${value.length} 项]`
   return stringifyJson(value)
 }
+
+const COUNT_FORMAT = new Intl.NumberFormat('en-US')
+
+/** Group digits so counts read the same everywhere they are shown. */
+export function formatCount(value: number): string {
+  return COUNT_FORMAT.format(value)
+}

@@ -4,6 +4,7 @@ import {
   dialectLabel,
   formatBytes,
   formatCell,
+  formatCount,
   formatMs,
   looksLikeRedisWrite,
   looksLikeWrite,
@@ -43,5 +44,10 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('GET foo')).toBe(false)
     expect(looksLikeRedisWrite('SET foo bar')).toBe(true)
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
+  })
+
+  it('groups counts with thousands separators', () => {
+    expect(formatCount(999)).toBe('999')
+    expect(formatCount(1234567)).toBe('1,234,567')
   })
 })

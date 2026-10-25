@@ -8,14 +8,13 @@ import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
+import { formatCount } from './format'
+
+export { formatCount }
 
 /** Fold a statement onto one line for the history rows. */
 export function oneLine(statement: string): string {
   return statement.replace(/\s+/gu, ' ').trim()
-}
-
-export function formatCount(value: number): string {
-  return value.toLocaleString('en-US')
 }
 
 function HistoryRow(props: {

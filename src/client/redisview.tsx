@@ -5,13 +5,9 @@
  */
 import type { ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
-import { stringifyJson } from './format'
+import { formatCount, stringifyJson } from './format'
 import { redisTtlLabel, redisValueTable } from './redisvalue'
 import { Tag } from './ui'
-
-function formatCount(value: number): string {
-  return value.toLocaleString('en-US')
-}
 
 export function RedisValuePanel({ value, showKey = true }: { value: RedisValue; showKey?: boolean }): ReactElement {
   const table = redisValueTable(value)

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
-import { formatCell, formatMs } from './format'
+import { formatCell, formatCount, formatMs } from './format'
 import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
 import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
@@ -42,10 +42,6 @@ const noTabInfo = (): undefined => undefined
 function failureText(error: unknown): Failure {
   if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }
   return { message: error instanceof Error ? error.message : String(error) }
-}
-
-function formatCount(value: number): string {
-  return value.toLocaleString('en-US')
 }
 
 /**
