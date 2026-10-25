@@ -620,9 +620,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
    *  Execution reuses the shared console runner. */
   const recallHistory = (delta: 1 | -1): void => {
     if (history.length === 0) return
-    const next = Math.min(history.length - 1, Math.max(0, recallRef.current + delta))
+    const current = recallRef.current
+    const next = Math.min(history.length - 1, Math.max(-1, current + delta))
+    if (next === current) return
+    if (current === -1) recallDraft.current = statement
     recallRef.current = next
-    setStatement(history[next]!.statement)
+    setStatement(next === -1 ? recallDraft.current : history[next]!.statement)
   }
 
   const pickHistory = useCallback((entry: HistoryEntry): void => {
@@ -1274,6 +1277,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               value={statement}
               spellCheck={false}
               onChange={(event) => {
+                recallRef.current = -1
                 setSelectedRun(false)
                 setCaretPos(event.target.selectionStart)
                 setStatement(event.target.value)
