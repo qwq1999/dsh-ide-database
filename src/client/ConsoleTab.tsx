@@ -194,6 +194,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const stmtRef = useRef('')
   /** Bumped whenever a request must no longer touch the UI (source/schema switch). */
   const runToken = useRef(0)
+  const runningRef = useRef(0)
   /** Plans are invalidated by the same switching actions as query results. */
   const planToken = useRef(0)
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
@@ -421,13 +422,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
-    async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
+    async (target: { statement: string; page: number; size: number; allowWrite: boolean; fallback?: boolean }): Promise<void> => {
       setRowSort(null)
       setRowFilter('')
       setScriptResults([])
       resultBeforePlan.current = null
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
+      if (runningRef.current > 0 && target.fallback !== true) return
+      runningRef.current += 1
       const token = ++runToken.current
       const stmtKey = `console-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       stmtRef.current = stmtKey
@@ -447,7 +450,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           // nothing tells us how many pages are left, so show the first page instead of a blank grid.
           recoveringPage.current = true
           setPageFallback(true)
-          void execute({ statement: text, page: 0, size: target.size, allowWrite: target.allowWrite })
+          void execute({ statement: text, page: 0, size: target.size, allowWrite: target.allowWrite, fallback: true })
           return
         }
         setResult(next)
@@ -462,6 +465,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setResult(null)
         setFailure(failureText(error))
       } finally {
+        runningRef.current = Math.max(0, runningRef.current - 1)
         if (token === runToken.current) setRunning(false)
       }
     },
@@ -474,6 +478,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setRowFilter('')
     setScriptResults([])
     if (selectedId === '') return
+    if (runningRef.current > 0) return
+    runningRef.current += 1
     const token = ++runToken.current
     setRunning(true)
     setPlan(null)
@@ -524,6 +530,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (parts.some(looksLikeDdl)) void loadSchemaList(selectedId)
     } finally {
+      runningRef.current = Math.max(0, runningRef.current - 1)
       setMultiProgress(null)
       if (token === runToken.current) setRunning(false)
     }
