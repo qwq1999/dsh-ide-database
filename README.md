@@ -44,7 +44,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **空结果提示**：语句没有返回任何行时，结果网格里直接写明「这条语句没有返回任何行」，不再只留一行表头；数据表标签页同理（「这里没有符合条件的行」）。
 - **列头菜单**：在结果网格的列头上点右键，可以「按此列升序 / 降序 / 清除排序」，或者「复制列名」「复制本列值」（一行一个值）；「复制查询语句」会按当前列生成一条带全部列名的 `SELECT`，省得手写；「复制为 IN 列表、复制本列（逗号分隔）」把这一列的值拼成 `(1, 'a', NULL)` 形式的过滤条件；「按此列分组计数」直接生成 `SELECT 列, COUNT(*) … GROUP BY 列 ORDER BY count DESC`，数据表标签页会把它丢进查询控制台、控制台则填进编辑器——两处都支持。
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。函数、存储过程、触发器、序列没有列结构，选中后直接在详情面板展示服务器返回的定义（MySQL `SHOW CREATE FUNCTION/PROCEDURE/TRIGGER/SEQUENCE`，Oracle/达梦 `DBMS_METADATA.GET_DDL`）；取不到时提示去 SQL 控制台查看，不会拼假 DDL。
-- **Agent 工具**：15 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
+- **Agent 工具**：16 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
 - **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
 
