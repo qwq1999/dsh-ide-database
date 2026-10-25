@@ -137,6 +137,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
   const [pageDraft, setPageDraft] = useState('1')
+  const [pageFallback, setPageFallback] = useState(false)
+  /** True while the page we are loading is the recovery run for an empty page. */
+  const recoveringPage = useRef(false)
   const [rowFilter, setRowFilter] = useState('')
   const [base, setBase] = useState('')
   const [sourceSql, setSourceSql] = useState('')
@@ -424,7 +427,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         const maxRows = showAll ? ALL_ROWS : target.size
         const next = await queryWithRetry(selectedId, sqlText, maxRows, target.allowWrite, stmtKey, schema)
         if (token !== runToken.current) return
+        if (paged && !showAll && target.page > 0 && next.rows.length === 0) {
+          // The page ran past the end (rows were deleted or the condition got narrower):
+          // nothing tells us how many pages are left, so show the first page instead of a blank grid.
+          recoveringPage.current = true
+          setPageFallback(true)
+          void execute({ statement: text, page: 0, size: target.size, allowWrite: target.allowWrite })
+          return
+        }
         setResult(next)
+        if (recoveringPage.current) recoveringPage.current = false
+        else setPageFallback(false)
         setPage(paged && !showAll ? target.page : 0)
         setBase(paged ? text : '')
         setSourceSql(text)
@@ -665,6 +678,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const goPage = (next: number): void => {
     if (base === '') return
+    setPageFallback(false)
     void execute({ statement: base, page: next, size: pageSize, allowWrite: false })
   }
 
@@ -1637,6 +1651,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             {tx === 'open' ? <Tag tone="warn">事务进行中</Tag> : null}
             {txNote !== '' ? <Tag tone="business">{txNote}</Tag> : null}
             {base !== '' && !allRows ? <span className="dshdb-qmeta">可分页查询</span> : null}
+            {pageFallback ? (
+              <Tag tone="warn" title="这一页已经超出结果范围（可能有人删了数据或条件刚变过）">
+                这一页没有数据，已回到第一页
+              </Tag>
+            ) : null}
             {result !== null && result.truncated ? (
               <Tag tone="warn" title="还有更多行没有取回：调大行数上限，或用导出的「全部」">
                 结果已截断，仅取回 {formatCount(rows.length)} 行
