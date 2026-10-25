@@ -159,6 +159,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  /** Copies from the export menu and reports it in the bar, like the toolbar copies do. */
+  const noteCopied = useCallback(
+    (label: string) =>
+      (ok: boolean): void => {
+        setExportNote(ok ? `${label} 已复制` : '复制失败：这个环境不允许访问剪贴板')
+      },
+    [],
+  )
   const exportCancelled = useRef(false)
   const [exporting, setExporting] = useState(false)
   const exportAnchor = useRef<HTMLSpanElement>(null)
@@ -1872,7 +1880,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void copyText(toMarkdown(displayColumns, filteredRows))}
+                    onClick={() => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown'))}
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 Markdown
@@ -1880,7 +1888,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void copyText(toCsv(displayColumns, filteredRows))}
+                    onClick={() => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV'))}
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 CSV
@@ -1896,7 +1904,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void copyText(toJson(displayColumns, filteredRows))}
+                    onClick={() => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON'))}
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 JSON
@@ -1907,7 +1915,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     onClick={() => {
                       const target = tableTarget()
                       if (target === null) return
-                      void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows))
+                      void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows)).then(noteCopied('SQL'))
                     }}
                     disabled={filteredRows.length === 0 || tableTarget() === null}
                   >

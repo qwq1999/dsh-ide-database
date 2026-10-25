@@ -123,6 +123,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  /** Copies from the export menu and reports it in the bar, like the toolbar copies do. */
+  const noteCopied = useCallback(
+    (label: string) =>
+      (ok: boolean): void => {
+        setExportNote(ok ? `${label} 已复制` : '复制失败：这个环境不允许访问剪贴板')
+      },
+    [],
+  )
   const exportCancelled = useRef(false)
   // Leaving the tab should stop walking pages, otherwise the server keeps answering a tab nobody sees.
   useEffect(() => {
@@ -711,23 +719,23 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               <button type="button" role="menuitem" onClick={() => void exportRows('md', 'page')}>
                 当前页 Markdown（{formatCount(rows.length)} 行）
               </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toMarkdown(displayColumns, rows))}>
+              <button type="button" role="menuitem" onClick={() => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown'))}>
                 复制当前页 Markdown
               </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, rows))}>
+              <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV'))}>
                 复制当前页 CSV
               </button>
               <button type="button" role="menuitem" onClick={() => void copyText(toTsv(displayColumns, rows))}>
                 复制当前页 TSV
               </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows))}>
+              <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON'))}>
                 复制当前页 JSON
               </button>
               <button
                 type="button"
                 role="menuitem"
                 onClick={() =>
-                  void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows))
+                  void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows)).then(noteCopied('SQL'))
                 }
               >
                 复制当前页 SQL

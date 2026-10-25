@@ -176,6 +176,7 @@ describe('table export menu', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制当前页 JSON' }))
 
     await waitFor(() => expect(copies).toHaveBeenCalled())
+    expect(await screen.findByText('JSON 已复制')).toBeTruthy()
     const text = String(copies.mock.calls.at(-1)?.[0] ?? '')
     expect(text).toContain('"total"')
     expect(text).toContain('93.02')
