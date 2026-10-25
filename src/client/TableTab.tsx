@@ -744,6 +744,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <input
           className="dshdb-input dshdb-qfilter-input"
           placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
+          list="dshdb-table-columns"
           value={whereText}
           spellCheck={false}
           onChange={(event) => setWhereText(event.target.value)}
@@ -755,6 +756,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <input
           className="dshdb-input dshdb-qfilter-input dshdb-qfilter-order"
           placeholder="排序列，例如 ID DESC"
+          list="dshdb-table-columns"
           value={orderText}
           spellCheck={false}
           onChange={(event) => setOrderText(event.target.value)}
@@ -762,6 +764,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             if (event.key === 'Enter') apply({ orderBy: orderText, page: 0 })
           }}
         />
+        <datalist id="dshdb-table-columns">
+          {columns.map((column) => (
+            <option key={column.name} value={column.name} />
+          ))}
+        </datalist>
         <button
           type="button"
           className="dshdb-pager-btn"
