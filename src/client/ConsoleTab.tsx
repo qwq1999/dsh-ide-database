@@ -1641,7 +1641,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 }
               }}
             />
-            <Button size="sm" variant="ghost" icon={<ClockIcon size={12} />} onClick={() => setHistoryOpen((open) => !open)} disabled={history.length === 0}>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<ClockIcon size={12} />}
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen((open) => !open)}
+              disabled={history.length === 0}
+            >
               历史
             </Button>
             <Button size="sm" variant="primary" onClick={() => void runCommand()} loading={commandRunning}>
@@ -1807,7 +1814,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <Button size="sm" variant="ghost" icon={<StopIcon size={12} />} onClick={() => void cancel()} disabled={!running}>
               取消
             </Button>
-            <Button size="sm" variant="ghost" icon={<ClockIcon size={12} />} onClick={() => setHistoryOpen((open) => !open)} disabled={history.length === 0}>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<ClockIcon size={12} />}
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen((open) => !open)}
+              disabled={history.length === 0}
+            >
               历史
             </Button>
             <Button

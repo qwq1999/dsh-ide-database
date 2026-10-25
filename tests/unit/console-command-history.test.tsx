@@ -139,4 +139,17 @@ describe('redis command history', () => {
     press(input, 'ArrowUp')
     expect(input.value).toBe('GET a')
   })
+
+  it('reports whether the history panel is open', async () => {
+    render(<ConsoleTab useTabInfo={tab} />)
+    await waitForConsoleSource(mocks)
+    await commandInput()
+    await waitFor(() => expect(screen.getByRole('button', { name: /历史/ })).toBeTruthy())
+    const toggle = screen.getByRole('button', { name: /历史/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(toggle)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+  })
 })

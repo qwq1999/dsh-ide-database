@@ -98,6 +98,8 @@ describe('redis copy key names', () => {
     render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
     await waitForConsoleSource(mocks)
     await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+    // The button stays disabled until the rows are actually on screen.
+    await screen.findByText('user:1')
 
     fireEvent.click(screen.getByRole('button', { name: /复制键名/ }))
 
