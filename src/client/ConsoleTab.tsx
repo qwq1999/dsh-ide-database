@@ -38,7 +38,7 @@ import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, toCsv, toMarkdown, type ExportFormat } from './export'
 import { groupCountSql, inListOf, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
@@ -1628,6 +1628,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     onClick={() => void copyText(toMarkdown(displayColumns, filteredRows))}
                   >
                     复制当前页 Markdown
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, filteredRows))}>
+                    复制当前页 CSV
                   </button>
                   {base !== '' ? (
                     <>
