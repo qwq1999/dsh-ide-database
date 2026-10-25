@@ -75,6 +75,7 @@ describe('Redis key filters', () => {
     await screen.findByText('user:forever')
     expect(screen.getByText('user:session')).toBeTruthy()
     expect(screen.getByText(/\d+ ms/)).toBeTruthy()
+    expect(screen.getByText(/已全部加载/)).toBeTruthy()
 
     fireEvent.click(screen.getByLabelText('只看有 TTL'))
     await waitFor(() => expect(screen.queryByText('user:forever')).toBeNull())

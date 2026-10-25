@@ -1351,6 +1351,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   ? `${formatCount(visibleKeys.length)} / ${formatCount(scan.keys.length)} 个键`
                   : `${formatCount(scan.keys.length)} 个键`}
               {scanMs === null ? '' : ` · ${formatMs(scanMs)}`}
+              {scan !== null && scan.cursor === '0' && scan.keys.length > 0 ? ' · 已全部加载' : ''}
               {scan !== null && scan.cursor !== '0' && scanQuery !== null &&
               (scanQuery.pattern !== (pattern.trim() === '' ? '*' : pattern.trim()) || scanQuery.type !== scanType)
                 ? ' · 条件已改，点「扫描」重新开始'
