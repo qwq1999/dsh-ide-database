@@ -325,6 +325,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   useEffect(() => {
     if (autoMs === 0 || connection === null) return undefined
     const timer = setInterval(() => {
+      // A hidden tab is not being read: skip the tick so the database is not
+      // re-queried while the user is looking at something else.
+      if (document.visibilityState !== 'visible') return
       if (!loadingRef.current) applyRef.current({ recount: false })
     }, autoMs)
     return () => clearInterval(timer)

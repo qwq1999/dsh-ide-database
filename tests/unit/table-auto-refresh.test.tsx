@@ -92,6 +92,17 @@ describe('table auto refresh', () => {
     fireEvent.change(screen.getByLabelText('自动刷新'), { target: { value: '5000' } })
     expect(timers.at(-1)?.ms).toBe(5000)
 
+    // A background tab does not re-query the database.
+    const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    const parked = pageCalls()
+    await act(async () => {
+      timers.at(-1)?.run()
+    })
+    expect(pageCalls()).toBe(parked)
+    if (visibility === undefined) delete (document as { visibilityState?: string }).visibilityState
+    else Object.defineProperty(document, 'visibilityState', visibility)
+
     // The interval is skipped while the previous load is still in flight.
     let releaseRefresh: (value: unknown) => void = () => undefined
     mocks.query.mockImplementationOnce(
