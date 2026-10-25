@@ -78,4 +78,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS SELECT 1 SELECT 1')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1')).toBe(false)
   })
+
+  it('refuses a select that writes a file on the server', () => {
+    expect(isReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/users.txt'")).toBe(false)
+    expect(isReadOnlySql("select 1 into dumpfile '/tmp/dump.bin'")).toBe(false)
+    expect(isReadOnlySql("SELECT * FROM t INTO   OUTFILE '/tmp/x'")).toBe(false)
+    // Mentioning the words in a string or a comment is not a file write.
+    expect(isReadOnlySql("SELECT 'INTO OUTFILE' AS note")).toBe(true)
+    expect(isReadOnlySql('SELECT 1 /* into outfile */')).toBe(true)
+    // Selecting into a session variable stays a read.
+    expect(isReadOnlySql('SELECT count(*) INTO @total FROM users')).toBe(true)
+  })
 })

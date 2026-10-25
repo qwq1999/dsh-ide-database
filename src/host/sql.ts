@@ -141,6 +141,49 @@ function statementAfterWith(text: string): string | null {
   return text.slice(cursor)
 }
 
+/** Statements that write files on the server; a read-only connection must refuse them. */
+const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
+
+/** Lowercase copy of `text` with quoted strings and comments blanked out. */
+function withoutLiterals(text: string): string {
+  let out = ''
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] ?? ''
+    if (char === "'" || char === '"' || char === '`') {
+      const quote = char
+      index += 1
+      while (index < text.length) {
+        if (text[index] === quote) {
+          if (text[index + 1] === quote) {
+            index += 2
+            continue
+          }
+          break
+        }
+        index += 1
+      }
+      out += ' '
+      continue
+    }
+    if (char === '-' && text[index + 1] === '-') {
+      const newline = text.indexOf('\n', index)
+      if (newline < 0) return out
+      index = newline
+      out += ' '
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const end = text.indexOf('*/', index + 2)
+      if (end < 0) return out
+      index = end + 1
+      out += ' '
+      continue
+    }
+    out += char.toLowerCase()
+  }
+  return out
+}
+
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
 export function isReadOnlySql(sql: string): boolean {
   let text = sql.trim()
@@ -187,6 +230,8 @@ export function isReadOnlySql(sql: string): boolean {
     }
     return rest !== '' && isReadOnlySql(rest)
   }
+  // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
+  if (FILE_WRITE.test(withoutLiterals(withoutTrailing))) return false
   return true
 }
 
