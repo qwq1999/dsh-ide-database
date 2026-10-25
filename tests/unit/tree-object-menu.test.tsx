@@ -113,6 +113,14 @@ describe('tree row context menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('narrows the tree to the object it was opened on', () => {
+    render(<DataView {...props()} />)
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '只看这个表' }))
+    const box = screen.getByLabelText('筛选库表') as HTMLInputElement
+    expect(box.value).toBe('shop.orders')
+  })
+
   it('hands the object to the host callbacks', () => {
     const calls: string[] = []
     render(

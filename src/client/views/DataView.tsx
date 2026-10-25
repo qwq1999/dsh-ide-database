@@ -216,6 +216,7 @@ export function DataView(props: DataViewProps): ReactElement {
         { label: '查看 DDL', run: () => props.onShowDdl(connectionId, schema, object.name, object.kind) },
         { label: '复制名称', run: () => void copyText(object.name) },
         { label: '复制限定名', run: () => void copyText(`${schema}.${object.name}`) },
+        { label: '只看这个表', run: () => setFilter(`${schema}.${object.name}`) },
       ]
       setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
