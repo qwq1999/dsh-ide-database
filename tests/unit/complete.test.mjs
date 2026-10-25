@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyCompletion, completionCandidates, wordAtCaret } from '../../src/client/complete'
+import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret } from '../../src/client/complete'
 
 describe('wordAtCaret', () => {
   it('finds the word the caret sits in', () => {
@@ -78,5 +78,33 @@ describe('applyCompletion', () => {
 
   it('inserts at the caret when there is no word yet', () => {
     expect(applyCompletion('SELECT ', 7, 'orders', 'mysql')).toEqual({ statement: 'SELECT orders', caret: 13 })
+  })
+})
+
+describe('qualifierBefore', () => {
+  it('reads the table typed before the dot', () => {
+    const sql = 'SELECT * FROM orders WHERE orders.'
+    expect(qualifierBefore(sql, sql.length)).toEqual(['orders'])
+  })
+
+  it('keeps the schema when the whole name is typed', () => {
+    const sql = 'SELECT * FROM shop.orders.'
+    expect(qualifierBefore(sql, sql.length)).toEqual(['shop', 'orders'])
+  })
+
+  it('strips backticks and double quotes', () => {
+    const quoted = 'SELECT * FROM `shop`.`orders` wHERE `orders`.'
+    expect(qualifierBefore(quoted, quoted.length)).toEqual(['orders'])
+    const upper = 'SELECT * FROM "shop"."OrderItems".'
+    expect(qualifierBefore(upper, upper.length)).toEqual(['shop', 'OrderItems'])
+  })
+
+  it('falls back to tables when there is no dot right before the caret', () => {
+    expect(qualifierBefore('SELECT * FROM orders', 20)).toEqual([])
+    expect(qualifierBefore('SELECT * FROM orders. ', 22)).toEqual([])
+  })
+
+  it('returns nothing for a bare dot', () => {
+    expect(qualifierBefore('.', 1)).toEqual([])
   })
 })

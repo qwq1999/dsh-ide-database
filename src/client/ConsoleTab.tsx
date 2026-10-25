@@ -39,7 +39,7 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
 import { insertStatement, tableFromStatement } from './tablesql'
-import { applyCompletion, completionCandidates, wordAtCaret, type Completion } from './complete'
+import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -266,33 +266,87 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const suggestionPrefix = wordAtCaret(statement, caretPos).prefix
   const suggestionItems = suggestions === null ? [] : completionCandidates(suggestionPrefix, suggestions)
 
-  const openSuggestions = useCallback(async (): Promise<void> => {
-    if (connection === undefined || connection.dialect === 'redis') return
-    const target = schema !== '' ? schema : defaultSchema
-    const key = `${connection.id}:${target}`
-    let items = completionCache.current.get(key)
-    if (items === undefined) {
+  const loadSchemaCompletions = useCallback(
+    async (target: string): Promise<Completion[] | null> => {
+      const connectionId = connection?.id ?? ''
+      const cacheKey = `${connectionId}:${target}`
+      const cached = completionCache.current.get(cacheKey)
+      if (cached !== undefined) return cached
       if (target === '') {
         setFailure({ message: '先选择要查询的数据库，再补全表名' })
-        return
+        return null
       }
       try {
-        const listed = await api.objects(connection.id, target)
-        items = [
+        const listed = await api.objects(connectionId, target)
+        const items: Completion[] = [
           ...listed.objects
             .filter((item) => item.kind === 'table' || item.kind === 'view')
             .map((item) => ({ name: item.name, kind: 'table' as const })),
           ...schemas.map((item) => ({ name: item.name, kind: 'schema' as const })),
         ]
-        completionCache.current.set(key, items)
+        completionCache.current.set(cacheKey, items)
+        return items
       } catch (error) {
         setFailure(failureText(error))
+        return null
+      }
+    },
+    [connection, schemas],
+  )
+
+  const openSuggestions = useCallback(async (): Promise<void> => {
+    if (connection === undefined || connection.dialect === 'redis') return
+    const target = schema !== '' ? schema : defaultSchema
+    const qualifier = qualifierBefore(statement, caretPos)
+    if (qualifier.length > 0) {
+      const name = qualifier[qualifier.length - 1] ?? ''
+      const hinted = qualifier.length > 1 ? qualifier[qualifier.length - 2] ?? '' : ''
+      const columnsSchema = hinted !== '' ? hinted : target
+      const columnsKey = `${connection.id}:columns:${columnsSchema}.${name}`
+      const cached = completionCache.current.get(columnsKey)
+      if (cached !== undefined) {
+        setSuggestionIndex(0)
+        setSuggestions(cached)
         return
       }
+      if (columnsSchema !== '') {
+        try {
+          const described = await api.describe(connection.id, columnsSchema, name, 'table')
+          if (described.columns.length > 0) {
+            const items: Completion[] = described.columns.map((column) => ({
+              name: column.name,
+              kind: 'column' as const,
+            }))
+            completionCache.current.set(columnsKey, items)
+            setSuggestionIndex(0)
+            setSuggestions(items)
+            return
+          }
+        } catch {
+          // The qualifier may be a schema rather than a table; list its relations below.
+        }
+      }
+      try {
+        const listed = await api.objects(connection.id, name)
+        const items: Completion[] = listed.objects
+          .filter((item) => item.kind === 'table' || item.kind === 'view')
+          .map((item) => ({ name: item.name, kind: 'table' as const }))
+        if (items.length > 0) {
+          setSuggestionIndex(0)
+          setSuggestions(items)
+          return
+        }
+      } catch {
+        // Fall through to the hint below.
+      }
+      setFailure({ message: `没有找到 ${name} 的列或表` })
+      return
     }
+    const items = await loadSchemaCompletions(target)
+    if (items === null) return
     setSuggestionIndex(0)
     setSuggestions(items)
-  }, [connection, defaultSchema, schema, schemas])
+  }, [caretPos, connection, defaultSchema, loadSchemaCompletions, schema, statement])
 
   const insertSuggestion = useCallback(
     (name: string): void => {
@@ -1035,7 +1089,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           <span className="dshdb-complete-anchor" ref={completionAnchor}>
             <textarea
               className="dshdb-input dshdb-console-input"
-              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名，Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
               value={statement}
               spellCheck={false}
@@ -1107,7 +1161,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       }}
                     >
                       <span className="dshdb-complete-name">{item.name}</span>
-                      <span className="dshdb-complete-kind">{item.kind === 'table' ? '表' : '库'}</span>
+                      <span className="dshdb-complete-kind">{item.kind === 'column' ? '列' : item.kind === 'table' ? '表' : '库'}</span>
                     </button>
                   ))
                 )}

@@ -10,7 +10,7 @@
 import type { ClientConnection } from '../shared/types'
 import { quoteIdent } from './tablesql'
 
-export type CompletionKind = 'table' | 'schema'
+export type CompletionKind = 'table' | 'schema' | 'column'
 
 export interface Completion {
   name: string
@@ -49,6 +49,40 @@ export function wordAtCaret(statement: string, caret: number): WordAtCaret {
   const begins = start < 2 || !isWord(statement[start - 2])
   const quote = (opened === '`' || opened === '"') && begins ? opened : ''
   return { start, end, prefix: statement.slice(start, at), quote }
+}
+
+const QUALIFIER = /[\p{L}\p{N}_$`"[\]]/u
+
+function nameBefore(statement: string, dot: number): { name: string; start: number } | null {
+  let start = dot
+  while (start > 0 && QUALIFIER.test(statement[start - 1] ?? '')) start -= 1
+  if (start === dot) return null
+  const name = statement
+    .slice(start, dot)
+    .replace(/^[`"[]/u, '')
+    .replace(/[`"\]]$/u, '')
+  return name === '' ? null : { name, start }
+}
+
+/**
+ * The `schema.table` chain typed right before `start`, most specific last.
+ *
+ * `SELECT * FROM orders WHERE orders.` → `['orders']`, and
+ * `shop.orders.` → `['shop', 'orders']`. Anything else (a space after the dot,
+ * no dot at all) returns an empty list, and the popup falls back to tables.
+ */
+export function qualifierBefore(statement: string, start: number): string[] {
+  const names: string[] = []
+  let dot = start - 1
+  if (dot < 0 || statement[dot] !== '.') return names
+  for (let round = 0; round < 2; round += 1) {
+    const found = nameBefore(statement, dot)
+    if (found === null) break
+    names.unshift(found.name)
+    if (found.start - 1 < 0 || statement[found.start - 1] !== '.') break
+    dot = found.start - 1
+  }
+  return names
 }
 
 /** Names matching `prefix` (case-insensitive), capped at `limit`. */
