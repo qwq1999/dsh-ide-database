@@ -6,7 +6,7 @@
  * keys on top, the selected value below) plus a command box, which is how IDEA
  * presents Redis.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type {
   CellValue,
   ClientConnection,
@@ -189,6 +189,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
   const resultBeforePlan = useRef<QueryResult | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const filterRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
   const [planRunning, setPlanRunning] = useState(false)
@@ -646,6 +647,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       if (token === planToken.current) setPlanRunning(false)
     }
   }
+
+  /** Ctrl/⌘ + F jumps to the result filter; browsers otherwise open their own find bar. */
+  const focusResultFilter = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return
+    event.preventDefault()
+    filterRef.current?.focus()
+  }, [])
 
   /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones.
    *  Execution reuses the shared console runner. */
@@ -1165,7 +1173,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const rangeEnd = offset + rows.length
 
   return (
-    <div className="dshdb-qtab">
+    <div className="dshdb-qtab" onKeyDown={focusResultFilter}>
       <div className="dshdb-qbar">
         <select
           className="dshdb-select dshdb-select-inline dshdb-console-select"
@@ -1826,8 +1834,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   {result.sql}
                 </span>
                 <span className="dshdb-pager-spacer" />
-                <span className="dshdb-pager-filter" title="按任意列在网格里显示的文字过滤当前页（Esc 清空）">
+                <span className="dshdb-pager-filter" title="按任意列在网格里显示的文字过滤当前页（Ctrl/⌘ + F 聚焦，Esc 清空）">
                   <input
+                    ref={filterRef}
                     className="dshdb-input dshdb-qfilter-input"
                     aria-label="筛选结果"
                     placeholder="筛选结果"
