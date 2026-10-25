@@ -380,6 +380,13 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
+              label: '复制 WHERE 条件',
+              run: () => {
+                if (connection === null) return
+                void copyText(`WHERE ${cellWhere(connection.dialect, cell.column, cell.value)}`)
+              },
+            },
+            {
               label: '按此列分组计数',
               run: () => {
                 if (connection === null) return

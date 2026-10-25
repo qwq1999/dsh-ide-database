@@ -39,7 +39,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
-import { groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
+import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
   completionCandidates,
@@ -1050,6 +1050,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, cell.row),
           )
         },
+      },
+      {
+        label: '复制 WHERE 条件',
+        run: () => void copyText(`WHERE ${cellWhere(connection?.dialect ?? 'mysql', cell.column, cell.value)}`),
       },
       { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
     ],
