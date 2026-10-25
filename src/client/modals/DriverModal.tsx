@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { SQL_DIALECT_LABEL } from '../../shared/presets'
 import type { DriverStatus, JarRef, SqlDialect } from '../../shared/types'
 import { api } from '../api'
+import { copyText } from '../colmenu'
 import { DatabaseIcon } from '../icons'
 import { Banner, Button, Field, Modal, Select, TextArea, TextInput } from '../ui'
 
@@ -174,7 +175,18 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
             />
           </Field>
         </div>
-        {error ? <Banner tone="error">{error}</Banner> : null}
+        {error ? (
+          <Banner
+            tone="error"
+            actions={
+              <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(error)}>
+                复制
+              </Button>
+            }
+          >
+            {error}
+          </Banner>
+        ) : null}
       </div>
     </Modal>
   )

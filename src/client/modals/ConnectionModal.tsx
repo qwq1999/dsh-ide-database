@@ -8,6 +8,7 @@ import type {
   PresetId,
 } from '../../shared/types'
 import { api } from '../api'
+import { copyText } from '../colmenu'
 import { dialectLabel, formatMs } from '../format'
 import { DatabaseIcon, PlusIcon, TrashIcon } from '../icons'
 import { Banner, Button, Field, Modal, Select, Spinner, Switch, Tag, TextArea, TextInput } from '../ui'
@@ -308,7 +309,18 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
               : `连接失败：${testResult.message ?? '未知错误'}`}
           </Banner>
         ) : null}
-        {error ? <Banner tone="error">{error}</Banner> : null}
+        {error ? (
+          <Banner
+            tone="error"
+            actions={
+              <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(error)}>
+                复制
+              </Button>
+            }
+          >
+            {error}
+          </Banner>
+        ) : null}
         {testing ? (
           <span className="dshdb-muted dshdb-inline" style={{ fontSize: 11 }}>
             <Spinner /> 正在测试连接…
