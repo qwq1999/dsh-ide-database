@@ -265,7 +265,7 @@ function PagerButton({
 }
 
 /** One console body: SQL editor + pager, or Redis key grid + command box. */
-function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }): ReactElement {
+function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?: string; initialSql?: string }): ReactElement {
   const [connections, setConnections] = useState<ClientConnection[]>([])
   const [settings, setSettings] = useState<DbSettings | null>(null)
   const [selectedId, setSelectedId] = useState(initialConnectionId ?? '')
@@ -278,7 +278,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   const [redisDb, setRedisDb] = useState<number | null>(null)
   const [redisDatabases, setRedisDatabases] = useState<number | null>(null)
 
-  const [statement, setStatement] = useState('')
+  const [statement, setStatement] = useState(initialSql ?? '')
+  /** Seeded text survives the first "source switch" reset below; later switches clear it. */
+  const seededStatement = useRef(initialSql !== undefined && initialSql !== '')
   const [result, setResult] = useState<QueryResult | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [running, setRunning] = useState(false)
@@ -709,7 +711,9 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
   useEffect(() => {
     setResult(null)
     setFailure(null)
-    setStatement('')
+    // A statement handed over by a table tab is the reason this tab was opened.
+    if (seededStatement.current) seededStatement.current = false
+    else setStatement('')
     setBase('')
     setPage(0)
     setScan(null)
@@ -1348,7 +1352,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
 export function ConsoleTab(props: ConsoleTabProps): ReactElement {
   const info = (props.useTabInfo ?? noTabInfo)()
   const params = readConsoleTabParams(info?.tab?.navigation?.params) ?? {}
-  return <ConsoleBody initialConnectionId={params.connectionId} />
+  return <ConsoleBody initialConnectionId={params.connectionId} initialSql={params.sql} />
 }
 
 /** The chip text of a console tab. */

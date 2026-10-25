@@ -11,6 +11,7 @@ import {
   quoteLiteral,
   stripKeyword,
   tableFromStatement,
+  tableSelectSql,
 } from '../../src/client/tablesql.ts'
 
 const column = (name, typeName) => ({ name, typeName, nullable: true, defaultValue: '', comment: '', primary: false })
@@ -135,5 +136,25 @@ describe('insertStatement', () => {
       "INSERT INTO `shop`.`categories` (`id`, `name`) VALUES (1, '手机');\nINSERT INTO `shop`.`categories` (`id`, `name`) VALUES (2, NULL);\n",
     )
     expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [])).toBe('')
+  })
+})
+
+describe('tableSelectSql', () => {
+  it('builds the statement a table tab hands to the console', () => {
+    expect(tableSelectSql('mysql', 'shop', 'orders', '', '', 500)).toBe(
+      'SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0',
+    )
+  })
+
+  it('keeps the WHERE and ORDER BY the user typed', () => {
+    expect(tableSelectSql('mysql', 'shop', 'orders', "status = 'paid'", 'created_at DESC', 200)).toBe(
+      "SELECT * FROM `shop`.`orders` WHERE status = 'paid' ORDER BY created_at DESC LIMIT 200 OFFSET 0",
+    )
+  })
+
+  it('uses the Oracle paging form and always asks for at least one row', () => {
+    expect(tableSelectSql('oracle', 'SHOP', 'ORDERS', '', '', 0)).toBe(
+      'SELECT * FROM "SHOP"."ORDERS" OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY',
+    )
   })
 })

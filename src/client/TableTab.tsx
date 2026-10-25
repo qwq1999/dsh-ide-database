@@ -12,15 +12,15 @@ import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '
 import { ApiError, api } from './api'
 import { DataGrid } from './DataGrid'
 import { formatCell, formatMs } from './format'
-import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon } from './icons'
+import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
-import { readTableTabParams, type TableTabParams } from './tab-open'
+import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -396,6 +396,25 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         >
           <FilterIcon size={13} />
           {activeFilterCount > 0 ? <span className="dshdb-filter-count">{activeFilterCount}</span> : null}
+        </button>
+        <button
+          type="button"
+          className="dshdb-pager-btn"
+          title="在查询控制台打开这个表"
+          aria-label="在查询控制台打开"
+          onClick={() => {
+            const target = connection
+            if (target === null) return
+            const where = composeWhere(target.dialect, whereText, columns, filters)
+            const orderBy = stripKeyword(orderText, 'ORDER\\s+BY')
+            openConsoleTab({
+              connectionId: params.connectionId,
+              sql: tableSelectSql(target.dialect, params.schema, params.table, where, orderBy, pageSize),
+            })
+          }}
+          disabled={loading}
+        >
+          <TerminalIcon size={13} />
         </button>
         <button
           type="button"

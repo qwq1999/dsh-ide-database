@@ -115,6 +115,24 @@ describe('console database target', () => {
     expect(mocks.query.mock.calls[0]?.[0]).toMatchObject({ id: 'mysql-1', schema: 'crm' })
   })
 
+  it('starts the editor from the SQL a table tab handed over', async () => {
+    render(
+      <ConsoleTab
+        useTabInfo={() => ({
+          tab: {
+            navigation: {
+              params: { connectionId: 'mysql-1', sql: 'SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0' },
+            },
+          },
+        })}
+      />,
+    )
+    await screen.findByLabelText('数据源')
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    await waitFor(() => expect(editor.value).toBe('SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0'))
+  })
+
   it('offers the Redis logical databases and scans the chosen one', async () => {
     mocks.redisDatabases.mockResolvedValue({ databases: 8, redisDb: 0, cached: false })
     mocks.redisScan.mockResolvedValue({ cursor: '0', done: true, scanned: 0, keys: [] })

@@ -37,6 +37,26 @@ export function stripKeyword(text: string, keyword: string): string {
   return trimmed.replace(pattern, '').trim()
 }
 
+/**
+ * The statement a table tab hands to the console: the table, whatever the WHERE
+ * and ORDER BY boxes currently hold, and one page of rows. It is only text the
+ * user can edit before running, never executed on their behalf.
+ */
+export function tableSelectSql(
+  dialect: ClientConnection['dialect'],
+  schema: string,
+  table: string,
+  where: string,
+  orderBy: string,
+  limit: number,
+): string {
+  const from = qualifiedName(dialect, schema, table)
+  const whereSql = where.trim() === '' ? '' : ` WHERE ${where.trim()}`
+  const orderSql = orderBy.trim() === '' ? '' : ` ORDER BY ${orderBy.trim()}`
+  const size = Math.max(1, Math.trunc(limit) || 1)
+  return `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, size, 0)}`
+}
+
 export function isNumericType(typeName: string): boolean {
   return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }

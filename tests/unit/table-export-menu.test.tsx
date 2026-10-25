@@ -23,6 +23,7 @@ vi.mock('../../src/client/api', () => {
 })
 
 import { TableTab } from '../../src/client/TableTab'
+import { setConsoleTabOpener } from '../../src/client/tab-open'
 
 const mysql = {
   id: 'mysql-1',
@@ -98,5 +99,30 @@ describe('table export menu', () => {
     expect(await screen.findByRole('menu')).toBeTruthy()
     fireEvent.keyDown(document.body, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
+  it('hands the table and its filters to the query console', async () => {
+    const opened: unknown[] = []
+    setConsoleTabOpener((params) => opened.push(params))
+    try {
+      render(
+        <TableTab
+          useTabInfo={() => ({
+            tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+          })}
+        />,
+      )
+      await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+      const button = (await screen.findByLabelText('在查询控制台打开')) as HTMLButtonElement
+      await waitFor(() => expect(button.disabled).toBe(false))
+      fireEvent.click(button)
+
+      expect(opened).toEqual([
+        { connectionId: mysql.id, sql: 'SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0' },
+      ])
+    } finally {
+      setConsoleTabOpener(undefined)
+    }
   })
 })
