@@ -1533,6 +1533,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 ? ' · 条件已改，点「扫描」重新开始'
                 : ''}
             </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={visibleKeys.length === 0}
+              title="把当前列表里的键名按换行复制出来"
+              onClick={() => void copyText(visibleKeys.map((info) => info.key).join('\n')).then(noteCopied('键名'))}
+            >
+              复制键名
+            </Button>
           </div>
 
           {valueError !== null ? (
