@@ -54,6 +54,11 @@ function failureText(error: unknown): Failure {
   return { message: error instanceof Error ? error.message : String(error) }
 }
 
+/** What a failed reload or query copies out, matching what the banner shows. */
+function failureMessage(error: Failure): string {
+  return error.detail === undefined ? error.message : error.message + '\n' + error.detail
+}
+
 /**
  * A column filter: `like` is the text typed into the filter row, `eq` is an
  * exact value picked from a cell, `isnull` comes from clicking a NULL cell.
@@ -641,7 +646,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   if (error !== null && rows.length === 0) {
     return (
       <div className="dshdb-qtab">
-        <Banner tone="error" onClose={() => setError(null)}>
+        <Banner
+          tone="error"
+          onClose={() => setError(null)}
+          actions={
+            <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
+              复制
+            </Button>
+          }
+        >
           {error.message}
           {error.detail ? `\n${error.detail}` : ''}
         </Banner>
@@ -887,7 +900,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       </div>
 
       {error !== null ? (
-        <Banner tone="error" onClose={() => setError(null)}>
+        <Banner
+          tone="error"
+          onClose={() => setError(null)}
+          actions={
+            <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
+              复制
+            </Button>
+          }
+        >
           {error.message}
           {error.detail ? `\n${error.detail}` : ''}
         </Banner>
