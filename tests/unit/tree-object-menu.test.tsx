@@ -74,6 +74,7 @@ function props(overrides: Partial<DataViewProps> = {}): DataViewProps {
     onToggleAllRedisDbsVisible: noop,
     onShowDdl: noop,
     onOpenTable: noop,
+    onOpenConsole: noop,
     ...overrides,
   }
 }
@@ -120,6 +121,20 @@ describe('tree row context menu', () => {
     openMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: '查看 DDL' }))
     expect(calls).toEqual(['open:c1:shop:orders', 'ddl:c1:shop:orders:table'])
+  })
+
+  it('opens the console for a table', () => {
+    const calls: string[] = []
+    render(
+      <DataView
+        {...props({
+          onOpenConsole: (connectionId, schema, table) => calls.push(`console:${connectionId}:${schema}:${table}`),
+        })}
+      />,
+    )
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '在控制台查询' }))
+    expect(calls).toEqual(['console:c1:shop:orders'])
   })
 
   it('closes on Escape', () => {

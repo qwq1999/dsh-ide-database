@@ -95,6 +95,7 @@ export interface DataViewProps {
   onShowDdl: (connectionId: string, schema: string, table: string, kind: string) => void
   /** Double-click on a table/view: open its rows in their own Sidebar tab. */
   onOpenTable: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
+  onOpenConsole: (connectionId: string, schema: string, table: string) => void
 }
 
 type FolderId = 'table' | 'view' | 'routine' | 'sequence' | 'trigger' | 'other'
@@ -184,7 +185,10 @@ export function DataView(props: DataViewProps): ReactElement {
       const isRelation = object.kind === 'table' || object.kind === 'view'
       const items = [
         ...(isRelation
-          ? [{ label: '打开数据', run: () => props.onOpenTable(connectionId, schema, object) }]
+          ? [
+              { label: '打开数据', run: () => props.onOpenTable(connectionId, schema, object) },
+              { label: '在控制台查询', run: () => props.onOpenConsole(connectionId, schema, object.name) },
+            ]
           : []),
         { label: '查看 DDL', run: () => props.onShowDdl(connectionId, schema, object.name, object.kind) },
         { label: '复制名称', run: () => void copyText(object.name) },
@@ -192,7 +196,7 @@ export function DataView(props: DataViewProps): ReactElement {
       ]
       setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
-    [props.onOpenTable, props.onShowDdl],
+    [props.onOpenConsole, props.onOpenTable, props.onShowDdl],
   )
 
   const openSchemaMenu = useCallback(

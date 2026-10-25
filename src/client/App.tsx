@@ -10,6 +10,7 @@ import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
 import { DataView } from './views/DataView'
 import { openConsoleTab, openTableTab } from './tab-open'
+import { tableSelectSql } from './tablesql'
 import {
   Banner,
   Button,
@@ -363,6 +364,12 @@ export function App(props: AppProps): ReactElement {
               onOpenTable={(connectionId, schema, object) => {
                 selectConnection(connectionId)
                 openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })
+              }}
+              onOpenConsole={(connectionId, schema, table) => {
+                const connection = connections.find((item) => item.id === connectionId)
+                if (connection === undefined) return
+                selectConnection(connectionId)
+                openConsoleTab({ connectionId, sql: tableSelectSql(connection.dialect, schema, table, '', '', 500) })
               }}
             />
           </div>
