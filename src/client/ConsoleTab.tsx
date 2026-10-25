@@ -52,8 +52,8 @@ import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { toggleSqlComment } from './sqlcomment'
-import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
-import { readConsoleTabParams } from './tab-open'
+import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
+import { openTableTab, readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
 import { redisValueText } from './redisvalue'
@@ -1021,7 +1021,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const tableTarget = (): { schema: string; table: string } | null => {
     const parsed = tableFromStatement(sourceSql !== '' ? sourceSql : base)
     if (parsed === null) return null
-    return parsed.schema === '' ? { schema, table: parsed.table } : parsed
+    return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
+  }
+  /** The table the editor points at right now, for the "open table" button. */
+  const editorTarget = (): { schema: string; table: string } | null => {
+    const parsed = tableFromStatement(statement)
+    if (parsed === null) return null
+    return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
   }
   const noTableNote = (): void => {
     setExportNote('当前语句没有目标表，无法导出 SQL')
@@ -1474,6 +1480,20 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               title="查看当前语句的执行计划（不会真正执行语句）"
             >
               执行计划
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<TableIcon size={12} />}
+              disabled={editorTarget() === null || selectedId === ''}
+              title="在新标签页打开编辑器里这条语句查询的表"
+              onClick={() => {
+                const target = editorTarget()
+                if (target === null || selectedId === '') return
+                openTableTab({ connectionId: selectedId, schema: target.schema, table: target.table, kind: 'table' })
+              }}
+            >
+              打开数据表
             </Button>
             <Button
               size="sm"
