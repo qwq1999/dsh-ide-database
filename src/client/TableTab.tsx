@@ -18,6 +18,7 @@ import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-o
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
+import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
@@ -98,6 +99,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [order, setOrder] = useState<number[] | null>(null)
+  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
@@ -110,9 +112,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const signature = columnSignature(columns)
   useEffect(() => {
     setOrder(null)
-  }, [signature])
+    setHiddenColumns((current) => pruneHidden(current, columns))
+  }, [signature, columns])
+  useEffect(() => {
+    writeHidden(`table:${params.schema}.${params.table}`, hiddenColumns)
+  }, [hiddenColumns, params.schema, params.table])
   const displayColumns = useMemo(() => orderColumns(columns, order), [columns, order])
   const displayRows = useMemo(() => orderRows(rows, order), [rows, order])
+  // Hiding only narrows what the grid renders; positions map back for drag order.
+  const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
+  const shownColumns = hiddenView.columns
+  const shownRows = hiddenView.rows
+  const hiddenCount = displayColumns.length - shownColumns.length
 
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
@@ -244,15 +255,28 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           disabled: rows.length === 0 || index < 0,
           run: () => void copyText(columnValues(rows, index)),
         },
+        {
+          label: `隐藏列「${column.name}」`,
+          disabled: shownColumns.length <= 1,
+          run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+        },
+        {
+          label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,
+          disabled: hiddenCount === 0,
+          run: () => setHiddenColumns(null),
+        },
       ]
     },
-    [activeSort, clearSort, columns, rows, sortBy],
+    [activeSort, clearSort, columns, hiddenCount, rows, shownColumns.length, sortBy],
   )
   const gridReorder = useCallback(
     (from: number, to: number): void => {
-      setOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
+      const positions = hiddenView.positions
+      const source = positions[from] ?? from
+      const target = positions[to] ?? to
+      setOrder((current) => moveColumn(current ?? identityOrder(displayColumns.length), source, target))
     },
-    [columns.length],
+    [displayColumns.length, hiddenView.positions],
   )
   const gridCellClass = useCallback(
     (): string | undefined => (filtersOpen ? 'dshdb-cell-filterable' : undefined),
@@ -550,8 +574,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </div>
       ) : (
         <DataGrid
-          columns={displayColumns}
-          rows={displayRows}
+          columns={shownColumns}
+          rows={shownRows}
           offset={offset}
           storageKey={`table:${params.schema}.${params.table}`}
           sort={activeSort ?? null}
@@ -560,7 +584,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onReorderColumns={gridReorder}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
                 <th className="dshdb-num" />
-                {displayColumns.map((column, index) => {
+                {shownColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
                   return (

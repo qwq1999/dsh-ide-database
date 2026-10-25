@@ -29,6 +29,7 @@ import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
+import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
@@ -127,6 +128,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [sourceSql, setSourceSql] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [columnOrder, setColumnOrder] = useState<number[] | null>(null)
+  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden('console:sql'))
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -667,10 +669,20 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const planText = useMemo(() => planTextOf(plan?.plan), [plan])
   const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
   const displayRows = useMemo(() => orderRows(visibleRows, columnOrder), [visibleRows, columnOrder])
+  // Hiding is display-only: positions map back into the displayed columns, so
+  // reordering and row copying keep addressing the full result.
+  const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
+  const shownColumns = hiddenView.columns
+  const shownRows = hiddenView.rows
+  const hiddenCount = displayColumns.length - shownColumns.length
   const signature = columnSignature(columns)
   useEffect(() => {
     setColumnOrder(null)
-  }, [signature])
+    setHiddenColumns((current) => pruneHidden(current, columns))
+  }, [signature, columns])
+  useEffect(() => {
+    writeHidden('console:sql', hiddenColumns)
+  }, [hiddenColumns])
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const active = rowSort?.column === column.name ? rowSort.direction : null
     const index = columns.findIndex((item) => item.name === column.name)
@@ -684,16 +696,33 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         disabled: visibleRows.length === 0 || index < 0,
         run: () => void copyText(columnValues(visibleRows, index)),
       },
+      {
+        label: `隐藏列「${column.name}」`,
+        disabled: shownColumns.length <= 1,
+        run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+      },
+      {
+        label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,
+        disabled: hiddenCount === 0,
+        run: () => setHiddenColumns(null),
+      },
     ]
-  }, [columns, rowSort, visibleRows])
+  }, [columns, hiddenCount, rowSort, shownColumns.length, visibleRows])
 
   /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
   const gridSort = useCallback((column: ColumnInfo): void => {
     setRowSort((current) => nextRowSort(current, column.name))
   }, [])
-  const gridReorder = useCallback((from: number, to: number): void => {
-    setColumnOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
-  }, [columns.length])
+  const gridReorder = useCallback(
+    (from: number, to: number): void => {
+      // The grid reorders the columns it renders; translate back to display slots.
+      const positions = hiddenView.positions
+      const source = positions[from] ?? from
+      const target = positions[to] ?? to
+      setColumnOrder((current) => moveColumn(current ?? identityOrder(displayColumns.length), source, target))
+    },
+    [displayColumns.length, hiddenView.positions],
+  )
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => [
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
@@ -1244,8 +1273,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               </pre>
             ) : (
               <DataGrid
-                columns={displayColumns}
-                rows={displayRows}
+                columns={shownColumns}
+                rows={shownRows}
                 offset={offset}
                 storageKey="console:sql"
                 sort={rowSort}
