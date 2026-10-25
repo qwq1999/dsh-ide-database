@@ -309,7 +309,21 @@ export function App(props: AppProps): ReactElement {
       <main className="dshdb-main">
         {loadError ? (
           <div className="dshdb-scroll">
-            <Banner tone="error">加载插件状态失败：{loadError}</Banner>
+            <Banner
+              tone="error"
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="复制错误信息"
+                  onClick={() => void copyText('加载插件状态失败：' + loadError)}
+                >
+                  复制
+                </Button>
+              }
+            >
+              加载插件状态失败：{loadError}
+            </Banner>
           </div>
         ) : null}
 
