@@ -169,8 +169,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
 
-  const [history, setHistory] = useState<HistoryEntry[]>([])
-  const [pins, setPins] = useState<HistoryEntry[]>([])
+  const [history, setHistory] = useState<HistoryEntry[]>(() => readHistory('sql'))
+  const [pins, setPins] = useState<HistoryEntry[]>(() => readPins('sql'))
+  const [historyKindSeen, setHistoryKindSeen] = useState('sql')
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const stmtRef = useRef('')
@@ -194,6 +195,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const connection = connections.find((item) => item.id === selectedId)
   const isRedis = connection?.dialect === 'redis'
   const historyKind = isRedis ? 'redis' : 'sql'
+
+  // History is per console kind and must be right in the render that adopts the
+  // source: loading it in an effect would leave the first ↑/↓ of a freshly opened
+  // Redis console looking at the SQL history for one frame.
+  if (historyKindSeen !== historyKind) {
+    setHistoryKindSeen(historyKind)
+    setHistory(readHistory(historyKind))
+    setPins(readPins(historyKind))
+    setHistoryOpen(false)
+    recallRef.current = -1
+  }
   /** The logical database every Redis call in this console targets. */
   const activeRedisDb = redisDb ?? connection?.redisDb ?? 0
   /** The schema SQL runs in when the user has not picked another one. */
@@ -239,14 +251,6 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       alive = false
     }
   }, [])
-
-  // History is per console kind: switching between SQL and Redis swaps it.
-  useEffect(() => {
-    setHistory(readHistory(historyKind))
-    setPins(readPins(historyKind))
-    setHistoryOpen(false)
-    recallRef.current = -1
-  }, [historyKind])
 
   const toggleStatementPin = useCallback((entry: HistoryEntry): void => {
     togglePin(historyKind, entry.statement)
