@@ -303,6 +303,17 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                         : 'descending'
                       : 'none'
                 }
+                tabIndex={onSort === undefined ? undefined : 0}
+                onKeyDown={
+                  onSort === undefined
+                    ? undefined
+                    : (event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
+                        event.preventDefault()
+                        onSort(column)
+                      }
+                }
                 draggable={onReorderColumns !== undefined}
                 onDragStart={(event) => {
                   if (onReorderColumns === undefined) return
