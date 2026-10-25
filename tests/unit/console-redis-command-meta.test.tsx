@@ -15,11 +15,17 @@ const mocks = vi.hoisted(() => ({
   redisKey: vi.fn(),
   redisCommand: vi.fn(),
   explain: vi.fn(),
+  copies: vi.fn(async () => true),
 }))
 
 vi.mock('../../src/client/api', () => ({
   api: { ...mocks },
   ApiError: class ApiError extends Error {},
+}))
+
+vi.mock('../../src/client/colmenu', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/client/colmenu')>()),
+  copyText: mocks.copies,
 }))
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
@@ -75,5 +81,8 @@ describe('Redis command output', () => {
     await screen.findByText('hello')
     expect(screen.getByText('7 ms')).toBeTruthy()
     expect(screen.queryByText(/写命令/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '复制结果' }))
+    expect(mocks.copies).toHaveBeenCalledWith('hello')
   })
 })

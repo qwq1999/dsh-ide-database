@@ -1418,6 +1418,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               <div className="dshdb-qmeta" style={{ marginTop: 4 }}>
                 {formatMs(commandResult.elapsedMs)}
                 {commandResult.readOnly ? '' : ' · 写命令'}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void copyText(redisValueText(commandResult.value))}
+                  title="复制这条命令的结果"
+                >
+                  复制结果
+                </Button>
               </div>
             </>
           ) : null}
