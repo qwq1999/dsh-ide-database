@@ -6,10 +6,11 @@
  * and NULL spelled the same way the grid shows it. JSON keeps native types so
  * numbers stay numbers and NULL stays null.
  */
-import type { CellValue, ColumnInfo, Row } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo, Row } from '../shared/types'
 import { formatCell } from './format'
+import { insertStatements } from './tablesql'
 
-export type ExportFormat = 'csv' | 'json' | 'sql'
+export type ExportFormat = 'csv' | 'json' | 'sql' | 'md'
 
 function csvCell(value: CellValue): string {
   const text = formatCell(value)
@@ -52,7 +53,55 @@ export function toJson(columns: ColumnInfo[], rows: Row[]): string {
   return JSON.stringify(records, null, 2)
 }
 
+export interface ExportInput {
+  dialect: ClientConnection['dialect']
+  schema: string
+  table: string
+  columns: ColumnInfo[]
+  rows: Row[]
+}
+
+export interface ExportPayload {
+  text: string
+  mime: string
+}
+
+/** Render one export format, so every tab dispatches the same way. */
+export function renderExport(format: ExportFormat, input: ExportInput): ExportPayload {
+  switch (format) {
+    case 'csv':
+      return { text: toCsv(input.columns, input.rows), mime: 'text/csv' }
+    case 'json':
+      return { text: toJson(input.columns, input.rows), mime: 'application/json' }
+    case 'sql':
+      return {
+        text: insertStatements(input.dialect, input.schema, input.table, input.columns, input.rows),
+        mime: 'application/sql',
+      }
+    case 'md':
+      return { text: toMarkdown(input.columns, input.rows), mime: 'text/markdown' }
+  }
+}
+
 /** Save text as a file without any network round trip. */
+/**
+ * Markdown tables are one line per row, so cell text has to lose its newlines;
+ * pipes and backslashes are escaped or the table would break apart.
+ */
+function markdownCell(value: CellValue): string {
+  return formatCell(value)
+    .replace(/\\/gu, '\\\\')
+    .replace(/\|/gu, '\\|')
+    .replace(/\r?\n/gu, '<br>')
+}
+
+export function toMarkdown(columns: ColumnInfo[], rows: Row[]): string {
+  const head = `| ${columns.map((column) => markdownCell(column.name)).join(' | ')} |`
+  const divider = `| ${columns.map(() => '---').join(' | ')} |`
+  const body = rows.map((row) => `| ${columns.map((_, index) => markdownCell(row[index] ?? null)).join(' | ')} |`)
+  return `${[head, divider, ...body].join('\n')}\n`
+}
+
 export function downloadText(filename: string, mime: string, text: string): void {
   const bom = mime.startsWith('text/csv') ? '\ufeff' : ''
   const blob = new Blob([bom, text], { type: `${mime};charset=utf-8` })

@@ -13,14 +13,14 @@ import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs } from './format'
 import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
-import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
 import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -377,14 +377,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         exportData = orderRows(collected, order)
         exportColumns = orderColumns(exportColumns, order)
       }
-      const text =
-        format === 'sql'
-          ? insertStatements(dialect, params.schema, params.table, exportColumns, exportData)
-          : format === 'csv'
-            ? toCsv(exportColumns, exportData)
-            : toJson(exportColumns, exportData)
-      const mime = format === 'csv' ? 'text/csv' : format === 'json' ? 'application/json' : 'application/sql'
-      downloadText(exportFilename(params.schema, params.table, format), mime, text)
+      const payload = renderExport(format, {
+        dialect,
+        schema: params.schema,
+        table: params.table,
+        columns: exportColumns,
+        rows: exportData,
+      })
+      downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
       setTimeout(() => setExportNote(''), 5000)
     } catch (caught) {
@@ -439,6 +439,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'page')}>
                 当前页 SQL（{formatCount(rows.length)} 行）
               </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('md', 'page')}>
+                当前页 Markdown（{formatCount(rows.length)} 行）
+              </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
                 全部 CSV
               </button>
@@ -447,6 +450,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'all')}>
                 全部 SQL
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportRows('md', 'all')}>
+                全部 Markdown
               </button>
             </span>
           ) : null}

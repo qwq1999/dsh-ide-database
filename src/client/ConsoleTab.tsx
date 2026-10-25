@@ -36,8 +36,8 @@ import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
-import { insertStatements, tableFromStatement } from './tablesql'
+import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
+import { tableFromStatement } from './tablesql'
 import { applyCompletion, completionCandidates, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -737,14 +737,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       noTableNote()
       return
     }
-    const text =
-      format === 'sql'
-        ? insertStatements(connection?.dialect ?? 'mysql', target?.schema ?? '', target?.table ?? '', displayColumns, displayRows)
-        : format === 'csv'
-          ? toCsv(displayColumns, displayRows)
-          : toJson(displayColumns, displayRows)
-    const mime = format === 'sql' ? 'application/sql' : format === 'csv' ? 'text/csv' : 'application/json'
-    downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), mime, text)
+    const payload = renderExport(format, {
+      dialect: connection?.dialect ?? 'mysql',
+      schema: target?.schema ?? '',
+      table: target?.table ?? 'console',
+      columns: displayColumns,
+      rows: displayRows,
+    })
+    downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
@@ -778,14 +778,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       })
       const data = orderRows(collected, columnOrder)
       const cols = orderColumns(columns, columnOrder)
-      const text =
-        format === 'sql'
-          ? insertStatements(connection?.dialect ?? 'mysql', target?.schema ?? '', target?.table ?? '', cols, data)
-          : format === 'csv'
-            ? toCsv(cols, data)
-            : toJson(cols, data)
-      const mime = format === 'sql' ? 'application/sql' : format === 'csv' ? 'text/csv' : 'application/json'
-      downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), mime, text)
+      const payload = renderExport(format, {
+        dialect: connection?.dialect ?? 'mysql',
+        schema: target?.schema ?? '',
+        table: target?.table ?? 'console',
+        columns: cols,
+        rows: data,
+      })
+      downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
       setTimeout(() => setExportNote(''), 5000)
     } catch (error) {
@@ -1155,6 +1155,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <button type="button" role="menuitem" onClick={() => exportPage('sql')}>
                     当前页 SQL（{visibleRows.length} 行）
                   </button>
+                  <button type="button" role="menuitem" onClick={() => exportPage('md')}>
+                    当前页 Markdown（{visibleRows.length} 行）
+                  </button>
                   {base !== '' ? (
                     <>
                       <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
@@ -1165,6 +1168,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       </button>
                       <button type="button" role="menuitem" onClick={() => void exportAll('sql')} disabled={exporting}>
                         全部 SQL（最多 {EXPORT_LIMIT} 行）
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => void exportAll('md')} disabled={exporting}>
+                        全部 Markdown（最多 {EXPORT_LIMIT} 行）
                       </button>
                     </>
                   ) : null}
