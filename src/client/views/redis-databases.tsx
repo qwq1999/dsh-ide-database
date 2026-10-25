@@ -59,6 +59,7 @@ export function RedisDatabases({
               type="button"
               className="dshdb-row"
               role="treeitem"
+              aria-level={2}
               aria-expanded={open}
               aria-selected={active}
               data-active={active}
@@ -108,6 +109,7 @@ export function RedisDatabases({
                     type="button"
                     className="dshdb-row"
                     role="treeitem"
+                    aria-level={4}
                     data-active={selectedKey === `${connection.id}|redis:${db}:${key.key}`}
                     data-kind="redis-key"
                     style={DEPTH_TWO}

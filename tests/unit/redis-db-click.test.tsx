@@ -91,4 +91,11 @@ describe('Redis 逻辑库行：双击展开收起', () => {
     fireEvent.dblClick(tree.getByText('db0'))
     expect(row.getAttribute('aria-expanded')).toBe('true')
   })
+
+  it('逻辑库行标在第二层', () => {
+    render(<Harness />)
+    const tree = within(document.querySelector('.dshdb-tree') as HTMLElement)
+    const row = tree.getByText('db0').closest('button') as HTMLButtonElement
+    expect(row.getAttribute('aria-level')).toBe('2')
+  })
 })
