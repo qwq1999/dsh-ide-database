@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
-import { DataGrid } from './DataGrid'
+import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs } from './format'
 import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
@@ -182,57 +182,121 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }, [load, params.connectionId])
 
   const offset = page * pageSize
-  const activeSort = parseOrderBy(stripKeyword(orderText, 'ORDER\\s+BY'))
-  const sortTable = (column: ColumnInfo): void => {
-    const dialect = connection?.dialect ?? 'mysql'
-    const next = nextOrderBy(stripKeyword(orderText, 'ORDER\\s+BY'), column.name, quoteSortColumn(dialect, column.name))
-    setOrderText(next)
-    apply({ orderBy: next, page: 0 })
-  }
-  const sortBy = (column: ColumnInfo, direction: 'asc' | 'desc'): void => {
-    const dialect = connection?.dialect ?? 'mysql'
-    const next = `${quoteSortColumn(dialect, column.name)} ${direction.toUpperCase()}`
-    setOrderText(next)
-    apply({ orderBy: next, page: 0 })
-  }
-  const clearSort = (): void => {
+  const activeSort = useMemo(() => parseOrderBy(stripKeyword(orderText, 'ORDER\\s+BY')), [orderText])
+
+  const apply = useCallback(
+    (next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters): void => {
+      if (connection === null) return
+      const manualWhere = next.where ?? whereText
+      void load(connection, {
+        page: next.page ?? page,
+        size: next.size ?? pageSize,
+        where: composeWhere(connection.dialect, manualWhere, columns, override ?? filters),
+        orderBy: next.orderBy ?? orderText,
+        recount: next.where !== undefined || next.size !== undefined || next.page === 0,
+      })
+    },
+    [columns, connection, filters, load, orderText, page, pageSize, whereText],
+  )
+  applyRef.current = apply
+  const orderTextRef = useRef(orderText)
+  orderTextRef.current = orderText
+
+  // Stable grid callbacks: typing into the WHERE / ORDER BY boxes must not
+  // repaint the whole result grid on every keystroke.
+  const sortTable = useCallback(
+    (column: ColumnInfo): void => {
+      const dialect = connection?.dialect ?? 'mysql'
+      const next = nextOrderBy(stripKeyword(orderTextRef.current, 'ORDER\\s+BY'), column.name, quoteSortColumn(dialect, column.name))
+      setOrderText(next)
+      applyRef.current({ orderBy: next, page: 0 })
+    },
+    [connection?.dialect],
+  )
+  const sortBy = useCallback(
+    (column: ColumnInfo, direction: 'asc' | 'desc'): void => {
+      const dialect = connection?.dialect ?? 'mysql'
+      const next = `${quoteSortColumn(dialect, column.name)} ${direction.toUpperCase()}`
+      setOrderText(next)
+      applyRef.current({ orderBy: next, page: 0 })
+    },
+    [connection?.dialect],
+  )
+  const clearSort = useCallback((): void => {
     setOrderText('')
-    apply({ orderBy: '', page: 0 })
-  }
-  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
-    const active = activeSort?.column === column.name ? activeSort.direction : null
-    const index = columns.findIndex((item) => item.name === column.name)
-    return [
-      { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
-      { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
-      { label: '清除排序', disabled: activeSort === undefined, run: clearSort },
-      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
-      {
-        label: `复制本列值（${rows.length} 行）`,
-        disabled: rows.length === 0 || index < 0,
-        run: () => void copyText(columnValues(rows, index)),
-      },
-    ]
-  }
+    applyRef.current({ orderBy: '', page: 0 })
+  }, [])
+  const columnMenu = useCallback(
+    (column: ColumnInfo): ColumnMenuItem[] => {
+      const active = activeSort?.column === column.name ? activeSort.direction : null
+      const index = columns.findIndex((item) => item.name === column.name)
+      return [
+        { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
+        { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
+        { label: '清除排序', disabled: activeSort === undefined, run: clearSort },
+        { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+        {
+          label: `复制本列值（${rows.length} 行）`,
+          disabled: rows.length === 0 || index < 0,
+          run: () => void copyText(columnValues(rows, index)),
+        },
+      ]
+    },
+    [activeSort, clearSort, columns, rows, sortBy],
+  )
+  const gridReorder = useCallback(
+    (from: number, to: number): void => {
+      setOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
+    },
+    [columns.length],
+  )
+  const gridCellClass = useCallback(
+    (): string | undefined => (filtersOpen ? 'dshdb-cell-filterable' : undefined),
+    [filtersOpen],
+  )
+  const gridCellMenu = useCallback(
+    (cell: CellMenuTarget): ColumnMenuItem[] => [
+            {
+              label: '复制单元格值',
+              run: () => void copyText(cellCopyText(cell.value)),
+            },
+            {
+              label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
+              run: () => void copyText(rowToTsv(displayColumns, cell.row)),
+            },
+            {
+              label: '复制 INSERT 语句',
+              run: () => {
+                if (connection === null) return
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row))
+              },
+            },
+            {
+              label: '按此值筛选',
+              run: () => {
+                setFiltersOpen(true)
+                setColumnFilter(
+                  cell.column,
+                  cell.value === null ? { text: '', op: 'isnull' } : { text: formatCell(cell.value), op: 'eq' },
+                )
+              },
+            },
+            {
+              label: `取消「${cell.column.name}」列的筛选`,
+              disabled: filters[cell.column.name] === undefined,
+              run: () => {
+                setColumnFilter(cell.column, undefined)
+                apply({ page: 0 })
+              },
+            },],
+    [connection, displayColumns, displayRows, params.schema, params.table],
+  )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
   const hasNext = lastPage === undefined ? rows.length >= pageSize : page < lastPage
   const rangeStart = rows.length === 0 ? 0 : offset + 1
   const rangeEnd = offset + rows.length
   const totalText = total !== undefined ? `/${formatCount(total)}` : hasNext ? `/${formatCount(offset + pageSize)}+` : ''
-
-  const apply = (next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters): void => {
-    if (connection === null) return
-    const manualWhere = next.where ?? whereText
-    void load(connection, {
-      page: next.page ?? page,
-      size: next.size ?? pageSize,
-      where: composeWhere(connection.dialect, manualWhere, columns, override ?? filters),
-      orderBy: next.orderBy ?? orderText,
-      recount: next.where !== undefined || next.size !== undefined || next.page === 0,
-    })
-  }
-  applyRef.current = apply
 
   // Typing in a column filter re-queries on a short delay so each keystroke does
   // not hit the server. Emptying the last filter re-queries at once, otherwise
@@ -483,9 +547,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           sort={activeSort ?? null}
           headerMenu={columnMenu}
           onSort={sortTable}
-          onReorderColumns={(from, to) => {
-            setOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
-          }}
+          onReorderColumns={gridReorder}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
                 <th className="dshdb-num" />
                 {displayColumns.map((column, index) => {
@@ -529,42 +591,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   )
                 })}
               </tr> : null}
-          cellClass={() => (filtersOpen ? 'dshdb-cell-filterable' : undefined)}
-          cellMenu={(cell) => [
-            {
-              label: '复制单元格值',
-              run: () => void copyText(cellCopyText(cell.value)),
-            },
-            {
-              label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(displayColumns, cell.row)),
-            },
-            {
-              label: '复制 INSERT 语句',
-              run: () => {
-                if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row))
-              },
-            },
-            {
-              label: '按此值筛选',
-              run: () => {
-                setFiltersOpen(true)
-                setColumnFilter(
-                  cell.column,
-                  cell.value === null ? { text: '', op: 'isnull' } : { text: formatCell(cell.value), op: 'eq' },
-                )
-              },
-            },
-            {
-              label: `取消「${cell.column.name}」列的筛选`,
-              disabled: filters[cell.column.name] === undefined,
-              run: () => {
-                setColumnFilter(cell.column, undefined)
-                apply({ page: 0 })
-              },
-            },
-          ]}
+          cellClass={gridCellClass}
+          cellMenu={gridCellMenu}
           onCellClick={
             filtersOpen
               ? (column, value) => {
