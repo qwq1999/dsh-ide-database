@@ -39,7 +39,7 @@ import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { readFlag, writeFlag } from './prefs'
+import { readAllowedNumber, readFlag, writeFlag, writeNumber } from './prefs'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
@@ -73,6 +73,10 @@ interface Failure {
 }
 
 import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
+
+/** Redis accepts up to 16 logical databases by default; allow a generous ceiling. */
+const REDIS_DB_CHOICES = Array.from({ length: 4096 }, (_, index) => index)
+const REDIS_DB_KEY_PREFIX = 'dsh-ide-database.redis-db.v1:'
 
 const TTL_ONLY_KEY = 'dsh-ide-database.redis.ttl-only.v1'
 /** 中文输入法用回车确认候选词时，KeyboardEvent 带 isComposing 标记。 */
@@ -240,6 +244,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }
   /** The logical database every Redis call in this console targets. */
   const activeRedisDb = redisDb ?? connection?.redisDb ?? 0
+  // Remember the picked database per connection so reopening the console does
+  // not send the first scan back to db0.
+  const configuredDb = connection?.redisDb ?? 0
+  useEffect(() => {
+    if (!isRedis || selectedId === '') return
+    setRedisDb(readAllowedNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, REDIS_DB_CHOICES, configuredDb))
+  }, [configuredDb, isRedis, selectedId])
   /** The schema SQL runs in when the user has not picked another one. */
   const defaultSchema =
     connection === undefined
@@ -1322,7 +1333,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             value={activeRedisDb}
             onChange={(event) => {
               invalidateRun()
-              setRedisDb(Number(event.target.value))
+              const next = Number(event.target.value)
+              setRedisDb(next)
+              writeNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, next)
             }}
           >
             {Array.from({ length: Math.max(1, redisDatabases ?? 16) }, (_, index) => (
