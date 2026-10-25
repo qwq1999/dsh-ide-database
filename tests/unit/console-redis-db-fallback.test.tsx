@@ -79,6 +79,7 @@ describe('console redis db fallback', () => {
     await waitForConsoleSource(mocks)
     const picker = await screen.findByLabelText('Redis 逻辑库')
     await waitFor(() => expect(picker).toHaveProperty('value', '0'))
-    expect(window.localStorage.getItem(KEY)).toBe('0')
+    // The write is a separate effect, so it can land a tick after the select updates.
+    await waitFor(() => expect(window.localStorage.getItem(KEY)).toBe('0'))
   })
 })
