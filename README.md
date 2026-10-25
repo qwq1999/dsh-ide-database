@@ -195,6 +195,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | `db_list_databases` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
 | `db_list_objects` | 列出指定 Schema 下的表、视图、例程、序列与触发器 |
 | `db_describe_table` | 列、类型、可空、主键、索引、注释 |
+| `db_table_ddl` | 表/视图的建表语句；服务端拿不到时按描述生成，并标注来源与告警 |
 | `db_query` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写 |
 | `db_explain` | MySQL `EXPLAIN`、Oracle/达梦执行计划 |
 | `db_redis_scan` | 游标 SCAN，返回键名/类型/TTL；可传 `db` 指定逻辑库 |

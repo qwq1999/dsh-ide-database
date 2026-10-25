@@ -65,6 +65,7 @@ function harness(initial = {}) {
       schemas: vi.fn(),
       objects: vi.fn(),
       describe: vi.fn(),
+      ddl: vi.fn(async () => ({ schema: 'shop', table: 'users', kind: 'table', ddl: 'CREATE TABLE users (id INT)', source: 'generated', warnings: [] })),
       cancel: vi.fn(),
       connect: vi.fn(async () => ({ version: '8.0' })),
       disconnect: vi.fn(async () => undefined),
@@ -98,6 +99,7 @@ describe('createDatabaseTools', () => {
       'db_redis_get',
       'db_redis_scan',
       'db_refresh_connection',
+      'db_table_ddl',
       'db_test_connection',
       'db_update_connection',
     ])
@@ -156,6 +158,15 @@ describe('createDatabaseTools', () => {
     expect(deps.sql.explain).toHaveBeenCalledWith('c1', 'SELECT * FROM users', {})
     expect(value.statements).toEqual(['EXPLAIN SELECT 1'])
     expect(value.plan.rowCount).toBe(1)
+  })
+
+  it('returns the DDL of a table and keeps redis out', async () => {
+    const { byName, deps } = harness()
+    const value = await byName('db_table_ddl').execute({ connection: 'c1', schema: 'shop', table: 'users' })
+    expect(deps.sql.ddl).toHaveBeenCalledWith('c1', 'mysql', 'shop', 'users', 'table')
+    expect(value.ddl).toBe('CREATE TABLE users (id INT)')
+    expect(value.source).toBe('generated')
+    await expect(byName('db_table_ddl').execute({ connection: 'r1', schema: '0', table: 'k' })).rejects.toThrow(/Redis/)
   })
 
   it('creates a connection through the agent tool', async () => {
