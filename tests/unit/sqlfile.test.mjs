@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MAX_SQL_IMPORT_BYTES, mergeSqlFile } from '../../src/client/sqlfile'
+import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from '../../src/client/sqlfile'
 
 describe('mergeSqlFile', () => {
   it('fills an empty editor with the script', () => {
@@ -37,5 +37,24 @@ describe('mergeSqlFile', () => {
 
   it('exposes a two megabyte ceiling for the file picker', () => {
     expect(MAX_SQL_IMPORT_BYTES).toBe(2 * 1024 * 1024)
+  })
+})
+
+describe('scriptFileText', () => {
+  it('ends the script with exactly one newline', () => {
+    expect(scriptFileText('SELECT 1')).toBe('SELECT 1\n')
+    expect(scriptFileText('SELECT 1\n\n\n')).toBe('SELECT 1\n')
+  })
+
+  it('keeps inner blank lines and comments untouched', () => {
+    expect(scriptFileText('-- note\nSELECT 1;\n\nSELECT 2;\n')).toBe('-- note\nSELECT 1;\n\nSELECT 2;\n')
+  })
+
+  it('normalises CRLF so a Windows script round-trips as LF', () => {
+    expect(scriptFileText('SELECT 1;\r\nSELECT 2;\r\n')).toBe('SELECT 1;\nSELECT 2;\n')
+  })
+
+  it('treats whitespace-only text as empty', () => {
+    expect(scriptFileText(' \n\t\r\n ')).toBe('')
   })
 })

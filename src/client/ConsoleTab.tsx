@@ -37,7 +37,7 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { insertStatements, tableFromStatement } from './tablesql'
-import { MAX_SQL_IMPORT_BYTES, mergeSqlFile } from './sqlfile'
+import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon, StarIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -510,6 +510,14 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     } catch (error) {
       setFailure(failureText(error))
     }
+  }
+
+  /** Write the editor to a `.sql` file, so a script typed here can be kept or versioned. */
+  const saveSqlFile = (): void => {
+    const script = scriptFileText(statement)
+    if (script === '') return
+    setFailure(null)
+    downloadText(exportFilename('', 'console', 'sql'), 'application/sql', script)
   }
 
   const run = async (): Promise<void> => {
@@ -1102,6 +1110,15 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
                 void importSqlFile(file)
               }}
             />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={saveSqlFile}
+              disabled={statement.trim() === ''}
+              title="把编辑器里的 SQL 保存为 .sql 文件"
+            >
+              保存
+            </Button>
             <Button
               size="sm"
               variant="ghost"
