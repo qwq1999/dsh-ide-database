@@ -8,7 +8,7 @@ import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
-import { formatCount } from './format'
+import { formatCount, formatTtl } from './format'
 
 export { formatCount }
 
@@ -139,7 +139,9 @@ const KeyRow = memo(function KeyRow({
       <td>
         <Tag>{info.type}</Tag>
       </td>
-      <td className="dshdb-num">{info.ttl < 0 ? '永久' : `${info.ttl}s`}</td>
+      <td className="dshdb-num" title={info.ttl < 0 ? '不过期' : `${String(info.ttl)} 秒`}>
+        {formatTtl(info.ttl)}
+      </td>
       <td className="dshdb-num">{info.size === undefined ? '' : formatCount(info.size)}</td>
     </tr>
   )

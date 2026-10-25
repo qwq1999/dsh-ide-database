@@ -11,6 +11,16 @@ export function formatMs(ms: number | undefined): string {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
+/** Compact remaining TTL: 3600 becomes `1h`, negative means no expiry. */
+export function formatTtl(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '—'
+  if (seconds < 0) return '永久'
+  if (seconds < 60) return `${Math.floor(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
+  return `${Math.floor(seconds / 86400)}d`
+}
+
 export function formatBytes(bytes: number | undefined): string {
   if (bytes === undefined) return ''
   if (bytes < 1024) return `${bytes} B`

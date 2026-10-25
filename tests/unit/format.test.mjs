@@ -5,6 +5,7 @@ import {
   formatBytes,
   formatCell,
   formatCount,
+  formatTtl,
   formatMs,
   looksLikeDdl,
   looksLikeRedisWrite,
@@ -62,5 +63,17 @@ describe('format helpers', () => {
   it('groups counts with thousands separators', () => {
     expect(formatCount(999)).toBe('999')
     expect(formatCount(1234567)).toBe('1,234,567')
+  })
+
+  it('shortens remaining TTL to the largest whole unit', () => {
+    expect(formatTtl(-1)).toBe('永久')
+    expect(formatTtl(0)).toBe('0s')
+    expect(formatTtl(59)).toBe('59s')
+    expect(formatTtl(60)).toBe('1m')
+    expect(formatTtl(3599)).toBe('59m')
+    expect(formatTtl(3600)).toBe('1h')
+    expect(formatTtl(86399)).toBe('23h')
+    expect(formatTtl(86400)).toBe('1d')
+    expect(formatTtl(Number.NaN)).toBe('—')
   })
 })
