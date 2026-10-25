@@ -90,3 +90,30 @@ export function applyCommandCompletion(text: string, completion: { start: number
   const next = text.slice(0, completion.start) + completion.command + text.slice(completion.end)
   return { text: next, caret: completion.start + completion.command.length }
 }
+
+/** The whitespace-delimited word the caret sits in, wherever it is on the line. */
+function wordAt(text: string, caret: number): { start: number; end: number; word: string } | null {
+  let start = Math.min(caret, text.length)
+  while (start > 0 && /\S/u.test(text[start - 1] as string)) start -= 1
+  let end = start
+  while (end < text.length && /\S/u.test(text[end] as string)) end += 1
+  const word = text.slice(start, end)
+  return word === '' ? null : { start, end, word }
+}
+
+/**
+ * Completes an argument with a key from the currently scanned list. Only used
+ * after the command word, so Tab still completes commands first.
+ */
+export function keyCompletion(
+  text: string,
+  caret: number,
+  keys: readonly { key: string }[],
+): { start: number; end: number; key: string } | null {
+  const word = wordAt(text, caret)
+  if (word === null) return null
+  if (text.slice(0, word.start).trim() === '') return null
+  const match = keys.find((item) => item.key.startsWith(word.word) && item.key !== word.word)
+  if (match === undefined) return null
+  return { start: word.start, end: word.end, key: match.key }
+}

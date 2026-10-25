@@ -80,4 +80,18 @@ describe('redis command completion', () => {
 
     expect(box.value).toBe('HGET')
   })
+
+  it('completes a key argument from the scanned list', async () => {
+    mocks.redisScan.mockResolvedValue({ keys: [{ key: 'user:1', type: 'string', ttl: -1, size: 3 }], cursor: '0' })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+    const box = (await screen.findByPlaceholderText(/例如 GET/)) as HTMLInputElement
+
+    fireEvent.change(box, { target: { value: 'GET us' } })
+    box.setSelectionRange(6, 6)
+    fireEvent.keyDown(box, { key: 'Tab' })
+
+    expect(box.value).toBe('GET user:1')
+  })
 })

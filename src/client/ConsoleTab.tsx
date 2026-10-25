@@ -37,7 +37,7 @@ import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRowsWithOrder, type RowSort } from './rowsort'
 import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
-import { applyCommandCompletion, commandCompletion } from './rediscommands'
+import { applyCommandCompletion, commandCompletion, keyCompletion } from './rediscommands'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
@@ -1597,7 +1597,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 if (composing(event)) return
                 if (event.key === 'Tab') {
                   const input = event.currentTarget
-                  const completion = commandCompletion(command, input.selectionStart ?? command.length)
+                  const caret = input.selectionStart ?? command.length
+                  const key = keyCompletion(command, caret, scan?.keys ?? [])
+                  const completion: { start: number; end: number; command: string } | null =
+                    commandCompletion(command, caret) ?? (key === null ? null : { start: key.start, end: key.end, command: key.key })
                   if (completion === null) return
                   event.preventDefault()
                   const next = applyCommandCompletion(command, completion)

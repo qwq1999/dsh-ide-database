@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCommandCompletion, commandCompletion, REDIS_COMMANDS } from '../../src/client/rediscommands'
+import { applyCommandCompletion, commandCompletion, keyCompletion, REDIS_COMMANDS } from '../../src/client/rediscommands'
 
 describe('commandCompletion', () => {
   it('completes the first word from a prefix', () => {
@@ -39,5 +39,22 @@ describe('applyCommandCompletion', () => {
   it('keeps the rest of the line untouched', () => {
     const completion = { start: 0, end: 2, command: 'DEL' }
     expect(applyCommandCompletion('de user:1 user:2', completion).text).toBe('DEL user:1 user:2')
+  })
+})
+
+describe('keyCompletion', () => {
+  const keys = [{ key: 'user:1' }, { key: 'user:2' }, { key: 'orders' }]
+
+  it('completes an argument with a scanned key', () => {
+    expect(keyCompletion('GET us', 6, keys)).toEqual({ start: 4, end: 6, key: 'user:1' })
+  })
+
+  it('leaves the command word to commandCompletion', () => {
+    expect(keyCompletion('us', 2, keys)).toBeNull()
+  })
+
+  it('ignores prefixes nothing matches and exact keys', () => {
+    expect(keyCompletion('GET zz', 6, keys)).toBeNull()
+    expect(keyCompletion('GET orders', 10, keys)).toBeNull()
   })
 })
