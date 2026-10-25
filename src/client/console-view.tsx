@@ -195,9 +195,15 @@ export const KeyGrid = memo(function KeyGrid({
   )
   const openMenu = useCallback((event: MouseEvent<HTMLTableRowElement>, key: RedisKeyInfo): void => {
     event.preventDefault()
-    const items = [{ label: '复制键名', run: () => void copyText(key.key) }]
+    const items = [
+      { label: '复制键名', run: () => void copyText(key.key) },
+      {
+        label: '复制可见键名（每行一个）',
+        run: () => void copyText(rows.map((info) => info.key).join('\n')),
+      },
+    ]
     setMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
-  }, [])
+  }, [rows])
   return (
     <>
     <table className="dshdb-grid" aria-label="Redis 键列表">
