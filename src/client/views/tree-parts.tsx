@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react'
+import { memo, type CSSProperties, type MouseEvent, type ReactElement, type ReactNode } from 'react'
 import type { ObjectKind, SchemaObject, TableDescription } from '../../shared/types'
 import { objectKindLabel } from '../format'
 import { highlightParts } from '../highlight'
@@ -119,7 +119,7 @@ export function Highlight({ text, query }: { text: string; query: string }): Rea
   )
 }
 
-export function ObjectRow({
+export const ObjectRow = memo(function ObjectRow({
   connectionId,
   schema,
   object,
@@ -140,10 +140,15 @@ export function ObjectRow({
   expanded: Record<string, boolean>
   description: TableDescription | undefined
   loading: boolean
-  onSelect: () => void
-  onOpen: () => void
+  onSelect: (connectionId: string, schema: string, object: SchemaObject) => void
+  onOpen: (connectionId: string, schema: string, object: SchemaObject) => void
   onToggleKey: (key: string) => void
-  onMenu?: (event: MouseEvent<HTMLButtonElement>) => void
+  onMenu?: (
+    event: MouseEvent<HTMLButtonElement>,
+    connectionId: string,
+    schema: string,
+    object: SchemaObject,
+  ) => void
   query: string
 }): ReactElement {
   const isRelation = object.kind === 'table' || object.kind === 'view'
@@ -169,21 +174,25 @@ export function ObjectRow({
         onClick={(event) => {
           // A double-click opens the table tab, so ignore the second click.
           if (event.detail > 1) return
-          onSelect()
+          onSelect(connectionId, schema, object)
         }}
         onDoubleClick={() => {
           if (!isRelation) return
-          onSelect()
-          onOpen()
+          onSelect(connectionId, schema, object)
+          onOpen(connectionId, schema, object)
         }}
-        onContextMenu={onMenu}
+        onContextMenu={
+          onMenu === undefined
+            ? undefined
+            : (event) => onMenu(event, connectionId, schema, object)
+        }
       >
         {isRelation ? (
           <RowToggle
             open={open}
             title={open ? '收起结构' : '展开结构'}
             onToggle={() => {
-              onSelect()
+              onSelect(connectionId, schema, object)
               onToggleKey(key)
             }}
           />
@@ -218,7 +227,7 @@ export function ObjectRow({
                 depth={DEPTH_FOUR}
                 open={expanded[columnFolderKey] === true}
                 onToggle={() => onToggleKey(columnFolderKey)}
-                onSelect={onSelect}
+                onSelect={() => onSelect(connectionId, schema, object)}
               >
                 {description.columns.map((column) => (
                   <div key={column.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="column">
@@ -241,7 +250,7 @@ export function ObjectRow({
                   depth={DEPTH_FOUR}
                   open={expanded[keyFolderKey] === true}
                   onToggle={() => onToggleKey(keyFolderKey)}
-                  onSelect={onSelect}
+                  onSelect={() => onSelect(connectionId, schema, object)}
                 >
                   {keys.map((index) => (
                     <div key={index.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="key">
@@ -264,7 +273,7 @@ export function ObjectRow({
                   depth={DEPTH_FOUR}
                   open={expanded[indexFolderKey] === true}
                   onToggle={() => onToggleKey(indexFolderKey)}
-                  onSelect={onSelect}
+                  onSelect={() => onSelect(connectionId, schema, object)}
                 >
                   {indexes.map((index) => (
                     <div key={index.name} className="dshdb-row" style={DEPTH_FIVE} data-kind="index">
@@ -284,5 +293,4 @@ export function ObjectRow({
       ) : null}
     </div>
   )
-}
-
+})

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -170,24 +171,27 @@ export function DataView(props: DataViewProps): ReactElement {
     }
   }
 
-  const openObjectMenu = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    connection: ClientConnection,
-    schema: string,
-    object: SchemaObject,
-  ): void => {
-    event.preventDefault()
-    const isRelation = object.kind === 'table' || object.kind === 'view'
-    const items = [
-      ...(isRelation
-        ? [{ label: '打开数据', run: () => props.onOpenTable(connection.id, schema, object) }]
-        : []),
-      { label: '查看 DDL', run: () => props.onShowDdl(connection.id, schema, object.name, object.kind) },
-      { label: '复制名称', run: () => void copyText(object.name) },
-      { label: '复制限定名', run: () => void copyText(`${schema}.${object.name}`) },
-    ]
-    setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
-  }
+  const openObjectMenu = useCallback(
+    (
+      event: React.MouseEvent<HTMLButtonElement>,
+      connectionId: string,
+      schema: string,
+      object: SchemaObject,
+    ): void => {
+      event.preventDefault()
+      const isRelation = object.kind === 'table' || object.kind === 'view'
+      const items = [
+        ...(isRelation
+          ? [{ label: '打开数据', run: () => props.onOpenTable(connectionId, schema, object) }]
+          : []),
+        { label: '查看 DDL', run: () => props.onShowDdl(connectionId, schema, object.name, object.kind) },
+        { label: '复制名称', run: () => void copyText(object.name) },
+        { label: '复制限定名', run: () => void copyText(`${schema}.${object.name}`) },
+      ]
+      setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
+    },
+    [props.onOpenTable, props.onShowDdl],
+  )
 
   const normalizedFilter = settledFilter.trim().toLowerCase()
   // Folding is per filter term: a new search gets the first page again.
@@ -625,16 +629,10 @@ export function DataView(props: DataViewProps): ReactElement {
                                                           `${connection.id}|${schema.name}.${object.name}`
                                                         ] === true
                                                       }
-                                                      onSelect={() =>
-                                                        void props.onSelectObject(connection.id, schema.name, object)
-                                                      }
-                                                      onOpen={() =>
-                                                        props.onOpenTable(connection.id, schema.name, object)
-                                                      }
+                                                      onSelect={props.onSelectObject}
+                                                      onOpen={props.onOpenTable}
                                                       onToggleKey={props.onToggleKey}
-                                                      onMenu={(event) =>
-                                                        openObjectMenu(event, connection, schema.name, object)
-                                                      }
+                                                      onMenu={openObjectMenu}
                                                       query={normalizedFilter}
                                                     />
                                                   ))}
