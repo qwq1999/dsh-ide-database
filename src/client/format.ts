@@ -70,13 +70,90 @@ function unwrapExplainAnalyze(statement: string): string {
   return next.word.startsWith('format') ? next.rest : analyze.rest
 }
 
+function headWord(text: string): { word: string; rest: string } {
+  let end = 0
+  while (end < text.length) {
+    const char = text[end] ?? ''
+    if (isSpaceChar(char) || char === '(' || char === ')' || char === ',') break
+    end += 1
+  }
+  let cursor = end
+  while (cursor < text.length && isSpaceChar(text[cursor] ?? '')) cursor += 1
+  return { word: text.slice(0, end).toLowerCase(), rest: text.slice(cursor) }
+}
+
+/** Index just past the `)` that closes the `(` at `open`, or -1. */
+function skipBalanced(text: string, open: number): number {
+  let depth = 0
+  let quote = ''
+  for (let index = open; index < text.length; index += 1) {
+    const char = text[index] ?? ''
+    if (quote !== '') {
+      if (char === quote) quote = ''
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      continue
+    }
+    if (char === '(') depth += 1
+    else if (char === ')') {
+      depth -= 1
+      if (depth === 0) return index + 1
+    }
+  }
+  return -1
+}
+
+/**
+ * Oracle and PostgreSQL let a CTE prefix a write statement:
+ * `WITH fresh AS (…) DELETE FROM t`. The confirmation prompt must look past
+ * the CTE list, so this walks `WITH [RECURSIVE] name [(cols)] AS [NOT]
+ * [MATERIALIZED] (…) [, …]` and returns the statement it decorates. `null`
+ * means the header could not be parsed; the caller then treats it as a write.
+ */
+function unwrapWith(statement: string): string | null {
+  let rest = firstWord(statement).rest
+  const maybeRecursive = headWord(rest)
+  if (maybeRecursive.word === 'recursive') rest = maybeRecursive.rest
+  for (;;) {
+    const name = headWord(rest)
+    if (name.word === '') return null
+    rest = name.rest
+    if (rest.startsWith('(')) {
+      const close = skipBalanced(rest, 0)
+      if (close < 0) return null
+      rest = rest.slice(close).trimStart()
+    }
+    const as = headWord(rest)
+    if (as.word !== 'as') return null
+    rest = as.rest
+    const optional = headWord(rest)
+    if (optional.word === 'not' || optional.word === 'materialized') rest = optional.rest
+    if (!rest.startsWith('(')) return null
+    const close = skipBalanced(rest, 0)
+    if (close < 0) return null
+    rest = rest.slice(close).trimStart()
+    if (rest.startsWith(',')) {
+      rest = rest.slice(1).trimStart()
+      continue
+    }
+    return rest
+  }
+}
+
 export function looksLikeWrite(sql: string): boolean {
   const cleaned = stripComments(sql)
   return cleaned
     .split(';')
     .map((part) => part.trim())
     .filter(Boolean)
-    .some((statement) => WRITE_STATEMENT.test(unwrapExplainAnalyze(statement)))
+    .some((statement) => {
+      const unwrapped = unwrapExplainAnalyze(statement)
+      const rest = firstWord(unwrapped).word === 'with' ? unwrapWith(unwrapped) : unwrapped
+      if (rest === null) return true
+      return WRITE_STATEMENT.test(rest)
+    })
 }
 
 /**
