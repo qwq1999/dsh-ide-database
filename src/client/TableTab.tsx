@@ -395,24 +395,24 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
             {
               label: '复制单元格值',
-              run: () => void copyText(cellCopyText(cell.value)),
+              run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')),
             },
             {
               label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(displayColumns, cell.row)),
+              run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')),
             },
             {
               label: '复制 INSERT 语句',
               run: () => {
                 if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row))
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row)).then(noteCopied('INSERT'))
               },
             },
             {
               label: '复制 WHERE 条件',
               run: () => {
                 if (connection === null) return
-                void copyText(`WHERE ${cellWhere(connection.dialect, cell.column, cell.value)}`)
+                void copyText(`WHERE ${cellWhere(connection.dialect, cell.column, cell.value)}`).then(noteCopied('WHERE 条件'))
               },
             },
             {

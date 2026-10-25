@@ -103,5 +103,6 @@ describe('console cell menu', () => {
     fireEvent.contextMenu(await screen.findByText(raw))
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制 WHERE 条件' }))
     expect(mocks.copyText).toHaveBeenCalledWith("WHERE `config` = '{\"a\":1}'")
+    expect(await screen.findByText('WHERE 条件 已复制')).toBeTruthy()
   })
 })
