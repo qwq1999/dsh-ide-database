@@ -36,6 +36,7 @@ export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClos
     // Keyboard users land on the first actionable row straight away.
     const enabled = (): HTMLButtonElement[] =>
       Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? [])
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     enabled()[0]?.focus()
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
@@ -66,6 +67,8 @@ export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClos
       window.removeEventListener('pointerdown', close)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', close)
+      // Hand focus back so keyboard users do not end up on the page body.
+      if (previous !== null && previous.isConnected) previous.focus()
     }
   }, [menu, onClose])
 

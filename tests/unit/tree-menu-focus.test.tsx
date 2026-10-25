@@ -31,6 +31,19 @@ describe('tree menu keyboard support', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '打开数据' })))
   })
 
+  it('hands focus back to the trigger when it closes', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = '菜单触发器'
+    document.body.append(trigger)
+    trigger.focus()
+
+    const view = render(menu())
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: '打开数据' })).toBeTruthy())
+    view.unmount()
+    expect(document.activeElement).toBe(trigger)
+    trigger.remove()
+  })
+
   it('moves with the arrow keys and skips disabled rows', async () => {
     render(menu())
     const first = screen.getByRole('menuitem', { name: '打开数据' })
