@@ -31,6 +31,13 @@ describe('collectRows', () => {
     expect(fake.calls).toHaveLength(3)
   })
 
+  it('reports how many rows each batch has collected', async () => {
+    const seen = []
+    const fake = walker([[1, 2], [3, 4], [5]], { limit: 100, batch: 2, onProgress: (count) => seen.push(count) })
+    await expect(fake.run()).resolves.toEqual([1, 2, 3, 4, 5])
+    expect(seen).toEqual([2, 4, 5])
+  })
+
   it('hands out page numbers and row offsets', async () => {
     const fake = walker([[1, 2, 3], [4, 5, 6]], { limit: 100, batch: 3 })
     await fake.run()

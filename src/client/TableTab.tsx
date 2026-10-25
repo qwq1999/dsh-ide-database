@@ -405,6 +405,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         const collected = await collectRows({
           limit: EXPORT_LIMIT,
           batch,
+          onProgress: (count) => setExportNote(`${format.toUpperCase()} 正在取 ${formatCount(count)} 行…`),
           fetch: async ({ offset }) => {
             const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
             const result = await runSql(params.connectionId, sql, batch)

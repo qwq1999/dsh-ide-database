@@ -898,6 +898,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       const collected = await collectRows({
         limit: EXPORT_LIMIT,
         batch: EXPORT_BATCH,
+        onProgress: (count) => setExportNote(`${format.toUpperCase()} 正在取 ${formatCount(count)} 行…`),
         fetch: async ({ page: sourcePage }) => {
           const sqlText = wrapPage(connection?.dialect ?? 'mysql', base, EXPORT_BATCH, sourcePage)
           const next = await queryWithRetry(
