@@ -132,4 +132,23 @@ describe('table auto refresh', () => {
     })
     await waitFor(() => expect(screen.queryByText('2')).not.toBeNull())
   })
+
+  it('refreshes as soon as the tab becomes visible again', async () => {
+    render(<TableTab useTabInfo={tab} />)
+    await waitFor(() => expect(pageCalls()).toBe(1))
+
+    fireEvent.change(screen.getByLabelText('自动刷新'), { target: { value: '10000' } })
+    expect(timers.at(-1)?.ms).toBe(10000)
+
+    // No timer tick happens while the tab is away; coming back should not wait
+    // for the next whole interval.
+    const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() => expect(pageCalls()).toBe(2))
+    if (visibility === undefined) delete (document as { visibilityState?: string }).visibilityState
+    else Object.defineProperty(document, 'visibilityState', visibility)
+  })
 })

@@ -354,13 +354,25 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   // the previous load is still running so slow queries do not pile up.
   useEffect(() => {
     if (autoMs === 0 || connection === null) return undefined
+    const tick = (): void => {
+      if (!loadingRef.current) applyRef.current({ recount: false })
+    }
     const timer = setInterval(() => {
       // A hidden tab is not being read: skip the tick so the database is not
       // re-queried while the user is looking at something else.
       if (document.visibilityState !== 'visible') return
-      if (!loadingRef.current) applyRef.current({ recount: false })
+      tick()
     }, autoMs)
-    return () => clearInterval(timer)
+    // Coming back to the tab should not wait up to a full interval for the
+    // first refresh, otherwise the page can look stale for half a minute.
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [autoMs, connection])
 
   const openDdl = useCallback(async (): Promise<void> => {
