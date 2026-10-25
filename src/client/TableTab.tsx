@@ -26,6 +26,7 @@ import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { cellValueView, type CellValueView } from './cellvalue'
+import { tableDumpText } from './tabledump'
 
 /** What the tab body receives: the framework's tab reader. */
 export interface TableTabProps {
@@ -391,6 +392,35 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
    * filtered result set, capped so a huge table cannot freeze the browser.
    */
   const EXPORT_LIMIT = 50000
+  /** Read every row of the current filtered result, capped like the exports. */
+  const collectAllRows = async (label: string): Promise<{ columns: ColumnInfo[]; rows: Row[] }> => {
+    if (connection === null) return { columns: displayColumns, rows: [] }
+    const dialect = connection.dialect
+    const from = qualifiedName(dialect, params.schema, params.table)
+    const where = composeWhere(dialect, whereText, columns, filters)
+    const whereSql = where === '' ? '' : ` WHERE ${where}`
+    const orderBy = stripKeyword(orderText, 'ORDER\s+BY')
+    const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
+    const batch = 2000
+    let seeded = false
+    let collectedColumns = displayColumns
+    const collected = await collectRows({
+      limit: EXPORT_LIMIT,
+      batch,
+      onProgress: (count) => setExportNote(`${label} 正在取 ${formatCount(count)} 行…`),
+      fetch: async ({ offset }) => {
+        const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
+        const result = await runSql(params.connectionId, sql, batch)
+        if (!seeded) {
+          collectedColumns = result.columns
+          seeded = true
+        }
+        return result.rows
+      },
+    })
+    return { columns: collectedColumns, rows: collected }
+  }
+
   const exportRows = async (format: ExportFormat, scope: 'page' | 'all'): Promise<void> => {
     if (connection === null) return
     setExporting(true)
@@ -400,29 +430,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       let exportColumns = displayColumns
       let exportData = displayRows
       if (scope === 'all') {
-        const from = qualifiedName(dialect, params.schema, params.table)
-        const where = composeWhere(dialect, whereText, columns, filters)
-        const orderBy = stripKeyword(orderText, 'ORDER\s+BY')
-        const whereSql = where === '' ? '' : ` WHERE ${where}`
-        const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
-        const batch = 2000
-        let seeded = false
-        const collected = await collectRows({
-          limit: EXPORT_LIMIT,
-          batch,
-          onProgress: (count) => setExportNote(`${format.toUpperCase()} 正在取 ${formatCount(count)} 行…`),
-          fetch: async ({ offset }) => {
-            const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
-            const result = await runSql(params.connectionId, sql, batch)
-            if (!seeded) {
-              exportColumns = result.columns
-              seeded = true
-            }
-            return result.rows
-          },
-        })
-        exportData = orderRows(collected, order)
-        exportColumns = orderColumns(exportColumns, order)
+        const collected = await collectAllRows(format.toUpperCase())
+        exportData = orderRows(collected.rows, order)
+        exportColumns = orderColumns(collected.columns, order)
       }
       const payload = renderExport(format, {
         dialect,
@@ -433,6 +443,35 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       })
       downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
+      setTimeout(() => setExportNote(''), 5000)
+    } catch (caught) {
+      setError(failureText(caught))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  /** The whole table as a runnable script: CREATE plus one INSERT per row. */
+  const exportDump = async (): Promise<void> => {
+    if (connection === null) return
+    setExporting(true)
+    setExportOpen(false)
+    try {
+      const collected = await collectAllRows('脚本')
+      const ddl = await api
+        .ddl(params.connectionId, params.schema, params.table, 'table')
+        .then((result) => result.ddl)
+        .catch(() => null)
+      const text = tableDumpText({
+        dialect: connection.dialect,
+        schema: params.schema,
+        table: params.table,
+        ddl,
+        columns: orderColumns(collected.columns, order),
+        rows: orderRows(collected.rows, order),
+      })
+      downloadText(exportFilename(params.schema, params.table, 'sql'), 'application/sql', text)
+      setExportNote(`SQL 已导出 ${formatCount(collected.rows.length)} 行`)
       setTimeout(() => setExportNote(''), 5000)
     } catch (caught) {
       setError(failureText(caught))
@@ -503,6 +542,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               </button>
               <button type="button" role="menuitem" onClick={() => void exportRows('md', 'all')}>
                 全部 Markdown
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportDump()}>
+                整表脚本（建表 + 数据）
               </button>
             </span>
           ) : null}

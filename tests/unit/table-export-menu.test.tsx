@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   query: vi.fn(),
   connect: vi.fn(),
+  ddl: vi.fn(),
 }))
 
 vi.mock('../../src/client/api', () => {
@@ -18,11 +19,17 @@ vi.mock('../../src/client/api', () => {
   }
   return {
     ApiError,
-    api: { status: mocks.status, query: mocks.query, connect: mocks.connect },
+    api: { status: mocks.status, query: mocks.query, connect: mocks.connect, ddl: mocks.ddl },
   }
 })
 
 const copies = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+const downloads = vi.hoisted(() => vi.fn())
+
+vi.mock('../../src/client/export', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/client/export')>()
+  return { ...actual, downloadText: downloads }
+})
 
 vi.mock('../../src/client/colmenu', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/colmenu')>()
@@ -76,6 +83,14 @@ describe('table export menu', () => {
       elapsedMs: 2,
       warnings: [],
     }))
+    mocks.ddl.mockResolvedValue({
+      schema: 'shop',
+      table: 'orders',
+      kind: 'table',
+      ddl: 'CREATE TABLE `orders` (`total` DECIMAL)',
+      source: 'query',
+      warnings: [],
+    })
   })
 
   it('offers page JSON and closes on an outside click or Escape', async () => {
@@ -200,5 +215,29 @@ describe('table export menu', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制查询语句（1 列）' }))
 
     expect(copies).toHaveBeenCalledWith('SELECT `total` FROM `shop`.`orders`')
+  })
+
+  it('exports the table as a runnable script with its DDL', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '整表脚本（建表 + 数据）' }))
+
+    await waitFor(() => expect(downloads).toHaveBeenCalled())
+    const call = downloads.mock.calls.at(-1) ?? []
+    expect(String(call[0])).toMatch(/^shop\.orders-\d{8}-\d{6}\.sql$/)
+    expect(call[1]).toBe('application/sql')
+    expect(String(call[2])).toContain('CREATE TABLE `orders`')
+    expect(String(call[2])).toContain('INSERT INTO `shop`.`orders`')
+    expect(mocks.ddl).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table')
   })
 })
