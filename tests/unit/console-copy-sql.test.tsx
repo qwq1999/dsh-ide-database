@@ -99,5 +99,6 @@ describe('copy SQL from the toolbar', () => {
     await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: '复制 SQL' }))
     await waitFor(() => expect(mocks.copyText).toHaveBeenCalledWith('SELECT 1'))
+    expect(await screen.findByRole('button', { name: '已复制' })).toBeTruthy()
   })
 })

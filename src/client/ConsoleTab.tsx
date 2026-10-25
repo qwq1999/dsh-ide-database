@@ -879,6 +879,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const [valueRefreshing, setValueRefreshing] = useState(false)
   const resultFlash = useCopyFlash()
+  const statementFlash = useCopyFlash()
   useEffect(() => {
     resultFlash.reset()
   }, [commandResult, resultFlash.reset])
@@ -1704,12 +1705,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   area === null || area.selectionStart === area.selectionEnd
                     ? statementAtCaret(statement, area?.selectionStart ?? caretPos).statement
                     : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
-                if (picked.trim() !== '') void copyText(picked)
+                if (picked.trim() === '') return
+                void copyText(picked).then((ok) => {
+                  statementFlash.flash(ok)
+                })
               }}
               disabled={statement.trim() === ''}
               title="复制选中的 SQL；没有选中时复制光标所在的那条"
             >
-              复制 SQL
+              {statementFlash.copied ? '已复制' : '复制 SQL'}
             </Button>
             <Button
               size="sm"
