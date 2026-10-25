@@ -316,10 +316,12 @@ export function DataGrid(props: DataGridProps): ReactElement {
                 <td className="dshdb-num">{offset + rowIndex + 1}</td>
                 {columns.map((column, columnIndex) => {
                   const value: CellValue = row[columnIndex] ?? null
+                  // One format per cell: the same text feeds the tooltip and the body.
+                  const text = formatCell(value)
                   return (
                     <td
                       key={`${column.name}-${columnIndex}`}
-                      title={formatCell(value)}
+                      title={text}
                       className={cellClass?.(column, value)}
                       onClick={onCellClick === undefined ? undefined : () => onCellClick(column, value)}
                       onContextMenu={
@@ -331,7 +333,7 @@ export function DataGrid(props: DataGridProps): ReactElement {
                             }
                       }
                     >
-                      <span className={value === null ? 'dshdb-null' : undefined}>{formatCell(value)}</span>
+                      <span className={value === null ? 'dshdb-null' : undefined}>{text}</span>
                     </td>
                   )
                 })}
