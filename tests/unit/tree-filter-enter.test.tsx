@@ -110,6 +110,16 @@ describe('tree filter keys', () => {
     expect(calls.load).toBe(1)
   })
 
+  it('clears the box from the small clear button', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    const box = screen.getByLabelText('筛选库表') as HTMLInputElement
+    fireEvent.change(box, { target: { value: 'cus' } })
+    fireEvent.click(screen.getByLabelText('清空筛选'))
+    await act(async () => {})
+    expect(box.value).toBe('')
+    expect(screen.queryByLabelText('清空筛选')).toBeNull()
+  })
+
   it('clears the box and the matches with Escape', async () => {
     render(<Harness calls={{ load: 0 }} />)
     const box = screen.getByLabelText('筛选库表') as HTMLInputElement

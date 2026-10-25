@@ -350,6 +350,20 @@ export function DataView(props: DataViewProps): ReactElement {
           aria-label={selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}
           style={{ width: 132 }}
         />
+        {filter !== '' ? (
+          <button
+            type="button"
+            className="dshdb-row-action"
+            title="清空筛选"
+            aria-label="清空筛选"
+            onClick={() => {
+              setFilter('')
+              setSettledFilter('')
+            }}
+          >
+            ×
+          </button>
+        ) : null}
         <span className="dshdb-toolbar-spacer" />
         {props.detailLoading || props.redisDetailLoading ? (
           <span className="dshdb-muted dshdb-inline">
