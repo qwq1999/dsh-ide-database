@@ -151,6 +151,11 @@ export function DataView(props: DataViewProps): ReactElement {
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
   const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
+      return
+    }
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button.dshdb-row'))
     if (rows.length === 0) return
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null

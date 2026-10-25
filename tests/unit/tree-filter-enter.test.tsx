@@ -110,6 +110,15 @@ describe('tree filter keys', () => {
     expect(calls.load).toBe(1)
   })
 
+  it('focuses the filter box from Ctrl+F inside the tree', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    const tree = screen.getByRole('tree', { name: '数据源' })
+    const row = screen.getAllByRole('treeitem')[0]
+    row.focus()
+    fireEvent.keyDown(tree, { key: 'f', ctrlKey: true })
+    expect(document.activeElement).toBe(screen.getByLabelText('筛选库表'))
+  })
+
   it('clears the box from the small clear button', async () => {
     render(<Harness calls={{ load: 0 }} />)
     const box = screen.getByLabelText('筛选库表') as HTMLInputElement
