@@ -20,7 +20,7 @@ import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
-import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
+import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
 import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, columnNames, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
@@ -183,7 +183,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         const dialect = found.dialect
         const from = qualifiedName(dialect, params.schema, params.table)
         const where = stripKeyword(target.where, 'WHERE')
-        const orderBy = stripKeyword(target.orderBy, 'ORDER\\s+BY')
+        const orderBy = stripOrderBy(target.orderBy)
         const whereSql = where === '' ? '' : ` WHERE ${where}`
         const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
         const offset = target.page * target.size
@@ -253,7 +253,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }, [load, params.connectionId])
 
   const offset = page * pageSize
-  const activeSort = useMemo(() => parseOrderBy(stripKeyword(orderText, 'ORDER\\s+BY')), [orderText])
+  const activeSort = useMemo(() => parseOrderBy(stripOrderBy(orderText)), [orderText])
 
   const apply = useCallback(
     (
@@ -285,7 +285,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const sortTable = useCallback(
     (column: ColumnInfo): void => {
       const dialect = connection?.dialect ?? 'mysql'
-      const next = nextOrderBy(stripKeyword(orderTextRef.current, 'ORDER\\s+BY'), column.name, quoteSortColumn(dialect, column.name))
+      const next = nextOrderBy(stripOrderBy(orderTextRef.current), column.name, quoteSortColumn(dialect, column.name))
       setOrderText(next)
       applyRef.current({ orderBy: next, page: 0 })
     },
@@ -597,7 +597,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const from = qualifiedName(dialect, params.schema, params.table)
     const where = composeWhere(dialect, whereText, columns, filters)
     const whereSql = where === '' ? '' : ` WHERE ${where}`
-    const orderBy = stripKeyword(orderText, 'ORDER\\s+BY')
+    const orderBy = stripOrderBy(orderText)
     const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
     const batch = 2000
     let seeded = false
@@ -829,7 +829,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             const target = connection
             if (target === null) return
             const where = composeWhere(target.dialect, whereText, columns, filters)
-            const orderBy = stripKeyword(orderText, 'ORDER\\s+BY')
+            const orderBy = stripOrderBy(orderText)
             openConsoleTab({
               connectionId: params.connectionId,
               sql: tableSelectSql(target.dialect, params.schema, params.table, where, orderBy, pageSize),

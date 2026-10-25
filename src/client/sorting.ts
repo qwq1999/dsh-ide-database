@@ -36,3 +36,13 @@ export function quoteSortColumn(dialect: string, column: string): string {
   if (dialect === 'mysql') return `\`${column.replaceAll('`', '``')}\``
   return `"${column.replaceAll('"', '""')}"`
 }
+
+/** The words the ORDER BY box may start with; stripped before re-prefixing. */
+const ORDER_BY_PATTERN = /^ORDER\s+BY\b/iu
+
+/** Drop a leading ORDER BY keyword so the rest can be re-prefixed. */
+export function stripOrderBy(text: string): string {
+  const trimmed = text.trim().replace(/[\s;]+$/u, '')
+  if (trimmed === '') return ''
+  return trimmed.replace(ORDER_BY_PATTERN, '').trim()
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { nextOrderBy, parseOrderBy, quoteSortColumn } from '../../src/client/sorting.ts'
+import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from '../../src/client/sorting.ts'
 
 describe('table sorting expressions', () => {
   it('reads a single column with an optional direction', () => {
@@ -31,5 +31,13 @@ describe('table sorting expressions', () => {
     expect(quoteSortColumn('mysql', 'order')).toBe('`order`')
     expect(quoteSortColumn('oracle', 'order')).toBe('"order"')
     expect(quoteSortColumn('dameng', 'a"b')).toBe('"a""b"')
+  })
+  it('strips a leading ORDER BY keyword, whatever its case or spelling', () => {
+    expect(stripOrderBy('ORDER BY total DESC')).toBe('total DESC')
+    expect(stripOrderBy('order by total desc;')).toBe('total desc')
+    expect(stripOrderBy('  ORDER   BY  total  ')).toBe('total')
+    expect(stripOrderBy('total DESC')).toBe('total DESC')
+    expect(stripOrderBy('ORDER BY')).toBe('')
+    expect(stripOrderBy('')).toBe('')
   })
 })
