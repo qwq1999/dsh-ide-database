@@ -38,6 +38,7 @@ import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
+import { readFlag, writeFlag } from './prefs'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
@@ -72,6 +73,7 @@ interface Failure {
 
 import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
 
+const TTL_ONLY_KEY = 'dsh-ide-database.redis.ttl-only.v1'
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
 /** Pseudo page size meaning "run the statement once and show everything". */
 const ALL_PAGE_SIZE = 0
@@ -163,7 +165,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const [pattern, setPattern] = useState('*')
   const [scanType, setScanType] = useState('')
-  const [ttlOnly, setTtlOnly] = useState(false)
+  const [ttlOnly, setTtlOnly] = useState(() => readFlag(TTL_ONLY_KEY, false))
   const [scanMs, setScanMs] = useState<number | null>(null)
   const [keyFilter, setKeyFilter] = useState('')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
@@ -1297,7 +1299,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 type="checkbox"
                 aria-label="只看有 TTL"
                 checked={ttlOnly}
-                onChange={(event) => setTtlOnly(event.target.checked)}
+                onChange={(event) => {
+                  const next = event.target.checked
+                  setTtlOnly(next)
+                  writeFlag(TTL_ONLY_KEY, next)
+                }}
               />
               只看有 TTL
             </label>

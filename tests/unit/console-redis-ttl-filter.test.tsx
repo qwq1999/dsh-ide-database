@@ -99,4 +99,22 @@ describe('Redis key filters', () => {
     fireEvent.change(screen.getByPlaceholderText('筛选键名'), { target: { value: 'nothing' } })
     await waitFor(() => expect(screen.queryByText('没有包含这个关键字的键')).not.toBeNull())
   })
+
+  it('remembers the tick between visits', async () => {
+    const props = (): { useTabInfo: () => { tab: { navigation: { params: { connectionId: string } } } } } => ({
+      useTabInfo: () => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } }),
+    })
+    render(<ConsoleTab {...props()} />)
+    await waitForConsoleSource(mocks)
+    await screen.findByText('user:forever')
+
+    fireEvent.click(screen.getByLabelText('只看有 TTL'))
+    await waitFor(() => expect(window.localStorage.getItem('dsh-ide-database.redis.ttl-only.v1')).toBe('1'))
+
+    cleanup()
+    render(<ConsoleTab {...props()} />)
+    await waitForConsoleSource(mocks)
+    await screen.findByText('user:session')
+    expect(screen.queryByText('user:forever')).toBeNull()
+  })
 })

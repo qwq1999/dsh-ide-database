@@ -23,3 +23,24 @@ export function writeNumber(key: string, value: number): void {
     // ignore
   }
 }
+
+/** Stored boolean flag; anything else falls back to the given default. */
+export function readFlag(key: string, fallback = false): boolean {
+  try {
+    const stored = window.localStorage.getItem(key)
+    if (stored === '1') return true
+    if (stored === '0') return false
+    return fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** Persisting is best effort, same as writeNumber. */
+export function writeFlag(key: string, value: boolean): void {
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    // ignore
+  }
+}
