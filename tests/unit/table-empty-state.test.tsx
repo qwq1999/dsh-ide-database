@@ -93,5 +93,11 @@ describe('table empty grid', () => {
     fireEvent.click(screen.getByRole('button', { name: '应用查询条件' }))
     await waitFor(() => expect(screen.queryByText('没有匹配的行')).not.toBeNull())
     expect(screen.queryByText('这张表还没有数据')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '清空条件' }))
+    await waitFor(() => expect(screen.queryByText('这张表还没有数据')).not.toBeNull())
+    const last = mocks.query.mock.calls[mocks.query.mock.calls.length - 1]?.[0] as { sql: string }
+    expect(last.sql).not.toContain('WHERE')
+    expect((screen.getByPlaceholderText(/过滤条件/) as HTMLInputElement).value).toBe('')
   })
 })

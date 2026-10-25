@@ -23,7 +23,7 @@ import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
-import { Banner, EmptyState, Spinner, Tag } from './ui'
+import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { DdlModal } from './DdlModal'
 import { cellValueView, type CellValueView } from './cellvalue'
@@ -870,7 +870,28 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
       {rows.length === 0 && !loading ? (
         <div className="dshdb-grid-wrap">
-          <EmptyState icon={<TableIcon size={22} />} title={conditioned ? '没有匹配的行' : '这张表还没有数据'} description={conditioned ? sqlText : '表里一行数据都没有'} />
+          <EmptyState
+            icon={<TableIcon size={22} />}
+            title={conditioned ? '没有匹配的行' : '这张表还没有数据'}
+            description={conditioned ? sqlText : '表里一行数据都没有'}
+            actions={
+              conditioned ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setWhereText('')
+                    setFilters({})
+                    setOrderText('')
+                    apply({ where: '', orderBy: '', page: 0 })
+                  }}
+                  title="清掉过滤条件、列筛选与排序再查一次"
+                >
+                  清空条件
+                </Button>
+              ) : undefined
+            }
+          />
         </div>
       ) : (
         <DataGrid
