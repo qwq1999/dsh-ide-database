@@ -3,7 +3,7 @@
  * grid and pager buttons. They read nothing from the console state, so they
  * live here instead of growing ConsoleTab.tsx.
  */
-import { memo, useMemo, useState, type ReactElement } from 'react'
+import { memo, useCallback, useMemo, useState, type MouseEvent, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, CopyIcon, StarIcon } from './icons'
@@ -11,6 +11,7 @@ import { Button, Tag } from './ui'
 import { formatCount, formatTtl } from './format'
 import { copyText } from './colmenu'
 import { nextKeySort, sortKeys, sortKeysBySize, type KeySort } from './redissort'
+import { placeMenu, TreeMenu, type TreeMenuState } from './views/tree-menu'
 
 export { formatCount }
 
@@ -136,14 +137,21 @@ const KeyRow = memo(function KeyRow({
   index,
   active,
   onSelect,
+  onMenu,
 }: {
   info: RedisKeyInfo
   index: number
   active: boolean
   onSelect: (key: RedisKeyInfo) => void
+  onMenu: (event: MouseEvent<HTMLTableRowElement>, key: RedisKeyInfo) => void
 }): ReactElement {
   return (
-    <tr data-active={active} onClick={() => onSelect(info)} style={{ cursor: 'pointer' }}>
+    <tr
+      data-active={active}
+      onClick={() => onSelect(info)}
+      onContextMenu={(event) => onMenu(event, info)}
+      style={{ cursor: 'pointer' }}
+    >
       <td className="dshdb-num">{index + 1}</td>
       <td title={info.key}>
         <span className="dshdb-mono">{info.key}</span>
@@ -172,8 +180,15 @@ export const KeyGrid = memo(function KeyGrid({
 }): ReactElement {
   const [sort, setSort] = useState<KeySort>('none')
   const [sizeSort, setSizeSort] = useState<KeySort>('none')
+  const [menu, setMenu] = useState<TreeMenuState | null>(null)
   const rows = useMemo(() => sortKeysBySize(sortKeys(keys, sort), sizeSort), [keys, sort, sizeSort])
+  const openMenu = useCallback((event: MouseEvent<HTMLTableRowElement>, key: RedisKeyInfo): void => {
+    event.preventDefault()
+    const items = [{ label: '复制键名', run: () => void copyText(key.key) }]
+    setMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
+  }, [])
   return (
+    <>
     <table className="dshdb-grid">
       <thead>
         <tr>
@@ -211,11 +226,20 @@ export const KeyGrid = memo(function KeyGrid({
           </tr>
         ) : (
           rows.map((key, index) => (
-            <KeyRow key={key.key} info={key} index={index} active={key.key === selectedKey} onSelect={onSelect} />
+            <KeyRow
+              key={key.key}
+              info={key}
+              index={index}
+              active={key.key === selectedKey}
+              onSelect={onSelect}
+              onMenu={openMenu}
+            />
           ))
         )}
       </tbody>
     </table>
+    <TreeMenu menu={menu} onClose={() => setMenu(null)} />
+    </>
   )
 })
 
