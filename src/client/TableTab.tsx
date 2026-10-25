@@ -729,6 +729,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           cellClass={gridCellClass}
           cellMenu={gridCellMenu}
           onCellOpen={gridCellOpen}
+          emptyText="这里没有符合条件的行"
           onCellClick={
             filtersOpen
               ? (column, value) => {

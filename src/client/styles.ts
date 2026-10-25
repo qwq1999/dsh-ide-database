@@ -479,6 +479,13 @@ export const CSS = `
   background: var(--dsw-alias-business-primary);
 }
 .dshdb-vpad td { padding: 0 !important; border: 0 !important; }
+.dshdb-empty-row td {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--dsw-alias-label-dimmed);
+  font-size: 12px;
+  border-bottom: 0 !important;
+}
 .dshdb-grid tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-grid .dshdb-num {
   color: var(--dsw-alias-label-dimmed);

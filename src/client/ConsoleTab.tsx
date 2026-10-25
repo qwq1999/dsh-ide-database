@@ -1495,6 +1495,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 headerMenu={columnMenu}
                 cellMenu={gridCellMenu}
                 onCellOpen={gridCellOpen}
+                emptyText="这条语句没有返回任何行"
               />
             )
           ) : (

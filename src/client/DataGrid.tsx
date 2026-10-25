@@ -53,6 +53,8 @@ export interface DataGridProps {
   cellMenu?: (cell: CellMenuTarget) => ColumnMenuItem[]
   /** Drag a header onto another to change the display order. */
   onReorderColumns?: (from: number, to: number) => void
+  /** Shown in place of the body when there are no rows at all. */
+  emptyText?: string
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -130,6 +132,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     headerMenu,
     cellMenu,
     onReorderColumns,
+    emptyText,
   } = props
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -319,6 +322,11 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
           {headerExtra}
         </thead>
         <tbody>
+          {rows.length === 0 && emptyText !== undefined ? (
+            <tr className="dshdb-empty-row">
+              <td colSpan={columns.length + 1}>{emptyText}</td>
+            </tr>
+          ) : null}
           {range.paddingTop > 0 ? (
             <tr className="dshdb-vpad" aria-hidden="true">
               <td colSpan={columns.length + 1} style={{ height: range.paddingTop }} />
