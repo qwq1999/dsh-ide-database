@@ -165,6 +165,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [scanType, setScanType] = useState('')
   const [ttlOnly, setTtlOnly] = useState(false)
   const [scanMs, setScanMs] = useState<number | null>(null)
+  const [keyFilter, setKeyFilter] = useState('')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
   /** The pattern/type the listed keys were scanned with; a drifted box cannot continue. */
@@ -865,10 +866,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     void refreshValue()
   }, [refreshValue])
 
-  const visibleKeys = useMemo(
-    () => (scan === null ? [] : ttlOnly ? scan.keys.filter((info) => info.ttl >= 0) : scan.keys),
-    [scan, ttlOnly],
-  )
+  const visibleKeys = useMemo(() => {
+    if (scan === null) return []
+    const needle = keyFilter.trim().toLowerCase()
+    return scan.keys.filter(
+      (info) => (!ttlOnly || info.ttl >= 0) && (needle === '' || info.key.toLowerCase().includes(needle)),
+    )
+  }, [keyFilter, scan, ttlOnly])
 
   /** Stable for the memoised key rows: only a different key starts a new request. */
   const pickKey = useCallback(
@@ -1291,6 +1295,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               />
               只看有 TTL
             </label>
+            <input
+              className="dshdb-input dshdb-qfilter-input"
+              aria-label="筛选键名"
+              placeholder="筛选键名"
+              value={keyFilter}
+              onChange={(event) => setKeyFilter(event.target.value)}
+            />
             <select
               className="dshdb-input dshdb-qfilter-input"
               aria-label="键类型"
@@ -1331,7 +1342,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <span className="dshdb-qmeta">
               {scan === null
                 ? ''
-                : ttlOnly
+                : ttlOnly || keyFilter.trim() !== ''
                   ? `${formatCount(visibleKeys.length)} / ${formatCount(scan.keys.length)} 个键`
                   : `${formatCount(scan.keys.length)} 个键`}
               {scanMs === null ? '' : ` · ${formatMs(scanMs)}`}
@@ -1350,7 +1361,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ) : null}
 
           <div className={value === null ? 'dshdb-grid-wrap' : 'dshdb-grid-wrap dshdb-redis-keys'}>
-            {scan === null || (visibleKeys.length === 0 && !ttlOnly) ? (
+            {scan === null || (visibleKeys.length === 0 && !ttlOnly && keyFilter.trim() === '') ? (
               scanning ? (
                 <div className="dshdb-empty">
                   <Spinner size={16} />
@@ -1366,6 +1377,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 emptyText={
                   ttlOnly
                     ? '没有带过期时间的键'
+                    : keyFilter.trim() !== ''
+                      ? '没有包含这个关键字的键'
                     : pattern.trim() === '' && scanType === ''
                       ? '这个库还没有键'
                       : '没有匹配的键'

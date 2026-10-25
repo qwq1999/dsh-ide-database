@@ -84,4 +84,18 @@ describe('Redis key filters', () => {
     fireEvent.click(screen.getByLabelText('只看有 TTL'))
     await waitFor(() => expect(screen.getByText('user:forever')).toBeTruthy())
   })
+
+  it('narrows the loaded keys by a substring of their names', async () => {
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await screen.findByText('user:forever')
+
+    fireEvent.change(screen.getByPlaceholderText('筛选键名'), { target: { value: 'SESS' } })
+    await waitFor(() => expect(screen.queryByText('user:forever')).toBeNull())
+    expect(screen.getByText('user:session')).toBeTruthy()
+    expect(screen.getByText(/1 \/ 2 个键/)).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText('筛选键名'), { target: { value: 'nothing' } })
+    await waitFor(() => expect(screen.queryByText('没有包含这个关键字的键')).not.toBeNull())
+  })
 })
