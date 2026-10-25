@@ -118,6 +118,7 @@ SQL 控制台工具条的「事务」通过 JDBC 关闭连接的 auto-commit 来
 | SQL 编辑器 | `Ctrl/⌘ + Shift + Enter` | 只执行光标所在的那条语句 |
 | SQL 编辑器 | `Ctrl/⌘ + Space` | 补全表名、库名、列名与关键字 |
 | SQL 编辑器 | `Ctrl/⌘ + S` | 把编辑器里的 SQL 存成 `.sql` 文件 |
+| SQL 编辑器 | `Ctrl/⌘ + E` | 查看执行计划（不执行语句） |
 | SQL 编辑器 | `Ctrl/⌘ + /` | 注释或取消注释选中的行 |
 | SQL 编辑器 | `Ctrl/⌘ + Shift + F` | 格式化 SQL |
 | SQL 编辑器 | `Ctrl/⌘ + ↑ / ↓` | 回看执行过的语句（↓ 到底回到正在输入的内容） |
