@@ -18,6 +18,7 @@ import { readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
+import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { composeWhere, insertStatement, insertStatements, pageClause, qualifiedName, stripKeyword, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
@@ -291,17 +292,21 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         const whereSql = where === '' ? '' : ` WHERE ${where}`
         const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
         const batch = 2000
-        const collected: Row[] = []
-        let offset = 0
-        for (;;) {
-          const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
-          const result = await runSql(params.connectionId, sql, batch)
-          if (collected.length === 0) exportColumns = result.columns
-          collected.push(...result.rows)
-          if (result.rows.length < batch || collected.length >= EXPORT_LIMIT) break
-          offset += batch
-        }
-        exportData = orderRows(collected.slice(0, EXPORT_LIMIT), order)
+        let seeded = false
+        const collected = await collectRows({
+          limit: EXPORT_LIMIT,
+          batch,
+          fetch: async ({ offset }) => {
+            const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
+            const result = await runSql(params.connectionId, sql, batch)
+            if (!seeded) {
+              exportColumns = result.columns
+              seeded = true
+            }
+            return result.rows
+          },
+        })
+        exportData = orderRows(collected, order)
         exportColumns = orderColumns(exportColumns, order)
       }
       const text =

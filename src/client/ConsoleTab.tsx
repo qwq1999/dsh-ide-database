@@ -37,6 +37,7 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { insertStatements, tableFromStatement } from './tablesql'
+import { collectRows } from './pagedrows'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon, StarIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
@@ -834,23 +835,23 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     setExporting(true)
     setFailure(null)
     try {
-      const collected: Row[] = []
-      let sourcePage = 0
-      while (collected.length < EXPORT_LIMIT) {
-        const sqlText = wrapPage(connection?.dialect ?? 'mysql', base, EXPORT_BATCH, sourcePage)
-        const next = await queryWithRetry(
-          selectedId,
-          sqlText,
-          EXPORT_BATCH,
-          false,
-          `console-export-${Date.now().toString(36)}-${sourcePage}`,
-          schema,
-        )
-        collected.push(...next.rows)
-        if (next.rows.length < EXPORT_BATCH) break
-        sourcePage += 1
-      }
-      const data = orderRows(collected.slice(0, EXPORT_LIMIT), columnOrder)
+      const collected = await collectRows({
+        limit: EXPORT_LIMIT,
+        batch: EXPORT_BATCH,
+        fetch: async ({ page: sourcePage }) => {
+          const sqlText = wrapPage(connection?.dialect ?? 'mysql', base, EXPORT_BATCH, sourcePage)
+          const next = await queryWithRetry(
+            selectedId,
+            sqlText,
+            EXPORT_BATCH,
+            false,
+            `console-export-${Date.now().toString(36)}-${sourcePage}`,
+            schema,
+          )
+          return next.rows
+        },
+      })
+      const data = orderRows(collected, columnOrder)
       const cols = orderColumns(columns, columnOrder)
       const text =
         format === 'sql'
