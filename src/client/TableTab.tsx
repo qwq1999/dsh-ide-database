@@ -745,7 +745,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV'))}>
                 复制当前页 CSV
               </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toTsv(displayColumns, rows))}>
+              <button type="button" role="menuitem" onClick={() => void copyText(toTsv(displayColumns, rows)).then(noteCopied('TSV'))}>
                 复制当前页 TSV
               </button>
               <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON'))}>

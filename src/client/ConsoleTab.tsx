@@ -1896,7 +1896,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void copyText(toTsv(displayColumns, filteredRows))}
+                    onClick={() => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV'))}
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 TSV
