@@ -135,5 +135,6 @@ describe('table page and row count', () => {
 
     await screen.findByText('手机数码')
     await waitFor(() => expect(screen.queryByText(/^\//)).toBeNull())
+    expect(await screen.findByText('行数未知')).toBeTruthy()
   })
 })

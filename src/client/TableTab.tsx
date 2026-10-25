@@ -100,6 +100,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [columns, setColumns] = useState<ColumnInfo[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [total, setTotal] = useState<number | undefined>(undefined)
+  /** Counting is optional (permissions, timeouts); say so instead of a bare empty total. */
+  const [countUnknown, setCountUnknown] = useState(false)
   const [elapsed, setElapsed] = useState<number | undefined>(undefined)
   const [sqlText, setSqlText] = useState('')
   const [loading, setLoading] = useState(false)
@@ -207,7 +209,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         if (countPromise !== undefined) {
           // Already running alongside the page query; a failed count just hides the total.
           const counted = await countPromise
-          if (token === loadToken.current) setTotal(counted)
+          if (token === loadToken.current) {
+            setTotal(counted)
+            setCountUnknown(counted === undefined)
+          }
         }
       } catch (caught) {
         if (token !== loadToken.current) return
@@ -1148,6 +1153,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             </option>
           ))}
         </select>
+        {countUnknown ? (
+          <Tag tone="warn" title="行数统计失败（可能是权限或超时），页码只能按已取到的行数往后翻">行数未知</Tag>
+        ) : null}
         <span className="dshdb-pager-total">{totalText}</span>
         <button
           type="button"
