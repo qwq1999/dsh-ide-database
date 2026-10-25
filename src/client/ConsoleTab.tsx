@@ -1378,9 +1378,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           </div>
 
           {commandResult !== null ? (
-            <pre className="dshdb-console-value" title={commandResult.command}>
-              {redisValueText(commandResult.value)}
-            </pre>
+            <>
+              <pre className="dshdb-console-value" title={commandResult.command}>
+                {redisValueText(commandResult.value)}
+              </pre>
+              <div className="dshdb-qmeta" style={{ marginTop: 4 }}>
+                {formatMs(commandResult.elapsedMs)}
+                {commandResult.readOnly ? '' : ' · 写命令'}
+              </div>
+            </>
           ) : null}
 
         </>
