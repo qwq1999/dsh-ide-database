@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.{mjs,ts,tsx}'],
+    setupFiles: ['./tests/setup.ts'],
     testTimeout: 20_000,
   },
 })
