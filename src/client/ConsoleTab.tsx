@@ -24,7 +24,7 @@ import type {
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite } from './format'
-import { clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
+import { annotateHistory, clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
@@ -214,6 +214,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const planToken = useRef(0)
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
   const resultBeforePlan = useRef<QueryResult | null>(null)
+  /** Row count and duration of the run that just finished, for the history list. */
+  const lastRun = useRef<{ rows: number; elapsedMs: number } | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   /** Two console tabs open at once must not share the completion popup ids. */
   const completeId = useId()
@@ -510,6 +512,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setPage(paged && !showAll ? target.page : 0)
         setBase(paged ? text : '')
         setSourceSql(text)
+        lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
         if (looksLikeDdl(text)) void loadSchemaList(selectedId)
       } catch (error) {
         if (token !== runToken.current) return
@@ -579,6 +582,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setSourceSql(parts[parts.length - 1] ?? '')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
+      if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
       if (parts.some(looksLikeDdl)) void loadSchemaList(selectedId)
     } finally {
       runningRef.current = Math.max(0, runningRef.current - 1)
@@ -640,7 +644,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
     setMultiNote('')
     setHistory(pushHistory('sql', body))
+    lastRun.current = null
     await execute({ statement: body, page: 0, size: pageSize, allowWrite: isWrite })
+    if (lastRun.current !== null) setHistory(annotateHistory('sql', body, lastRun.current))
   }
 
   const run = async (): Promise<void> => {

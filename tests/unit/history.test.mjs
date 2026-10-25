@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clearHistory, pushHistory, readHistory, readPins, togglePin } from '../../src/client/history.ts'
+import { annotateHistory, clearHistory, pushHistory, readHistory, readPins, togglePin } from '../../src/client/history.ts'
 
 class MemoryStorage {
   #map = new Map()
@@ -70,5 +70,31 @@ describe('pinned statements', () => {
   it('caps pins at 20', () => {
     for (let index = 0; index < 25; index += 1) togglePin('sql', `select ${index}`)
     expect(readPins('sql')).toHaveLength(20)
+  })
+})
+
+describe('history annotations', () => {
+  it('adds the row count and duration to the statement that ran', () => {
+    pushHistory('sql', 'select 1')
+    const entries = annotateHistory('sql', 'select 1', { rows: 3, elapsedMs: 12 })
+    expect(entries[0].rows).toBe(3)
+    expect(entries[0].elapsedMs).toBe(12)
+    expect(readHistory('sql')[0].elapsedMs).toBe(12)
+  })
+
+  it('leaves history untouched when the statement is missing', () => {
+    pushHistory('sql', 'select 1')
+    const entries = annotateHistory('sql', 'select 2', { rows: 1, elapsedMs: 1 })
+    expect(entries).toHaveLength(1)
+    expect(entries[0].rows).toBeUndefined()
+  })
+
+  it('keeps the other entries as they were', () => {
+    pushHistory('sql', 'select 1')
+    pushHistory('sql', 'select 2')
+    const entries = annotateHistory('sql', 'select 1', { rows: 9, elapsedMs: 30 })
+    expect(entries.map((entry) => entry.statement)).toEqual(['select 2', 'select 1'])
+    expect(entries[1].rows).toBe(9)
+    expect(entries[0].rows).toBeUndefined()
   })
 })

@@ -11,6 +11,10 @@ export type HistoryKind = 'sql' | 'redis'
 export interface HistoryEntry {
   statement: string
   at: number
+  /** Rows the statement returned last time, when the console knows it. */
+  rows?: number
+  /** How long that run took, for the history list. */
+  elapsedMs?: number
 }
 
 const KEY = 'dsh-ide-database.history.v1'
@@ -70,6 +74,29 @@ export function pushHistory(kind: HistoryKind, statement: string): HistoryEntry[
     0,
     LIMIT,
   )
+  write(entries)
+  return entries[kind]
+}
+
+/**
+ * Attach the row count and duration to a statement that just ran. The entry is
+ * written when the statement is submitted, so the numbers arrive a moment later.
+ */
+export function annotateHistory(
+  kind: HistoryKind,
+  statement: string,
+  meta: { rows: number; elapsedMs: number },
+): HistoryEntry[] {
+  const text = statement.trim()
+  if (text === '') return readHistory(kind)
+  const entries = read()
+  const index = entries[kind].findIndex((entry) => entry.statement === text)
+  if (index < 0) return entries[kind]
+  const current = entries[kind][index]
+  if (current === undefined) return entries[kind]
+  const next = entries[kind].slice()
+  next[index] = { ...current, rows: meta.rows, elapsedMs: meta.elapsedMs }
+  entries[kind] = next
   write(entries)
   return entries[kind]
 }

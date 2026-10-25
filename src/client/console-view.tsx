@@ -8,7 +8,7 @@ import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, CopyIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
-import { formatCount, formatTtl } from './format'
+import { formatCount, formatMs, formatTtl } from './format'
 import { copyText } from './colmenu'
 import { nextKeySort, sortKeys, sortKeysBySize, sortKeysByTtl, type KeySort } from './redissort'
 import { placeMenu, TreeMenu, type TreeMenuState } from './views/tree-menu'
@@ -36,6 +36,11 @@ function HistoryRow(props: {
       >
         <span className="dshdb-history-sql">{oneLine(props.entry.statement)}</span>
         <span className="dshdb-history-time">{historyAgo(props.entry.at)}</span>
+        {props.entry.rows === undefined ? null : (
+          <span className="dshdb-history-meta">
+            {`${formatCount(props.entry.rows)} 行 · ${formatMs(props.entry.elapsedMs ?? 0)}`}
+          </span>
+        )}
       </button>
       <button
         type="button"

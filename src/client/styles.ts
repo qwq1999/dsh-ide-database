@@ -1067,6 +1067,7 @@ export const CSS = `
 .dshdb-history-row:hover { background: var(--dsw-alias-bg-layer-2); }
 .dshdb-history-sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshdb-history-time { flex: none; color: var(--dsw-alias-label-tertiary); font-family: inherit; font-size: 10px; }
+.dshdb-history-meta { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10px; font-variant-numeric: tabular-nums; }
 .dshdb-qmeta { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .dshdb-qfilter {
   display: flex;
