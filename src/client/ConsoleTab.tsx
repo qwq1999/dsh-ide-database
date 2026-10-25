@@ -976,6 +976,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
+      { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
       {
         label: '复制 INSERT 语句',
