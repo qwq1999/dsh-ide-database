@@ -38,4 +38,29 @@ describe('sortRows', () => {
     expect(sortRows(columns, rows, { column: 'name', direction: 'asc' }).map((row) => row[0])).toEqual([3, 1, 2])
     expect(sortRows(columns, rows, { column: 'name', direction: 'desc' }).map((row) => row[0])).toEqual([1, 3, 2])
   })
+
+  it('orders text with numeric and locale-aware collation', () => {
+    const textRows = [
+      ['x', 'item10'],
+      ['x', 'item9'],
+      ['x', 'Item1'],
+    ]
+    expect(sortRows(columns, textRows, { column: 'name', direction: 'asc' }).map((row) => row[1])).toEqual([
+      'Item1',
+      'item9',
+      'item10',
+    ])
+  })
+
+  it('does not mutate the page it was given', () => {
+    const page = [
+      [2, 'b'],
+      [1, 'a'],
+    ]
+    sortRows(columns, page, { column: 'id', direction: 'asc' })
+    expect(page).toEqual([
+      [2, 'b'],
+      [1, 'a'],
+    ])
+  })
 })
