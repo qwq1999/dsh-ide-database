@@ -6,7 +6,7 @@
  * view plus a small overscan, with spacer rows standing in for the rest so the
  * scrollbar keeps the real length and stickiness of the header is untouched.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import type { CellValue, ColumnInfo, Row } from '../shared/types'
 import type { ColumnMenuItem } from './colmenu'
 import { clearWidths, readWidths, writeWidths } from './columnWidths'
@@ -113,7 +113,7 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
   return { range, onScroll }
 }
 
-export function DataGrid(props: DataGridProps): ReactElement {
+export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactElement {
   const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu, cellMenu, onReorderColumns } =
     props
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
@@ -372,4 +372,4 @@ export function DataGrid(props: DataGridProps): ReactElement {
       ) : null}
     </div>
   )
-}
+})

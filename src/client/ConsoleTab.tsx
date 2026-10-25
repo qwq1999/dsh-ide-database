@@ -22,7 +22,7 @@ import type {
   SchemaInfo,
 } from '../shared/types'
 import { ApiError, api } from './api'
-import { DataGrid } from './DataGrid'
+import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, historyAgo, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
@@ -837,7 +837,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   useEffect(() => {
     setColumnOrder(null)
   }, [signature])
-  const columnMenu = (column: ColumnInfo): ColumnMenuItem[] => {
+  const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const active = rowSort?.column === column.name ? rowSort.direction : null
     const index = columns.findIndex((item) => item.name === column.name)
     return [
@@ -851,7 +851,22 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         run: () => void copyText(columnValues(visibleRows, index)),
       },
     ]
-  }
+  }, [columns, rowSort, visibleRows])
+
+  /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
+  const gridSort = useCallback((column: ColumnInfo): void => {
+    setRowSort((current) => nextRowSort(current, column.name))
+  }, [])
+  const gridReorder = useCallback((from: number, to: number): void => {
+    setColumnOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
+  }, [columns.length])
+  const gridCellMenu = useCallback(
+    (cell: CellMenuTarget): ColumnMenuItem[] => [
+      { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
+      { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
+    ],
+    [displayColumns],
+  )
 
   if (loadError !== '') {
     return (
@@ -1389,15 +1404,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               offset={offset}
               storageKey="console:sql"
               sort={rowSort}
-              onSort={(column) => setRowSort((current) => nextRowSort(current, column.name))}
-              onReorderColumns={(from, to) => {
-                setColumnOrder((current) => moveColumn(current ?? identityOrder(columns.length), from, to))
-              }}
+              onSort={gridSort}
+              onReorderColumns={gridReorder}
               headerMenu={columnMenu}
-              cellMenu={(cell) => [
-                { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
-                { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
-              ]}
+              cellMenu={gridCellMenu}
             />
           ) : (
             <div className="dshdb-grid-wrap">
