@@ -34,6 +34,7 @@ import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
+import { filterRows } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
@@ -136,6 +137,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
   const [pageDraft, setPageDraft] = useState('1')
+  const [rowFilter, setRowFilter] = useState('')
   const [base, setBase] = useState('')
   const [sourceSql, setSourceSql] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
@@ -829,11 +831,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const rows = result?.rows ?? EMPTY_ROWS
   // Sorting only reshapes the current page; a new query or page resets it.
   const visibleRows = useMemo(() => sortRows(columns, rows, rowSort), [columns, rows, rowSort])
+  // The text filter is a view over the page: exports of "current page" follow it.
+  const filteredRows = useMemo(() => filterRows(visibleRows, rowFilter), [visibleRows, rowFilter])
 
   /** `EXPLAIN FORMAT=TREE` style plans: one text column, rendered as preformatted text. */
   const planText = useMemo(() => planTextOf(plan?.plan), [plan])
   const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
-  const displayRows = useMemo(() => orderRows(visibleRows, columnOrder), [visibleRows, columnOrder])
+  const displayRows = useMemo(() => orderRows(filteredRows, columnOrder), [filteredRows, columnOrder])
   // Hiding is display-only: positions map back into the displayed columns, so
   // reordering and row copying keep addressing the full result.
   const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
@@ -857,9 +861,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
       { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
       {
-        label: `复制本列值（${visibleRows.length} 行）`,
-        disabled: visibleRows.length === 0 || index < 0,
-        run: () => void copyText(columnValues(visibleRows, index)),
+        label: `复制本列值（${filteredRows.length} 行）`,
+        disabled: filteredRows.length === 0 || index < 0,
+        run: () => void copyText(columnValues(filteredRows, index)),
       },
       {
         label: `复制查询语句（${displayColumns.length} 列）`,
@@ -881,7 +885,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         run: () => setHiddenColumns(null),
       },
     ]
-  }, [columns, displayColumns, hiddenCount, rowSort, shownColumns.length, visibleRows])
+  }, [columns, displayColumns, filteredRows, hiddenCount, rowSort, shownColumns.length])
 
   /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
   const gridSort = useCallback((column: ColumnInfo): void => {
@@ -1432,21 +1436,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               {exportOpen ? (
                 <span className="dshdb-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => exportPage('csv')}>
-                    当前页 CSV（{visibleRows.length} 行）
+                    当前页 CSV（{filteredRows.length} 行）
                   </button>
                   <button type="button" role="menuitem" onClick={() => exportPage('json')}>
-                    当前页 JSON（{visibleRows.length} 行）
+                    当前页 JSON（{filteredRows.length} 行）
                   </button>
                   <button type="button" role="menuitem" onClick={() => exportPage('sql')}>
-                    当前页 SQL（{visibleRows.length} 行）
+                    当前页 SQL（{filteredRows.length} 行）
                   </button>
                   <button type="button" role="menuitem" onClick={() => exportPage('md')}>
-                    当前页 Markdown（{visibleRows.length} 行）
+                    当前页 Markdown（{filteredRows.length} 行）
                   </button>
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => void copyText(toMarkdown(displayColumns, visibleRows))}
+                    onClick={() => void copyText(toMarkdown(displayColumns, filteredRows))}
                   >
                     复制当前页 Markdown
                   </button>
@@ -1587,6 +1591,26 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   {result.sql}
                 </span>
                 <span className="dshdb-pager-spacer" />
+                <span className="dshdb-pager-filter" title="按任意列在网格里显示的文字过滤当前页（Esc 清空）">
+                  <input
+                    className="dshdb-input dshdb-qfilter-input"
+                    aria-label="筛选结果"
+                    placeholder="筛选结果"
+                    value={rowFilter}
+                    disabled={running}
+                    onChange={(event) => setRowFilter(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Escape') return
+                      event.stopPropagation()
+                      setRowFilter('')
+                    }}
+                  />
+                </span>
+                {rowFilter.trim() !== '' ? (
+                  <span className="dshdb-qmeta">
+                    {formatCount(filteredRows.length)} / {formatCount(visibleRows.length)} 行
+                  </span>
+                ) : null}
                 <PagerButton
                   label="|◀"
                   title="第一页"

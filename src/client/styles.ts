@@ -1098,6 +1098,8 @@ export const CSS = `
 .dshdb-pager-range { padding: 0 2px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 .dshdb-pager-total { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 .dshdb-pager-jump { display: inline-flex; align-items: center; }
+.dshdb-pager-filter { display: inline-flex; align-items: center; min-width: 110px; max-width: 220px; border: 0.5px solid var(--dsw-alias-border-l1); border-radius: var(--ds-radius-sm, 4px); padding: 0 4px; }
+.dshdb-pager-filter .dshdb-qfilter-input { height: 20px; }
 .dshdb-pager-input { width: 58px; padding: 0 6px; text-align: center; font-variant-numeric: tabular-nums; }
 .dshdb-pager-size { width: auto; height: 20px; padding: 0 18px 0 4px; font-size: 10.5px; }
 .dshdb-tabtitle { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
