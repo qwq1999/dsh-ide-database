@@ -256,22 +256,55 @@ export function Modal({
   width?: number
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null)
+  // A caller usually passes an inline arrow, so keeping the latest handler in a
+  // ref stops the effect from re-focusing the dialog on every parent render.
+  const latestClose = useRef(onClose)
+  useEffect(() => {
+    latestClose.current = onClose
+  }, [onClose])
   useEffect(() => {
     if (!open) return
+    const box = boxRef.current
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusable = (): HTMLElement[] => {
+      if (box === null) return []
+      return Array.from(
+        box.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      )
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
-        onClose()
+        latestClose.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !box?.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || !box?.contains(active))) {
+        event.preventDefault()
+        first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown, true)
-    const first = boxRef.current?.querySelector<HTMLElement>(
+    const start = box?.querySelector<HTMLElement>(
       'input, textarea, select, button:not([aria-label="关闭"])',
     )
-    if (first) first.focus()
-    else boxRef.current?.focus()
-    return () => document.removeEventListener('keydown', onKeyDown, true)
-  }, [open, onClose])
+    if (start) start.focus()
+    else box?.focus()
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+      if (previous !== null && previous.isConnected) previous.focus()
+    }
+  }, [open])
 
   if (!open) return null
   return (
