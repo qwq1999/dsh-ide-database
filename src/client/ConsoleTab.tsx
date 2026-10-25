@@ -871,7 +871,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   useEffect(() => {
     setResult(null)
     setScriptResults([])
+    setScriptIndex(0)
     setRowFilter('')
+    setPageFallback(false)
     setFailure(null)
     // A statement handed over by a table tab is the reason this tab was opened.
     if (seededStatement.current) seededStatement.current = false
