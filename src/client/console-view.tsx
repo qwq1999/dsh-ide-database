@@ -200,7 +200,7 @@ export const KeyGrid = memo(function KeyGrid({
   }, [])
   return (
     <>
-    <table className="dshdb-grid">
+    <table className="dshdb-grid" aria-label="Redis 键列表">
       <thead>
         <tr>
           <th className="dshdb-num">#</th>

@@ -11,6 +11,11 @@ afterEach(() => {
 })
 
 describe('row number column', () => {
+  it('names the whole grid when told to', () => {
+    render(<DataGrid label="查询结果" columns={columns} rows={[[1]]} offset={0} />)
+    expect(screen.getByRole('table', { name: '查询结果' })).toBeTruthy()
+  })
+
   it('names the row number column for screen readers', () => {
     render(<DataGrid columns={columns} rows={[[1], [2]]} offset={0} />)
     const header = screen.getByRole('columnheader', { name: '行号' })

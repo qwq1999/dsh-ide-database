@@ -67,6 +67,8 @@ export interface DataGridProps {
   onReorderColumns?: (from: number, to: number) => void
   /** Shown in place of the body when there are no rows at all. */
   emptyText?: string
+  /** Names the table for screen readers, e.g. "查询结果". */
+  label?: string
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -154,6 +156,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     cellMenu,
     onReorderColumns,
     emptyText,
+    label,
   } = props
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -255,7 +258,11 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
 
   return (
     <div className="dshdb-grid-wrap" ref={containerRef} onScroll={onScroll}>
-      <table className={`dshdb-grid${widths === null ? '' : ' dshdb-grid-sized'}`} ref={tableRef}>
+      <table
+        className={`dshdb-grid${widths === null ? '' : ' dshdb-grid-sized'}`}
+        aria-label={label}
+        ref={tableRef}
+      >
         {widths === null ? null : (
           <colgroup>
             <col style={{ width: 34 }} />

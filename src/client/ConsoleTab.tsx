@@ -1981,6 +1981,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               </pre>
             ) : (
               <DataGrid
+                label="查询结果"
                 columns={shownColumns}
                 rows={shownRows}
                 offset={offset}

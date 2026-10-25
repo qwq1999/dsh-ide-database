@@ -913,6 +913,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </div>
       ) : (
         <DataGrid
+          label="表数据"
           columns={shownColumns}
           rows={shownRows}
           offset={offset}
