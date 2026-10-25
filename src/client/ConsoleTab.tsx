@@ -66,6 +66,11 @@ function oneLine(statement: string): string {
   return statement.replace(/\s+/gu, ' ').trim()
 }
 
+// Stable stand-ins so the memoized projections below keep their identity when a
+// run returns no rows (or has not run yet).
+const EMPTY_COLUMNS: ColumnInfo[] = []
+const EMPTY_ROWS: Row[] = []
+
 function HistoryRow(props: {
   entry: HistoryEntry
   pinned: boolean
@@ -751,10 +756,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   // Derived values and the column-reorder hooks must stay above the early
   // returns below, otherwise the hook order changes once a data source loads.
   const offset = page * pageSize
-  const columns = result?.columns ?? []
-  const rows = result?.rows ?? []
+  const columns = result?.columns ?? EMPTY_COLUMNS
+  const rows = result?.rows ?? EMPTY_ROWS
   // Sorting only reshapes the current page; a new query or page resets it.
-  const visibleRows = sortRows(columns, rows, rowSort)
+  const visibleRows = useMemo(() => sortRows(columns, rows, rowSort), [columns, rows, rowSort])
   const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
   const displayRows = useMemo(() => orderRows(visibleRows, columnOrder), [visibleRows, columnOrder])
   const signature = columnSignature(columns)
