@@ -128,6 +128,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [running, setRunning] = useState(false)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
+  const [pageDraft, setPageDraft] = useState('1')
   const [base, setBase] = useState('')
   const [sourceSql, setSourceSql] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
@@ -762,6 +763,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   // Derived values and the column-reorder hooks must stay above the early
   // returns below, otherwise the hook order changes once a data source loads.
+  // Keep the jump box in step with the arrows: both ways of moving share one page state.
+  useEffect(() => {
+    setPageDraft(String(page + 1))
+  }, [page])
+
+  /** Jump straight to a page the arrows would take a long time to reach. */
+  const jumpToPage = (): void => {
+    const wanted = Number.parseInt(pageDraft, 10)
+    if (!Number.isFinite(wanted) || wanted < 1 || wanted - 1 === page) {
+      setPageDraft(String(page + 1))
+      return
+    }
+    goPage(wanted - 1)
+  }
+
   const offset = page * pageSize
   const columns = result?.columns ?? EMPTY_COLUMNS
   const rows = result?.rows ?? EMPTY_ROWS
@@ -1503,6 +1519,26 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 />
                 <span className="dshdb-pager-range">
                   {formatCount(rangeStart)}-{formatCount(rangeEnd)}
+                </span>
+                <span className="dshdb-pager-jump">
+                  <input
+                    className="dshdb-input dshdb-pager-input"
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    aria-label="页码"
+                    title="输入页码后回车跳到该页"
+                    value={pageDraft}
+                    disabled={running || allRows}
+                    onChange={(event) => setPageDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        jumpToPage()
+                      }
+                    }}
+                    onBlur={jumpToPage}
+                  />
                 </span>
                 <select
                   className="dshdb-select dshdb-select-inline dshdb-pager-size"

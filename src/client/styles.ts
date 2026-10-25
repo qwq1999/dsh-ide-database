@@ -1090,6 +1090,8 @@ export const CSS = `
 .dshdb-pager-btn:disabled { opacity: 0.35; cursor: default; }
 .dshdb-pager-range { padding: 0 2px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 .dshdb-pager-total { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.dshdb-pager-jump { display: inline-flex; align-items: center; }
+.dshdb-pager-input { width: 58px; padding: 0 6px; text-align: center; font-variant-numeric: tabular-nums; }
 .dshdb-pager-size { width: auto; height: 20px; padding: 0 18px 0 4px; font-size: 10.5px; }
 .dshdb-tabtitle { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
