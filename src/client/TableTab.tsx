@@ -761,6 +761,20 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             if (event.key === 'Enter') apply({ where: whereText, page: 0 })
           }}
         />
+        {whereText === '' ? null : (
+          <button
+            type="button"
+            className="dshdb-row-action"
+            title="清空过滤条件"
+            aria-label="清空过滤条件"
+            onClick={() => {
+              setWhereText('')
+              apply({ where: '', page: 0 })
+            }}
+          >
+            ×
+          </button>
+        )}
         <span className="dshdb-qfilter-label">ORDER BY</span>
         <input
           className="dshdb-input dshdb-qfilter-input dshdb-qfilter-order"
