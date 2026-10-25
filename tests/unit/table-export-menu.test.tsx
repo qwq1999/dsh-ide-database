@@ -107,7 +107,7 @@ describe('table export menu', () => {
     await waitFor(() => expect(trigger.disabled).toBe(false))
 
     fireEvent.click(trigger)
-    expect(await screen.findByRole('menuitem', { name: /当前页 JSON/ })).toBeTruthy()
+    expect(await screen.findByRole('menuitem', { name: /^当前页 JSON/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /当前页 SQL/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /^当前页 CSV/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /全部 CSV/ })).toBeTruthy()
@@ -158,6 +158,27 @@ describe('table export menu', () => {
     await waitFor(() => expect(copies).toHaveBeenCalled())
     const expected = ['| total |', '| --- |', '| 93.02 |', ''].join(String.fromCharCode(10))
     expect(copies.mock.calls.at(-1)?.[0]).toBe(expected)
+  })
+
+  it('copies the current page as JSON', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制当前页 JSON' }))
+
+    await waitFor(() => expect(copies).toHaveBeenCalled())
+    const text = String(copies.mock.calls.at(-1)?.[0] ?? '')
+    expect(text).toContain('"total"')
+    expect(text).toContain('93.02')
   })
 
   it('copies the current page as CSV text', async () => {

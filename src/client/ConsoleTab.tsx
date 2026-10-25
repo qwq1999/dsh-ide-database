@@ -38,7 +38,7 @@ import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { downloadText, exportFilename, renderExport, toCsv, toMarkdown, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
 import { groupCountSql, inListOf, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
@@ -1672,6 +1672,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void copyText(toJson(displayColumns, filteredRows))}
+                    disabled={filteredRows.length === 0}
+                  >
+                    复制当前页 JSON
                   </button>
                   {base !== '' ? (
                     <>
