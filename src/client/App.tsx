@@ -3,6 +3,7 @@ import { ROUTE_PREFIX } from '../shared/presets'
 import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
 import { useDataSources } from './hooks/useDataSources'
+import { copyText } from './colmenu'
 import { EditIcon, PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
@@ -172,12 +173,8 @@ export function App(props: AppProps): ReactElement {
   }
 
   async function copyDdl(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(ddlModal.text)
-      notify('DDL 已复制', 'success')
-    } catch (error) {
-      notify(`复制失败：${errorText(error)}`, 'error')
-    }
+    const copied = await copyText(ddlModal.text)
+    notify(copied ? 'DDL 已复制' : '复制失败：这个环境不允许访问剪贴板', copied ? 'success' : 'error')
   }
 
   async function saveSettings(next: DbSettings): Promise<void> {
