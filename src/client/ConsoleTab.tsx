@@ -705,6 +705,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }
 
+  // Closing the tab should release the server thread instead of letting it run to the timeout.
+  useEffect(() => {
+    return () => {
+      void cancel()
+    }
+  }, [])
+
   const goPage = (next: number): void => {
     if (base === '') return
     setPageFallback(false)
