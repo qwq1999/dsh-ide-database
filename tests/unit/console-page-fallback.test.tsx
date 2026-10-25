@@ -101,11 +101,14 @@ describe('console page fallback', () => {
     fireEvent.change(editor, { target: { value: 'SELECT * FROM orders' } })
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(0))
+    // Wait for the first page to render: the next-page button stays disabled
+    // until then, and a click on a disabled button would be dropped.
+    await screen.findByText('alpha0')
 
     // Page 2 asks for OFFSET 500, which the mock answers with no rows.
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
 
-    await screen.findByText(/这一页没有数据，已回到第一页/)
+    await waitFor(() => expect(screen.getByText(/这一页没有数据，已回到第一页/)).toBeTruthy(), { timeout: 10000 })
     expect(screen.getByText('alpha0')).toBeTruthy()
     const offsetQueries = mocks.query.mock.calls
       .map((call) => (call[0] as { sql: string }).sql)
