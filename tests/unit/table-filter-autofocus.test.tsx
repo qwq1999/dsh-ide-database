@@ -88,4 +88,24 @@ describe('column filter row focus', () => {
     const box = await screen.findByLabelText('筛选 id')
     await waitFor(() => expect(document.activeElement).toBe(box))
   })
+
+  it('closes the filter row on Escape without dropping what is already applied', async () => {
+    render(
+      <TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const toggle = (await screen.findByLabelText('列筛选')) as HTMLButtonElement
+    await waitFor(() => expect(toggle.disabled).toBe(false))
+
+    fireEvent.click(toggle)
+    const box = await screen.findByLabelText('筛选 id')
+    fireEvent.change(box, { target: { value: '9' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(screen.queryByLabelText('筛选 id')).not.toBeNull())
+
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByLabelText('筛选 id')).toBeNull())
+    const last = mocks.query.mock.calls[mocks.query.mock.calls.length - 1]?.[0] as { sql: string }
+    expect(last.sql).toContain('id')
+  })
 })

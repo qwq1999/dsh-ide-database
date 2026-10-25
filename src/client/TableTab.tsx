@@ -904,7 +904,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onSort={sortTable}
           onReorderColumns={gridReorder}
           headerExtra={filtersOpen ? (
-              <tr className="dshdb-filter-row" ref={filterRowRef}>
+              <tr
+                className="dshdb-filter-row"
+                ref={filterRowRef}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return
+                  event.preventDefault()
+                  setFiltersOpen(false)
+                }}
+              >
                 <th className="dshdb-num">
                   {activeFilterCount > 0 ? (
                     <button type="button" className="dshdb-row-action" title="清除所有列筛选" aria-label="清除列筛选" onClick={clearColumnFilters}>
