@@ -363,6 +363,22 @@ export const CSS = `
 .dshdb-editor:focus { border-color: var(--dsw-alias-state-business-primary); }
 .dshdb-editor::placeholder { color: var(--dsw-alias-label-dimmed); }
 
+.dshdb-plan-text {
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  white-space: pre;
+  font-family: var(--ds-font-family-code, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+}
+
 .dshdb-grid-wrap {
   min-height: 0;
   min-width: 0;

@@ -40,6 +40,7 @@ import { downloadText, exportFilename, renderExport, type ExportFormat } from '.
 import { tableFromStatement } from './tablesql'
 import { applyCompletion, completionCandidates, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
+import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
@@ -661,6 +662,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const rows = result?.rows ?? EMPTY_ROWS
   // Sorting only reshapes the current page; a new query or page resets it.
   const visibleRows = useMemo(() => sortRows(columns, rows, rowSort), [columns, rows, rowSort])
+
+  /** `EXPLAIN FORMAT=TREE` style plans: one text column, rendered as preformatted text. */
+  const planText = useMemo(() => planTextOf(plan?.plan), [plan])
   const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
   const displayRows = useMemo(() => orderRows(visibleRows, columnOrder), [visibleRows, columnOrder])
   const signature = columnSignature(columns)
@@ -1234,17 +1238,23 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ) : null}
 
           {result !== null && rows.length > 0 ? (
-            <DataGrid
-              columns={displayColumns}
-              rows={displayRows}
-              offset={offset}
-              storageKey="console:sql"
-              sort={rowSort}
-              onSort={gridSort}
-              onReorderColumns={gridReorder}
-              headerMenu={columnMenu}
-              cellMenu={gridCellMenu}
-            />
+            planText !== null ? (
+              <pre className="dshdb-plan-text" aria-label="执行计划文本">
+                {planText}
+              </pre>
+            ) : (
+              <DataGrid
+                columns={displayColumns}
+                rows={displayRows}
+                offset={offset}
+                storageKey="console:sql"
+                sort={rowSort}
+                onSort={gridSort}
+                onReorderColumns={gridReorder}
+                headerMenu={columnMenu}
+                cellMenu={gridCellMenu}
+              />
+            )
           ) : (
             <div className="dshdb-grid-wrap">
               {result === null ? (
