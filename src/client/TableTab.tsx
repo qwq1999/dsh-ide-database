@@ -109,6 +109,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
   const applyRef = useRef<(next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters) => void>(() => undefined)
+  /** Latest load wins: an older page must not overwrite a newer one. */
+  const loadToken = useRef(0)
 
   // Column drag order is display-only; reset it when the result set changes shape.
   const signature = columnSignature(columns)
@@ -129,6 +131,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
+      const token = ++loadToken.current
       setLoading(true)
       setError(null)
       try {
@@ -152,6 +155,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             )
           : undefined
         const result = await runSql(params.connectionId, pageSql, target.size)
+        if (token !== loadToken.current) return
         setColumns(result.columns)
         setRows(result.rows)
         setElapsed(result.elapsedMs)
@@ -159,12 +163,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         setPage(target.page)
         if (countPromise !== undefined) {
           // Already running alongside the page query; a failed count just hides the total.
-          setTotal(await countPromise)
+          const counted = await countPromise
+          if (token === loadToken.current) setTotal(counted)
         }
       } catch (caught) {
+        if (token !== loadToken.current) return
         setError(failureText(caught))
       } finally {
-        setLoading(false)
+        if (token === loadToken.current) setLoading(false)
       }
     },
     [params.connectionId, params.schema, params.table],
