@@ -122,6 +122,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [ddlBusy, setDdlBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const exportingRef = useRef(false)
   const [exportNote, setExportNote] = useState('')
   /** Copies from the export menu and reports it in the bar, like the toolbar copies do. */
   const noteCopied = useCallback(
@@ -355,6 +356,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   useEffect(() => {
     if (autoMs === 0 || connection === null) return undefined
     const tick = (): void => {
+      // An export is already walking the table page by page; refreshing the
+      // grid underneath it would only churn the view.
+      if (exportingRef.current) return
       if (!loadingRef.current) applyRef.current({ recount: false })
     }
     const timer = setInterval(() => {
@@ -595,6 +599,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const exportRows = async (format: ExportFormat, scope: 'page' | 'all'): Promise<void> => {
     if (connection === null) return
     setExporting(true)
+    exportingRef.current = true
     setExportOpen(false)
     exportCancelled.current = false
     try {
@@ -625,6 +630,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       setError(failureText(caught))
     } finally {
       setExporting(false)
+      exportingRef.current = false
     }
   }
 
@@ -632,6 +638,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const exportDump = async (): Promise<void> => {
     if (connection === null) return
     setExporting(true)
+    exportingRef.current = true
     setExportOpen(false)
     exportCancelled.current = false
     try {
@@ -660,6 +667,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       setError(failureText(caught))
     } finally {
       setExporting(false)
+      exportingRef.current = false
     }
   }
 

@@ -151,4 +151,34 @@ describe('table auto refresh', () => {
     if (visibility === undefined) delete (document as { visibilityState?: string }).visibilityState
     else Object.defineProperty(document, 'visibilityState', visibility)
   })
+
+  it('does not refresh the grid while an export is running', async () => {
+    render(<TableTab useTabInfo={tab} />)
+    await waitFor(() => expect(pageCalls()).toBe(1))
+    fireEvent.change(screen.getByLabelText('自动刷新'), { target: { value: '5000' } })
+
+    // Hold the export's first batch so the export stays in flight.
+    let releaseExport: (value: unknown) => void = () => undefined
+    mocks.query.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseExport = resolve
+        }),
+    )
+    fireEvent.click(screen.getByLabelText('导出结果'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /全部 CSV/ }))
+    const before = pageCalls()
+    await act(async () => {
+      timers.at(-1)?.run()
+    })
+    expect(pageCalls()).toBe(before)
+    await act(async () => {
+      releaseExport({
+        columns: [{ name: 'id', type: 'int' }],
+        rows: [[1]],
+        elapsedMs: 1,
+        sql: 'SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0',
+      })
+    })
+  })
 })
