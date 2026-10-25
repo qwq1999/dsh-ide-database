@@ -4,8 +4,19 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（129）
+## 新功能（140）
 
+- `b0954ca` feat(console): Ctrl+E 查看执行计划
+- `336ef99` feat(grid): 表头可用键盘切换排序
+- `8936bae` feat(tree): 表详情可复制列名写全的 SELECT
+- `04f7107` feat(tree): 表详情可一键复制列名
+- `23289f7` feat(ui): 历史按钮告诉读屏面板是否展开
+- `c01f275` feat(redis): 键列表可一键复制全部可见键名
+- `3200510` feat(tree): Ctrl+R 重新读取当前数据源
+- `6ea00f3` feat(console): Ctrl+R 重新执行当前语句
+- `0d80995` feat(table): Ctrl+R 只刷新当前页
+- `40e086b` feat(redis): 命令参数也能按 Tab 补全键名
+- `dc3cc07` feat(redis): 命令框支持按 Tab 补全命令名
 - `b7720f7` feat(grid): 列头菜单可复制全部列名
 - `5869920` feat(console): 记住每个连接上次选的库/Schema
 - `52a3446` feat(console): 记住每个 Redis 连接选过的逻辑库
@@ -199,8 +210,11 @@
 - `020ecc5` fix(sql): 只读校验识破 EXPLAIN ANALYZE 与 WITH 后的写语句
 - `b4e1530` fix(export): MySQL 字面量转义反斜杠，导出的 INSERT 还原原值
 
-## 性能（23）
+## 性能（26）
 
+- `0beed05` perf(console): 结果筛选复用预计算的每行文本
+- `f0c3e8c` perf(grid): 超长单元格只画前 400 字
+- `56e1455` perf(redis): 超大值只渲染前 64 KB
 - `2d4c916` perf(console): 语句目标表每次渲染只解析一次
 - `a877c20` perf(redis): 刷新数据源时并行重读各逻辑库
 - `bfd0fa4` perf(grid): 控制台结果网格不再随编辑器输入重绘
@@ -234,8 +248,21 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（12）
+## 测试（25）
 
+- `e95c0eb` test(host): 覆盖 /status、/env 与驱动下载
+- `d26af99` test(host): 覆盖取消、设置更新与健康检查路由
+- `c4e1dd0` test(host): 覆盖连接保存与删除的会话处置
+- `dddf13e` test(host): 覆盖 /schema/objects 与 /schema/describe 的缓存语义
+- `0b7020c` test(host): 覆盖连接测试、连接与断开的客户端选择
+- `8c7517c` test(host): 覆盖 /tx 与 /redis/databases 的校验与回退
+- `e066037` test(host): 覆盖 /explain 与 /redis/key 的参数校验
+- `19fd410` test(host): 覆盖 /schema/list 的缓存与回退语义
+- `600486a` test(host): 覆盖 /query 的写权限与参数过滤
+- `d0a093d` test(host): 覆盖 /redis/command 的只读与写权限判定
+- `7027f81` test(host): 覆盖 /schema/ddl 的类型透传与拒绝路径
+- `e90e0f5` test(host): 覆盖 /redis/scan 的默认参数与类型透传
+- `1be4cea` test: 逻辑库回退用例等持久化写完再断言
 - `88515c8` test(prefs): 补上字符串偏好的读取与写入用例
 - `d8e7f08` test: README 里的工具数量要和表格行数一致
 - `95fb576` test: 历史面板 memo 用例等编辑器就绪并冲洗挂起渲染
@@ -249,8 +276,11 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（9）
+## 文档（12）
 
+- `9a13eb5` docs: 去掉 Redis 说明里重复的半句话
+- `d2042d7` docs: 补上控制台 Ctrl+R 重跑语句的说明
+- `b84ff2b` docs: 重新生成变更日志
 - `e38a55d` docs: 重新生成变更日志
 - `5d5b63a` docs: 重新生成变更日志
 - `bc1f6f3` docs: 说明切回标签页会立刻刷新
