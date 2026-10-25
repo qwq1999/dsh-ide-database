@@ -600,6 +600,22 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }
 
   /** Ctrl/⌘ + Shift + Enter: run only the statement the caret is in. */
+  /** Reindenting keeps the caret near where it was instead of throwing it to the end. */
+  const applyFormat = useCallback((): void => {
+    const next = formatSql(statement)
+    if (next === statement) return
+    const offset = Math.min(caretPos, next.length)
+    setSelectedRun(false)
+    setStatement(next)
+    setCaretPos(offset)
+    const area = inputRef.current
+    if (area === null) return
+    setTimeout(() => {
+      area.focus()
+      area.setSelectionRange(offset, offset)
+    }, 0)
+  }, [caretPos, statement])
+
   const runCaret = async (): Promise<void> => {
     const area = inputRef.current
     const found = statementAtCaret(statement, area?.selectionStart ?? caretPos)
@@ -1568,7 +1584,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 }
                 if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
                   event.preventDefault()
-                  setStatement((prev) => formatSql(prev))
+                  applyFormat()
                   return
                 }
                 if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -1624,7 +1640,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setStatement((prev) => formatSql(prev))}
+              onClick={applyFormat}
               disabled={statement.trim() === ''}
               title="整理关键字大小写与换行（Ctrl/⌘ + Shift + F）"
             >
