@@ -1532,6 +1532,22 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <Button
               size="sm"
               variant="ghost"
+              onClick={() => {
+                const area = inputRef.current
+                const picked =
+                  area === null || area.selectionStart === area.selectionEnd
+                    ? statementAtCaret(statement, area?.selectionStart ?? caretPos).statement
+                    : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
+                if (picked.trim() !== '') void copyText(picked)
+              }}
+              disabled={statement.trim() === ''}
+              title="复制选中的 SQL；没有选中时复制光标所在的那条"
+            >
+              复制 SQL
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => void explainPlan()}
               loading={planRunning}
               disabled={statement.trim() === '' || running}
