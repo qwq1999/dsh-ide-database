@@ -1,8 +1,11 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from '../../src/shared/types'
 import { RedisValuePanel } from '../../src/client/redisview'
+
+const copy = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('../../src/client/colmenu', () => ({ copyText: copy }))
 
 function stored(value: JsonValue): { key: string; type: string; ttl: number; value: JsonValue; truncated: boolean; preview: string } {
   return { key: 'user:1', type: 'string', ttl: -1, value, truncated: false, preview: '' }
@@ -22,5 +25,12 @@ describe('redis value panel', () => {
     render(<RedisValuePanel value={stored('hello')} />)
     expect(screen.getByText('hello')).toBeTruthy()
     expect(document.querySelector('pre.dshdb-console-value')).toBeNull()
+  })
+
+  it('copies the key name and confirms it', async () => {
+    render(<RedisValuePanel value={stored('hello')} />)
+    fireEvent.click(screen.getByLabelText('复制键名'))
+    await screen.findByLabelText('键名已复制')
+    expect(copy).toHaveBeenCalledWith('user:1')
   })
 })
