@@ -127,22 +127,26 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
         const offset = target.page * target.size
         const pageSql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, target.size, offset)}`
+        // The total is only a pager label, so it runs alongside the page instead of after it.
+        const countPromise = target.recount
+          ? runSql(params.connectionId, `SELECT COUNT(*) FROM ${from}${whereSql}`, 1).then(
+              (counted) => {
+                const first = counted.rows[0]?.[0]
+                const value = typeof first === 'number' ? first : Number(first)
+                return Number.isFinite(value) ? value : undefined
+              },
+              () => undefined,
+            )
+          : undefined
         const result = await runSql(params.connectionId, pageSql, target.size)
         setColumns(result.columns)
         setRows(result.rows)
         setElapsed(result.elapsedMs)
         setSqlText(result.sql === '' ? pageSql : result.sql)
         setPage(target.page)
-        if (target.recount) {
-          try {
-            const counted = await runSql(params.connectionId, `SELECT COUNT(*) FROM ${from}${whereSql}`, 1)
-            const first = counted.rows[0]?.[0]
-            const value = typeof first === 'number' ? first : Number(first)
-            setTotal(Number.isFinite(value) ? value : undefined)
-          } catch {
-            // Counting is best effort: a pager without a total still pages.
-            setTotal(undefined)
-          }
+        if (countPromise !== undefined) {
+          // Already running alongside the page query; a failed count just hides the total.
+          setTotal(await countPromise)
         }
       } catch (caught) {
         setError(failureText(caught))
