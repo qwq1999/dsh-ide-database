@@ -23,7 +23,7 @@ import type {
 } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
-import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
+import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite } from './format'
 import { clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
@@ -47,6 +47,7 @@ import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
+import { redisValueText } from './redisvalue'
 
 /** What the tab body receives: the framework's tab reader. */
 export interface ConsoleTabProps {
@@ -1006,7 +1007,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
           {commandResult !== null ? (
             <pre className="dshdb-console-value" title={commandResult.command}>
-              {stringifyJson(commandResult.value)}
+              {redisValueText(commandResult.value)}
             </pre>
           ) : null}
 
