@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clearHistory, isPinned, pushHistory, readHistory, readPins, togglePin } from '../../src/client/history.ts'
+import { clearHistory, pushHistory, readHistory, readPins, togglePin } from '../../src/client/history.ts'
 
 class MemoryStorage {
   #map = new Map()
@@ -54,10 +54,9 @@ describe('statement history', () => {
 describe('pinned statements', () => {
   it('toggles a statement on and off', () => {
     expect(togglePin('sql', 'select 1')).toBe(true)
-    expect(isPinned('sql', 'select 1')).toBe(true)
     pushHistory('sql', 'select 1')
     expect(togglePin('sql', 'select 1')).toBe(false)
-    expect(isPinned('sql', 'select 1')).toBe(false)
+    expect(readPins('sql')).toHaveLength(0)
   })
 
   it('keeps pins per console kind and ignores blanks', () => {

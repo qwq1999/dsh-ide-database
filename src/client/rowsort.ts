@@ -60,7 +60,3 @@ export function sortRowsWithOrder(
   return { rows: positions.map((position) => rows[position] as Row), order: positions }
 }
 
-/** Sort a page of rows by one column; empty cells always sink to the bottom. */
-export function sortRows(columns: ColumnInfo[], rows: Row[], sort: RowSort | null): Row[] {
-  return sortRowsWithOrder(columns, rows, sort).rows
-}

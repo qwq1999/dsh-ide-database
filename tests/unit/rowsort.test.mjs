@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextRowSort, sortRows, sortRowsWithOrder } from '../../src/client/rowsort'
+import { nextRowSort, sortRowsWithOrder } from '../../src/client/rowsort'
 
 const columns = [
   { name: 'id', typeName: 'INT' },
@@ -26,12 +26,12 @@ describe('sortRows', () => {
   ]
 
   it('returns the page untouched when no sort is active', () => {
-    expect(sortRows(columns, rows, null)).toBe(rows)
+    expect(sortRowsWithOrder(columns, rows, null).rows).toBe(rows)
   })
 
   it('sorts numbers numerically', () => {
-    expect(sortRows(columns, rows, { column: 'id', direction: 'asc' }).map((row) => row[0])).toEqual([1, 2, 3])
-    expect(sortRows(columns, rows, { column: 'id', direction: 'desc' }).map((row) => row[0])).toEqual([3, 2, 1])
+    expect(sortRowsWithOrder(columns, rows, { column: 'id', direction: 'asc' }).rows.map((row) => row[0])).toEqual([1, 2, 3])
+    expect(sortRowsWithOrder(columns, rows, { column: 'id', direction: 'desc' }).rows.map((row) => row[0])).toEqual([3, 2, 1])
   })
 
   it('reports where each sorted row came from', () => {
@@ -42,8 +42,8 @@ describe('sortRows', () => {
   })
 
   it('keeps empty cells at the bottom in both directions', () => {
-    expect(sortRows(columns, rows, { column: 'name', direction: 'asc' }).map((row) => row[0])).toEqual([3, 1, 2])
-    expect(sortRows(columns, rows, { column: 'name', direction: 'desc' }).map((row) => row[0])).toEqual([1, 3, 2])
+    expect(sortRowsWithOrder(columns, rows, { column: 'name', direction: 'asc' }).rows.map((row) => row[0])).toEqual([3, 1, 2])
+    expect(sortRowsWithOrder(columns, rows, { column: 'name', direction: 'desc' }).rows.map((row) => row[0])).toEqual([1, 3, 2])
   })
 
   it('orders text with numeric and locale-aware collation', () => {
@@ -52,7 +52,7 @@ describe('sortRows', () => {
       ['x', 'item9'],
       ['x', 'Item1'],
     ]
-    expect(sortRows(columns, textRows, { column: 'name', direction: 'asc' }).map((row) => row[1])).toEqual([
+    expect(sortRowsWithOrder(columns, textRows, { column: 'name', direction: 'asc' }).rows.map((row) => row[1])).toEqual([
       'Item1',
       'item9',
       'item10',
@@ -64,7 +64,7 @@ describe('sortRows', () => {
       [2, 'b'],
       [1, 'a'],
     ]
-    sortRows(columns, page, { column: 'id', direction: 'asc' })
+    sortRowsWithOrder(columns, page, { column: 'id', direction: 'asc' }).rows
     expect(page).toEqual([
       [2, 'b'],
       [1, 'a'],

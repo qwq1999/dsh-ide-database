@@ -123,10 +123,6 @@ export function readPins(kind: HistoryKind): HistoryEntry[] {
   return readPinned()[kind]
 }
 
-export function isPinned(kind: HistoryKind, statement: string): boolean {
-  return readPinned()[kind].some((entry) => entry.statement === statement.trim())
-}
-
 /** Add or remove a star; returns true when the statement is now pinned. */
 export function togglePin(kind: HistoryKind, statement: string): boolean {
   const text = statement.trim()
