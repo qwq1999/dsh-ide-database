@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readAllowedNumber, readFlag, writeFlag, writeNumber } from '../../src/client/prefs'
+import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from '../../src/client/prefs'
 
 describe('prefs', () => {
   beforeEach(() => {
@@ -87,6 +87,47 @@ describe('prefs flags', () => {
       expect(() => writeFlag('k', true)).not.toThrow()
     } finally {
       window.localStorage.setItem = setItem
+    }
+  })
+})
+
+describe('prefs text', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  it('reads a stored string and falls back for blank or missing entries', () => {
+    window.localStorage.setItem('name', 'shop')
+    window.localStorage.setItem('blank', '')
+    expect(readText('name')).toBe('shop')
+    expect(readText('blank', 'fallback')).toBe('fallback')
+    expect(readText('missing', 'fallback')).toBe('fallback')
+  })
+
+  it('writes text and swallows storage errors', () => {
+    writeText('k', 'orders')
+    expect(window.localStorage.getItem('k')).toBe('orders')
+
+    const setItem = window.localStorage.setItem
+    window.localStorage.setItem = () => {
+      throw new Error('blocked')
+    }
+    try {
+      expect(() => writeText('k', 'other')).not.toThrow()
+    } finally {
+      window.localStorage.setItem = setItem
+    }
+  })
+
+  it('falls back when the store is not readable', () => {
+    const getItem = window.localStorage.getItem
+    window.localStorage.getItem = () => {
+      throw new Error('blocked')
+    }
+    try {
+      expect(readText('k', 'fallback')).toBe('fallback')
+    } finally {
+      window.localStorage.getItem = getItem
     }
   })
 })
