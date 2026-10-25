@@ -34,10 +34,6 @@ export function formatCell(value: CellValue): string {
   return String(value)
 }
 
-export function cellTone(value: CellValue): 'null' | undefined {
-  return value === null ? 'null' : undefined
-}
-
 const WRITE_STATEMENT =
   /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|analyze|optimize|vacuum|set\s+global)\b/i
 
@@ -168,26 +164,12 @@ export function objectKindLabel(kind: ObjectKind): string {
   return '对象'
 }
 
-export function truncateMiddle(text: string, max = 60): string {
-  if (text.length <= max) return text
-  const half = Math.floor((max - 1) / 2)
-  return `${text.slice(0, half)}…${text.slice(-half)}`
-}
-
 export function stringifyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
   } catch {
     return String(value)
   }
-}
-
-export function redisValuePreview(value: unknown): string {
-  if (value === null || value === undefined) return 'nil'
-  if (typeof value === 'string') return value.length > 400 ? `${value.slice(0, 400)}…` : value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) return `[${value.length} 项]`
-  return stringifyJson(value)
 }
 
 const COUNT_FORMAT = new Intl.NumberFormat('en-US')
