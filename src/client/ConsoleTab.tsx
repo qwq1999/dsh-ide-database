@@ -6,7 +6,7 @@
  * keys on top, the selected value below) plus a command box, which is how IDEA
  * presents Redis.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type {
   CellValue,
   ClientConnection,
@@ -201,6 +201,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
   const resultBeforePlan = useRef<QueryResult | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  /** Two console tabs open at once must not share the completion popup ids. */
+  const completeId = useId()
   const filterRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
@@ -1548,9 +1550,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               className="dshdb-input dshdb-console-input"
               placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + Enter 执行光标所在的语句，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
-              aria-controls={suggestions === null ? undefined : 'dshdb-complete-list'}
+              aria-controls={suggestions === null ? undefined : `${completeId}-list`}
               aria-activedescendant={
-                suggestions !== null && suggestionItems.length > 0 ? `dshdb-complete-${activeSuggestionIndex}` : undefined
+                suggestions !== null && suggestionItems.length > 0 ? `${completeId}-option-${activeSuggestionIndex}` : undefined
               }
               value={statement}
               spellCheck={false}
@@ -1632,7 +1634,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               }}
             />
             {suggestions !== null ? (
-              <div className="dshdb-complete" id="dshdb-complete-list" role="listbox" aria-label="补全候选">
+              <div className="dshdb-complete" id={`${completeId}-list`} role="listbox" aria-label="补全候选">
                 {suggestionItems.length === 0 ? (
                   <span className="dshdb-complete-empty">没有匹配的表</span>
                 ) : (
@@ -1640,7 +1642,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     <button
                       key={`${item.kind}:${item.name}`}
                       type="button"
-                      id={`dshdb-complete-${index}`}
+                      id={`${completeId}-option-${index}`}
                       role="option"
                       aria-selected={index === activeSuggestionIndex}
                       className={index === activeSuggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}

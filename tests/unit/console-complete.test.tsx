@@ -196,7 +196,9 @@ describe('console table completion', () => {
     fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
 
-    expect(area.getAttribute('aria-controls')).toBe('dshdb-complete-list')
+    const list = screen.getByRole('listbox', { name: '补全候选' })
+    expect(list.id.endsWith('-list')).toBe(true)
+    expect(area.getAttribute('aria-controls')).toBe(list.id)
     const first = area.getAttribute('aria-activedescendant')
     expect(first).toBe(document.querySelector('.dshdb-complete-active')?.id)
 
