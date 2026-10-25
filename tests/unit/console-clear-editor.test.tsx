@@ -75,7 +75,8 @@ describe('clear editor', () => {
   it('empties the editor from the toolbar button', async () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
-    const editor = screen.getByPlaceholderText(/输入 SQL/)
+    // The schemas response may land a tick before React commits the editor.
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
     const clear = screen.getByRole('button', { name: '清空' })
     expect((clear as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(editor, { target: { value: 'SELECT 1' } })
