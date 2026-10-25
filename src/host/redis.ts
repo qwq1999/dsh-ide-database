@@ -68,6 +68,91 @@ export function zsetEntries(reply: unknown): Array<{ member: string; score: numb
   return items
 }
 
+/**
+ * Redis command that reports a key's size (entries, or bytes for strings).
+ *
+ * `type` comes from the server, so the size command is only known after the
+ * TYPE round trip; keeping the mapping in one table lets the batch reader and
+ * the single-key path agree.
+ */
+const SIZE_COMMAND: Record<string, 'strlen' | 'llen' | 'scard' | 'zcard' | 'hlen' | 'xlen'> = {
+  string: 'strlen',
+  list: 'llen',
+  set: 'scard',
+  zset: 'zcard',
+  hash: 'hlen',
+  stream: 'xlen',
+}
+
+interface PipelineSlot {
+  value?: unknown
+  error?: unknown
+}
+
+/** One `pipeline.exec()` entry is `[error, value]`; plain values are tolerated. */
+function slotAt(replies: unknown, index: number): PipelineSlot {
+  if (!Array.isArray(replies)) return { value: undefined }
+  const slot: unknown = replies[index]
+  if (!Array.isArray(slot)) return { value: slot }
+  return slot[0] === null || slot[0] === undefined ? { value: slot[1] } : { error: slot[0] }
+}
+
+function ttlOf(slot: PipelineSlot): number {
+  const value = Number(slot.value)
+  return slot.error === undefined && Number.isFinite(value) ? value : -1
+}
+
+function typeOf(slot: PipelineSlot, key: string): string {
+  if (slot.error !== undefined) throw new DbError('redis', `读取键 ${key} 的类型失败：${messageOf(slot.error)}`)
+  return slot.value === undefined || slot.value === null ? 'none' : String(slot.value)
+}
+
+/**
+ * TYPE/TTL (and, for containers, their size) for a whole page of keys.
+ *
+ * A page is up to `COUNT` keys; asking per key costs three round trips each.
+ * Both pipelines send every command in one write and read every reply in one
+ * batch, so a 200-key page costs two round trips instead of hundreds — the
+ * single biggest cost of browsing a big Redis keyspace.
+ */
+export async function keyInfos(client: Redis, keys: string[]): Promise<RedisKeyInfo[]> {
+  if (keys.length === 0) return []
+  const meta = client.pipeline()
+  for (const key of keys) {
+    meta.type(key)
+    meta.ttl(key)
+  }
+  const metaReplies = await meta.exec()
+  const infos: RedisKeyInfo[] = keys.map((key, index) => {
+    const type = typeOf(slotAt(metaReplies, index * 2), key)
+    const ttl = ttlOf(slotAt(metaReplies, index * 2 + 1))
+    return { key, type, ttl }
+  })
+  if (!infos.some((info) => SIZE_COMMAND[info.type] !== undefined)) return infos
+  const sizes = client.pipeline()
+  const sized: Array<(typeof SIZE_COMMAND)[string] | undefined> = infos.map((info) => SIZE_COMMAND[info.type])
+  for (let index = 0; index < infos.length; index += 1) {
+    const command = sized[index]
+    if (command === undefined) continue
+    if (command === 'strlen') sizes.strlen(infos[index].key)
+    else if (command === 'llen') sizes.llen(infos[index].key)
+    else if (command === 'scard') sizes.scard(infos[index].key)
+    else if (command === 'zcard') sizes.zcard(infos[index].key)
+    else if (command === 'hlen') sizes.hlen(infos[index].key)
+    else sizes.xlen(infos[index].key)
+  }
+  const sizeReplies = await sizes.exec()
+  let slot = 0
+  for (let index = 0; index < infos.length; index += 1) {
+    if (sized[index] === undefined) continue
+    const entry = slotAt(sizeReplies, slot)
+    slot += 1
+    const size = Number(entry.value)
+    if (entry.error === undefined && entry.value !== null && Number.isFinite(size)) infos[index].size = size
+  }
+  return infos
+}
+
 const READ_ONLY_COMMANDS = new Set([
   'get',
   'mget',
@@ -300,37 +385,6 @@ export class RedisManager {
     return 16
   }
 
-  private async keyInfo(client: Redis, key: string): Promise<RedisKeyInfo> {
-    const type = String(await client.type(key))
-    let ttl = -1
-    try {
-      ttl = Number(await client.ttl(key))
-    } catch {
-      ttl = -1
-    }
-    const size = await this.keySize(client, key, type).catch(() => undefined)
-    return { key, type, ttl, ...(size === undefined ? {} : { size }) }
-  }
-
-  private async keySize(client: Redis, key: string, type: string): Promise<number | undefined> {
-    switch (type) {
-      case 'string':
-        return Number(await client.strlen(key))
-      case 'list':
-        return Number(await client.llen(key))
-      case 'set':
-        return Number(await client.scard(key))
-      case 'zset':
-        return Number(await client.zcard(key))
-      case 'hash':
-        return Number(await client.hlen(key))
-      case 'stream':
-        return Number(await client.xlen(key))
-      default:
-        return undefined
-    }
-  }
-
   async scan(
     connId: string,
     db: number,
@@ -356,7 +410,7 @@ export class RedisManager {
     if (!Array.isArray(reply) || reply.length < 2) throw new DbError('redis', 'SCAN 返回了意外的结果')
     const nextCursor = String(reply[0])
     const keys = Array.isArray(reply[1]) ? (reply[1] as unknown[]).map((key) => String(key)) : []
-    const infos = await Promise.all(keys.map((key) => this.keyInfo(session.client, key)))
+    const infos = await keyInfos(session.client, keys)
     const filtered = wanted === undefined ? infos : infos.filter((info) => info.type === wanted)
     return { cursor: nextCursor, done: nextCursor === '0', keys: filtered, scanned: keys.length }
   }
@@ -364,17 +418,16 @@ export class RedisManager {
   async inspect(connId: string, db: number, key: string): Promise<RedisValue> {
     const session = await this.ensureSession(connId, db)
     const client = session.client
-    const type = String(await client.type(key))
+    const [info] = await keyInfos(client, [key])
+    const { type, ttl, size } = info
     if (type === 'none') throw new DbError('not-found', `键不存在：${key}`)
-    const ttl = Number(await client.ttl(key))
-    const size = await this.keySize(client, key, type).catch(() => undefined)
     const maxRows = Math.max(1, this.config.settings().maxRows)
     let value: JsonValue = null
     let truncated = false
     try {
       switch (type) {
         case 'string': {
-          const length = Number(await client.strlen(key))
+          const length = size ?? Number(await client.strlen(key))
           const limit = 64 * 1024
           const raw = length > limit ? await client.getrange(key, 0, limit - 1) : await client.get(key)
           const result = truncateText(String(raw ?? ''), limit)
@@ -428,7 +481,7 @@ export class RedisManager {
         case 'zset': {
           const reply = (await client.zrange(key, '0', String(maxRows), 'WITHSCORES')) as unknown
           value = zsetEntries(reply) as JsonValue[]
-          if (Number(await client.zcard(key)) > maxRows) truncated = true
+          if ((size ?? Number(await client.zcard(key))) > maxRows) truncated = true
           break
         }
         case 'stream': {
