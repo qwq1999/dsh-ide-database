@@ -700,7 +700,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <span className="dshdb-qbar-spacer" />
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
-        {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+        {exportNote !== '' ? <Tag tone="business" role="status">{exportNote}</Tag> : null}
         {exporting ? (
           <button
             type="button"

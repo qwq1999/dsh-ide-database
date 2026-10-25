@@ -180,14 +180,17 @@ export function Panel({
 export function Tag({
   tone,
   title,
+  role,
   children,
 }: {
   tone?: 'business' | 'success' | 'warn' | 'error'
   title?: string
+  /** Pass "status" so progress like an export count is announced politely. */
+  role?: string
   children: ReactNode
 }) {
   return (
-    <span className="dshdb-tag" data-tone={tone} title={title}>
+    <span className="dshdb-tag" data-tone={tone} title={title} role={role}>
       {children}
     </span>
   )

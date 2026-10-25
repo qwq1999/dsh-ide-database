@@ -1964,7 +1964,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               </select>
             ) : null}
             <span className="dshdb-qbar-spacer" />
-            {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+            {exportNote !== '' ? <Tag tone="business" role="status">{exportNote}</Tag> : null}
             {exporting ? (
               <button
                 type="button"
