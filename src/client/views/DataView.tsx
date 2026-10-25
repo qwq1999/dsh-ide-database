@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,7 +16,8 @@ import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
-import { usePopoverDismiss } from '../popover'
+import { RedisDatabases } from './redis-databases'
+import { RowPicker } from './row-picker'
 import {
   DEPTH_FIVE,
   DEPTH_FOUR,
@@ -31,7 +31,6 @@ import {
   objectIcon,
 } from './tree-parts'
 import {
-  ColumnsIcon,
   DatabaseIcon,
   FolderIcon,
   FunctionIcon,
@@ -125,223 +124,6 @@ function relativeTime(iso: string): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`
   if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`
   return `${Math.round(seconds / 86400)} 天前`
-}
-
-/**
- * Row-end visibility picker, modelled on DataGrip's database selector: an
- * "all" toggle on top, then one checkbox per database/schema. The choice is
- * persisted by the hook, so it survives restarts.
- */
-function RowPicker({
-  title,
-  allLabel,
-  items,
-  visible,
-  onToggle,
-  onToggleAll,
-}: {
-  title: string
-  allLabel: string
-  items: { id: string; label: string }[]
-  visible: string[] | null
-  onToggle: (id: string) => void
-  onToggleAll: (all: boolean) => void
-}): ReactElement {
-  const [open, setOpen] = useState(false)
-  const anchor = useRef<HTMLSpanElement>(null)
-  const close = useCallback(() => setOpen(false), [])
-  usePopoverDismiss(open, close, anchor)
-  const allVisible = visible === null || (items.length > 0 && items.every((item) => visible.includes(item.id)))
-  return (
-    <span className="dshdb-picker-anchor" ref={anchor}>
-      <span
-        className="dshdb-row-action"
-        role="button"
-        tabIndex={0}
-        title={title}
-        aria-haspopup="true"
-        aria-expanded={open}
-        onClick={(event) => {
-          event.stopPropagation()
-          setOpen((value) => !value)
-        }}
-        onDoubleClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          event.stopPropagation()
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            setOpen((value) => !value)
-          }
-          if (event.key === 'Escape') setOpen(false)
-        }}
-      >
-        <ColumnsIcon size={12} />
-      </span>
-      {open ? (
-        <div className="dshdb-picker" onClick={(event) => event.stopPropagation()}>
-          <label className="dshdb-picker-item dshdb-picker-all">
-            <input type="checkbox" checked={allVisible} onChange={() => onToggleAll(!allVisible)} />
-            <span>{allLabel}</span>
-            <em>添加模式</em>
-          </label>
-          <div className="dshdb-picker-scroll">
-            {items.map((item) => (
-              <label key={item.id} className="dshdb-picker-item">
-                <input
-                  type="checkbox"
-                  checked={visible === null || visible.includes(item.id)}
-                  onChange={() => onToggle(item.id)}
-                />
-                <span>{item.label}</span>
-              </label>
-            ))}
-          </div>
-          <div className="dshdb-picker-hint">勾选即生效，点击空白处关闭</div>
-        </div>
-      ) : null}
-    </span>
-  )
-}
-
-function RedisDatabases({
-  connection,
-  keysByDb,
-  cursors,
-  loadingByDb,
-  visibleDbs,
-  expanded,
-  selectedKey,
-  query,
-  onToggleDb,
-  onLoadMore,
-  onSelectDb,
-  onSelectKey,
-}: {
-  connection: ClientConnection
-  keysByDb: Record<string, RedisKeyInfo[]> | undefined
-  cursors: Record<string, string> | undefined
-  loadingByDb: Record<string, boolean> | undefined
-  visibleDbs: number[]
-  expanded: Record<string, boolean>
-  selectedKey: string
-  query: string
-  onToggleDb: (db: number) => void
-  onLoadMore: (db: number) => void
-  onSelectDb: (db: number) => void
-  onSelectKey: (db: number, key: string) => void
-}): ReactElement {
-  if (visibleDbs.length === 0) {
-    return (
-      <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px' }}>
-        未选择数据库，使用行尾的数据库按钮选择
-      </div>
-    )
-  }
-
-  return (
-    <div role="group">
-      {visibleDbs.map((db) => {
-        const nodeKey = `${connection.id}:redis:db${db}`
-        const open = expanded[nodeKey] !== false
-        const keys = keysByDb?.[String(db)]
-        const loading = loadingByDb?.[String(db)] === true
-        const cursor = cursors?.[String(db)]
-        const list = (keys ?? []).filter((key) => query === '' || key.key.toLowerCase().includes(query))
-        const hasMore = cursor !== undefined && cursor !== '0'
-        const active = selectedKey === `${connection.id}|redisdb:${db}`
-
-        return (
-          <div key={db} role="group">
-            <button
-              type="button"
-              className="dshdb-row"
-              role="treeitem"
-              aria-expanded={open}
-              aria-selected={active}
-              data-active={active}
-              data-kind="schema"
-              style={DEPTH_ONE}
-              title={`Redis 逻辑库 db${db}${db === connection.redisDb ? '（默认）' : ''}`}
-              onClick={() => onSelectDb(db)}
-              onDoubleClick={() => onToggleDb(db)}
-            >
-              <RowToggle open={open} title={open ? '收起数据库' : '展开数据库'} onToggle={() => onToggleDb(db)} />
-              <span className="dshdb-row-icon">
-                <DatabaseIcon size={13} />
-              </span>
-              <span className="dshdb-row-label dshdb-mono">db{db}</span>
-              {db === connection.redisDb ? <span className="dshdb-row-meta">默认</span> : null}
-              {loading ? <Spinner /> : null}
-              {!loading && keys !== undefined ? <span className="dshdb-row-meta">{keys.length} 个键</span> : null}
-            </button>
-
-            {open ? (
-              <>
-                {keys === undefined && loading ? (
-                  <div className="dshdb-muted dshdb-inline" style={{ padding: '4px 6px 4px 26px' }}>
-                    <Spinner /> 正在扫描键…
-                  </div>
-                ) : null}
-                {keys === undefined && !loading ? (
-                  <button
-                    type="button"
-                    className="dshdb-row"
-                    style={DEPTH_TWO}
-                    data-kind="folder"
-                    onClick={() => onLoadMore(db)}
-                  >
-                    <span className="dshdb-row-toggle" />
-                    <span className="dshdb-row-label dshdb-muted">扫描键</span>
-                  </button>
-                ) : null}
-                {keys !== undefined && list.length === 0 ? (
-                  <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px' }}>
-                    {query ? '没有匹配的键' : '没有键'}
-                  </div>
-                ) : null}
-                {list.map((key) => (
-                  <button
-                    key={key.key}
-                    type="button"
-                    className="dshdb-row"
-                    role="treeitem"
-                    data-active={selectedKey === `${connection.id}|redis:${db}:${key.key}`}
-                    data-kind="redis-key"
-                    style={DEPTH_TWO}
-                    title={`${key.key} · ${key.type} · TTL ${redisTtlLabel(key.ttl)}`}
-                    onClick={() => onSelectKey(db, key.key)}
-                  >
-                    <span className="dshdb-row-toggle" />
-                    <span className="dshdb-row-icon">
-                      <KeyIcon size={13} />
-                    </span>
-                    <span className="dshdb-row-label">
-                      <Highlight text={key.key} query={query} />
-                    </span>
-                    <Tag>{key.type}</Tag>
-                    {key.size === undefined ? null : <span className="dshdb-row-meta">{key.size}</span>}
-                  </button>
-                ))}
-                {hasMore ? (
-                  <button
-                    type="button"
-                    className="dshdb-row"
-                    style={DEPTH_TWO}
-                    data-kind="folder"
-                    disabled={loading}
-                    onClick={() => onLoadMore(db)}
-                  >
-                    <span className="dshdb-row-toggle" />
-                    <span className="dshdb-row-label dshdb-muted">{loading ? '正在加载…' : '加载更多键'}</span>
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 export function DataView(props: DataViewProps): ReactElement {
