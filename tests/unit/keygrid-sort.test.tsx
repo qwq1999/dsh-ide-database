@@ -32,6 +32,18 @@ describe('redis key grid sorting', () => {
     expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
   })
 
+  it('exposes the sort direction to assistive tech', () => {
+    render(<KeyGrid keys={keys} selectedKey="" onSelect={vi.fn()} />)
+    const header = screen.getByRole('columnheader', { name: /^键/ })
+    expect(header.getAttribute('aria-sort')).toBe('none')
+
+    fireEvent.click(screen.getByText('键'))
+    expect(header.getAttribute('aria-sort')).toBe('ascending')
+
+    fireEvent.click(screen.getByText('键'))
+    expect(header.getAttribute('aria-sort')).toBe('descending')
+  })
+
   it('keeps the selection working after sorting', () => {
     const onSelect = vi.fn()
     render(<KeyGrid keys={keys} selectedKey="user:9" onSelect={onSelect} />)

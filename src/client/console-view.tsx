@@ -181,6 +181,7 @@ export const KeyGrid = memo(function KeyGrid({
             className="dshdb-th-sortable"
             title={sort === 'none' ? '按名称排序' : sort === 'asc' ? '按名称倒序' : '恢复扫描顺序'}
             data-sorted={sort === 'none' ? undefined : sort}
+            aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'}
             onClick={() => setSort(nextKeySort(sort))}
           >
             键
