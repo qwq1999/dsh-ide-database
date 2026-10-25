@@ -3,12 +3,13 @@
  * grid and pager buttons. They read nothing from the console state, so they
  * live here instead of growing ConsoleTab.tsx.
  */
-import { memo, useState, type ReactElement } from 'react'
+import { memo, useMemo, useState, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
 import { formatCount, formatTtl } from './format'
+import { nextKeySort, sortKeys, type KeySort } from './redissort'
 
 export { formatCount }
 
@@ -157,19 +158,29 @@ export const KeyGrid = memo(function KeyGrid({
   selectedKey: string
   onSelect: (key: RedisKeyInfo) => void
 }): ReactElement {
+  const [sort, setSort] = useState<KeySort>('none')
+  const rows = useMemo(() => sortKeys(keys, sort), [keys, sort])
   return (
     <table className="dshdb-grid">
       <thead>
         <tr>
           <th className="dshdb-num">#</th>
-          <th>键</th>
+          <th
+            className="dshdb-th-sortable"
+            title={sort === 'none' ? '按名称排序' : sort === 'asc' ? '按名称倒序' : '恢复扫描顺序'}
+            data-sorted={sort === 'none' ? undefined : sort}
+            onClick={() => setSort(nextKeySort(sort))}
+          >
+            键
+            {sort === 'none' ? null : <span className="dshdb-sort-arrow">{sort === 'asc' ? '▲' : '▼'}</span>}
+          </th>
           <th>类型</th>
           <th>TTL</th>
           <th>长度</th>
         </tr>
       </thead>
       <tbody>
-        {keys.map((key, index) => (
+        {rows.map((key, index) => (
           <KeyRow key={key.key} info={key} index={index} active={key.key === selectedKey} onSelect={onSelect} />
         ))}
       </tbody>
