@@ -252,6 +252,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     if (!isRedis || selectedId === '') return
     setRedisDb(readAllowedNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, REDIS_DB_CHOICES, configuredDb))
   }, [configuredDb, isRedis, selectedId])
+  // A remembered index can point past the last logical database of a resized server.
+  useEffect(() => {
+    if (!isRedis || redisDatabases === null || redisDb === null) return
+    if (redisDb < redisDatabases) return
+    const fallback = Math.min(Math.max(configuredDb, 0), redisDatabases - 1)
+    setRedisDb(fallback)
+    if (selectedId !== '') writeNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, fallback)
+  }, [configuredDb, isRedis, redisDatabases, redisDb, selectedId])
+
   /** The schema SQL runs in when the user has not picked another one. */
   const defaultSchema =
     connection === undefined
