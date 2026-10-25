@@ -176,4 +176,26 @@ describe('console column completion', () => {
     fireEvent.mouseDown(screen.getByText('orders'))
     await waitFor(() => expect(editor().value).toBe('SELECT * FROM shop.orders'))
   })
+
+  it('refetches columns after a statement that changes the table', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    fireEvent.change(area, { target: { value: 'SELECT * FROM orders.' } })
+    caret(area, area.value.length)
+    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    await waitFor(() => expect(mocks.describe).toHaveBeenCalledTimes(1))
+
+    fireEvent.keyDown(area, { key: 'Escape' })
+    fireEvent.change(area, { target: { value: 'ALTER TABLE orders ADD COLUMN x INT' } })
+    fireEvent.keyDown(area, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(mocks.schemas.mock.calls.length).toBeGreaterThan(1))
+
+    fireEvent.change(area, { target: { value: 'SELECT * FROM orders.' } })
+    caret(area, area.value.length)
+    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    await waitFor(() => expect(mocks.describe).toHaveBeenCalledTimes(2))
+  })
 })

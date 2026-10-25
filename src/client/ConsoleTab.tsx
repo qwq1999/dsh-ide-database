@@ -513,7 +513,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setBase(paged ? text : '')
         setSourceSql(text)
         lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
-        if (looksLikeDdl(text)) void loadSchemaList(selectedId)
+        if (looksLikeDdl(text)) {
+          completionCache.current.clear()
+          void loadSchemaList(selectedId)
+        }
       } catch (error) {
         if (token !== runToken.current) return
         setResult(null)
@@ -583,7 +586,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
-      if (parts.some(looksLikeDdl)) void loadSchemaList(selectedId)
+      if (parts.some(looksLikeDdl)) {
+        completionCache.current.clear()
+        void loadSchemaList(selectedId)
+      }
     } finally {
       runningRef.current = Math.max(0, runningRef.current - 1)
       setMultiProgress(null)
