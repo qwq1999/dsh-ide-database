@@ -37,6 +37,7 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { insertStatements, tableFromStatement } from './tablesql'
+import { MAX_SQL_IMPORT_BYTES, mergeSqlFile } from './sqlfile'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon, StarIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -313,6 +314,7 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
 
   const stmtRef = useRef('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
   const [planRunning, setPlanRunning] = useState(false)
   const [plan, setPlan] = useState<ExplainResult | null>(null)
@@ -480,6 +482,33 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
     } finally {
       setMultiProgress(null)
       setRunning(false)
+    }
+  }
+
+  /** Read a `.sql` file into the editor at the caret: a script never replaces what is there. */
+  const importSqlFile = async (file: File | undefined): Promise<void> => {
+    if (file === undefined) return
+    if (file.size > MAX_SQL_IMPORT_BYTES) {
+      setFailure({ message: `文件过大：${file.name}（上限 ${String(MAX_SQL_IMPORT_BYTES / 1024 / 1024)} MB）` })
+      return
+    }
+    try {
+      const imported = await file.text()
+      const area = inputRef.current
+      const merged = mergeSqlFile(statement, imported, area?.selectionStart ?? statement.length)
+      if (merged.text === statement) {
+        setFailure({ message: `文件里没有可导入的 SQL：${file.name}` })
+        return
+      }
+      setSelectedRun(false)
+      setFailure(null)
+      setStatement(merged.text)
+      window.setTimeout(() => {
+        area?.focus()
+        area?.setSelectionRange(merged.caret, merged.caret)
+      }, 0)
+    } catch (error) {
+      setFailure(failureText(error))
     }
   }
 
@@ -1053,6 +1082,26 @@ function ConsoleBody({ initialConnectionId }: { initialConnectionId?: string }):
             >
               格式化
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              title={`从 .sql 文件读取脚本并插入到光标处（上限 ${String(MAX_SQL_IMPORT_BYTES / 1024 / 1024)} MB）`}
+            >
+              导入
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".sql,.txt,text/plain"
+              hidden
+              aria-label="导入 SQL 文件"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                void importSqlFile(file)
+              }}
+            />
             <Button
               size="sm"
               variant="ghost"
