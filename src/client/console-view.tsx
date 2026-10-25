@@ -148,7 +148,14 @@ const KeyRow = memo(function KeyRow({
   return (
     <tr
       data-active={active}
+      tabIndex={0}
       onClick={() => onSelect(info)}
+      onKeyDown={(event) => {
+        // Rows are click targets only; keyboard users get the same selection with Enter or Space.
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onSelect(info)
+      }}
       onContextMenu={(event) => onMenu(event, info)}
       style={{ cursor: 'pointer' }}
     >

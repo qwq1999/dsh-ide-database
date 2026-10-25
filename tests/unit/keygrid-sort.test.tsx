@@ -44,6 +44,16 @@ describe('redis key grid sorting', () => {
     expect(header.getAttribute('aria-sort')).toBe('descending')
   })
 
+  it('selects a row from the keyboard', () => {
+    const onSelect = vi.fn()
+    render(<KeyGrid keys={keys} selectedKey="" onSelect={onSelect} />)
+    const row = screen.getByText('user:10').closest('tr') as HTMLTableRowElement
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledWith(keys[0])
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(onSelect).toHaveBeenCalledTimes(2)
+  })
+
   it('sorts the length column without touching the name order', () => {
     render(<KeyGrid keys={keys} selectedKey="" onSelect={vi.fn()} />)
     expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
