@@ -16,8 +16,10 @@ import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
+import { copyText } from '../colmenu'
 import { RedisDatabases } from './redis-databases'
 import { OBJECT_PAGE, objectWindow } from './objectlimit'
+import { TreeMenu, placeMenu, type TreeMenuState } from './tree-menu'
 import { RowPicker } from './row-picker'
 import {
   DEPTH_FIVE,
@@ -130,6 +132,7 @@ function relativeTime(iso: string): string {
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
   const [objectExtra, setObjectExtra] = useState<Record<string, number>>({})
+  const [objectMenu, setObjectMenu] = useState<TreeMenuState | null>(null)
   // Typing must stay responsive on big trees: match against the last settled
   // term and apply the new one once the user pauses.
   const [settledFilter, setSettledFilter] = useState('')
@@ -165,6 +168,25 @@ export function DataView(props: DataViewProps): ReactElement {
       event.preventDefault()
       toggle.click()
     }
+  }
+
+  const openObjectMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    connection: ClientConnection,
+    schema: string,
+    object: SchemaObject,
+  ): void => {
+    event.preventDefault()
+    const isRelation = object.kind === 'table' || object.kind === 'view'
+    const items = [
+      ...(isRelation
+        ? [{ label: '打开数据', run: () => props.onOpenTable(connection.id, schema, object) }]
+        : []),
+      { label: '查看 DDL', run: () => props.onShowDdl(connection.id, schema, object.name, object.kind) },
+      { label: '复制名称', run: () => void copyText(object.name) },
+      { label: '复制限定名', run: () => void copyText(`${schema}.${object.name}`) },
+    ]
+    setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
   }
 
   const normalizedFilter = settledFilter.trim().toLowerCase()
@@ -610,6 +632,9 @@ export function DataView(props: DataViewProps): ReactElement {
                                                         props.onOpenTable(connection.id, schema.name, object)
                                                       }
                                                       onToggleKey={props.onToggleKey}
+                                                      onMenu={(event) =>
+                                                        openObjectMenu(event, connection, schema.name, object)
+                                                      }
                                                       query={normalizedFilter}
                                                     />
                                                   ))}
@@ -765,6 +790,8 @@ export function DataView(props: DataViewProps): ReactElement {
             : '展开数据源，选择表或视图可查看列、索引等结构信息；选择函数、存储过程、触发器可查看定义；行尾按钮可选择显示的架构。'}
         </div>
       ) : null}
+
+      <TreeMenu menu={objectMenu} onClose={() => setObjectMenu(null)} />
     </div>
   )
 }

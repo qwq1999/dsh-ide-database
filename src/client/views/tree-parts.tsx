@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactElement, ReactNode } from 'react'
+import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react'
 import type { ObjectKind, SchemaObject, TableDescription } from '../../shared/types'
 import { objectKindLabel } from '../format'
 import { highlightParts } from '../highlight'
@@ -130,6 +130,7 @@ export function ObjectRow({
   onSelect,
   onOpen,
   onToggleKey,
+  onMenu,
   query,
 }: {
   connectionId: string
@@ -142,6 +143,7 @@ export function ObjectRow({
   onSelect: () => void
   onOpen: () => void
   onToggleKey: (key: string) => void
+  onMenu?: (event: MouseEvent<HTMLButtonElement>) => void
   query: string
 }): ReactElement {
   const isRelation = object.kind === 'table' || object.kind === 'view'
@@ -174,6 +176,7 @@ export function ObjectRow({
           onSelect()
           onOpen()
         }}
+        onContextMenu={onMenu}
       >
         {isRelation ? (
           <RowToggle
