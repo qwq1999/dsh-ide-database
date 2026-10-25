@@ -298,6 +298,10 @@ DSH_TEST_MYSQL_PORT=13306 DSH_TEST_REDIS_PORT=16379 npx vitest run tests/integra
 DSH_TEST_TOKEN=<token> PLAYWRIGHT_CHROMIUM_PATH=<chromium> node scripts/qa-live.mjs
 ```
 
+## 更新日志
+
+逐条改动见 [CHANGELOG.md](CHANGELOG.md)（按提交类型分组）。
+
 ## License
 
 MIT
