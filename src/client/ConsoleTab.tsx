@@ -36,7 +36,7 @@ import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
-import { pickStatement } from './sqlselection'
+import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
 import { insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
@@ -534,18 +534,16 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     downloadText(exportFilename('', 'console', 'sql'), 'application/sql', script)
   }
 
-  const run = async (): Promise<void> => {
+  /** Shared by both run entry points: confirm writes, split, execute. */
+  const runText = async (text: string): Promise<void> => {
     setExportOpen(false)
-    const area = inputRef.current
-    const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
-    const text = picked.statement.trim()
-    if (text === '') return
-    setSelectedRun(picked.selected)
-    const parts = splitStatements(text)
+    const body = text.trim()
+    if (body === '') return
+    const parts = splitStatements(body)
     if (parts.length === 0) return
     const isWrite = parts.some((part) => looksLikeWrite(part))
     if (isWrite && settings?.confirmDestructive === true) {
-      const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', text)
+      const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', body)
       if (!ok) return
     }
     if (parts.length > 1) {
@@ -553,8 +551,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       return
     }
     setMultiNote('')
-    setHistory(pushHistory('sql', text))
-    await execute({ statement: text, page: 0, size: pageSize, allowWrite: isWrite })
+    setHistory(pushHistory('sql', body))
+    await execute({ statement: body, page: 0, size: pageSize, allowWrite: isWrite })
+  }
+
+  const run = async (): Promise<void> => {
+    const area = inputRef.current
+    const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
+    setSelectedRun(picked.selected)
+    await runText(picked.statement)
+  }
+
+  /** Ctrl/⌘ + Shift + Enter: run only the statement the caret is in. */
+  const runCaret = async (): Promise<void> => {
+    const area = inputRef.current
+    const found = statementAtCaret(statement, area?.selectionStart ?? caretPos)
+    if (found.statement === '') return
+    setSelectedRun(false)
+    await runText(found.statement)
   }
 
   /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
@@ -1272,7 +1286,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           <span className="dshdb-complete-anchor" ref={completionAnchor}>
             <textarea
               className="dshdb-input dshdb-console-input"
-              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + Enter 执行光标所在的语句，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
               value={statement}
               spellCheck={false}
@@ -1328,6 +1342,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       area?.setSelectionRange(next.selectionStart, next.selectionEnd)
                     })
                   }
+                  return
+                }
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && event.shiftKey) {
+                  event.preventDefault()
+                  void runCaret()
                   return
                 }
                 if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
