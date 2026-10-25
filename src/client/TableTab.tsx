@@ -490,11 +490,6 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       return next
     })
   }
-  const clearFilters = (): void => {
-    setFilters({})
-    previousActive.current = 0
-    applyRef.current({ page: 0, where: whereText }, {})
-  }
 
   /**
    * Export what the grid currently shows ("page") or page through the whole
