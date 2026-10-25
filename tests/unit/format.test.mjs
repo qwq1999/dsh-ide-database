@@ -23,6 +23,8 @@ describe('format helpers', () => {
     expect(formatMs(undefined)).toBe('—')
     expect(formatMs(3)).toBe('3 ms')
     expect(formatMs(2500)).toBe('2.50 s')
+    expect(formatMs(65000)).toBe('1m 5s')
+    expect(formatMs(600000)).toBe('10m 0s')
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(2048)).toBe('2.0 KB')
   })
