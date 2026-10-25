@@ -38,7 +38,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
-import { insertStatement, tableFromStatement } from './tablesql'
+import { insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
 import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
@@ -785,6 +785,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         run: () => void copyText(columnValues(visibleRows, index)),
       },
       {
+        label: `复制查询语句（${displayColumns.length} 列）`,
+        disabled: displayColumns.length === 0 || tableTarget() === null,
+        run: () => {
+          const target = tableTarget()
+          if (target === null) return
+          void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns))
+        },
+      },
+      {
         label: `隐藏列「${column.name}」`,
         disabled: shownColumns.length <= 1,
         run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
@@ -795,7 +804,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         run: () => setHiddenColumns(null),
       },
     ]
-  }, [columns, hiddenCount, rowSort, shownColumns.length, visibleRows])
+  }, [columns, displayColumns, hiddenCount, rowSort, shownColumns.length, visibleRows])
 
   /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
   const gridSort = useCallback((column: ColumnInfo): void => {

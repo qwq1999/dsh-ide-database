@@ -180,4 +180,25 @@ describe('table export menu', () => {
       setConsoleTabOpener(undefined)
     }
   })
+
+  it('copies a SELECT listing every column from the header menu', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    const header = screen
+      .getAllByRole('columnheader')
+      .find((cell) => (cell.textContent ?? '').startsWith('total'))
+    if (header === undefined) throw new Error('missing total header')
+
+    fireEvent.contextMenu(header)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制查询语句（1 列）' }))
+
+    expect(copies).toHaveBeenCalledWith('SELECT `total` FROM `shop`.`orders`')
+  })
 })

@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -255,6 +255,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           run: () => void copyText(columnValues(rows, index)),
         },
         {
+          label: `复制查询语句（${displayColumns.length} 列）`,
+          disabled: displayColumns.length === 0,
+          run: () => void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns)),
+        },
+        {
           label: `隐藏列「${column.name}」`,
           disabled: shownColumns.length <= 1,
           run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
@@ -266,7 +271,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         },
       ]
     },
-    [activeSort, clearSort, columns, hiddenCount, rows, shownColumns.length, sortBy],
+    [activeSort, clearSort, columns, displayColumns, hiddenCount, rows, shownColumns.length, sortBy],
   )
   const gridReorder = useCallback(
     (from: number, to: number): void => {

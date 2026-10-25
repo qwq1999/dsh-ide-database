@@ -57,6 +57,20 @@ export function tableSelectSql(
   return `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, size, 0)}`
 }
 
+/**
+ * A SELECT over every column the grid knows about: handy when a `SELECT *` should
+ * become an explicit column list.
+ */
+export function selectColumnsSql(
+  dialect: ClientConnection['dialect'],
+  schema: string,
+  table: string,
+  columns: ColumnInfo[],
+): string {
+  const list = columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
+  return `SELECT ${list === '' ? '*' : list} FROM ${qualifiedName(dialect, schema, table)}`
+}
+
 export function isNumericType(typeName: string): boolean {
   return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }

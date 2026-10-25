@@ -10,6 +10,7 @@ import {
   qualifiedName,
   quoteIdent,
   quoteLiteral,
+  selectColumnsSql,
   stripKeyword,
   tableFromStatement,
   tableSelectSql,
@@ -177,6 +178,25 @@ describe('tableSelectSql', () => {
     expect(tableSelectSql('oracle', 'SHOP', 'ORDERS', '', '', 0)).toBe(
       'SELECT * FROM "SHOP"."ORDERS" OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY',
     )
+  })
+})
+
+describe('selectColumnsSql', () => {
+  it('quotes the column list for the connection dialect', () => {
+    const columns = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'name', typeName: 'VARCHAR' },
+    ]
+    expect(selectColumnsSql('mysql', 'shop', 'orders', columns)).toBe(
+      'SELECT `id`, `name` FROM `shop`.`orders`',
+    )
+    expect(selectColumnsSql('oracle', 'SHOP', 'ORDERS', columns)).toBe(
+      'SELECT "id", "name" FROM "SHOP"."ORDERS"',
+    )
+  })
+
+  it('falls back to a star when no columns are known yet', () => {
+    expect(selectColumnsSql('mysql', 'shop', 'orders', [])).toBe('SELECT * FROM `shop`.`orders`')
   })
 })
 
