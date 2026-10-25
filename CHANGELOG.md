@@ -4,8 +4,18 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（114）
+## 新功能（124）
 
+- `4cf26f8` feat(ui): 导出进度与复制反馈交给读屏播报
+- `15c406b` feat(tree): 对象菜单可复制带分页的查询语句
+- `ee7b4e6` feat(table): 切回标签页立刻补一次自动刷新
+- `5ddf4de` feat(grid): 列菜单里的复制也给出已复制提示
+- `8782be9` feat(grid): 单元格菜单里的复制也给出已复制提示
+- `9f170fd` feat(ui): 连接与驱动弹层的报错也能复制
+- `3199c91` feat(export): 从导出菜单复制后在底栏提示已复制
+- `aacd226` feat(ui): 插件状态加载失败的提示也能复制
+- `c632f26` feat(redis): 键值或命令出错的提示也能一键复制
+- `c867b89` feat(table): 加载失败的提示可一键复制
 - `e667cc7` feat(redis): 键行右键可复制当前列表的所有键名
 - `79d40cf` feat(ui): 查询输入框补上无障碍名称
 - `035c6b7` feat(export): 当前页可复制成 TSV 文本
@@ -121,8 +131,11 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（50）
+## 修复（53）
 
+- `b206f61` fix(ui): 复制 TSV 也给出「已复制」反馈
+- `18c7a3e` fix(table): 导出进行中不再触发自动刷新
+- `bdcdde2` fix(ui): 通知序列号改成自增，毫秒内连发不会共用 key
 - `ea7eede` fix(ui): 复制兜底后把焦点还给触发元素
 - `5e2e3d8` fix(redis): 键行菜单回调重新稳定，保住按行 memo
 - `6c9351b` fix(console): 从控制台打开视图时按视图取 DDL
@@ -174,8 +187,9 @@
 - `020ecc5` fix(sql): 只读校验识破 EXPLAIN ANALYZE 与 WITH 后的写语句
 - `b4e1530` fix(export): MySQL 字面量转义反斜杠，导出的 INSERT 还原原值
 
-## 性能（22）
+## 性能（23）
 
+- `2d4c916` perf(console): 语句目标表每次渲染只解析一次
 - `a877c20` perf(redis): 刷新数据源时并行重读各逻辑库
 - `bfd0fa4` perf(grid): 控制台结果网格不再随编辑器输入重绘
 - `b519660` perf(redis): 值面板不再随命令输入重绘
@@ -208,8 +222,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（10）
+## 测试（11）
 
+- `d8e7f08` test: README 里的工具数量要和表格行数一致
 - `95fb576` test: 历史面板 memo 用例等编辑器就绪并冲洗挂起渲染
 - `c1968c9` test: 命令历史用例等命令框挂载后再操作
 - `a27cc5c` test: 另两处控制台用例等编辑器挂载后再输入
@@ -221,15 +236,20 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（4）
+## 文档（7）
 
+- `bc1f6f3` docs: 说明切回标签页会立刻刷新
+- `0db3b77` docs: 补上复制反馈的说明
+- `91c0847` docs: 修正 README 里 Agent 工具的数量
 - `af0f566` docs: 补一份按类型分组的更新日志
 - `76b2715` docs: 补一份快捷键一览
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（6）
+## 杂项（8）
 
+- `95ed75d` chore: 内部辅助函数不再对外导出
+- `c62f3bf` chore: 更新日志检查不再放进每次提交的 verify
 - `b144d79` chore: 补一条 npm run verify 把三项检查串起来
 - `0e61f40` chore: 更新日志改由脚本生成，避免与 git 历史漂移
 - `ec82004` chore(client): 删掉没人引用的图标与常量
