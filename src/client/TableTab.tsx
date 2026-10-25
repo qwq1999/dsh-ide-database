@@ -104,6 +104,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  const exportCancelled = useRef(false)
   const exportAnchor = useRef<HTMLSpanElement>(null)
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
@@ -440,6 +441,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const collected = await collectRows({
       limit: EXPORT_LIMIT,
       batch,
+      cancelled: () => exportCancelled.current,
       onProgress: (count) => setExportNote(`${label} 正在取 ${formatCount(count)} 行…`),
       fetch: async ({ offset }) => {
         const sql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, batch, offset)}`
@@ -458,12 +460,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     if (connection === null) return
     setExporting(true)
     setExportOpen(false)
+    exportCancelled.current = false
     try {
       const dialect = connection.dialect
       let exportColumns = displayColumns
       let exportData = displayRows
       if (scope === 'all') {
         const collected = await collectAllRows(format.toUpperCase())
+        if (exportCancelled.current) {
+          setExportNote(`${format.toUpperCase()} 导出已取消`)
+          setTimeout(() => setExportNote(''), 5000)
+          return
+        }
         exportData = orderRows(collected.rows, order)
         exportColumns = orderColumns(collected.columns, order)
       }
@@ -489,8 +497,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     if (connection === null) return
     setExporting(true)
     setExportOpen(false)
+    exportCancelled.current = false
     try {
       const collected = await collectAllRows('脚本')
+      if (exportCancelled.current) {
+        setExportNote('脚本导出已取消')
+        setTimeout(() => setExportNote(''), 5000)
+        return
+      }
       const ddl = await api
         .ddl(params.connectionId, params.schema, params.table, 'table')
         .then((result) => result.ddl)
@@ -535,6 +549,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
         {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+        {exporting ? (
+          <button
+            type="button"
+            className="dshdb-pager-btn"
+            title="停止导出，已取到的行不会写入文件"
+            onClick={() => {
+              exportCancelled.current = true
+            }}
+          >
+            取消
+          </button>
+        ) : null}
         <span className="dshdb-menu-wrap" ref={exportAnchor}>
           <button
             type="button"

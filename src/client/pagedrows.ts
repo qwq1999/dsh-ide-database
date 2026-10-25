@@ -19,6 +19,8 @@ export interface PagedWalk {
   fetch: (paging: { page: number; offset: number }) => Promise<Row[]>
   /** Called after each batch with the number of rows collected so far. */
   onProgress?: (collected: number) => void
+  /** Checked between batches; true stops the walk and keeps what was collected. */
+  cancelled?: () => boolean
 }
 
 const MAX_BATCHES = 1000
@@ -32,6 +34,7 @@ export async function collectRows(walk: PagedWalk): Promise<Row[]> {
   const limit = Math.max(0, Math.trunc(walk.limit))
   const rows: Row[] = []
   for (let page = 0; page < MAX_BATCHES && rows.length < limit; page += 1) {
+    if (walk.cancelled?.() === true) break
     const chunk = await walk.fetch({ page, offset: page * batch })
     rows.push(...chunk)
     walk.onProgress?.(rows.length)

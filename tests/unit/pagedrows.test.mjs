@@ -69,6 +69,13 @@ describe('collectRows', () => {
     ])
   })
 
+  it('keeps the rows collected before the user cancels', async () => {
+    let checks = 0
+    const fake = walker([[1, 2], [3, 4]], { limit: 10, batch: 2, cancelled: () => { checks += 1; return checks > 1 } })
+    await expect(fake.run()).resolves.toEqual([1, 2])
+    expect(fake.calls).toHaveLength(1)
+  })
+
   it('propagates a failing batch', async () => {
     await expect(
       collectRows({

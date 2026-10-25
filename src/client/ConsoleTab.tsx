@@ -144,6 +144,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
+  const exportCancelled = useRef(false)
   const [exporting, setExporting] = useState(false)
   const exportAnchor = useRef<HTMLSpanElement>(null)
   const closeExport = useCallback(() => setExportOpen(false), [])
@@ -945,10 +946,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
     setExporting(true)
     setFailure(null)
+    exportCancelled.current = false
     try {
       const collected = await collectRows({
         limit: EXPORT_LIMIT,
         batch: EXPORT_BATCH,
+        cancelled: () => exportCancelled.current,
         onProgress: (count) => setExportNote(`${format.toUpperCase()} 正在取 ${formatCount(count)} 行…`),
         fetch: async ({ page: sourcePage }) => {
           const sqlText = wrapPage(connection?.dialect ?? 'mysql', base, EXPORT_BATCH, sourcePage)
@@ -963,6 +966,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           return next.rows
         },
       })
+      if (exportCancelled.current) {
+        setExportNote(`${format.toUpperCase()} 导出已取消`)
+        setTimeout(() => setExportNote(''), 5000)
+        return
+      }
       const data = orderRows(collected, columnOrder)
       const cols = orderColumns(columns, columnOrder)
       const payload = renderExport(format, {
@@ -1442,6 +1450,18 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             ) : null}
             <span className="dshdb-qbar-spacer" />
             {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
+            {exporting ? (
+              <button
+                type="button"
+                className="dshdb-pager-btn"
+                title="停止导出，已取到的行不会写入文件"
+                onClick={() => {
+                  exportCancelled.current = true
+                }}
+              >
+                取消
+              </button>
+            ) : null}
             {multiProgress !== null ? (
               <span className="dshdb-qmeta">
                 正在执行 {multiProgress.index}/{multiProgress.total}…
