@@ -475,6 +475,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }, [filters, filtersOpen, connection])
 
   const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
+
+  /** Drop every per-column filter at once and re-query the first page. */
+  const clearColumnFilters = useCallback((): void => {
+    setFilters({})
+    if (connection !== null) apply({ where: composeWhere(connection.dialect, whereText, columns, {}), page: 0 })
+  }, [apply, columns, connection, whereText])
   const conditioned = whereText.trim() !== '' || activeFilterCount > 0
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
     setFilters((previous) => {
@@ -843,7 +849,13 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onSort={sortTable}
           onReorderColumns={gridReorder}
           headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
-                <th className="dshdb-num" />
+                <th className="dshdb-num">
+                  {activeFilterCount > 0 ? (
+                    <button type="button" className="dshdb-row-action" title="清除所有列筛选" aria-label="清除列筛选" onClick={clearColumnFilters}>
+                      ×
+                    </button>
+                  ) : null}
+                </th>
                 {shownColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
