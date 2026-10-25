@@ -135,6 +135,7 @@ export function DataView(props: DataViewProps): ReactElement {
   const [objectExtra, setObjectExtra] = useState<Record<string, number>>({})
   const [objectMenu, setObjectMenu] = useState<TreeMenuState | null>(null)
   const [schemaMenu, setSchemaMenu] = useState<TreeMenuState | null>(null)
+  const [connectionMenu, setConnectionMenu] = useState<TreeMenuState | null>(null)
   // Typing must stay responsive on big trees: match against the last settled
   // term and apply the new one once the user pauses.
   const [settledFilter, setSettledFilter] = useState('')
@@ -204,6 +205,19 @@ export function DataView(props: DataViewProps): ReactElement {
       setSchemaMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
     [],
+  )
+
+  const openConnectionMenu = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, connection: ClientConnection): void => {
+      event.preventDefault()
+      const items = [
+        { label: '复制连接名', run: () => void copyText(connection.name) },
+        { label: '复制地址', run: () => void copyText(`${connection.host}:${connection.port}`) },
+        { label: '重新连接', run: () => props.onConnect(connection.id) },
+      ]
+      setConnectionMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
+    },
+    [props.onConnect],
   )
 
   const normalizedFilter = settledFilter.trim().toLowerCase()
@@ -419,6 +433,7 @@ export function DataView(props: DataViewProps): ReactElement {
                     }${cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''}`}
                     onClick={() => props.onSelectConnection(connection.id)}
                     onDoubleClick={() => props.onToggleConnection(connection.id)}
+                    onContextMenu={(event) => openConnectionMenu(event, connection)}
                   >
                     <RowToggle
                       open={isExpanded}
@@ -821,6 +836,7 @@ export function DataView(props: DataViewProps): ReactElement {
 
       <TreeMenu menu={objectMenu} onClose={() => setObjectMenu(null)} />
       <TreeMenu menu={schemaMenu} onClose={() => setSchemaMenu(null)} />
+      <TreeMenu menu={connectionMenu} onClose={() => setConnectionMenu(null)} />
     </div>
   )
 }
