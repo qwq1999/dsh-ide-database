@@ -26,7 +26,7 @@ import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite } from './format'
 import { clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
-import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
+import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
@@ -994,6 +994,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         label: '复制为 IN 列表',
         disabled: filteredRows.length === 0 || index < 0,
         run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)),
+      },
+      {
+        label: '复制本列（逗号分隔）',
+        disabled: filteredRows.length === 0 || index < 0,
+        run: () => void copyText(commaValues(filteredRows, index)),
       },
       {
         label: `复制查询语句（${displayColumns.length} 列）`,

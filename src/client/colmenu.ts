@@ -22,6 +22,16 @@ export function columnValues(rows: Row[], index: number): string {
     .join('\n')
 }
 
+/** The same values on one line, for pasting into scripts or IN lists. */
+export function commaValues(rows: Row[], index: number): string {
+  return rows
+    .map((row) => {
+      const value: CellValue = row[index] ?? null
+      return value === null || value === undefined ? '' : String(value)
+    })
+    .join(', ')
+}
+
 /** Copy through the clipboard API, falling back to a hidden textarea. */
 export async function copyText(text: string): Promise<boolean> {
   try {

@@ -15,7 +15,7 @@ import { formatCell, formatCount, formatMs } from './format'
 import { CopyIcon, DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
 import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
-import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
+import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
@@ -287,6 +287,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           label: '复制为 IN 列表',
           disabled: rows.length === 0 || index < 0,
           run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)),
+        },
+        {
+          label: '复制本列（逗号分隔）',
+          disabled: rows.length === 0 || index < 0,
+          run: () => void copyText(commaValues(rows, index)),
         },
         {
           label: `复制查询语句（${displayColumns.length} 列）`,
