@@ -1,6 +1,5 @@
 /** Keyboard navigation helpers for the data source tree. */
 
-export type TreeKey = 'ArrowDown' | 'ArrowUp' | 'Home' | 'End'
 
 /**
  * Resolve the row index a navigation key should move focus to, or `null` when the

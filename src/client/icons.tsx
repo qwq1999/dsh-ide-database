@@ -35,15 +35,6 @@ export function DatabaseIcon(props: IconProps): ReactElement {
   )
 }
 
-export function RedisIcon(props: IconProps): ReactElement {
-  return (
-    <Svg {...props}>
-      <rect x="3.5" y="4" width="17" height="6" rx="2" />
-      <rect x="3.5" y="14" width="17" height="6" rx="2" />
-      <path d="M7 7h.01M7 17h.01M10 7h6M10 17h6" />
-    </Svg>
-  )
-}
 
 export function PlusIcon(props: IconProps): ReactElement {
   return (
@@ -146,14 +137,6 @@ export function TrashIcon(props: IconProps): ReactElement {
   )
 }
 
-export function SearchIcon(props: IconProps): ReactElement {
-  return (
-    <Svg {...props}>
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="M20 20l-4.2-4.2" />
-    </Svg>
-  )
-}
 
 export function KeyIcon(props: IconProps): ReactElement {
   return (

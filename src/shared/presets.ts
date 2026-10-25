@@ -2,7 +2,6 @@ import type { Dialect, JarRef, PresetId, PresetSpec, SqlDialect } from './types.
 
 export const PLUGIN_NAME = 'dsh-ide-database'
 export const ROUTE_PREFIX = '/dsh-ide-database/api'
-export const SETTINGS_NAMESPACE = 'dsh-ide-database'
 export const DATA_DIR_NAME = 'dsh-ide-database'
 
 /** Driver artifacts are pinned; every jar is fetched from Maven Central (or a mirror) on first use. */
