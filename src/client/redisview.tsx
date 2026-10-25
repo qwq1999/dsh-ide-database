@@ -20,11 +20,17 @@ export const RedisValuePanel = memo(function RedisValuePanel({
 }): ReactElement {
   const table = redisValueTable(value)
   const [copied, setCopied] = useState(false)
+  const [copiedValue, setCopiedValue] = useState(false)
   useEffect(() => {
     if (!copied) return undefined
     const timer = setTimeout(() => setCopied(false), 1500)
     return () => clearTimeout(timer)
   }, [copied])
+  useEffect(() => {
+    if (!copiedValue) return undefined
+    const timer = setTimeout(() => setCopiedValue(false), 1500)
+    return () => clearTimeout(timer)
+  }, [copiedValue])
   return (
     <div className="dshdb-redis-value">
       <div className="dshdb-redis-meta">
@@ -32,6 +38,17 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         <span className="dshdb-muted">{redisTtlLabel(value.ttl)}</span>
         {value.size === undefined ? null : <span className="dshdb-muted">{formatCount(value.size)} 条</span>}
         {value.truncated ? <Tag tone="warn">已截断</Tag> : null}
+        <button
+          type="button"
+          className="dshdb-row-action"
+          title={copiedValue ? '已复制值' : '复制值'}
+          aria-label={copiedValue ? '值已复制' : '复制值'}
+          onClick={() => {
+            void copyText(redisValueText(value.value)).then((ok) => setCopiedValue(ok))
+          }}
+        >
+          {copiedValue ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+        </button>
         {showKey ? (
           <>
             <span className="dshdb-redis-key" title={value.key}>

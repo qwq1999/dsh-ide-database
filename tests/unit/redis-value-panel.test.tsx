@@ -27,6 +27,14 @@ describe('redis value panel', () => {
     expect(document.querySelector('pre.dshdb-console-value')).toBeNull()
   })
 
+  it('copies the full value as displayed', async () => {
+    const payload = { name: '张伟', tags: ['a', 'b'] }
+    render(<RedisValuePanel value={stored(JSON.stringify(payload))} />)
+    fireEvent.click(screen.getByLabelText('复制值'))
+    await screen.findByLabelText('值已复制')
+    expect(copy).toHaveBeenCalledWith(JSON.stringify(payload, null, 2))
+  })
+
   it('copies the key name and confirms it', async () => {
     render(<RedisValuePanel value={stored('hello')} />)
     fireEvent.click(screen.getByLabelText('复制键名'))
