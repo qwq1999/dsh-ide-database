@@ -187,6 +187,25 @@ describe('console table completion', () => {
     await screen.findByRole('listbox', { name: '补全候选' })
     expect(mocks.objects).toHaveBeenCalledTimes(1)
   })
+  it('points assistive tech at the highlighted candidate', async () => {
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    const area = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
+    fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
+    caret(area, area.value.length)
+    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    await screen.findByRole('listbox', { name: '补全候选' })
+
+    expect(area.getAttribute('aria-controls')).toBe('dshdb-complete-list')
+    const first = area.getAttribute('aria-activedescendant')
+    expect(first).toBe(document.querySelector('.dshdb-complete-active')?.id)
+
+    fireEvent.keyDown(area, { key: 'ArrowDown' })
+    const second = area.getAttribute('aria-activedescendant')
+    expect(second).not.toBe(first)
+    expect(second).toBe(document.querySelector('.dshdb-complete-active')?.id)
+  })
+
   it('scrolls the highlighted candidate into view', async () => {
     const scrolled = vi.fn()
     const original = Element.prototype.scrollIntoView

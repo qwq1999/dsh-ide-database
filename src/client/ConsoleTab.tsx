@@ -1548,6 +1548,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               className="dshdb-input dshdb-console-input"
               placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + Enter 执行光标所在的语句，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
+              aria-controls={suggestions === null ? undefined : 'dshdb-complete-list'}
+              aria-activedescendant={
+                suggestions !== null && suggestionItems.length > 0 ? `dshdb-complete-${activeSuggestionIndex}` : undefined
+              }
               value={statement}
               spellCheck={false}
               onChange={(event) => {
@@ -1628,7 +1632,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               }}
             />
             {suggestions !== null ? (
-              <div className="dshdb-complete" role="listbox" aria-label="补全候选">
+              <div className="dshdb-complete" id="dshdb-complete-list" role="listbox" aria-label="补全候选">
                 {suggestionItems.length === 0 ? (
                   <span className="dshdb-complete-empty">没有匹配的表</span>
                 ) : (
@@ -1636,6 +1640,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     <button
                       key={`${item.kind}:${item.name}`}
                       type="button"
+                      id={`dshdb-complete-${index}`}
                       role="option"
                       aria-selected={index === activeSuggestionIndex}
                       className={index === activeSuggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}
