@@ -39,13 +39,38 @@ function stripComments(sql: string): string {
 }
 
 /** Client-side hint only: the host re-checks and refuses writes on read-only connections. */
+function isSpaceChar(char: string): boolean {
+  return char === ' ' || char === '\t' || char === '\n' || char === '\r'
+}
+
+function firstWord(text: string): { word: string; rest: string } {
+  let end = 0
+  while (end < text.length && !isSpaceChar(text[end] ?? '')) end += 1
+  let cursor = end
+  while (cursor < text.length && isSpaceChar(text[cursor] ?? '')) cursor += 1
+  return { word: text.slice(0, end).toLowerCase(), rest: text.slice(cursor) }
+}
+
+/**
+ * `EXPLAIN ANALYZE <statement>` executes the statement it plans, so the
+ * confirmation prompt has to look at that statement instead of at EXPLAIN.
+ */
+function unwrapExplainAnalyze(statement: string): string {
+  const head = firstWord(statement)
+  if (head.word !== 'explain') return statement
+  const analyze = firstWord(head.rest)
+  if (analyze.word !== 'analyze') return statement
+  const next = firstWord(analyze.rest)
+  return next.word.startsWith('format') ? next.rest : analyze.rest
+}
+
 export function looksLikeWrite(sql: string): boolean {
   const cleaned = stripComments(sql)
   return cleaned
     .split(';')
     .map((part) => part.trim())
     .filter(Boolean)
-    .some((statement) => WRITE_STATEMENT.test(statement))
+    .some((statement) => WRITE_STATEMENT.test(unwrapExplainAnalyze(statement)))
 }
 
 const REDIS_READ = new Set([
