@@ -104,7 +104,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [order, setOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
-  const [ddl, setDdl] = useState<{ title: string; text: string } | null>(null)
+  const [ddl, setDdl] = useState<{ title: string; text: string; warnings: string[] } | null>(null)
   const [ddlBusy, setDdlBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -323,7 +323,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setDdlBusy(true)
     try {
       const result = await api.ddl(params.connectionId, params.schema, params.table, 'table')
-      setDdl({ title: `${params.schema}.${params.table} 的建表语句`, text: result.ddl })
+      setDdl({ title: `${params.schema}.${params.table} 的建表语句`, text: result.ddl, warnings: result.warnings })
     } catch (caught) {
       setError(failureText(caught))
     } finally {
@@ -921,7 +921,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </button>
       </div>
 
-      <DdlModal title={ddl?.title ?? ''} text={ddl?.text ?? null} onClose={() => setDdl(null)} />
+      <DdlModal
+        title={ddl?.title ?? ''}
+        text={ddl?.text ?? null}
+        warnings={ddl?.warnings ?? []}
+        onClose={() => setDdl(null)}
+      />
       <CellValueModal view={cellView} onClose={() => setCellView(null)} />
     </div>
   )

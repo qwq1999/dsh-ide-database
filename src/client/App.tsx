@@ -79,12 +79,20 @@ export function App(props: AppProps): ReactElement {
     open: false,
     editing: null,
   })
-  const [ddlModal, setDdlModal] = useState<{ open: boolean; title: string; text: string; loading: boolean; source: string }>({
+  const [ddlModal, setDdlModal] = useState<{
+    open: boolean
+    title: string
+    text: string
+    loading: boolean
+    source: string
+    warnings: string[]
+  }>({
     open: false,
     title: '',
     text: '',
     loading: false,
     source: '',
+    warnings: [],
   })
 
   const notify = useCallback((text: string, tone: 'info' | 'success' | 'error' = 'info') => {
@@ -162,12 +170,12 @@ export function App(props: AppProps): ReactElement {
   /** 双击表 / DDL 按钮：读取表或视图的建表语句。 */
   async function showDdl(connectionId: string, schema: string, table: string, kind: string): Promise<void> {
     const title = `${schema}.${table} · DDL`
-    setDdlModal({ open: true, title, text: '', loading: true, source: '' })
+    setDdlModal({ open: true, title, text: '', loading: true, source: '', warnings: [] })
     try {
       const result = await api.ddl(connectionId, schema, table, kind)
-      setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source })
+      setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source, warnings: result.warnings })
     } catch (error) {
-      setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })
+      setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })
       notify(`读取 DDL 失败：${errorText(error)}`, 'error')
     }
   }
@@ -438,7 +446,7 @@ export function App(props: AppProps): ReactElement {
         open={ddlModal.open}
         title={ddlModal.title}
         width={760}
-        onClose={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })}
+        onClose={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
         footer={
           <>
             <span className="dshdb-muted">
@@ -451,7 +459,7 @@ export function App(props: AppProps): ReactElement {
             <Button
               size="sm"
               variant="primary"
-              onClick={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '' })}
+              onClick={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
             >
               关闭
             </Button>
@@ -464,7 +472,12 @@ export function App(props: AppProps): ReactElement {
             <span className="dshdb-muted">正在读取 DDL…</span>
           </div>
         ) : (
-          <pre className="dshdb-ddl">{ddlModal.text}</pre>
+          <>
+            {ddlModal.warnings.length > 0 ? (
+              <Banner tone="warn">{ddlModal.warnings.join('；')}</Banner>
+            ) : null}
+            <pre className="dshdb-ddl">{ddlModal.text}</pre>
+          </>
         )}
       </Modal>
       <ConfirmDialog request={confirm?.request ?? null} onConfirm={() => resolveConfirm(true)} onCancel={() => resolveConfirm(false)} />

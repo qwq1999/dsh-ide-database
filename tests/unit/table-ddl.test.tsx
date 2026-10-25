@@ -101,4 +101,23 @@ describe('table DDL dialog', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByLabelText('建表语句')).toBeNull())
   })
+
+  it('explains why the statement was rebuilt when the server refused', async () => {
+    mocks.ddl.mockResolvedValue({
+      schema: 'shop',
+      table: 'orders',
+      kind: 'table',
+      ddl: DDL,
+      source: 'generated',
+      warnings: ['服务器取不到 DDL：没有权限', '按结构重建'],
+    })
+    render(<TableTab useTabInfo={tab} />)
+
+    const button = (await screen.findByLabelText('查看建表语句')) as HTMLButtonElement
+    await waitFor(() => expect(button.disabled).toBe(false))
+    fireEvent.click(button)
+
+    await screen.findByLabelText('建表语句')
+    expect(screen.getByText('服务器取不到 DDL：没有权限；按结构重建')).toBeTruthy()
+  })
 })

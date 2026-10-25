@@ -11,10 +11,12 @@ export interface DdlModalProps {
   title: string
   /** Statement to show; null keeps the dialog closed. */
   text: string | null
+  /** Why the server could not provide the statement, when it said so. */
+  warnings?: string[]
   onClose: () => void
 }
 
-export function DdlModal({ title, text, onClose }: DdlModalProps): ReactElement | null {
+export function DdlModal({ title, text, warnings = [], onClose }: DdlModalProps): ReactElement | null {
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     setCopied(false)
@@ -44,6 +46,11 @@ export function DdlModal({ title, text, onClose }: DdlModalProps): ReactElement 
         </>
       }
     >
+      {warnings.length > 0 ? (
+        <p className="dshdb-muted" style={{ margin: '0 0 8px' }}>
+          {warnings.join('；')}
+        </p>
+      ) : null}
       <pre className="dshdb-cellvalue" aria-label="建表语句">
         {text}
       </pre>
