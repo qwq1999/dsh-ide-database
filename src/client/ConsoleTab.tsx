@@ -145,6 +145,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [scriptIndex, setScriptIndex] = useState(0)
 
   const [pattern, setPattern] = useState('*')
+  const [scanType, setScanType] = useState('')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
@@ -595,16 +596,27 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     void execute({ statement: base, page: next, size: pageSize, allowWrite: false })
   }
 
-  /** Load one page of Redis keys; `append` continues from the last cursor. */
+  /**
+   * Load one page of Redis keys; `append` continues from the last cursor.
+   * `overrideType` lets the type picker rescan right away instead of waiting
+   * for the next render to pick the state up.
+   */
   const loadKeys = useCallback(
-    async (append: boolean): Promise<void> => {
+    async (append: boolean, overrideType?: string): Promise<void> => {
       if (selectedId === '') return
       setScanning(true)
       setValueError(null)
+      const type = overrideType ?? scanType
       try {
         const cursor = append ? scanCursorRef.current : '0'
         const next = await withConnection(selectedId, () =>
-          api.redisScan({ id: selectedId, db: activeRedisDb, cursor, pattern: pattern.trim() === '' ? '*' : pattern.trim() }),
+          api.redisScan({
+            id: selectedId,
+            db: activeRedisDb,
+            cursor,
+            pattern: pattern.trim() === '' ? '*' : pattern.trim(),
+            ...(type === '' ? {} : { type }),
+          }),
         )
         if (!redisDatabasesLoaded.current) {
           void api.redisDatabases(selectedId)
@@ -626,7 +638,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setScanning(false)
       }
     },
-    [activeRedisDb, pattern, selectedId],
+    [activeRedisDb, pattern, scanType, selectedId],
   )
 
   const runCommand = async (): Promise<void> => {
@@ -1015,6 +1027,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 if (event.key === 'Enter') void loadKeys(false)
               }}
             />
+            <select
+              className="dshdb-input dshdb-qfilter-input"
+              aria-label="键类型"
+              value={scanType}
+              onChange={(event) => {
+                setScanType(event.target.value)
+                scanCursorRef.current = '0'
+                void loadKeys(false, event.target.value)
+              }}
+            >
+              <option value="">全部类型</option>
+              <option value="string">string</option>
+              <option value="list">list</option>
+              <option value="set">set</option>
+              <option value="hash">hash</option>
+              <option value="zset">zset</option>
+              <option value="stream">stream</option>
+            </select>
             <Button size="sm" onClick={() => void loadKeys(false)} loading={scanning}>
               扫描
             </Button>
@@ -1046,7 +1076,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <span className="dshdb-muted">正在扫描键…</span>
                 </div>
               ) : (
-                <EmptyState icon={<DatabaseIcon size={22} />} title="没有匹配的键" description={pattern} />
+                <EmptyState icon={<DatabaseIcon size={22} />} title="没有匹配的键" description={scanType === '' ? pattern : `${pattern} · 类型 ${scanType}`} />
               )
             ) : (
               <KeyGrid keys={scan.keys} selectedKey={selectedKey} onSelect={pickKey} />
