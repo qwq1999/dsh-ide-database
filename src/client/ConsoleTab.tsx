@@ -752,6 +752,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     const text = command.trim()
     if (text === '' || selectedId === '') return
     const isWrite = looksLikeRedisWrite(text)
+    if (isWrite && connection?.readOnly === true) {
+      setValueError({
+        message: '这是一条只读连接，不能执行写命令',
+        detail: '把连接设置里的「只读」关掉，再执行要修改 Redis 数据的命令',
+      })
+      return
+    }
     if (isWrite && settings?.confirmDestructive === true) {
       const ok = await askConfirm('即将执行会修改 Redis 数据的命令。', text)
       if (!ok) return
