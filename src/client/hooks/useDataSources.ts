@@ -421,7 +421,9 @@ export function useDataSources(notify: Notify): DataSources {
           const shown = redisDbs[connectionId]
           const dbs = shown === undefined || shown.length === 0 ? [connection.redisDb] : shown
           if (shown === undefined) setRedisDbs((previous) => ({ ...previous, [connectionId]: dbs }))
-          for (const db of dbs) await loadRedisKeys(connectionId, db)
+          // Each logical db scans independently, so fan out instead of paying one
+          // network round trip per db on connect.
+          await Promise.all(dbs.map((db) => loadRedisKeys(connectionId, db)))
         } else {
           await loadSchemas(connectionId)
         }
