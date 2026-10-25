@@ -134,6 +134,7 @@ export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
   const [objectExtra, setObjectExtra] = useState<Record<string, number>>({})
   const [objectMenu, setObjectMenu] = useState<TreeMenuState | null>(null)
+  const [schemaMenu, setSchemaMenu] = useState<TreeMenuState | null>(null)
   // Typing must stay responsive on big trees: match against the last settled
   // term and apply the new one once the user pauses.
   const [settledFilter, setSettledFilter] = useState('')
@@ -191,6 +192,18 @@ export function DataView(props: DataViewProps): ReactElement {
       setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
     [props.onOpenTable, props.onShowDdl],
+  )
+
+  const openSchemaMenu = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, schemaName: string): void => {
+      event.preventDefault()
+      const items = [
+        { label: '复制库名', run: () => void copyText(schemaName) },
+        { label: '只看这个库', run: () => setFilter(`${schemaName}.`) },
+      ]
+      setSchemaMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
+    },
+    [],
   )
 
   const normalizedFilter = settledFilter.trim().toLowerCase()
@@ -538,6 +551,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                   style={DEPTH_ONE}
                                   onClick={() => props.onSelectSchema(connection.id, schema.name)}
                                   onDoubleClick={() => void props.onToggleSchema(connection.id, schema.name)}
+                                  onContextMenu={(event) => openSchemaMenu(event, schema.name)}
                                 >
                                   <RowToggle
                                     open={schemaExpanded}
@@ -793,6 +807,7 @@ export function DataView(props: DataViewProps): ReactElement {
       ) : null}
 
       <TreeMenu menu={objectMenu} onClose={() => setObjectMenu(null)} />
+      <TreeMenu menu={schemaMenu} onClose={() => setSchemaMenu(null)} />
     </div>
   )
 }
