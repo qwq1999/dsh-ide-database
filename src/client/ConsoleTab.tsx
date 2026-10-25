@@ -1766,6 +1766,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       setRowFilter('')
                     }}
                   />
+                  {rowFilter === '' ? null : (
+                    <button
+                      type="button"
+                      className="dshdb-row-action"
+                      title="清空筛选"
+                      aria-label="清空筛选"
+                      onClick={() => setRowFilter('')}
+                    >
+                      ×
+                    </button>
+                  )}
                 </span>
                 {rowFilter.trim() !== '' ? (
                   <span className="dshdb-qmeta">
