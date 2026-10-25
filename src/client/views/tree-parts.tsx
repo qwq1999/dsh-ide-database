@@ -67,6 +67,7 @@ export function DetailFolder({
   icon,
   count,
   depth,
+  level,
   open,
   onToggle,
   onSelect,
@@ -76,6 +77,8 @@ export function DetailFolder({
   icon: ReactNode
   count: number
   depth: CSSProperties
+  /** Depth in the tree, for assistive tech (objects live at level 4). */
+  level?: number
   open: boolean
   onToggle: () => void
   onSelect?: () => void
@@ -87,6 +90,7 @@ export function DetailFolder({
         type="button"
         className="dshdb-row"
         role="treeitem"
+        aria-level={level}
         aria-expanded={open}
         data-kind="folder"
         style={depth}
@@ -229,6 +233,7 @@ export const ObjectRow = memo(function ObjectRow({
           {description !== undefined ? (
             <>
               <DetailFolder
+                level={5}
                 label="列"
                 icon={<ColumnIcon size={13} />}
                 count={description.columns.length}
@@ -252,6 +257,7 @@ export const ObjectRow = memo(function ObjectRow({
 
               {keys.length > 0 ? (
                 <DetailFolder
+                  level={5}
                   label="键"
                   icon={<KeyIcon size={13} />}
                   count={keys.length}
@@ -275,6 +281,7 @@ export const ObjectRow = memo(function ObjectRow({
 
               {indexes.length > 0 ? (
                 <DetailFolder
+                  level={5}
                   label="索引"
                   icon={<IndexIcon size={13} />}
                   count={indexes.length}
