@@ -28,14 +28,21 @@ export async function copyText(text: string): Promise<boolean> {
     await navigator.clipboard.writeText(text)
     return true
   } catch {
-    const area = document.createElement('textarea')
-    area.value = text
-    area.style.position = 'fixed'
-    area.style.opacity = '0'
-    document.body.appendChild(area)
-    area.select()
-    const copied = document.execCommand('copy')
-    area.remove()
-    return copied
+    // Older WebViews (and jsdom) offer neither the async API nor execCommand:
+    // report the failure instead of rejecting into a `void` call site.
+    let area: HTMLTextAreaElement | undefined
+    try {
+      area = document.createElement('textarea')
+      area.value = text
+      area.style.position = 'fixed'
+      area.style.opacity = '0'
+      document.body.appendChild(area)
+      area.select()
+      return document.execCommand('copy')
+    } catch {
+      return false
+    } finally {
+      area?.remove()
+    }
   }
 }
