@@ -40,11 +40,12 @@ interface Failure {
 }
 
 import { TABLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
-import { readAllowedNumber, readFlag, writeFlag, writeNumber } from './prefs'
+import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
 
 const PAGE_SIZES = [100, 200, 500, 1000, 2000, 5000]
 const AUTO_REFRESH_KEY = 'dsh-ide-database.auto-refresh.v1'
 const FILTERS_OPEN_KEY = 'dsh-ide-database.table.filters-open.v1'
+const ORDER_KEY = 'dsh-ide-database.table-order.v1'
 const AUTO_REFRESH_OPTIONS = [0, 5000, 10000, 30000] as const
 
 const noTabInfo = (): undefined => undefined
@@ -111,7 +112,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [whereText, setWhereText] = useState('')
   /** Two table tabs open at once must not share one datalist id. */
   const columnsListId = `dshdb-columns-${params.table.replace(/[^\w-]/gu, '-')}`
-  const [orderText, setOrderText] = useState('')
+  /** Sort order survives closing the tab, the same way column widths do. */
+  const orderStorageKey = `${ORDER_KEY}:${params.schema}.${params.table}`
+  const [orderText, setOrderText] = useState(() => readText(orderStorageKey))
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
   const [order, setOrder] = useState<number[] | null>(null)
@@ -234,7 +237,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         if (found.dialect === 'redis') throw new ApiError('unsupported', '数据表只能在关系型数据源中打开')
         if (cancelled) return
         setConnection(found)
-        await load(found, { page: 0, size: pageSize, where: '', orderBy: '', recount: true })
+        await load(found, { page: 0, size: pageSize, where: '', orderBy: readText(orderStorageKey), recount: true })
       } catch (caught) {
         if (!cancelled) setError(failureText(caught))
       }
@@ -254,15 +257,17 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     ): void => {
       if (connection === null) return
       const manualWhere = next.where ?? whereText
+      const orderBy = next.orderBy ?? orderText
+      writeText(orderStorageKey, orderBy)
       void load(connection, {
         page: next.page ?? page,
         size: next.size ?? pageSize,
         where: composeWhere(connection.dialect, manualWhere, columns, override ?? filters),
-        orderBy: next.orderBy ?? orderText,
+        orderBy,
         recount: next.recount ?? (next.where !== undefined || next.size !== undefined || next.page === 0),
       })
     },
-    [columns, connection, filters, load, orderText, page, pageSize, whereText],
+    [columns, connection, filters, load, orderStorageKey, orderText, page, pageSize, whereText],
   )
   applyRef.current = apply
   const orderTextRef = useRef(orderText)
