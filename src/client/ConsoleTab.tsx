@@ -163,6 +163,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const [pattern, setPattern] = useState('*')
   const [scanType, setScanType] = useState('')
+  const [ttlOnly, setTtlOnly] = useState(false)
   const [scan, setScan] = useState<RedisScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
   /** The pattern/type the listed keys were scanned with; a drifted box cannot continue. */
@@ -861,6 +862,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     void refreshValue()
   }, [refreshValue])
 
+  const visibleKeys = useMemo(
+    () => (scan === null ? [] : ttlOnly ? scan.keys.filter((info) => info.ttl >= 0) : scan.keys),
+    [scan, ttlOnly],
+  )
+
   /** Stable for the memoised key rows: only a different key starts a new request. */
   const pickKey = useCallback(
     (key: RedisKeyInfo): void => {
@@ -1273,6 +1279,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 if (event.key === 'Enter') void loadKeys(false)
               }}
             />
+            <label className="dshdb-qmeta" title="只列出设置了过期时间的键">
+              <input
+                type="checkbox"
+                aria-label="只看有 TTL"
+                checked={ttlOnly}
+                onChange={(event) => setTtlOnly(event.target.checked)}
+              />
+              只看有 TTL
+            </label>
             <select
               className="dshdb-input dshdb-qfilter-input"
               aria-label="键类型"
@@ -1327,7 +1342,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ) : null}
 
           <div className={value === null ? 'dshdb-grid-wrap' : 'dshdb-grid-wrap dshdb-redis-keys'}>
-            {scan === null || scan.keys.length === 0 ? (
+            {scan === null || (visibleKeys.length === 0 && !ttlOnly) ? (
               scanning ? (
                 <div className="dshdb-empty">
                   <Spinner size={16} />
@@ -1338,9 +1353,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               )
             ) : (
               <KeyGrid
-                keys={scan.keys}
+                keys={visibleKeys}
                 selectedKey={selectedKey}
-                emptyText={pattern.trim() === '' && scanType === '' ? '这个库还没有键' : '没有匹配的键'}
+                emptyText={
+                  ttlOnly
+                    ? '没有带过期时间的键'
+                    : pattern.trim() === '' && scanType === ''
+                      ? '这个库还没有键'
+                      : '没有匹配的键'
+                }
                 onSelect={pickKey}
               />
             )}
