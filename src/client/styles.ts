@@ -1045,6 +1045,7 @@ export const CSS = `
 .dshdb-history-star:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
 .dshdb-history-star[data-pinned="true"] { color: var(--dsw-alias-state-business-primary); }
 .dshdb-history-empty { padding: 6px 4px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.dshdb-filter-empty { display: block; padding: 10px 12px; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 .dshdb-history-row:hover { background: var(--dsw-alias-bg-layer-2); }
 .dshdb-history-sql { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshdb-history-time { flex: none; color: var(--dsw-alias-label-tertiary); font-family: inherit; font-size: 10px; }

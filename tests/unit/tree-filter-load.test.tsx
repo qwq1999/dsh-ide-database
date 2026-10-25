@@ -132,6 +132,13 @@ describe('筛选时加载对象列表', () => {
     await waitFor(() => expect(calls.load).toBe(1))
   })
 
+  it('says nothing matched instead of leaving an empty tree', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('zzz')
+    await waitFor(() => expect(screen.getByText('没有匹配的对象')).toBeTruthy())
+  })
+
   it('does not ask again while the same list is still loading', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)
