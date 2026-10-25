@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { waitForConsoleSource } from '../stubs/console-ready'
+
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   schemas: vi.fn(),
@@ -101,6 +103,7 @@ describe('console script results', () => {
   it('keeps each statement result and lets the grid flip back', async () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
 
     const area = document.querySelector('textarea')
     if (area === null) throw new Error('missing editor')

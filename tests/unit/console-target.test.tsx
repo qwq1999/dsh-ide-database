@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { waitForConsoleSource } from '../stubs/console-ready'
+
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   schemas: vi.fn(),
@@ -101,6 +103,7 @@ describe('console database target', () => {
     render(<ConsoleTab />)
 
     const source = await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
     expect(source).toBeTruthy()
     const target = await screen.findByLabelText('数据库')
     await screen.findByRole('option', { name: /crm/ })
@@ -128,6 +131,7 @@ describe('console database target', () => {
       />,
     )
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
     const editor = document.querySelector('textarea')
     if (editor === null) throw new Error('missing SQL editor')
     await waitFor(() => expect(editor.value).toBe('SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0'))
@@ -139,6 +143,7 @@ describe('console database target', () => {
 
     render(<ConsoleTab />)
     const source = await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
     fireEvent.change(source, { target: { value: 'redis-1' } })
 
     const db = await screen.findByLabelText('Redis 逻辑库', {}, { timeout: 3000 })

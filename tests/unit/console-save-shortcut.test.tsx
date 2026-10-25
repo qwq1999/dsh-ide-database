@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { waitForConsoleSource } from '../stubs/console-ready'
+
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   schemas: vi.fn(),
@@ -87,6 +89,7 @@ describe('console save shortcut', () => {
   it('writes the editor to a .sql download on Ctrl+S', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
     const editor = document.querySelector('textarea')
     if (editor === null) throw new Error('missing SQL editor')
     fireEvent.change(editor, { target: { value: 'SELECT 1;\nSELECT 2;' } })
@@ -102,6 +105,7 @@ describe('console save shortcut', () => {
   it('does nothing on an empty editor', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
     const editor = document.querySelector('textarea')
     if (editor === null) throw new Error('missing SQL editor')
     fireEvent.keyDown(editor, { key: 's', metaKey: true })

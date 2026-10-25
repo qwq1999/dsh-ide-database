@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { waitForConsoleSource } from '../stubs/console-ready'
+
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   schemas: vi.fn(),
@@ -113,6 +115,7 @@ describe('console table completion', () => {
   it('offers the tables of the current schema and inserts the picked one', async () => {
     render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
 
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
@@ -131,6 +134,7 @@ describe('console table completion', () => {
   it('moves the selection with the arrow keys and inserts with Enter', async () => {
     render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
 
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
@@ -146,6 +150,7 @@ describe('console table completion', () => {
   it('closes on Escape and reuses the cached object list', async () => {
     render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
     await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
 
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ' } })
