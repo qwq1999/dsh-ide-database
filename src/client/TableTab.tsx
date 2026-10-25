@@ -117,6 +117,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
   const exportCancelled = useRef(false)
+  // Leaving the tab should stop walking pages, otherwise the server keeps answering a tab nobody sees.
+  useEffect(() => {
+    return () => {
+      exportCancelled.current = true
+    }
+  }, [])
+
+
   const exportAnchor = useRef<HTMLSpanElement>(null)
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
