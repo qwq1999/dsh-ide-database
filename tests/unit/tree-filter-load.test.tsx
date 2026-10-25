@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { DataView, type DataViewProps } from '../../src/client/views/DataView'
@@ -107,25 +107,35 @@ afterEach(() => {
 })
 
 describe('筛选时加载对象列表', () => {
-  it('does not reload a schema whose objects are already in memory', () => {
+  it('does not reload a schema whose objects are already in memory', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
     typeFilter('cust')
-    expect(calls.load).toBe(0)
+    await waitFor(() => expect(calls.load).toBe(0))
   })
 
-  it('loads an untouched schema once per filter term', () => {
+  it('loads an untouched schema once per filter term', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{}} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
-    expect(calls.load).toBe(1)
+    await waitFor(() => expect(calls.load).toBe(1))
   })
 
-  it('does not ask again while the same list is still loading', () => {
+  it('waits for a pause before matching a burst of keystrokes', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{}} loadingObjects={{}} calls={calls} />)
+    typeFilter('c')
+    typeFilter('cu')
+    typeFilter('cus')
+    expect(calls.load).toBe(0)
+    await waitFor(() => expect(calls.load).toBe(1))
+  })
+
+  it('does not ask again while the same list is still loading', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)
     typeFilter('cus')
-    expect(calls.load).toBe(0)
+    await waitFor(() => expect(calls.load).toBe(0))
   })
 })

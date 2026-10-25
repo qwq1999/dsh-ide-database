@@ -346,6 +346,14 @@ function RedisDatabases({
 
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
+  // Typing must stay responsive on big trees: match against the last settled
+  // term and apply the new one once the user pauses.
+  const [settledFilter, setSettledFilter] = useState('')
+  useEffect(() => {
+    if (filter === settledFilter) return undefined
+    const timer = setTimeout(() => setSettledFilter(filter), 200)
+    return () => clearTimeout(timer)
+  }, [filter, settledFilter])
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
 
@@ -375,7 +383,7 @@ export function DataView(props: DataViewProps): ReactElement {
     }
   }
 
-  const normalizedFilter = filter.trim().toLowerCase()
+  const normalizedFilter = settledFilter.trim().toLowerCase()
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
 
   // Search inside collapsed schemas: fetch their object lists once per filter
