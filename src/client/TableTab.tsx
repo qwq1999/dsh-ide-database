@@ -324,7 +324,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 apply({ page: 0 })
               },
             },],
-    [connection, displayColumns, displayRows, pageSize, params.schema, params.table],
+    [connection, displayColumns, displayRows, filters, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
