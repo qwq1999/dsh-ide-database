@@ -17,6 +17,7 @@ import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
 import { RedisDatabases } from './redis-databases'
+import { OBJECT_PAGE, objectWindow } from './objectlimit'
 import { RowPicker } from './row-picker'
 import {
   DEPTH_FIVE,
@@ -128,6 +129,7 @@ function relativeTime(iso: string): string {
 
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
+  const [objectExtra, setObjectExtra] = useState<Record<string, number>>({})
   // Typing must stay responsive on big trees: match against the last settled
   // term and apply the new one once the user pauses.
   const [settledFilter, setSettledFilter] = useState('')
@@ -166,6 +168,10 @@ export function DataView(props: DataViewProps): ReactElement {
   }
 
   const normalizedFilter = settledFilter.trim().toLowerCase()
+  // Folding is per filter term: a new search gets the first page again.
+  useEffect(() => {
+    setObjectExtra({})
+  }, [normalizedFilter])
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
 
   // Search inside collapsed schemas: fetch their object lists once per filter
@@ -544,6 +550,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                           const folderKey = `${connection.id}:${schema.name}#${folder.id}`
                                           const folderExpanded = expanded[folderKey] === true
                                           const items = buckets?.[folder.id] ?? []
+                                          const pageWindow = objectWindow(items.length, objectExtra[folderKey] ?? 0)
                                           return (
                                             <div key={folder.id}>
                                               <button
@@ -577,7 +584,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                               </button>
                                               {folderExpanded ? (
                                                 <div role="group">
-                                                  {items.map((object) => (
+                                                  {items.slice(0, pageWindow.visible).map((object) => (
                                                     <ObjectRow
                                                       key={object.name}
                                                       connectionId={connection.id}
@@ -606,6 +613,25 @@ export function DataView(props: DataViewProps): ReactElement {
                                                       query={normalizedFilter}
                                                     />
                                                   ))}
+                                                  {pageWindow.hidden > 0 ? (
+                                                    <button
+                                                      type="button"
+                                                      className="dshdb-row dshdb-muted"
+                                                      style={DEPTH_THREE}
+                                                      onClick={() =>
+                                                        setObjectExtra((current) => ({
+                                                          ...current,
+                                                          [folderKey]: (current[folderKey] ?? 0) + OBJECT_PAGE,
+                                                        }))
+                                                      }
+                                                    >
+                                                      <span className="dshdb-row-label">
+                                                        {pageWindow.hidden > OBJECT_PAGE
+                                                          ? `再显示 ${OBJECT_PAGE} 个（还有 ${pageWindow.hidden} 个）`
+                                                          : `显示剩余 ${pageWindow.hidden} 个`}
+                                                      </span>
+                                                    </button>
+                                                  ) : null}
                                                 </div>
                                               ) : null}
                                             </div>
