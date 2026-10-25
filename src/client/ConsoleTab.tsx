@@ -734,12 +734,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }
 
-  /** Ctrl/⌘ + F jumps to the result filter; browsers otherwise open their own find bar. */
-  const focusResultFilter = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
-    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return
-    event.preventDefault()
-    filterRef.current?.focus()
-  }, [])
+  /** Ctrl/⌘ + F jumps to the result filter (browsers would open their own find bar);
+   *  Ctrl/⌘ + R re-runs the statement instead of reloading the whole page. */
+  const panelShortcuts = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      if (key === 'f') {
+        event.preventDefault()
+        filterRef.current?.focus()
+        return
+      }
+      if (key === 'r') {
+        event.preventDefault()
+        void run()
+      }
+    },
+    [run],
+  )
 
   /** Ctrl/⌘ + ↑ recalls older statements, ↓ newer ones.
    *  Execution reuses the shared console runner. */
@@ -1325,7 +1337,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const rangeEnd = offset + rows.length
 
   return (
-    <div className="dshdb-qtab" onKeyDown={focusResultFilter}>
+    <div className="dshdb-qtab" onKeyDown={panelShortcuts}>
       <div className="dshdb-qbar">
         <select
           className="dshdb-select dshdb-select-inline dshdb-console-select"
