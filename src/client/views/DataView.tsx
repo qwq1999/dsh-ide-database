@@ -78,6 +78,7 @@ export interface DataViewProps {
   onSelectConnection: (id: string) => void
   onToggleConnection: (id: string) => void
   onConnect: (id: string) => void
+  onRefresh?: () => void
   onToggleSchema: (connectionId: string, schema: string) => void
   onLoadObjects: (connectionId: string, schema: string) => void
   onToggleFolder: (connectionId: string, schema: string, folder: string) => void
@@ -152,10 +153,19 @@ export function DataView(props: DataViewProps): ReactElement {
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
   const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
-      event.preventDefault()
-      document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
-      return
+    if (event.ctrlKey || event.metaKey) {
+      const key = event.key.toLowerCase()
+      if (key === 'f') {
+        event.preventDefault()
+        document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
+        return
+      }
+      if (key === 'r') {
+        // Ctrl/⌘+R would reload the whole app; re-read the tree instead.
+        event.preventDefault()
+        props.onRefresh?.()
+        return
+      }
     }
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button.dshdb-row'))
     if (rows.length === 0) return

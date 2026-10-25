@@ -365,6 +365,7 @@ export function App(props: AppProps): ReactElement {
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
               onConnect={(id) => void connect(id)}
+              onRefresh={() => void refreshSelected()}
               onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
               onLoadObjects={(connectionId, schema) => void loadObjects(connectionId, schema)}
               onToggleFolder={toggleFolder}

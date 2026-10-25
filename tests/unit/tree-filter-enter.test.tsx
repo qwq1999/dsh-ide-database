@@ -64,6 +64,9 @@ function Harness({ calls }: { calls: { load: number } }): JSX.Element {
     onSelectConnection: noop,
     onToggleConnection: (id) => toggle(id),
     onConnect: noop,
+    onRefresh: () => {
+      calls.refreshed = (calls.refreshed ?? 0) + 1
+    },
     onToggleSchema: (connectionId, schema) => toggle(`${connectionId}:${schema}`),
     onLoadObjects: () => {
       calls.load += 1
@@ -117,6 +120,16 @@ describe('tree filter keys', () => {
     row.focus()
     fireEvent.keyDown(tree, { key: 'f', ctrlKey: true })
     expect(document.activeElement).toBe(screen.getByLabelText('筛选库表'))
+  })
+
+  it('re-reads the tree on Ctrl+R instead of reloading the app', () => {
+    const calls = { load: 0 }
+    render(<Harness calls={calls} />)
+    const tree = screen.getByRole('tree', { name: '数据源' })
+
+    fireEvent.keyDown(tree, { key: 'r', ctrlKey: true })
+
+    expect(calls.refreshed).toBe(1)
   })
 
   it('clears the box from the small clear button', async () => {
