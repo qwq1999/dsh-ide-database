@@ -19,6 +19,7 @@ import {
   Spinner,
   StateDot,
   Toast,
+  nextToast,
   type ConfirmRequest,
   type ToastState,
 } from './ui'
@@ -98,7 +99,7 @@ export function App(props: AppProps): ReactElement {
   })
 
   const notify = useCallback((text: string, tone: 'info' | 'success' | 'error' = 'info') => {
-    setToast({ text, tone, seq: Date.now() })
+    setToast((previous) => nextToast(previous, text, tone))
   }, [])
 
   const {

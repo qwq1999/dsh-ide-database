@@ -412,6 +412,19 @@ export interface ToastState {
 }
 
 /**
+ * Builds the next toast state with a strictly increasing sequence. Reading the
+ * clock instead would collide for two notifications in the same millisecond,
+ * and the primitive would then skip restarting its fade.
+ */
+export function nextToast(
+  previous: ToastState | null,
+  text: string,
+  tone: ToastState['tone'] = 'info',
+): ToastState {
+  return { text, tone, seq: (previous?.seq ?? 0) + 1 }
+}
+
+/**
  * Transient notice, rendered by the Harness' own toast primitive so a plugin
  * announcement matches the product chrome exactly: fixed top-center, dark
  * surface in both themes, hold then fade.
