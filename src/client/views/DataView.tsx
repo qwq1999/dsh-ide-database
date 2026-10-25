@@ -204,7 +204,16 @@ export function DataView(props: DataViewProps): ReactElement {
       event.preventDefault()
       const items = [
         { label: '复制库名', run: () => void copyText(schemaName) },
-        { label: '只看这个库', run: () => setFilter(`${schemaName}.`) },
+        {
+        label: '只看这个库',
+        run: () => {
+          setFilter(`${schemaName}.`)
+          // Put the caret in the filter box so the prefix can be extended instead of retyped.
+          setTimeout(() => {
+            document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"]')?.focus()
+          }, 0)
+        },
+      },
       ]
       setSchemaMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },

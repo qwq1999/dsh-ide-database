@@ -104,4 +104,10 @@ describe('schema context menu', () => {
     const filter = screen.getAllByPlaceholderText(/筛选/)[0] as HTMLInputElement
     await waitFor(() => expect(filter.value).toBe('shop.'))
   })
+  it('focuses the filter box so the prefix can be extended', async () => {
+    render(<DataView {...props()} />)
+    fireEvent.contextMenu(schemaRow(), { clientX: 10, clientY: 10 })
+    fireEvent.click(screen.getByRole('menuitem', { name: '只看这个库' }))
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('筛选库表'))
+  })
 })
