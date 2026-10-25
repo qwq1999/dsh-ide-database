@@ -215,12 +215,17 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       const up = () => {
         document.removeEventListener('mousemove', move)
         document.removeEventListener('mouseup', up)
+        window.removeEventListener('blur', up)
+        document.removeEventListener('mouseleave', up)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
         if (storageKey !== undefined) writeWidths(storageKey, current)
       }
       document.addEventListener('mousemove', move)
       document.addEventListener('mouseup', up)
+      // 鼠标在窗口外松开时既收不到 mouseup 也收不到 mousemove，光标会卡在 col-resize。
+      window.addEventListener('blur', up)
+      document.addEventListener('mouseleave', up)
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
