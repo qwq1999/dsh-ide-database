@@ -1616,26 +1616,32 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               </button>
               {exportOpen ? (
                 <span className="dshdb-menu" role="menu">
-                  <button type="button" role="menuitem" onClick={() => exportPage('csv')}>
+                  <button type="button" role="menuitem" onClick={() => exportPage('csv')} disabled={filteredRows.length === 0}>
                     当前页 CSV（{filteredRows.length} 行）
                   </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('json')}>
+                  <button type="button" role="menuitem" onClick={() => exportPage('json')} disabled={filteredRows.length === 0}>
                     当前页 JSON（{filteredRows.length} 行）
                   </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('sql')}>
+                  <button type="button" role="menuitem" onClick={() => exportPage('sql')} disabled={filteredRows.length === 0}>
                     当前页 SQL（{filteredRows.length} 行）
                   </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('md')}>
+                  <button type="button" role="menuitem" onClick={() => exportPage('md')} disabled={filteredRows.length === 0}>
                     当前页 Markdown（{filteredRows.length} 行）
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => void copyText(toMarkdown(displayColumns, filteredRows))}
+                    disabled={filteredRows.length === 0}
                   >
                     复制当前页 Markdown
                   </button>
-                  <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, filteredRows))}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void copyText(toCsv(displayColumns, filteredRows))}
+                    disabled={filteredRows.length === 0}
+                  >
                     复制当前页 CSV
                   </button>
                   {base !== '' ? (
