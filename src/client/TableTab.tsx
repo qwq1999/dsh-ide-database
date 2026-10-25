@@ -787,6 +787,20 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             if (event.key === 'Enter') apply({ orderBy: orderText, page: 0 })
           }}
         />
+        {orderText === '' ? null : (
+          <button
+            type="button"
+            className="dshdb-row-action"
+            title="清空排序"
+            aria-label="清空排序"
+            onClick={() => {
+              setOrderText('')
+              apply({ orderBy: '', page: 0 })
+            }}
+          >
+            ×
+          </button>
+        )}
         <datalist id="dshdb-table-columns">
           {columns.map((column) => (
             <option key={column.name} value={column.name} />
