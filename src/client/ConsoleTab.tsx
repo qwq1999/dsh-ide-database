@@ -23,7 +23,7 @@ import type {
 } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
-import { formatCell, formatMs, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
+import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite, stringifyJson } from './format'
 import { clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
 import { formatSql } from './sqlformat'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
@@ -330,7 +330,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setPage(paged && !showAll ? target.page : 0)
         setBase(paged ? text : '')
         setSourceSql(text)
-        void loadSchemaList(selectedId)
+        if (looksLikeDdl(text)) void loadSchemaList(selectedId)
       } catch (error) {
         setResult(null)
         setFailure(failureText(error))
@@ -389,7 +389,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setSourceSql(parts[parts.length - 1] ?? '')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
-      void loadSchemaList(selectedId)
+      if (parts.some(looksLikeDdl)) void loadSchemaList(selectedId)
     } finally {
       setMultiProgress(null)
       setRunning(false)

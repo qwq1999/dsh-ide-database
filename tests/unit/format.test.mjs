@@ -6,6 +6,7 @@ import {
   formatCell,
   formatCount,
   formatMs,
+  looksLikeDdl,
   looksLikeRedisWrite,
   looksLikeWrite,
 } from '../../src/client/format.ts'
@@ -44,6 +45,18 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('GET foo')).toBe(false)
     expect(looksLikeRedisWrite('SET foo bar')).toBe(true)
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
+  })
+
+  it('detects statements that change the schema layout', () => {
+    expect(looksLikeDdl('SELECT * FROM users')).toBe(false)
+    expect(looksLikeDdl('INSERT INTO users VALUES (1)')).toBe(false)
+    expect(looksLikeDdl("SELECT 'drop table users' AS note")).toBe(false)
+    expect(looksLikeDdl('select `drop` from t')).toBe(false)
+    expect(looksLikeDdl('CREATE TABLE users (id INT)')).toBe(true)
+    expect(looksLikeDdl('  -- tidy up\nDROP TABLE users')).toBe(true)
+    expect(looksLikeDdl('ALTER TABLE users ADD COLUMN age INT')).toBe(true)
+    expect(looksLikeDdl('SELECT 1; TRUNCATE TABLE users')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE DROP TABLE users')).toBe(true)
   })
 
   it('groups counts with thousands separators', () => {

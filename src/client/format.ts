@@ -73,6 +73,21 @@ export function looksLikeWrite(sql: string): boolean {
     .some((statement) => WRITE_STATEMENT.test(unwrapExplainAnalyze(statement)))
 }
 
+/**
+ * Only schema changes invalidate the database dropdown and the object tree:
+ * a plain SELECT does not, so it must not pay for an extra `/schemas` round
+ * trip (the host answers that from the live server).
+ */
+const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate)\b/i
+
+export function looksLikeDdl(sql: string): boolean {
+  return stripComments(sql)
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .some((statement) => DDL_STATEMENT.test(unwrapExplainAnalyze(statement)))
+}
+
 const REDIS_READ = new Set([
   'get',
   'mget',
