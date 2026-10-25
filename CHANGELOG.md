@@ -4,8 +4,13 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（147）
+## 新功能（152）
 
+- `ac219f8` feat(tree): 库节点可导出整个库的建表语句
+- `6dc6f7e` feat(tree): Redis 逻辑库与键行也标上层级
+- `72013fb` feat(tree): 对象下的列/键/索引分组也标层级
+- `25ff3bb` feat(tree): 树行补上 aria-level 层级
+- `0a8ea32` feat(tree): 「只看这个表」后光标也落在筛选框
 - `234b329` feat(redis): 命令补全名单补上常用命令
 - `4a96705` feat(tree): 对象菜单可把树筛成只看这个表
 - `aa1b21e` feat(table): 行数统计失败时说明「行数未知」
@@ -285,8 +290,9 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（14）
+## 文档（15）
 
+- `f5eb83f` docs: 重新生成变更日志
 - `06f3886` docs: 快捷键表补上树刷新与 Redis 补全/选中
 - `37c895b` docs: 重新生成变更日志
 - `9a13eb5` docs: 去掉 Redis 说明里重复的半句话
