@@ -1072,6 +1072,42 @@ export const CSS = `
   box-sizing: border-box;
 }
 .dshdb-console-select { max-width: 220px; }
+.dshdb-complete-anchor { position: relative; display: block; flex: none; width: 100%; }
+.dshdb-complete {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-alias-shadow-md, 0 6px 20px rgba(0, 0, 0, 0.14));
+}
+.dshdb-complete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dshdb-complete-active { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-complete-kind { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
+.dshdb-complete-empty { padding: 6px 8px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
 .dshdb-console-value {
   flex: none;
   max-height: 150px;

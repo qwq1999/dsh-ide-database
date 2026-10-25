@@ -37,6 +37,7 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
 import { insertStatements, tableFromStatement } from './tablesql'
+import { applyCompletion, completionCandidates, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { ClockIcon, ClearIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon, StarIcon } from './icons'
@@ -411,6 +412,65 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     if (selectedId === '' || isRedis) return
     void loadSchemaList(selectedId)
   }, [isRedis, loadSchemaList, selectedId])
+
+  /* -- Ctrl+Space table completion ------------------------------------------
+   * Suggestions come from the object list of the schema the console runs in;
+   * the list is cached per schema so reopening the popup never refetches. */
+  const [caretPos, setCaretPos] = useState(0)
+  const [suggestions, setSuggestions] = useState<Completion[] | null>(null)
+  const [suggestionIndex, setSuggestionIndex] = useState(0)
+  const completionAnchor = useRef<HTMLSpanElement>(null)
+  const completionCache = useRef(new Map<string, Completion[]>())
+  const closeSuggestions = useCallback(() => setSuggestions(null), [])
+  usePopoverDismiss(suggestions !== null, closeSuggestions, completionAnchor)
+
+  const suggestionPrefix = wordAtCaret(statement, caretPos).prefix
+  const suggestionItems = suggestions === null ? [] : completionCandidates(suggestionPrefix, suggestions)
+
+  const openSuggestions = useCallback(async (): Promise<void> => {
+    if (connection === undefined || connection.dialect === 'redis') return
+    const target = schema !== '' ? schema : defaultSchema
+    const key = `${connection.id}:${target}`
+    let items = completionCache.current.get(key)
+    if (items === undefined) {
+      if (target === '') {
+        setFailure({ message: '先选择要查询的数据库，再补全表名' })
+        return
+      }
+      try {
+        const listed = await api.objects(connection.id, target)
+        items = [
+          ...listed.objects
+            .filter((item) => item.kind === 'table' || item.kind === 'view')
+            .map((item) => ({ name: item.name, kind: 'table' as const })),
+          ...schemas.map((item) => ({ name: item.name, kind: 'schema' as const })),
+        ]
+        completionCache.current.set(key, items)
+      } catch (error) {
+        setFailure(failureText(error))
+        return
+      }
+    }
+    setSuggestionIndex(0)
+    setSuggestions(items)
+  }, [connection, defaultSchema, schema, schemas])
+
+  const insertSuggestion = useCallback(
+    (name: string): void => {
+      const next = applyCompletion(statement, caretPos, name, connection?.dialect ?? 'mysql')
+      setSelectedRun(false)
+      setStatement(next.statement)
+      setSuggestions(null)
+      setCaretPos(next.caret)
+      setTimeout(() => {
+        const area = inputRef.current
+        if (area === null) return
+        area.focus()
+        area.setSelectionRange(next.caret, next.caret)
+      }, 0)
+    },
+    [caretPos, connection, statement],
+  )
 
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
@@ -1053,33 +1113,83 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         </>
       ) : (
         <>
-          <textarea
-            className="dshdb-input dshdb-console-input"
-            placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
-            ref={inputRef}
-            value={statement}
-            spellCheck={false}
-            onChange={(event) => {
-              setSelectedRun(false)
-              setStatement(event.target.value)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-                event.preventDefault()
-                void run()
-                return
-              }
-              if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
-                event.preventDefault()
-                setStatement((prev) => formatSql(prev))
-                return
-              }
-              if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-                event.preventDefault()
-                recallHistory(event.key === 'ArrowUp' ? 1 : -1)
-              }
-            }}
-          />
+          <span className="dshdb-complete-anchor" ref={completionAnchor}>
+            <textarea
+              className="dshdb-input dshdb-console-input"
+              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              ref={inputRef}
+              value={statement}
+              spellCheck={false}
+              onChange={(event) => {
+                setSelectedRun(false)
+                setCaretPos(event.target.selectionStart)
+                setStatement(event.target.value)
+              }}
+              onSelect={(event) => setCaretPos(event.currentTarget.selectionStart)}
+              onKeyUp={(event) => setCaretPos(event.currentTarget.selectionStart)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
+                  event.preventDefault()
+                  void openSuggestions()
+                  return
+                }
+                if (suggestions !== null && suggestionItems.length > 0) {
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    const step = event.key === 'ArrowDown' ? 1 : -1
+                    setSuggestionIndex((previous) => (previous + step + suggestionItems.length) % suggestionItems.length)
+                    return
+                  }
+                  if (event.key === 'Enter' || event.key === 'Tab') {
+                    const picked = suggestionItems[suggestionIndex]
+                    if (picked !== undefined) {
+                      event.preventDefault()
+                      insertSuggestion(picked.name)
+                      return
+                    }
+                  }
+                }
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault()
+                  void run()
+                  return
+                }
+                if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
+                  event.preventDefault()
+                  setStatement((prev) => formatSql(prev))
+                  return
+                }
+                if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                  event.preventDefault()
+                  recallHistory(event.key === 'ArrowUp' ? 1 : -1)
+                }
+              }}
+            />
+            {suggestions !== null ? (
+              <div className="dshdb-complete" role="listbox" aria-label="补全候选">
+                {suggestionItems.length === 0 ? (
+                  <span className="dshdb-complete-empty">没有匹配的表</span>
+                ) : (
+                  suggestionItems.map((item, index) => (
+                    <button
+                      key={`${item.kind}:${item.name}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === suggestionIndex}
+                      className={index === suggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}
+                      onMouseDown={(event) => {
+                        event.preventDefault()
+                        insertSuggestion(item.name)
+                      }}
+                    >
+                      <span className="dshdb-complete-name">{item.name}</span>
+                      <span className="dshdb-complete-kind">{item.kind === 'table' ? '表' : '库'}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+          </span>
 
           <div className="dshdb-qbar">
             <Button size="sm" variant="primary" icon={<PlayIcon size={12} />} onClick={() => void run()} loading={running} title="有选中内容时只执行选中部分">
