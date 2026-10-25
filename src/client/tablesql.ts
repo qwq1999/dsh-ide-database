@@ -3,7 +3,7 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { CellValue, ClientConnection, ColumnInfo } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo, Row } from '../shared/types'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
  * exact value picked from a cell, `isnull` comes from clicking a NULL cell. */
@@ -188,6 +188,25 @@ export function groupCountSql(
 }
 
 /** Manual WHERE (optional) AND every column filter, joined for one query. */
+/**
+ * The values of one column as a parenthesised `IN` list: `(1, 2, 'x')`.
+ * Handy for turning a result grid back into a `WHERE id IN (...)` filter.
+ */
+export function inListOf(
+  dialect: ClientConnection['dialect'],
+  rows: Row[],
+  index: number,
+): string {
+  const literals = rows.map((row) => {
+    const value: CellValue = row[index] ?? null
+    if (value === null || value === undefined) return 'NULL'
+    if (typeof value === 'number' || typeof value === 'bigint') return String(value)
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+    return quoteLiteral(String(value), dialect)
+  })
+  return `(${literals.join(', ')})`
+}
+
 export function composeWhere(
   dialect: ClientConnection['dialect'],
   base: string,

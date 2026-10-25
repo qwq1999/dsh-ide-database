@@ -39,7 +39,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
-import { groupCountSql, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
+import { groupCountSql, inListOf, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
   completionCandidates,
@@ -914,6 +914,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         label: `复制本列值（${filteredRows.length} 行）`,
         disabled: filteredRows.length === 0 || index < 0,
         run: () => void copyText(columnValues(filteredRows, index)),
+      },
+      {
+        label: '复制为 IN 列表',
+        disabled: filteredRows.length === 0 || index < 0,
+        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)),
       },
       {
         label: `复制查询语句（${displayColumns.length} 列）`,

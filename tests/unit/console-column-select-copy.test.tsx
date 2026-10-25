@@ -123,6 +123,22 @@ describe('console column select copy', () => {
     expect(copies).toHaveBeenCalledWith('SELECT `id`, `name`, `total` FROM `shop`.`orders`')
   })
 
+  it('copies the column as an IN list', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('name'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制为 IN 列表' }))
+
+    expect(copies).toHaveBeenCalledWith("('手机')")
+  })
+
   it('fills the editor with a group-by count for that column', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')

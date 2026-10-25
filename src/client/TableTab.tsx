@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -275,6 +275,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           label: `复制本列值（${rows.length} 行）`,
           disabled: rows.length === 0 || index < 0,
           run: () => void copyText(columnValues(rows, index)),
+        },
+        {
+          label: '复制为 IN 列表',
+          disabled: rows.length === 0 || index < 0,
+          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)),
         },
         {
           label: `复制查询语句（${displayColumns.length} 列）`,

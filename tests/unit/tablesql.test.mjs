@@ -11,6 +11,7 @@ import {
   quoteIdent,
   quoteLiteral,
   groupCountSql,
+  inListOf,
   selectColumnsSql,
   stripKeyword,
   tableFromStatement,
@@ -234,5 +235,17 @@ describe('cellWhere', () => {
     expect(cellWhere('mysql', { name: 'note', typeName: 'VARCHAR' }, null)).toBe('`note` IS NULL')
     expect(cellWhere('mysql', { name: 'paid', typeName: 'BIT' }, true)).toBe('`paid` = TRUE')
     expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
+  })
+})
+
+describe('inListOf', () => {
+  it('keeps numbers and NULLs bare and quotes text per dialect', () => {
+    expect(inListOf('mysql', [[1], [2.5], [null], ['x']], 0)).toBe("(1, 2.5, NULL, 'x')")
+    expect(inListOf('oracle', [['a'], [true]], 0)).toBe("('a', TRUE)")
+  })
+
+  it('escapes backslashes for MySQL literal text', () => {
+    const backslash = String.fromCharCode(92)
+    expect(inListOf('mysql', [['C:' + backslash + 'temp']], 0)).toBe("('C:" + backslash + backslash + "temp')")
   })
 })
