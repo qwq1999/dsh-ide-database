@@ -35,6 +35,8 @@ export interface DataGridProps {
   columns: ColumnInfo[]
   rows: Row[]
   offset: number
+  /** 1-based numbers to show instead of `offset + index + 1` when some rows are hidden. */
+  rowNumbers?: readonly number[]
   /** Extra header row (column filters in the table tab). */
   headerExtra?: ReactNode
   cellClass?: (column: ColumnInfo, value: CellValue) => string | undefined
@@ -130,6 +132,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     columns,
     rows,
     offset,
+    rowNumbers,
     headerExtra,
     cellClass,
     onCellClick,
@@ -344,7 +347,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
             const rowIndex = range.start + index
             return (
               <tr key={rowIndex}>
-                <td className="dshdb-num">{offset + rowIndex + 1}</td>
+                <td className="dshdb-num">{rowNumbers?.[rowIndex] ?? offset + rowIndex + 1}</td>
                 {columns.map((column, columnIndex) => {
                   const value: CellValue = row[columnIndex] ?? null
                   // One format per cell: the same text feeds the tooltip and the body.

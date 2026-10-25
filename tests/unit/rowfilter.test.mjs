@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterRows, rowMatches } from '../../src/client/rowfilter'
+import { filterRowIndexes, filterRows, rowMatches } from '../../src/client/rowfilter'
 
 describe('rowMatches', () => {
   it('matches any cell by its displayed text', () => {
@@ -15,6 +15,18 @@ describe('rowMatches', () => {
 
   it('returns false when no cell contains the needle', () => {
     expect(rowMatches(['alpha', 42], 'beta')).toBe(false)
+  })
+})
+
+describe('filterRowIndexes', () => {
+  it('lists every position when nothing is filtered out', () => {
+    expect(filterRowIndexes([['a'], ['b']], '')).toEqual([0, 1])
+    expect(filterRowIndexes([['a'], ['b']], '  ')).toEqual([0, 1])
+  })
+
+  it('keeps the original positions of matching rows', () => {
+    expect(filterRowIndexes([['alpha'], ['beta'], ['gamma']], 'gamma')).toEqual([2])
+    expect(filterRowIndexes([['alpha'], ['beta'], ['gamma']], 'a')).toEqual([0, 1, 2])
   })
 })
 

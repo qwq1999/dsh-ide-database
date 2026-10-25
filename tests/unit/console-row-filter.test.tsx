@@ -114,6 +114,16 @@ describe('console row filter', () => {
     await waitFor(() => expect(screen.getByText(/1 \/ 3 行/)).toBeTruthy())
   })
 
+  it('keeps the original page numbers on the rows that stay', async () => {
+    await runQuery()
+    fireEvent.change(screen.getByLabelText('筛选结果'), { target: { value: 'gamma' } })
+    await waitFor(() => expect(screen.queryByText('beta')).toBeNull())
+    const rows = screen.getAllByRole('row')
+    const dataRow = rows[rows.length - 1]
+    expect(dataRow?.textContent).toContain('3')
+    expect(dataRow?.textContent).toContain('gamma')
+  })
+
   it('restores every row when Escape clears the filter', async () => {
     await runQuery()
     const input = screen.getByLabelText('筛选结果')

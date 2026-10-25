@@ -34,7 +34,7 @@ import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
-import { filterRows } from './rowfilter'
+import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
@@ -832,7 +832,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   // Sorting only reshapes the current page; a new query or page resets it.
   const visibleRows = useMemo(() => sortRows(columns, rows, rowSort), [columns, rows, rowSort])
   // The text filter is a view over the page: exports of "current page" follow it.
-  const filteredRows = useMemo(() => filterRows(visibleRows, rowFilter), [visibleRows, rowFilter])
+  const filteredIndexes = useMemo(() => filterRowIndexes(visibleRows, rowFilter), [visibleRows, rowFilter])
+  const filteredRows = useMemo(() => filteredIndexes.map((index) => visibleRows[index] as Row), [filteredIndexes, visibleRows])
 
   /** `EXPLAIN FORMAT=TREE` style plans: one text column, rendered as preformatted text. */
   const planText = useMemo(() => planTextOf(plan?.plan), [plan])
@@ -1555,6 +1556,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 columns={shownColumns}
                 rows={shownRows}
                 offset={offset}
+                rowNumbers={filteredIndexes.map((index) => offset + index + 1)}
                 storageKey="console:sql"
                 sort={rowSort}
                 onSort={gridSort}
