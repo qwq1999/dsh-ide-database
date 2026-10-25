@@ -37,6 +37,7 @@ import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRowsWithOrder, type RowSort } from './rowsort'
 import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
+import { applyCommandCompletion, commandCompletion } from './rediscommands'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
@@ -1594,6 +1595,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               }}
               onKeyDown={(event) => {
                 if (composing(event)) return
+                if (event.key === 'Tab') {
+                  const input = event.currentTarget
+                  const completion = commandCompletion(command, input.selectionStart ?? command.length)
+                  if (completion === null) return
+                  event.preventDefault()
+                  const next = applyCommandCompletion(command, completion)
+                  setCommand(next.text)
+                  setCaretPos(next.caret)
+                  input.setSelectionRange(next.caret, next.caret)
+                  return
+                }
                 if (event.key === 'Enter') void runCommand()
                 if (event.key === 'ArrowUp') {
                   event.preventDefault()
