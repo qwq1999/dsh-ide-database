@@ -40,8 +40,11 @@ interface Failure {
 }
 
 import { TABLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
+import { readAllowedNumber, writeNumber } from './prefs'
 
 const PAGE_SIZES = [100, 200, 500, 1000, 2000, 5000]
+const AUTO_REFRESH_KEY = 'dsh-ide-database.auto-refresh.v1'
+const AUTO_REFRESH_OPTIONS = [0, 5000, 10000, 30000] as const
 
 const noTabInfo = (): undefined => undefined
 
@@ -94,7 +97,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [sqlText, setSqlText] = useState('')
   const [loading, setLoading] = useState(false)
   /** Auto-refresh period in ms; 0 means off. */
-  const [autoMs, setAutoMs] = useState(0)
+  const [autoMs, setAutoMs] = useState(() => readAllowedNumber(AUTO_REFRESH_KEY, AUTO_REFRESH_OPTIONS, 0))
   const [error, setError] = useState<Failure | null>(null)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(() => readPageSize(TABLE_PAGE_KEY, PAGE_SIZES, 500))
@@ -712,7 +715,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           aria-label="自动刷新"
           title="定时重新查询当前页"
           value={autoMs}
-          onChange={(event) => setAutoMs(Number(event.target.value))}
+          onChange={(event) => {
+            const next = Number(event.target.value)
+            setAutoMs(next)
+            writeNumber(AUTO_REFRESH_KEY, next)
+          }}
         >
           <option value={0}>不自动刷新</option>
           <option value={5000}>每 5 秒刷新</option>
