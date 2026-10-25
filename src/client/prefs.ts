@@ -8,8 +8,12 @@
 /** The stored number when it is still one of the offered values, else fallback. */
 export function readAllowedNumber(key: string, allowed: readonly number[], fallback: number): number {
   try {
-    const stored = Number(window.localStorage.getItem(key))
-    return allowed.includes(stored) ? stored : fallback
+    const raw = window.localStorage.getItem(key)
+    // `Number('')` and `Number(null)` are both 0, which would silently pick 0
+    // when zero is an offered value; require a real number in the entry.
+    if (raw === null || raw.trim() === '') return fallback
+    const stored = Number(raw)
+    return Number.isFinite(stored) && allowed.includes(stored) ? stored : fallback
   } catch {
     return fallback
   }

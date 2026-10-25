@@ -21,6 +21,11 @@ describe('prefs', () => {
     expect(readAllowedNumber('k', [100, 200, 500], 500)).toBe(500)
   })
 
+  it('treats a blank entry as missing even when zero is offered', () => {
+    window.localStorage.setItem('k', '   ')
+    expect(readAllowedNumber('k', [0, 5000], 5000)).toBe(5000)
+  })
+
   it('falls back when nothing is stored', () => {
     expect(readAllowedNumber('missing', [100, 200], 100)).toBe(100)
   })
