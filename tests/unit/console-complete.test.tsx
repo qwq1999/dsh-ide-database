@@ -187,4 +187,25 @@ describe('console table completion', () => {
     await screen.findByRole('listbox', { name: '补全候选' })
     expect(mocks.objects).toHaveBeenCalledTimes(1)
   })
+  it('scrolls the highlighted candidate into view', async () => {
+    const scrolled = vi.fn()
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = scrolled
+    try {
+      render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+      await waitForConsoleSource(mocks)
+      const editor = await screen.findByPlaceholderText(/输入 SQL/)
+      fireEvent.change(editor, { target: { value: 'SELECT * FROM ord' } })
+      caret(editor as HTMLTextAreaElement, (editor as HTMLTextAreaElement).value.length)
+      fireEvent.keyDown(editor, { key: ' ', ctrlKey: true })
+      await screen.findByRole('listbox', { name: '补全候选' })
+      expect(scrolled).toHaveBeenCalled()
+      const calls = scrolled.mock.calls.length
+      fireEvent.keyDown(editor, { key: 'ArrowDown' })
+      expect(scrolled.mock.calls.length).toBeGreaterThan(calls)
+      expect(scrolled).toHaveBeenLastCalledWith({ block: 'nearest' })
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
 })

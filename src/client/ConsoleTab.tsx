@@ -321,6 +321,16 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const suggestionItems = suggestions === null ? [] : completionCandidates(suggestionPrefix, suggestions)
   // Typing narrows the list without resetting the cursor, so clamp it on read.
   const activeSuggestionIndex = suggestionItems.length === 0 ? 0 : suggestionIndex % suggestionItems.length
+  useEffect(() => {
+    if (suggestions === null) return
+    // Keep the highlighted row in sight when the list is taller than the popup.
+    const active = completionAnchor.current?.querySelector<HTMLElement>('.dshdb-complete-active')
+    // Older jsdom builds omit scrollIntoView; the popup is still usable without it.
+    if (active !== null && active !== undefined && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest' })
+    }
+  }, [activeSuggestionIndex, suggestions])
+
 
   const loadSchemaCompletions = useCallback(
     async (target: string): Promise<Completion[] | null> => {
