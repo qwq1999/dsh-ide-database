@@ -32,6 +32,20 @@ describe('StructureStore accessors', () => {
     expect(instance.redisDatabases('other')).toBeUndefined()
   })
 
+  it('reuses the serialized snapshot until the structure changes', () => {
+    const { instance } = store()
+    instance.putSchemas('c1', [{ name: 'shop' }])
+    const first = instance.snapshotJson()
+    expect(first).toBe(instance.snapshotJson())
+    expect(JSON.parse(first).c1.schemas.map((schema) => schema.name)).toEqual(['shop'])
+
+    instance.putSchemas('c1', [{ name: 'shop' }, { name: 'crm' }])
+    const second = instance.snapshotJson()
+    expect(second).not.toBe(first)
+    expect(JSON.parse(second).c1.schemas).toHaveLength(2)
+    expect(instance.snapshot().c1.schemas).toHaveLength(2)
+  })
+
   it('defaults the database count when a key page creates the Redis entry', () => {
     const { instance } = store()
     instance.putRedisKeys('c1', 2, [{ key: 'k', type: 'string', ttl: -1, size: 3 }], '17', true)

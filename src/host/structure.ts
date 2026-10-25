@@ -177,6 +177,8 @@ export class StructureStore {
   private data: StructureSnapshot = {}
   private timer: NodeJS.Timeout | undefined
   private dirty = false
+  /** Last JSON handed out by snapshotJson(), dropped whenever the data changes. */
+  private serialized: string | undefined
 
   constructor(
     private readonly file: string,
@@ -209,7 +211,16 @@ export class StructureStore {
   }
 
   snapshot(): StructureSnapshot {
-    return JSON.parse(JSON.stringify(this.data)) as StructureSnapshot
+    return JSON.parse(this.snapshotJson()) as StructureSnapshot
+  }
+
+  /**
+   * The snapshot as JSON, reused until the cached structure changes: the tree
+   * endpoint only serializes, so it does not need its own deep copy first.
+   */
+  snapshotJson(): string {
+    if (this.serialized === undefined) this.serialized = JSON.stringify(this.data)
+    return this.serialized
   }
 
   get(connectionId: string): CachedStructure | undefined {
@@ -340,6 +351,7 @@ export class StructureStore {
   }
 
   private schedule(): void {
+    this.serialized = undefined
     this.dirty = true
     if (this.timer !== undefined) return
     this.timer = setTimeout(() => {

@@ -21,7 +21,6 @@ import type {
   SchemaInfo,
   SchemaListResult,
   SchemaObject,
-  StructureSnapshot,
   ServerInfo,
   TableDescription,
 } from '../shared/types.js'
@@ -57,6 +56,14 @@ interface ConnectionService {
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
+  response.statusCode = status
+  response.setHeader('content-type', 'application/json; charset=utf-8')
+  response.setHeader('cache-control', 'no-store')
+  response.end(payload)
+}
+
+/** Send a body that is already JSON (no second serialization of the payload). */
+function sendJsonText(response: ServerResponse, status: number, payload: string): void {
   response.statusCode = status
   response.setHeader('content-type', 'application/json; charset=utf-8')
   response.setHeader('cache-control', 'no-store')
@@ -281,8 +288,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       return
     }
     case '/structure': {
-      const structures: StructureSnapshot = deps.structure.snapshot()
-      sendJson(response, 200, { ok: true, data: { structures } })
+      sendJsonText(response, 200, `{"ok":true,"data":{"structures":${deps.structure.snapshotJson()}}}`)
       return
     }
     case '/schema/list': {
