@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { exportFilename, jsonValue, renderExport, toJson, toMarkdown } from '../../src/client/export.js'
+import { exportFilename, jsonValue, renderExport, toJson, toMarkdown, toTsv } from '../../src/client/export.js'
 
 const columns = (...names) => names.map((name) => ({ name, typeName: 'varchar', kind: 'text' }))
+
+describe('toTsv', () => {
+  it('separates cells with tabs and flattens inner breaks', () => {
+    const text = toTsv(columns('id', 'note'), [[7, 'a\tb\nc'], [null, 'plain']])
+    expect(text).toBe('id\tnote\n7\ta b c\nNULL\tplain\n')
+  })
+})
 
 describe('toJson', () => {
   it('keeps native types and nulls', () => {

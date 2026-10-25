@@ -13,7 +13,7 @@ import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatCount, formatMs } from './format'
 import { CopyIcon, DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
-import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
@@ -703,6 +703,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               </button>
               <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, rows))}>
                 复制当前页 CSV
+              </button>
+              <button type="button" role="menuitem" onClick={() => void copyText(toTsv(displayColumns, rows))}>
+                复制当前页 TSV
               </button>
               <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows))}>
                 复制当前页 JSON

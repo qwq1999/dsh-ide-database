@@ -24,6 +24,18 @@ export function toCsv(columns: ColumnInfo[], rows: Row[]): string {
   return `${[head, ...body].join('\r\n')}\r\n`
 }
 
+function tsvCell(value: CellValue): string {
+  // Tabs and line breaks would start a new cell in a spreadsheet, so flatten them.
+  return formatCell(value).replace(/[\t\r\n]+/gu, ' ')
+}
+
+/** Tab separated text for the clipboard: pasting it fills real cells in Excel. */
+export function toTsv(columns: ColumnInfo[], rows: Row[]): string {
+  const head = columns.map((column) => tsvCell(column.name)).join('\t')
+  const body = rows.map((row) => columns.map((_, index) => tsvCell(row[index] ?? null)).join('\t'))
+  return `${[head, ...body].join('\n')}\n`
+}
+
 export function jsonValue(value: unknown): unknown {
   if (typeof value === 'bigint') {
     return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()

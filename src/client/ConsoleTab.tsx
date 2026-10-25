@@ -40,7 +40,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { readFlag, writeFlag } from './prefs'
-import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
@@ -1841,6 +1841,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     disabled={filteredRows.length === 0}
                   >
                     复制当前页 CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void copyText(toTsv(displayColumns, filteredRows))}
+                    disabled={filteredRows.length === 0}
+                  >
+                    复制当前页 TSV
                   </button>
                   <button
                     type="button"
