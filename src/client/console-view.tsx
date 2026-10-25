@@ -3,7 +3,7 @@
  * grid and pager buttons. They read nothing from the console state, so they
  * live here instead of growing ConsoleTab.tsx.
  */
-import { memo, useCallback, useMemo, useRef, useState, type MouseEvent, type ReactElement } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, CopyIcon, StarIcon } from './icons'
@@ -71,6 +71,12 @@ export const HistoryPanel = memo(function HistoryPanel(props: {
   const [query, setQuery] = useState('')
   // Clearing history is irreversible, so the first click only arms the button.
   const [clearArmed, setClearArmed] = useState(false)
+  // Running something new means the user moved on: do not leave the button
+  // armed from an earlier click.
+  const historyCount = props.entries.length
+  useEffect(() => {
+    setClearArmed(false)
+  }, [historyCount])
   const needle = query.trim().toLowerCase()
   const matches = (entry: HistoryEntry): boolean => needle === '' || entry.statement.toLowerCase().includes(needle)
   const pins = props.pins.filter(matches)

@@ -68,6 +68,35 @@ describe('console presentational pieces', () => {
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 
+  it('disarms the clear button when the history changes', () => {
+    const now = Date.now()
+    const { rerender } = render(
+      <HistoryPanel
+        entries={[{ statement: 'select 1', at: now }]}
+        pins={[]}
+        onPick={() => {}}
+        onTogglePin={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '清空' }))
+    expect(screen.getByRole('button', { name: '确认清空' })).toBeTruthy()
+
+    rerender(
+      <HistoryPanel
+        entries={[
+          { statement: 'select 2', at: now + 1000 },
+          { statement: 'select 1', at: now },
+        ]}
+        pins={[]}
+        onPick={() => {}}
+        onTogglePin={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.getByRole('button', { name: '清空' })).toBeTruthy()
+  })
+
   it('keeps the search box out of a short history', () => {
     const now = Date.now()
     render(
