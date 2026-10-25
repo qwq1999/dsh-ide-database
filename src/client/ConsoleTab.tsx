@@ -233,10 +233,20 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     recallRef.current = -1
   }, [historyKind])
 
-  const toggleStatementPin = (entry: HistoryEntry): void => {
+  const toggleStatementPin = useCallback((entry: HistoryEntry): void => {
     togglePin(historyKind, entry.statement)
     setPins(readPins(historyKind))
-  }
+  }, [historyKind])
+
+  const clearStatementHistory = useCallback((): void => {
+    setHistory(clearHistory('sql'))
+    recallRef.current = -1
+  }, [])
+
+  const clearCommandHistory = useCallback((): void => {
+    setHistory(clearHistory('redis'))
+    recallRef.current = -1
+  }, [])
 
   // Database/Schema choices come from the host cache when the source is offline,
   // and from a live listing once it is connected.
@@ -578,10 +588,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setStatement(history[next]!.statement)
   }
 
-  const pickHistory = (entry: HistoryEntry): void => {
+  const pickHistory = useCallback((entry: HistoryEntry): void => {
     setStatement(entry.statement)
     setHistoryOpen(false)
-  }
+  }, [])
+
+  const pickCommandHistory = useCallback((entry: HistoryEntry): void => {
+    setCommand(entry.statement)
+    setHistoryOpen(false)
+  }, [])
 
   const cancel = async (): Promise<void> => {
     if (stmtRef.current === '') return
@@ -1015,15 +1030,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <HistoryPanel
               entries={history}
               pins={pins}
-              onPick={(entry) => {
-                setCommand(entry.statement)
-                setHistoryOpen(false)
-              }}
+              onPick={pickCommandHistory}
               onTogglePin={toggleStatementPin}
-              onClear={() => {
-                setHistory(clearHistory('redis'))
-                recallRef.current = -1
-              }}
+              onClear={clearCommandHistory}
             />
           ) : null}
           <div className="dshdb-qfilter">
@@ -1417,10 +1426,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               pins={pins}
               onPick={pickHistory}
               onTogglePin={toggleStatementPin}
-              onClear={() => {
-                setHistory(clearHistory('sql'))
-                recallRef.current = -1
-              }}
+              onClear={clearStatementHistory}
             />
           ) : null}
 

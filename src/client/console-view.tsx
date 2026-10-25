@@ -48,7 +48,8 @@ function HistoryRow(props: {
   )
 }
 
-export function HistoryPanel(props: {
+/** Memoised: the console re-renders on each keystroke, the history list should not. */
+export const HistoryPanel = memo(function HistoryPanel(props: {
   entries: HistoryEntry[]
   pins: HistoryEntry[]
   onPick: (entry: HistoryEntry) => void
@@ -116,7 +117,7 @@ export function HistoryPanel(props: {
       </div>
     </div>
   )
-}
+})
 
 /** One key row; memoised so typing in the command box leaves the table alone. */
 const KeyRow = memo(function KeyRow({
