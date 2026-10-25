@@ -13,7 +13,17 @@ import { clearWidths, readWidths, writeWidths } from './columnWidths'
 import { formatCell } from './format'
 
 /** Rows are rendered with a fixed height so offsets need no measurement. */
-export const GRID_ROW_HEIGHT = 22
+export /**
+ * JDBC type codes that display right-aligned: integers, decimals and floats.
+ * Everything else (text, dates, blobs) stays left-aligned.
+ */
+const NUMERIC_JDBC_TYPES = new Set([-6, -5, 2, 3, 4, 5, 6, 7, 8])
+
+function numericColumn(column: ColumnInfo): boolean {
+  return column.jdbcType !== undefined && NUMERIC_JDBC_TYPES.has(column.jdbcType)
+}
+
+const GRID_ROW_HEIGHT = 22
 const VIRTUAL_THRESHOLD = 200
 const OVERSCAN = 8
 
@@ -257,6 +267,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                 key={`${column.name}-${index}`}
                 title={headerTitle(column, onSort !== undefined)}
                 className={[
+                  numericColumn(column) ? 'dshdb-cell-num' : '',
                   onSort === undefined ? '' : 'dshdb-th-sortable',
                   onReorderColumns === undefined ? '' : 'dshdb-th-draggable',
                   dropIndex === index ? 'dshdb-th-drop-target' : '',
@@ -365,7 +376,11 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                     <td
                       key={`${column.name}-${columnIndex}`}
                       title={text}
-                      className={cellClass?.(column, value)}
+                      className={
+                        [numericColumn(column) ? 'dshdb-cell-num' : '', cellClass?.(column, value) ?? '']
+                          .filter((value) => value !== '')
+                          .join(' ') || undefined
+                      }
                       onClick={onCellClick === undefined ? undefined : () => onCellClick(column, value)}
                       onDoubleClick={onCellOpen === undefined ? undefined : () => onCellOpen(column, value)}
                       onContextMenu={

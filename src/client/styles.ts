@@ -487,6 +487,11 @@ export const CSS = `
   border-bottom: 0 !important;
 }
 .dshdb-grid tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-grid .dshdb-cell-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .dshdb-grid .dshdb-num {
   color: var(--dsw-alias-label-dimmed);
   text-align: right;
