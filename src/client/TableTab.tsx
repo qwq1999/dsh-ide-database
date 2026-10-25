@@ -445,6 +445,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }, [filters, filtersOpen, connection])
 
   const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
+  const conditioned = whereText.trim() !== '' || activeFilterCount > 0
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
     setFilters((previous) => {
       const next: ColumnFilters = { ...previous }
@@ -757,7 +758,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
       {rows.length === 0 && !loading ? (
         <div className="dshdb-grid-wrap">
-          <EmptyState icon={<TableIcon size={22} />} title="没有匹配的行" description={sqlText} />
+          <EmptyState icon={<TableIcon size={22} />} title={conditioned ? '没有匹配的行' : '这张表还没有数据'} description={conditioned ? sqlText : '表里一行数据都没有'} />
         </div>
       ) : (
         <DataGrid
@@ -815,7 +816,6 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           cellClass={gridCellClass}
           cellMenu={gridCellMenu}
           onCellOpen={gridCellOpen}
-          emptyText="这里没有符合条件的行"
           onCellClick={
             filtersOpen
               ? (column, value) => {
