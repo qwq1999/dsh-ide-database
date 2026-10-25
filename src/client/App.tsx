@@ -70,6 +70,7 @@ export function App(props: AppProps): ReactElement {
   const [savingSettings, setSavingSettings] = useState(false)
   const [downloading, setDownloading] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [connModal, setConnModal] = useState<{ open: boolean; editing: ClientConnection | null }>({
@@ -272,8 +273,12 @@ export function App(props: AppProps): ReactElement {
         <ToolButton
           title="刷新选中的数据源"
           icon={<RefreshIcon size={14} />}
-          onClick={() => void refreshSelected()}
-          disabled={connectingId !== ''}
+          onClick={() => {
+            if (refreshing) return
+            setRefreshing(true)
+            void refreshSelected().finally(() => setRefreshing(false))
+          }}
+          disabled={connectingId !== '' || refreshing}
         >
           刷新
         </ToolButton>
