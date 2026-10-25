@@ -7,16 +7,20 @@ import { memo, useEffect, useState, type ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
 import { copyText } from './colmenu'
 import { formatCount } from './format'
-import { CheckIcon, CopyIcon } from './icons'
+import { CheckIcon, CopyIcon, RefreshIcon } from './icons'
 import { redisTtlLabel, redisValueTable, redisValueText } from './redisvalue'
 import { Tag } from './ui'
 
 export const RedisValuePanel = memo(function RedisValuePanel({
   value,
   showKey = true,
+  refreshing = false,
+  onRefresh,
 }: {
   value: RedisValue
   showKey?: boolean
+  refreshing?: boolean
+  onRefresh?: () => void
 }): ReactElement {
   const table = redisValueTable(value)
   const [copied, setCopied] = useState(false)
@@ -38,6 +42,18 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         <span className="dshdb-muted">{redisTtlLabel(value.ttl)}</span>
         {value.size === undefined ? null : <span className="dshdb-muted">{formatCount(value.size)} 条</span>}
         {value.truncated ? <Tag tone="warn">已截断</Tag> : null}
+        {onRefresh === undefined ? null : (
+          <button
+            type="button"
+            className="dshdb-row-action"
+            title={refreshing ? '正在重新读取' : '重新读取这个键'}
+            aria-label={refreshing ? '正在刷新键值' : '刷新键值'}
+            disabled={refreshing}
+            onClick={onRefresh}
+          >
+            <RefreshIcon size={12} />
+          </button>
+        )}
         <button
           type="button"
           className="dshdb-row-action"

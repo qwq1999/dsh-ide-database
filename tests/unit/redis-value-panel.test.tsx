@@ -41,4 +41,17 @@ describe('redis value panel', () => {
     await screen.findByLabelText('键名已复制')
     expect(copy).toHaveBeenCalledWith('user:1')
   })
+
+  it('offers a refresh action that re-reads the key', () => {
+    const refresh = vi.fn()
+    render(<RedisValuePanel value={stored('hello')} onRefresh={refresh} />)
+    fireEvent.click(screen.getByLabelText('刷新键值'))
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the refresh action while it is running', () => {
+    render(<RedisValuePanel value={stored('hello')} onRefresh={() => undefined} refreshing />)
+    const button = screen.getByLabelText('正在刷新键值')
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+  })
 })

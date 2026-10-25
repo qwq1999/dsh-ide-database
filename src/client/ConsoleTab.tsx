@@ -770,6 +770,26 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     [activeRedisDb, selectedId],
   )
 
+  const [valueRefreshing, setValueRefreshing] = useState(false)
+
+  /** Re-read the selected key so a TTL countdown or a changed payload can be picked up. */
+  const refreshValue = useCallback(async (): Promise<void> => {
+    if (selectedId === '' || selectedKey === '') return
+    const token = runToken.current
+    setValueRefreshing(true)
+    try {
+      const next = await withConnection(selectedId, () => api.redisKey(selectedId, selectedKey, activeRedisDb))
+      if (token !== runToken.current) return
+      setValue(next)
+      setValueError(null)
+    } catch (error) {
+      if (token !== runToken.current) return
+      setValueError(failureText(error))
+    } finally {
+      if (token === runToken.current) setValueRefreshing(false)
+    }
+  }, [activeRedisDb, selectedId, selectedKey])
+
   /** Stable for the memoised key rows: only a different key starts a new request. */
   const pickKey = useCallback(
     (key: RedisKeyInfo): void => {
@@ -1202,7 +1222,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             )}
           </div>
 
-          {value !== null ? <RedisValuePanel value={value} /> : null}
+          {value !== null ? (
+            <RedisValuePanel value={value} onRefresh={() => void refreshValue()} refreshing={valueRefreshing} />
+          ) : null}
 
           <div className="dshdb-qfilter">
             <span className="dshdb-qfilter-label">命令</span>
