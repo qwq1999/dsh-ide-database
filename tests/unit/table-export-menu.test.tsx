@@ -350,4 +350,29 @@ describe('table export menu', () => {
     expect(String(call[2])).toContain('INSERT INTO `shop`.`orders`')
     expect(mocks.ddl).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table')
   })
+  it('does not double the ORDER BY prefix when the box already has one', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const order = await screen.findByLabelText('排序列')
+    fireEvent.change(order, { target: { value: 'ORDER BY total DESC' } })
+    fireEvent.keyDown(order, { key: 'Enter' })
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(2))
+
+    const trigger = await screen.findByLabelText('导出结果') as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /全部 CSV/ }))
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
+
+    const sqls = mocks.query.mock.calls.map((call) => (call[0] as { sql: string }).sql)
+    expect(sqls.some((sql) => /ORDER BY total DESC LIMIT 2000 OFFSET 0/su.test(sql))).toBe(true)
+    expect(sqls.some((sql) => sql.includes('ORDER BY ORDER BY'))).toBe(false)
+  })
 })

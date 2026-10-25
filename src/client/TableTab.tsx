@@ -597,7 +597,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const from = qualifiedName(dialect, params.schema, params.table)
     const where = composeWhere(dialect, whereText, columns, filters)
     const whereSql = where === '' ? '' : ` WHERE ${where}`
-    const orderBy = stripKeyword(orderText, 'ORDER\s+BY')
+    const orderBy = stripKeyword(orderText, 'ORDER\\s+BY')
     const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
     const batch = 2000
     let seeded = false
