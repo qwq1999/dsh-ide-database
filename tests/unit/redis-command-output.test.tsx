@@ -93,7 +93,7 @@ describe('redis command output', () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
 
-    const input = screen.getByPlaceholderText('例如 GET shop:customer:42')
+    const input = await screen.findByPlaceholderText('例如 GET shop:customer:42')
     fireEvent.change(input, { target: { value: 'GET app:config' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 

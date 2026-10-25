@@ -266,7 +266,10 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         )}
         <thead>
           <tr>
-            <th className="dshdb-num">#</th>
+            <th className="dshdb-num" scope="col">
+              <span aria-hidden="true">#</span>
+              <span className="dshdb-sr-only">行号</span>
+            </th>
             {columns.map((column, index) => (
               <th
                 key={`${column.name}-${index}`}

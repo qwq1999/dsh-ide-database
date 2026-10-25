@@ -19,7 +19,7 @@ describe('column drag reorder', () => {
 
     const headers = screen.getAllByRole('columnheader')
     // Header 0 is the row-number column; draggable data headers follow.
-    expect(headers[0]?.textContent).toBe('#')
+    expect(headers[0]?.querySelector('.dshdb-sr-only')?.textContent).toBe('行号')
     expect(headers[1]?.textContent).toBe('id')
     expect(headers[1]?.getAttribute('draggable')).toBe('true')
 
