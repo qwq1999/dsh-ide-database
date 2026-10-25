@@ -1137,6 +1137,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setCellView(cellValueView(column.name, value))
   }, [])
 
+  /**
+   * Table targets are read many times per render (menu labels, disabled flags,
+   * export names), so parse each statement once instead of per call site.
+   */
+  const resolveTarget = useCallback(
+    (text: string): { schema: string; table: string } | null => {
+      const parsed = tableFromStatement(text)
+      if (parsed === null) return null
+      return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
+    },
+    [defaultSchema, schema],
+  )
+  const executedTarget = useMemo(
+    () => resolveTarget(sourceSql !== '' ? sourceSql : base),
+    [base, resolveTarget, sourceSql],
+  )
+  const editedTarget = useMemo(() => resolveTarget(statement), [resolveTarget, statement])
+
   if (loadError !== '') {
     return (
       <div className="dshdb-qtab">
@@ -1158,17 +1176,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }
 
   /** The table the console statement targets, for INSERT export. */
-  const tableTarget = (): { schema: string; table: string } | null => {
-    const parsed = tableFromStatement(sourceSql !== '' ? sourceSql : base)
-    if (parsed === null) return null
-    return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
-  }
+  const tableTarget = (): { schema: string; table: string } | null => executedTarget
   /** The table the editor points at right now, for the "open table" button. */
-  const editorTarget = (): { schema: string; table: string } | null => {
-    const parsed = tableFromStatement(statement)
-    if (parsed === null) return null
-    return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
-  }
+  const editorTarget = (): { schema: string; table: string } | null => editedTarget
   /**
    * The tree knows whether an object is a view; here we only have the table name,
    * so ask the cached object list before opening the tab with the right kind.
