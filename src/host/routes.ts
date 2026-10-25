@@ -34,6 +34,7 @@ import type { SecretStore } from './secrets.js'
 import { optionalService, type HostContext } from './services.js'
 import type { SqlService } from './sql.js'
 import type { StructureStore } from './structure.js'
+import { encodeJsonPayload } from './wire.js'
 
 const BODY_LIMIT = 4 * 1024 * 1024
 
@@ -55,19 +56,21 @@ interface ConnectionService {
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  const payload = JSON.stringify(body)
-  response.statusCode = status
-  response.setHeader('content-type', 'application/json; charset=utf-8')
-  response.setHeader('cache-control', 'no-store')
-  response.end(payload)
+  sendJsonText(response, status, JSON.stringify(body))
 }
 
 /** Send a body that is already JSON (no second serialization of the payload). */
 function sendJsonText(response: ServerResponse, status: number, payload: string): void {
+  const { body, gzip } = encodeJsonPayload(payload, response.req?.headers['accept-encoding'])
   response.statusCode = status
   response.setHeader('content-type', 'application/json; charset=utf-8')
   response.setHeader('cache-control', 'no-store')
-  response.end(payload)
+  response.setHeader('content-length', String(body.length))
+  if (gzip) {
+    response.setHeader('content-encoding', 'gzip')
+    response.setHeader('vary', 'accept-encoding')
+  }
+  response.end(body)
 }
 
 function fail(response: ServerResponse, error: unknown): void {
