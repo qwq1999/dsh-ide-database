@@ -96,8 +96,7 @@ describe('console page fallback', () => {
   it('falls back to the first page when the requested page is past the end', async () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
-    const editor = document.querySelector('textarea')
-    if (editor === null) throw new Error('missing editor')
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
     fireEvent.change(editor, { target: { value: 'SELECT * FROM orders' } })
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(0))
