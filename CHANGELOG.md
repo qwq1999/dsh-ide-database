@@ -4,8 +4,12 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（124）
+## 新功能（128）
 
+- `5869920` feat(console): 记住每个连接上次选的库/Schema
+- `52a3446` feat(console): 记住每个 Redis 连接选过的逻辑库
+- `bda25e7` feat(console): 清空执行历史需要点两次
+- `b2adc7f` feat(tree): 重新打开面板时回到上次选中的数据源
 - `4cf26f8` feat(ui): 导出进度与复制反馈交给读屏播报
 - `15c406b` feat(tree): 对象菜单可复制带分页的查询语句
 - `ee7b4e6` feat(table): 切回标签页立刻补一次自动刷新
@@ -131,8 +135,12 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（53）
+## 修复（57）
 
+- `d8fbbc6` fix(redis): 键模式输入框补上可访问名并说明两种筛选的区别
+- `17a4e37` fix(console): 记住的 Redis 逻辑库超出范围时回退到默认库
+- `128a142` fix(console): 记住的库/Schema 不存在时回退到默认库
+- `865d3ac` fix(console): 历史有新增时取消「确认清空」状态
 - `b206f61` fix(ui): 复制 TSV 也给出「已复制」反馈
 - `18c7a3e` fix(table): 导出进行中不再触发自动刷新
 - `bdcdde2` fix(ui): 通知序列号改成自增，毫秒内连发不会共用 key
@@ -222,8 +230,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（11）
+## 测试（12）
 
+- `88515c8` test(prefs): 补上字符串偏好的读取与写入用例
 - `d8e7f08` test: README 里的工具数量要和表格行数一致
 - `95fb576` test: 历史面板 memo 用例等编辑器就绪并冲洗挂起渲染
 - `c1968c9` test: 命令历史用例等命令框挂载后再操作
@@ -236,8 +245,9 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（7）
+## 文档（8）
 
+- `5d5b63a` docs: 重新生成变更日志
 - `bc1f6f3` docs: 说明切回标签页会立刻刷新
 - `0db3b77` docs: 补上复制反馈的说明
 - `91c0847` docs: 修正 README 里 Agent 工具的数量
