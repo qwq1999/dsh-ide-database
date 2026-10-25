@@ -124,6 +124,29 @@ describe('console row filter', () => {
     expect(dataRow?.textContent).toContain('gamma')
   })
 
+  it('clears the filter when another statement runs', async () => {
+    await runQuery()
+    const input = screen.getByLabelText('筛选结果')
+    fireEvent.change(input, { target: { value: 'bet' } })
+    await waitFor(() => expect(screen.queryByText('alpha')).toBeNull())
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT * FROM u',
+      columns: [{ name: 'name', typeName: 'VARCHAR' }],
+      rows: [['delta'], ['epsilon']],
+      rowCount: 2,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM u' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('delta')
+    expect(screen.getByText('epsilon')).toBeTruthy()
+    expect((screen.getByLabelText('筛选结果') as HTMLInputElement).value).toBe('')
+  })
+
   it('restores every row when Escape clears the filter', async () => {
     await runQuery()
     const input = screen.getByLabelText('筛选结果')

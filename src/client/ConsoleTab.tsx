@@ -401,6 +401,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const execute = useCallback(
     async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
       setRowSort(null)
+      setRowFilter('')
       setScriptResults([])
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
@@ -437,6 +438,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   /** Run several statements in order; every result is kept so the grid can flip between them. */
   const executeScript = async (parts: string[]): Promise<void> => {
     setRowSort(null)
+    setRowFilter('')
     setScriptResults([])
     if (selectedId === '') return
     const token = ++runToken.current
@@ -775,6 +777,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   useEffect(() => {
     setResult(null)
     setScriptResults([])
+    setRowFilter('')
     setFailure(null)
     // A statement handed over by a table tab is the reason this tab was opened.
     if (seededStatement.current) seededStatement.current = false
@@ -1489,6 +1492,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   if (picked === undefined) return
                   setScriptIndex(index)
                   setResult(picked)
+                  setRowFilter('')
                   setPage(0)
                   setBase('')
                 }}
