@@ -172,6 +172,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const stmtRef = useRef('')
+  /** Bumped whenever a request must no longer touch the UI (source/schema switch). */
+  const runToken = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
@@ -394,6 +396,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setScriptResults([])
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
+      const token = ++runToken.current
       const stmtKey = `console-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       stmtRef.current = stmtKey
       setRunning(true)
@@ -406,16 +409,18 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
         const maxRows = showAll ? ALL_ROWS : target.size
         const next = await queryWithRetry(selectedId, sqlText, maxRows, target.allowWrite, stmtKey, schema)
+        if (token !== runToken.current) return
         setResult(next)
         setPage(paged && !showAll ? target.page : 0)
         setBase(paged ? text : '')
         setSourceSql(text)
         if (looksLikeDdl(text)) void loadSchemaList(selectedId)
       } catch (error) {
+        if (token !== runToken.current) return
         setResult(null)
         setFailure(failureText(error))
       } finally {
-        setRunning(false)
+        if (token === runToken.current) setRunning(false)
       }
     },
     [connection?.dialect, loadSchemaList, schema, selectedId],
@@ -426,6 +431,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setRowSort(null)
     setScriptResults([])
     if (selectedId === '') return
+    const token = ++runToken.current
     setRunning(true)
     setPlan(null)
     setFailure(null)
@@ -435,6 +441,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     let last: QueryResult | null = null
     try {
       for (const [index, part] of parts.entries()) {
+        if (token !== runToken.current) return
         setMultiProgress({ index: index + 1, total: parts.length })
         const stmtKey = `console-${Date.now().toString(36)}-${index}`
         stmtRef.current = stmtKey
@@ -447,8 +454,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             stmtKey,
             schema,
           )
+          if (token !== runToken.current) return
           collected.push(last)
         } catch (error) {
+          if (token !== runToken.current) return
           setScriptResults(collected)
           setScriptIndex(Math.max(0, collected.length - 1))
           const failure = failureText(error)
@@ -461,6 +470,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           return
         }
       }
+      if (token !== runToken.current) return
       setResult(last)
       setScriptResults(collected)
       setScriptIndex(Math.max(0, collected.length - 1))
@@ -472,7 +482,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       if (parts.some(looksLikeDdl)) void loadSchemaList(selectedId)
     } finally {
       setMultiProgress(null)
-      setRunning(false)
+      if (token === runToken.current) setRunning(false)
     }
   }
 
@@ -1005,6 +1015,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           value={selectedId}
           onChange={(event) => {
             const next = event.target.value
+            // Drop whatever the old source is still running; its result is not this source's.
+            runToken.current += 1
+            setRunning(false)
+            setPlanRunning(false)
+            void cancel()
             if (tx === 'open' && selectedId !== '') {
               void api.tx(selectedId, 'rollback').catch(() => undefined)
             }
@@ -1025,7 +1040,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             aria-label="Redis 逻辑库"
             title="控制台扫描键和执行命令所用的逻辑库"
             value={activeRedisDb}
-            onChange={(event) => setRedisDb(Number(event.target.value))}
+            onChange={(event) => {
+              runToken.current += 1
+              setRunning(false)
+              setPlanRunning(false)
+              void cancel()
+              setRedisDb(Number(event.target.value))
+            }}
           >
             {Array.from({ length: Math.max(1, redisDatabases ?? 16) }, (_, index) => (
               <option key={index} value={index}>
@@ -1040,7 +1061,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             aria-label="数据库"
             title="控制台执行的默认数据库/Schema；选了它就不用给表名加库名前缀"
             value={schema}
-            onChange={(event) => setSchema(event.target.value)}
+            onChange={(event) => {
+              runToken.current += 1
+              setRunning(false)
+              setPlanRunning(false)
+              void cancel()
+              setSchema(event.target.value)
+            }}
           >
             <option value={defaultSchema}>默认{defaultSchema === '' ? '' : `（${defaultSchema}）`}</option>
             {schemas
