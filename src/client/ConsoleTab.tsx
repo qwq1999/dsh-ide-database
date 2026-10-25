@@ -896,6 +896,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         api.redisCommand(selectedId, text, isWrite && connection?.readOnly !== true, activeRedisDb),
       )
       if (token !== runToken.current) return
+      setHistory(annotateHistory('redis', text, { elapsedMs: next.elapsedMs }))
       setCommandResult(next)
       if (isWrite) await loadKeys(false)
     } catch (error) {

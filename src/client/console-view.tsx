@@ -36,9 +36,11 @@ function HistoryRow(props: {
       >
         <span className="dshdb-history-sql">{oneLine(props.entry.statement)}</span>
         <span className="dshdb-history-time">{historyAgo(props.entry.at)}</span>
-        {props.entry.rows === undefined ? null : (
+        {props.entry.rows === undefined && props.entry.elapsedMs === undefined ? null : (
           <span className="dshdb-history-meta">
-            {`${formatCount(props.entry.rows)} 行 · ${formatMs(props.entry.elapsedMs ?? 0)}`}
+            {props.entry.rows === undefined
+              ? formatMs(props.entry.elapsedMs ?? 0)
+              : `${formatCount(props.entry.rows)} 行 · ${formatMs(props.entry.elapsedMs ?? 0)}`}
           </span>
         )}
       </button>

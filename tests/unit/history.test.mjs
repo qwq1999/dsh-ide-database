@@ -89,6 +89,13 @@ describe('history annotations', () => {
     expect(entries[0].rows).toBeUndefined()
   })
 
+  it('can record only the duration for commands without rows', () => {
+    pushHistory('redis', 'GET foo')
+    const entries = annotateHistory('redis', 'GET foo', { elapsedMs: 5 })
+    expect(entries[0].elapsedMs).toBe(5)
+    expect(entries[0].rows).toBeUndefined()
+  })
+
   it('keeps the other entries as they were', () => {
     pushHistory('sql', 'select 1')
     pushHistory('sql', 'select 2')

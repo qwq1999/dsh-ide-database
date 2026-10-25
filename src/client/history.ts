@@ -85,7 +85,7 @@ export function pushHistory(kind: HistoryKind, statement: string): HistoryEntry[
 export function annotateHistory(
   kind: HistoryKind,
   statement: string,
-  meta: { rows: number; elapsedMs: number },
+  meta: { rows?: number; elapsedMs: number },
 ): HistoryEntry[] {
   const text = statement.trim()
   if (text === '') return readHistory(kind)
@@ -95,7 +95,7 @@ export function annotateHistory(
   const current = entries[kind][index]
   if (current === undefined) return entries[kind]
   const next = entries[kind].slice()
-  next[index] = { ...current, rows: meta.rows, elapsedMs: meta.elapsedMs }
+  next[index] = { ...current, ...(meta.rows === undefined ? {} : { rows: meta.rows }), elapsedMs: meta.elapsedMs }
   entries[kind] = next
   write(entries)
   return entries[kind]
