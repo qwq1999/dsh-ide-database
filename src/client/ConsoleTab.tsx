@@ -1291,7 +1291,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <EmptyState icon={<DatabaseIcon size={22} />} title="没有匹配的键" description={scanType === '' ? pattern : `${pattern} · 类型 ${scanType}`} />
               )
             ) : (
-              <KeyGrid keys={scan.keys} selectedKey={selectedKey} onSelect={pickKey} />
+              <KeyGrid
+                keys={scan.keys}
+                selectedKey={selectedKey}
+                emptyText={pattern.trim() === '' && scanType === '' ? '这个库还没有键' : '没有匹配的键'}
+                onSelect={pickKey}
+              />
             )}
           </div>
 

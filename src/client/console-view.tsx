@@ -162,10 +162,12 @@ const KeyRow = memo(function KeyRow({
 export const KeyGrid = memo(function KeyGrid({
   keys,
   selectedKey,
+  emptyText,
   onSelect,
 }: {
   keys: RedisKeyInfo[]
   selectedKey: string
+  emptyText?: string
   onSelect: (key: RedisKeyInfo) => void
 }): ReactElement {
   const [sort, setSort] = useState<KeySort>('none')
@@ -190,9 +192,17 @@ export const KeyGrid = memo(function KeyGrid({
         </tr>
       </thead>
       <tbody>
-        {rows.map((key, index) => (
-          <KeyRow key={key.key} info={key} index={index} active={key.key === selectedKey} onSelect={onSelect} />
-        ))}
+        {rows.length === 0 ? (
+          <tr>
+            <td className="dshdb-muted" colSpan={5} style={{ padding: '10px 12px' }}>
+              {emptyText ?? '没有匹配的键'}
+            </td>
+          </tr>
+        ) : (
+          rows.map((key, index) => (
+            <KeyRow key={key.key} info={key} index={index} active={key.key === selectedKey} onSelect={onSelect} />
+          ))
+        )}
       </tbody>
     </table>
   )
