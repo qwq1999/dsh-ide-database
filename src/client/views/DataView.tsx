@@ -12,7 +12,7 @@ import {
 import type { ClientConnection, ObjectKind, RedisKeyInfo, RedisValue, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
-import { filterTargets } from '../treefilter'
+import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
 import { nextRowIndex } from '../treekeys'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
@@ -199,6 +199,8 @@ export function DataView(props: DataViewProps): ReactElement {
     setObjectExtra({})
   }, [normalizedFilter])
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
+  // `库.表` narrows the object list by schema; the schema row then stays visible through its buckets.
+  const filterQuery = parseFilter(settledFilter)
 
   // Search inside collapsed schemas: fetch their object lists once per filter
   // so matches can be found even when the branch was never opened before.
@@ -287,8 +289,9 @@ export function DataView(props: DataViewProps): ReactElement {
     for (const [key, list] of Object.entries(objects)) {
       const buckets = {} as Record<FolderId, SchemaObject[]>
       for (const folder of FOLDERS) buckets[folder.id] = []
+      const schemaName = key.slice(key.indexOf(':') + 1)
       for (const object of list) {
-        if (!matches(object.name)) continue
+        if (normalizedFilter !== '' && !matchesFilteredObject(filterQuery, schemaName, object.name)) continue
         buckets[folderOf(object.kind)].push(object)
       }
       cache[key] = buckets
@@ -548,7 +551,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                     <DatabaseIcon size={13} />
                                   </span>
                                   <span className="dshdb-row-label">
-                                    <Highlight text={schema.name} query={normalizedFilter} />
+                                    <Highlight text={schema.name} query={filterQuery.schema === '' ? normalizedFilter : filterQuery.schema} />
                                   </span>
                                   {schema.system ? <Tag>系统</Tag> : null}
                                   {objectLoading ? <Spinner /> : null}
@@ -633,7 +636,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                                       onOpen={props.onOpenTable}
                                                       onToggleKey={props.onToggleKey}
                                                       onMenu={openObjectMenu}
-                                                      query={normalizedFilter}
+                                                      query={filterQuery.schema === '' ? normalizedFilter : filterQuery.name}
                                                     />
                                                   ))}
                                                   {pageWindow.hidden > 0 ? (
