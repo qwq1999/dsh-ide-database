@@ -38,7 +38,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
-import { tableFromStatement } from './tablesql'
+import { insertStatement, tableFromStatement } from './tablesql'
 import { applyCompletion, completionCandidates, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
@@ -742,9 +742,20 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     (cell: CellMenuTarget): ColumnMenuItem[] => [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
+      {
+        label: '复制 INSERT 语句',
+        disabled: tableTarget() === null,
+        run: () => {
+          const target = tableTarget()
+          if (target === null) return
+          void copyText(
+            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, cell.row),
+          )
+        },
+      },
       { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
     ],
-    [displayColumns],
+    [base, connection?.dialect, displayColumns, schema, sourceSql],
   )
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))

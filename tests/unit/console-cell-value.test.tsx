@@ -108,4 +108,18 @@ describe('console cell full value dialog', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByLabelText('单元格完整值')).toBeNull()
   })
+
+  it('offers to copy the row as an INSERT for the table it came from', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM configs' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+
+    fireEvent.contextMenu(await screen.findByText(RAW))
+    const item = await screen.findByRole('menuitem', { name: '复制 INSERT 语句' })
+    expect(item.disabled).toBe(false)
+  })
 })
