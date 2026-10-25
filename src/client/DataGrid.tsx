@@ -117,6 +117,14 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
   return { range, onScroll }
 }
 
+/** Header tooltip: keep the column type visible even when the header is a sort button. */
+function headerTitle(column: ColumnInfo, sortable: boolean): string {
+  const details = [column.name]
+  if (column.typeName !== undefined && column.typeName !== '') details.push(column.typeName)
+  if (column.nullable === false) details.push('NOT NULL')
+  return sortable ? `按 ${details.join(' · ')} 排序` : details.join(' · ')
+}
+
 export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactElement {
   const {
     columns,
@@ -244,7 +252,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
             {columns.map((column, index) => (
               <th
                 key={`${column.name}-${index}`}
-                title={onSort === undefined ? `${column.name} ${column.typeName}` : `按 ${column.name} 排序`}
+                title={headerTitle(column, onSort !== undefined)}
                 className={[
                   onSort === undefined ? '' : 'dshdb-th-sortable',
                   onReorderColumns === undefined ? '' : 'dshdb-th-draggable',
