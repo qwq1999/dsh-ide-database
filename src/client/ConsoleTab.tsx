@@ -1601,7 +1601,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ) : null}
 
           {failure !== null ? (
-            <Banner tone="error" onClose={() => setFailure(null)}>
+            <Banner
+              tone="error"
+              onClose={() => setFailure(null)}
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="复制错误信息"
+                  onClick={() => {
+                    void copyText(
+                      failure.detail === undefined ? failure.message : `${failure.message}\n${failure.detail}`,
+                    )
+                  }}
+                >
+                  复制
+                </Button>
+              }
+            >
               {failure.message}
               {failure.detail ? `\n${failure.detail}` : ''}
             </Banner>

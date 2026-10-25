@@ -204,10 +204,13 @@ export function Spinner({ size }: { size?: number }) {
 export function Banner({
   tone = 'info',
   children,
+  actions,
   onClose,
 }: {
   tone?: BannerTone
   children: ReactNode
+  /** Extra controls pinned to the right, before the close button. */
+  actions?: ReactNode
   onClose?: () => void
 }) {
   return (
@@ -222,6 +225,7 @@ export function Banner({
         )}
       </span>
       <div className="dshdb-banner-text">{children}</div>
+      {actions ? <span className="dshdb-banner-actions">{actions}</span> : null}
       {onClose ? <IconButton label="关闭" size="sm" variant="ghost" icon={<CloseIcon size={12} />} onClick={onClose} /> : null}
     </div>
   )

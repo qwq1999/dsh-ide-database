@@ -669,6 +669,7 @@ export const CSS = `
 }
 .dshdb-banner-icon { flex: none; padding-top: 1px; }
 .dshdb-banner-text { flex: 1; min-width: 0; white-space: pre-wrap; }
+.dshdb-banner-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 
 .dshdb-empty {
   display: flex;
