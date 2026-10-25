@@ -825,6 +825,18 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       const next = await withConnection(selectedId, () => api.redisKey(selectedId, selectedKey, activeRedisDb))
       if (token !== runToken.current) return
       setValue(next)
+      // The value carries a fresh TTL: keep the key row in step so the list
+      // does not show "永久" for a key that just got an expiry.
+      setScan((previous) => {
+        if (previous === null) return previous
+        const index = previous.keys.findIndex((info) => info.key === next.key)
+        if (index < 0) return previous
+        const keys = previous.keys.slice()
+        const current = keys[index]
+        if (current === undefined) return previous
+        keys[index] = { ...current, ttl: next.ttl, size: next.size ?? current.size }
+        return { ...previous, keys }
+      })
       setValueError(null)
     } catch (error) {
       if (token !== runToken.current) return
