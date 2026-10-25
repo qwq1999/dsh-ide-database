@@ -307,6 +307,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   const suggestionPrefix = wordAtCaret(statement, caretPos).prefix
   const suggestionItems = suggestions === null ? [] : completionCandidates(suggestionPrefix, suggestions)
+  // Typing narrows the list without resetting the cursor, so clamp it on read.
+  const activeSuggestionIndex = suggestionItems.length === 0 ? 0 : suggestionIndex % suggestionItems.length
 
   const loadSchemaCompletions = useCallback(
     async (target: string): Promise<Completion[] | null> => {
@@ -1413,7 +1415,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     return
                   }
                   if (event.key === 'Enter' || event.key === 'Tab') {
-                    const picked = suggestionItems[suggestionIndex]
+                    const picked = suggestionItems[activeSuggestionIndex]
                     if (picked !== undefined) {
                       event.preventDefault()
                       insertSuggestion(picked.name)
@@ -1476,8 +1478,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       key={`${item.kind}:${item.name}`}
                       type="button"
                       role="option"
-                      aria-selected={index === suggestionIndex}
-                      className={index === suggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}
+                      aria-selected={index === activeSuggestionIndex}
+                      className={index === activeSuggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}
                       onMouseDown={(event) => {
                         event.preventDefault()
                         insertSuggestion(item.name)

@@ -147,6 +147,28 @@ describe('console table completion', () => {
     await waitFor(() => expect(editor().value).toBe('SELECT * FROM order_items'))
   })
 
+  it('keeps Enter working after the typed prefix narrows the list', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
+    caret(area, 18)
+    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    await screen.findByRole('listbox', { name: '补全候选' })
+
+    fireEvent.keyDown(area, { key: 'ArrowDown' })
+    fireEvent.keyDown(area, { key: 'ArrowDown' })
+
+    // Only one candidate starts with `order_i`, so the stale index 2 must clamp
+    // back to the first row instead of picking nothing.
+    fireEvent.change(area, { target: { value: 'SELECT * FROM order_i' } })
+    caret(area, 22)
+    fireEvent.keyDown(area, { key: 'Enter' })
+    await waitFor(() => expect(editor().value).toBe('SELECT * FROM order_items'))
+  })
+
   it('closes on Escape and reuses the cached object list', async () => {
     render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
     await screen.findByLabelText('数据源')
