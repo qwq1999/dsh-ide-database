@@ -550,10 +550,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     if (connection !== null) apply({ where: composeWhere(connection.dialect, whereText, columns, {}), page: 0 })
   }, [apply, columns, connection, whereText])
   /** Ctrl/⌘ + F jumps to the WHERE box instead of the browser find bar. */
-  const focusWhere = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
-    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return
-    event.preventDefault()
-    whereRef.current?.focus()
+  const handleShortcuts = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
+    if (!(event.ctrlKey || event.metaKey)) return
+    const key = event.key.toLowerCase()
+    if (key === 'f') {
+      event.preventDefault()
+      whereRef.current?.focus()
+      return
+    }
+    if (key === 'r') {
+      // Ctrl/⌘+R would reload the whole page; reload just this page of rows.
+      event.preventDefault()
+      applyRef.current({ recount: true })
+    }
   }, [])
 
   const conditioned = whereText.trim() !== '' || activeFilterCount > 0
@@ -696,7 +705,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }
 
   return (
-    <div className="dshdb-qtab" onKeyDown={focusWhere}>
+    <div className="dshdb-qtab" onKeyDown={handleShortcuts}>
       <div className="dshdb-qbar">
         <span className="dshdb-qtable" title={`${params.schema}.${params.table}`}>
           <TableIcon size={13} />

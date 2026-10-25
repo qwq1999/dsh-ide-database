@@ -89,4 +89,20 @@ describe('table filter shortcut', () => {
     fireEvent.keyDown(refresh, { key: 'f', ctrlKey: true })
     await waitFor(() => expect(document.activeElement).toBe(where))
   })
+
+  it('reloads this page on Ctrl+R instead of the whole app', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(0))
+    const refresh = screen.getByRole('button', { name: /刷新/ })
+    const before = mocks.query.mock.calls.length
+    refresh.focus()
+    fireEvent.keyDown(refresh, { key: 'r', ctrlKey: true })
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(before))
+  })
 })
