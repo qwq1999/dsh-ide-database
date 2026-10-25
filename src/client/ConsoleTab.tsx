@@ -160,6 +160,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [scanType, setScanType] = useState('')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
+  /** The pattern/type the listed keys were scanned with; a drifted box cannot continue. */
+  const [scanQuery, setScanQuery] = useState<{ pattern: string; type: string } | null>(null)
   const [selectedKey, setSelectedKey] = useState('')
   const [value, setValue] = useState<RedisValue | null>(null)
   const [valueError, setValueError] = useState<Failure | null>(null)
@@ -678,6 +680,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setScanning(true)
       setValueError(null)
       const type = overrideType ?? scanType
+      const patternText = pattern.trim() === '' ? '*' : pattern.trim()
       try {
         const cursor = append ? scanCursorRef.current : '0'
         const next = await withConnection(selectedId, () =>
@@ -685,7 +688,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             id: selectedId,
             db: activeRedisDb,
             cursor,
-            pattern: pattern.trim() === '' ? '*' : pattern.trim(),
+            pattern: patternText,
             ...(type === '' ? {} : { type }),
           }),
         )
@@ -699,6 +702,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             .catch(() => undefined)
         }
         scanCursorRef.current = next.cursor
+        if (!append) setScanQuery({ pattern: patternText, type })
         setScan((previous) => {
           if (!append || previous === null) return next
           // SCAN may hand out the same key twice across cursor rounds, and the
@@ -1232,12 +1236,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               size="sm"
               variant="ghost"
               onClick={() => void loadKeys(true)}
-              disabled={scan === null || scan.cursor === '0' || scanning}
+              disabled={
+                scan === null ||
+                scan.cursor === '0' ||
+                scanning ||
+                scanQuery === null ||
+                scanQuery.pattern !== (pattern.trim() === '' ? '*' : pattern.trim()) ||
+                scanQuery.type !== scanType
+              }
+              title={scan === null ? '先扫描一次' : '延续上一次扫描'}
             >
               继续
             </Button>
             <span className="dshdb-qmeta">
               {scan === null ? '' : `${formatCount(scan.keys.length)} 个键`}
+              {scan !== null && scan.cursor !== '0' && scanQuery !== null &&
+              (scanQuery.pattern !== (pattern.trim() === '' ? '*' : pattern.trim()) || scanQuery.type !== scanType)
+                ? ' · 条件已改，点「扫描」重新开始'
+                : ''}
             </span>
           </div>
 
