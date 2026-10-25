@@ -96,6 +96,10 @@ export interface DataViewProps {
   onToggleRedisDbVisible: (connectionId: string, db: number) => void
   onToggleAllRedisDbsVisible: (connectionId: string, all: boolean) => void
   onShowDdl: (connectionId: string, schema: string, table: string, kind: string) => void
+  /** Read one object's DDL text; null when the server could not produce it. */
+  onReadDdl?: (connectionId: string, schema: string, table: string, kind: 'table' | 'view') => Promise<string | null>
+  /** Save a generated script; the host owns the download itself. */
+  onDownloadScript?: (filename: string, text: string) => void
   /** Double-click on a table/view: open its rows in their own Sidebar tab. */
   onOpenTable: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
   onOpenConsole: (connectionId: string, schema: string, table: string) => void
@@ -234,23 +238,48 @@ export function DataView(props: DataViewProps): ReactElement {
     [focusTreeFilter, props.connections, props.onOpenConsole, props.onOpenTable, props.onShowDdl],
   )
 
+  /** One .sql with every table and view of a schema, in tree order. */
+  const exportSchemaScript = useCallback(
+    (connectionId: string, schemaName: string): void => {
+      const read = props.onReadDdl
+      const save = props.onDownloadScript
+      const listed = (props.objects[`${connectionId}:${schemaName}`] ?? []).filter(
+        (object) => object.kind === 'table' || object.kind === 'view',
+      )
+      if (read === undefined || save === undefined || listed.length === 0) return
+      void (async (): Promise<void> => {
+        const parts: string[] = [`-- ${schemaName} 的建表语句`, '']
+        for (const object of listed) {
+          const kind = object.kind === 'view' ? 'view' : 'table'
+          const ddl = await read(connectionId, schemaName, object.name, kind)
+          if (ddl === null || ddl.trim() === '') continue
+          const text = ddl.trim()
+          parts.push(`-- ${object.name}`, text.endsWith(';') ? text : `${text};`, '')
+        }
+        if (parts.length > 2) save(`${schemaName}.sql`, parts.join(String.fromCharCode(10)))
+      })()
+    },
+    [props.objects, props.onDownloadScript, props.onReadDdl],
+  )
+
   const openSchemaMenu = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>, schemaName: string): void => {
+    (event: React.MouseEvent<HTMLButtonElement>, connectionId: string, schemaName: string): void => {
       event.preventDefault()
       const items = [
         { label: '复制库名', run: () => void copyText(schemaName) },
+        { label: '导出这个库的建表语句', run: () => exportSchemaScript(connectionId, schemaName) },
         {
-        label: '只看这个库',
-        run: () => {
-          setFilter(`${schemaName}.`)
-          // Put the caret in the filter box so the prefix can be extended instead of retyped.
-          setTimeout(focusTreeFilter, 0)
+          label: '只看这个库',
+          run: () => {
+            setFilter(`${schemaName}.`)
+            // Put the caret in the filter box so the prefix can be extended instead of retyped.
+            setTimeout(focusTreeFilter, 0)
+          },
         },
-      },
       ]
       setSchemaMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
-    [],
+    [exportSchemaScript],
   )
 
   const openConnectionMenu = useCallback(
@@ -666,7 +695,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                   style={DEPTH_ONE}
                                   onClick={() => props.onSelectSchema(connection.id, schema.name)}
                                   onDoubleClick={() => void props.onToggleSchema(connection.id, schema.name)}
-                                  onContextMenu={(event) => openSchemaMenu(event, schema.name)}
+                                  onContextMenu={(event) => openSchemaMenu(event, connection.id, schema.name)}
                                 >
                                   <RowToggle
                                     open={schemaExpanded}

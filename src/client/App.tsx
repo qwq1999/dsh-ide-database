@@ -2,6 +2,7 @@ import { useCallback, useState, type CSSProperties, type ReactElement } from 're
 import { ROUTE_PREFIX } from '../shared/presets'
 import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
+import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
 import { copyText } from './colmenu'
 import { EditIcon, PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
@@ -382,6 +383,17 @@ export function App(props: AppProps): ReactElement {
               onToggleRedisDbVisible={toggleRedisDbVisible}
               onToggleAllRedisDbsVisible={toggleAllRedisDbsVisible}
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
+              onReadDdl={async (connectionId, schema, table, kind) => {
+                try {
+                  return (await api.ddl(connectionId, schema, table, kind)).ddl
+                } catch {
+                  return null
+                }
+              }}
+              onDownloadScript={(filename, text) => {
+                downloadText(filename, 'application/sql', text)
+                notify(`已导出 ${filename}`, 'success')
+              }}
               onOpenTable={(connectionId, schema, object) => {
                 selectConnection(connectionId)
                 openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })

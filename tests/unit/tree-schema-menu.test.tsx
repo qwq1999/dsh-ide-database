@@ -104,6 +104,22 @@ describe('schema context menu', () => {
     const filter = screen.getAllByPlaceholderText(/筛选/)[0] as HTMLInputElement
     await waitFor(() => expect(filter.value).toBe('shop.'))
   })
+  it('exports every table of the schema as one script', async () => {
+    const readDdl = vi.fn(
+      async (_connectionId: string, _schema: string, table: string): Promise<string | null> =>
+        `CREATE TABLE ${table} (id INT)`,
+    )
+    const download = vi.fn()
+    render(<DataView {...props({ onReadDdl: readDdl, onDownloadScript: download })} />)
+    fireEvent.contextMenu(schemaRow())
+    fireEvent.click(await screen.findByRole('menuitem', { name: '导出这个库的建表语句' }))
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1))
+    const [filename, text] = download.mock.calls[0] as [string, string]
+    expect(filename).toBe('shop.sql')
+    expect(text).toContain('CREATE TABLE orders (id INT);')
+    expect(text).toContain('CREATE TABLE users (id INT);')
+  })
+
   it('focuses the filter box so the prefix can be extended', async () => {
     render(<DataView {...props()} />)
     fireEvent.contextMenu(schemaRow(), { clientX: 10, clientY: 10 })
