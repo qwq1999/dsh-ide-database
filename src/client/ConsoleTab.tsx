@@ -74,6 +74,11 @@ interface Failure {
 import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
 
 const TTL_ONLY_KEY = 'dsh-ide-database.redis.ttl-only.v1'
+/** 中文输入法用回车确认候选词时，KeyboardEvent 带 isComposing 标记。 */
+function composing(event: { nativeEvent: Event }): boolean {
+  return (event.nativeEvent as unknown as { isComposing?: boolean }).isComposing === true
+}
+
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
 /** Pseudo page size meaning "run the statement once and show everything". */
 const ALL_PAGE_SIZE = 0
@@ -1291,6 +1296,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               spellCheck={false}
               onChange={(event) => setPattern(event.target.value)}
               onKeyDown={(event) => {
+                if (composing(event)) return
                 if (event.key === 'Enter') void loadKeys(false)
               }}
             />
@@ -1417,6 +1423,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 setCommand(event.target.value)
               }}
               onKeyDown={(event) => {
+                if (composing(event)) return
                 if (event.key === 'Enter') void runCommand()
                 if (event.key === 'ArrowUp') {
                   event.preventDefault()
@@ -1475,6 +1482,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               onSelect={(event) => setCaretPos(event.currentTarget.selectionStart)}
               onKeyUp={(event) => setCaretPos(event.currentTarget.selectionStart)}
               onKeyDown={(event) => {
+                // 中文输入法用回车确认候选词，这时不应该顺手执行语句。
+                if (composing(event)) return
                 if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
                   event.preventDefault()
                   void openSuggestions()
