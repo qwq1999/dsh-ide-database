@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForConsoleSource } from '../stubs/console-ready'
@@ -99,16 +100,19 @@ describe('console history memo', () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
 
+    const editor = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     fireEvent.click(screen.getByRole('button', { name: '历史' }))
-    expect(screen.getByText('最近执行 · 1')).toBeTruthy()
+    expect(await screen.findByText('最近执行 · 1')).toBeTruthy()
+    // Let any effect queued while the tab settled run before we start counting.
+    await act(async () => undefined)
 
     const spy = historyAgo as unknown as { mock: { calls: unknown[] } }
     const before = spy.mock.calls.length
     expect(before).toBeGreaterThan(0)
 
-    const editor = screen.getByPlaceholderText(/输入 SQL/) as HTMLTextAreaElement
     fireEvent.change(editor, { target: { value: 'SELECT 2' } })
     await waitFor(() => expect(editor.value).toBe('SELECT 2'))
+    await act(async () => undefined)
 
     expect(spy.mock.calls.length).toBe(before)
   })
