@@ -265,6 +265,15 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                   .filter((value) => value !== '')
                   .join(' ') || undefined}
                 data-sorted={sort !== null && sort !== undefined && sort.column === column.name ? sort.direction : undefined}
+                aria-sort={
+                  onSort === undefined
+                    ? undefined
+                    : sort !== null && sort !== undefined && sort.column === column.name
+                      ? sort.direction === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                }
                 draggable={onReorderColumns !== undefined}
                 onDragStart={(event) => {
                   if (onReorderColumns === undefined) return
