@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -92,11 +92,12 @@ describe('copy SQL from the toolbar', () => {
   it('copies the statement under the caret', async () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await waitForConsoleSource(mocks)
-    const editor = screen.getByPlaceholderText(/输入 SQL/)
-    fireEvent.change(editor, { target: { value: 'SELECT 1;\nSELECT 2' } })
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+    fireEvent.change(editor, { target: { value: ['SELECT 1;', 'SELECT 2'].join(String.fromCharCode(10)) } })
     ;(editor as HTMLTextAreaElement).setSelectionRange(2, 2)
     fireEvent.select(editor)
+    await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: '复制 SQL' }))
-    expect(mocks.copyText).toHaveBeenCalledWith('SELECT 1')
+    await waitFor(() => expect(mocks.copyText).toHaveBeenCalledWith('SELECT 1'))
   })
 })
