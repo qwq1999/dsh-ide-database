@@ -105,8 +105,7 @@ describe('console script results', () => {
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
 
-    const area = document.querySelector('textarea')
-    if (area === null) throw new Error('missing editor')
+    const area = await screen.findByPlaceholderText(/输入 SQL/)
     fireEvent.change(area, { target: { value: 'SELECT 1;\nSELECT 2' } })
     fireEvent.keyDown(area, { key: 'Enter', ctrlKey: true })
 
