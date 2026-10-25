@@ -69,6 +69,8 @@ export const HistoryPanel = memo(function HistoryPanel(props: {
   onClear: () => void
 }): ReactElement {
   const [query, setQuery] = useState('')
+  // Clearing history is irreversible, so the first click only arms the button.
+  const [clearArmed, setClearArmed] = useState(false)
   const needle = query.trim().toLowerCase()
   const matches = (entry: HistoryEntry): boolean => needle === '' || entry.statement.toLowerCase().includes(needle)
   const pins = props.pins.filter(matches)
@@ -108,8 +110,21 @@ export const HistoryPanel = memo(function HistoryPanel(props: {
       ) : null}
       <div className="dshdb-history-head">
         <span className="dshdb-history-title">最近执行 · {entries.length}</span>
-        <Button size="sm" variant="ghost" icon={<ClearIcon size={12} />} onClick={props.onClear}>
-          清空
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<ClearIcon size={12} />}
+          title={clearArmed ? '再点一次就清空最近执行' : '清空最近执行'}
+          onClick={() => {
+            if (!clearArmed) {
+              setClearArmed(true)
+              return
+            }
+            setClearArmed(false)
+            props.onClear()
+          }}
+        >
+          {clearArmed ? '确认清空' : '清空'}
         </Button>
       </div>
       <div className="dshdb-history-list">

@@ -51,6 +51,23 @@ describe('console presentational pieces', () => {
     expect(screen.getByText('最近执行 · 0')).toBeTruthy()
   })
 
+  it('asks for a second click before clearing history', () => {
+    const onClear = vi.fn()
+    render(
+      <HistoryPanel
+        entries={[{ statement: 'select 1', at: Date.now() }]}
+        pins={[]}
+        onPick={() => {}}
+        onTogglePin={() => {}}
+        onClear={onClear}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '清空' }))
+    expect(onClear).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '确认清空' }))
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps the search box out of a short history', () => {
     const now = Date.now()
     render(
