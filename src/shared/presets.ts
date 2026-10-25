@@ -87,7 +87,7 @@ export const DIALECT_LABEL: Record<Dialect, string> = {
   redis: 'Redis',
 }
 
-export function jarFileName(jar: JarRef): string {
+function jarFileName(jar: JarRef): string {
   return `${jar.artifact}-${jar.version}.jar`
 }
 

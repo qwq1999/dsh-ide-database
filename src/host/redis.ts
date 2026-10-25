@@ -202,7 +202,7 @@ const READ_ONLY_COMMANDS = new Set([
 const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf'])
 
 /** Splits a Redis command line into argv, honouring single and double quotes. */
-export function tokenizeCommand(input: string): string[] {
+function tokenizeCommand(input: string): string[] {
   const tokens: string[] = []
   let current = ''
   let quote: '"' | "'" | null = null

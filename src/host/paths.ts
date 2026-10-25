@@ -39,7 +39,7 @@ export interface PluginPaths {
  * `DSH_PROFILE_DIR` is set by the desktop host; the remaining fallbacks keep
  * the plugin usable from a bare `dsh` checkout and from tests.
  */
-export function resolveDataDir(): string {
+function resolveDataDir(): string {
   const override = process.env.DSH_IDE_DATABASE_DATA?.trim()
   if (override !== undefined && override !== '') return resolve(override)
 

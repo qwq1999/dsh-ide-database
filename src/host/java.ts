@@ -86,7 +86,7 @@ function jdkCandidates(): string[] {
  * Release tooling can drop a jlink image there, which keeps installs
  * independent of whatever Java the machine happens to have.
  */
-export function bundledJavaPath(pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')): string | undefined {
+function bundledJavaPath(pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')): string | undefined {
   const executable = process.platform === 'win32' ? 'java.exe' : 'java'
   const candidate = join(pluginRoot, 'jre', 'bin', executable)
   return isFile(candidate) ? candidate : undefined

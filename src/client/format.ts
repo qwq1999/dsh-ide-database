@@ -221,7 +221,7 @@ const REDIS_READ = new Set([
   'georadius_ro',
 ])
 
-export function redisCommandName(command: string): string {
+function redisCommandName(command: string): string {
   const match = /^\s*([a-zA-Z]+)/.exec(command)
   return match?.[1]?.toLowerCase() ?? ''
 }
