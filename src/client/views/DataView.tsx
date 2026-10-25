@@ -319,6 +319,19 @@ export function DataView(props: DataViewProps): ReactElement {
         <TextInput
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              // Skip the pause that normally follows typing: Enter means "now".
+              event.preventDefault()
+              setSettledFilter(filter)
+              return
+            }
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              setFilter('')
+              setSettledFilter('')
+            }
+          }}
           placeholder={selected?.dialect === 'redis' ? '筛选键…' : '筛选库表…'}
           aria-label={selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}
           style={{ width: 132 }}
