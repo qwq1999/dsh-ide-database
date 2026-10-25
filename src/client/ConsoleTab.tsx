@@ -639,6 +639,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const loadKeys = useCallback(
     async (append: boolean, overrideType?: string): Promise<void> => {
       if (selectedId === '') return
+      const token = runToken.current
       setScanning(true)
       setValueError(null)
       const type = overrideType ?? scanType
@@ -653,6 +654,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             ...(type === '' ? {} : { type }),
           }),
         )
+        if (token !== runToken.current) return
         if (!redisDatabasesLoaded.current) {
           void api.redisDatabases(selectedId)
             .then((info) => {
@@ -671,13 +673,24 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           return { ...next, keys: [...previous.keys, ...fresh] }
         })
       } catch (error) {
+        if (token !== runToken.current) return
         setValueError(failureText(error))
       } finally {
-        setScanning(false)
+        if (token === runToken.current) setScanning(false)
       }
     },
     [activeRedisDb, pattern, scanType, selectedId],
   )
+
+  /** Any queued request (SQL, command, scan, plan) belongs to the old source after a switch. */
+  const invalidateRun = useCallback((): void => {
+    runToken.current += 1
+    setRunning(false)
+    setPlanRunning(false)
+    setCommandRunning(false)
+    setScanning(false)
+    void cancel()
+  }, [])
 
   const runCommand = async (): Promise<void> => {
     const text = command.trim()
@@ -690,18 +703,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     recallRef.current = -1
     recallDraft.current = ''
     setHistory(pushHistory('redis', text))
+    const token = runToken.current
     setCommandRunning(true)
     setValueError(null)
     try {
       const next = await withConnection(selectedId, () =>
         api.redisCommand(selectedId, text, isWrite && connection?.readOnly !== true, activeRedisDb),
       )
+      if (token !== runToken.current) return
       setCommandResult(next)
       if (isWrite) await loadKeys(false)
     } catch (error) {
+      if (token !== runToken.current) return
       setValueError(failureText(error))
     } finally {
-      setCommandRunning(false)
+      if (token === runToken.current) setCommandRunning(false)
     }
   }
 
@@ -722,10 +738,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setValue(null)
       setValueError(null)
       if (selectedId === '') return
+      const token = runToken.current
       try {
         const next = await withConnection(selectedId, () => api.redisKey(selectedId, key.key, activeRedisDb))
+        if (token !== runToken.current) return
         setValue(next)
       } catch (error) {
+        if (token !== runToken.current) return
         setValueError(failureText(error))
       }
     },
@@ -1016,10 +1035,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           onChange={(event) => {
             const next = event.target.value
             // Drop whatever the old source is still running; its result is not this source's.
-            runToken.current += 1
-            setRunning(false)
-            setPlanRunning(false)
-            void cancel()
+            invalidateRun()
             if (tx === 'open' && selectedId !== '') {
               void api.tx(selectedId, 'rollback').catch(() => undefined)
             }
@@ -1041,10 +1057,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             title="控制台扫描键和执行命令所用的逻辑库"
             value={activeRedisDb}
             onChange={(event) => {
-              runToken.current += 1
-              setRunning(false)
-              setPlanRunning(false)
-              void cancel()
+              invalidateRun()
               setRedisDb(Number(event.target.value))
             }}
           >
@@ -1062,10 +1075,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             title="控制台执行的默认数据库/Schema；选了它就不用给表名加库名前缀"
             value={schema}
             onChange={(event) => {
-              runToken.current += 1
-              setRunning(false)
-              setPlanRunning(false)
-              void cancel()
+              invalidateRun()
               setSchema(event.target.value)
             }}
           >
