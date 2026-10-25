@@ -33,6 +33,7 @@ import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRows, type RowSort } from './rowsort'
+import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, toCsv, toJson, type ExportFormat } from './export'
@@ -76,24 +77,6 @@ function failureText(error: unknown): Failure {
 /** Batches pulled for a full export, and the ceiling that protects memory. */
 const EXPORT_BATCH = 2000
 const EXPORT_LIMIT = 50000
-
-/** A bare single SELECT can be wrapped into a page; anything else runs whole. */
-function pageable(statement: string): boolean {
-  const text = statement.trim().replace(/;+\s*$/u, '')
-  if (!/^select\b/iu.test(text)) return false
-  if (/;\s*select/iu.test(text)) return false
-  if (/\blimit\b/iu.test(text) || /\brownum\b/iu.test(text) || /\bfetch\s+(first|next)\b/iu.test(text)) return false
-  return true
-}
-
-function wrapPage(dialect: ClientConnection['dialect'], statement: string, size: number, page: number): string {
-  const text = statement.trim().replace(/;+\s*$/u, '')
-  const offset = page * size
-  if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
-    return `SELECT * FROM (${text}) dshdb_page OFFSET ${offset} ROWS FETCH NEXT ${size} ROWS ONLY`
-  }
-  return `SELECT * FROM (${text}) dshdb_page LIMIT ${size} OFFSET ${offset}`
-}
 
 /**
  * Run one call that needs an open connection, opening it once when the tab was
