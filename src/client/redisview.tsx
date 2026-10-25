@@ -12,6 +12,8 @@ import { useCopyFlash } from './copyflash'
 import { redisTtlLabel, redisValueTable, redisValueText } from './redisvalue'
 import { Tag } from './ui'
 
+const DISPLAY_TEXT_LIMIT = 64 * 1024
+
 export const RedisValuePanel = memo(function RedisValuePanel({
   value,
   showKey = true,
@@ -24,6 +26,13 @@ export const RedisValuePanel = memo(function RedisValuePanel({
   onRefresh?: () => void
 }): ReactElement {
   const table = redisValueTable(value)
+  // A multi-megabyte string would otherwise land in one text node and stall the
+  // panel; showing a prefix keeps the key browsable while copy still gets it all.
+  const fullText = redisValueText(value.value)
+  const text = fullText.slice(0, DISPLAY_TEXT_LIMIT)
+  const clippedCells =
+    table !== null && table.rows.some((row) => row.some((cell) => cell.length > DISPLAY_TEXT_LIMIT))
+  const clipped = fullText.length > DISPLAY_TEXT_LIMIT || clippedCells
   const keyFlash = useCopyFlash()
   const valueFlash = useCopyFlash()
   const copied = keyFlash.copied
@@ -86,7 +95,14 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         ) : null}
       </div>
       {table === null ? (
-        <pre className="dshdb-console-value">{redisValueText(value.value)}</pre>
+        <>
+          <pre className="dshdb-console-value">{text}</pre>
+          {clipped ? (
+            <p className="dshdb-muted" style={{ margin: '6px 0 0' }}>
+              值太大，只显示了前 {DISPLAY_TEXT_LIMIT / 1024} KB；复制按钮拿到的是完整值。
+            </p>
+          ) : null}
+        </>
       ) : (
         <div className="dshdb-grid-wrap dshdb-redis-table">
           <table className="dshdb-grid">
@@ -103,8 +119,8 @@ export const RedisValuePanel = memo(function RedisValuePanel({
                 <tr key={index}>
                   <td className="dshdb-num">{index + 1}</td>
                   {row.map((cell, column) => (
-                    <td key={column} title={cell}>
-                      <span className="dshdb-mono">{cell}</span>
+                    <td key={column} title={cell.slice(0, 512)}>
+                      <span className="dshdb-mono">{cell.slice(0, DISPLAY_TEXT_LIMIT)}</span>
                     </td>
                   ))}
                 </tr>
@@ -113,6 +129,11 @@ export const RedisValuePanel = memo(function RedisValuePanel({
           </table>
         </div>
       )}
+      {clipped ? (
+        <p className="dshdb-muted" style={{ margin: '6px 0 0' }}>
+          值太大，只显示了前 {DISPLAY_TEXT_LIMIT / 1024} KB；复制按钮拿到的是完整值。
+        </p>
+      ) : null}
     </div>
   )
 })

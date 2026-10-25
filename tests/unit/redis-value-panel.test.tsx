@@ -59,4 +59,15 @@ describe('redis value panel', () => {
     const button = screen.getByLabelText('正在刷新键值')
     expect((button as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('previews only the first 64 KB of a huge string but copies all of it', async () => {
+    const big = 'a'.repeat(70_000)
+    render(<RedisValuePanel value={stored(big)} />)
+    const cell = document.querySelector('td .dshdb-mono')
+    expect(cell?.textContent).toHaveLength(65_536)
+    expect(screen.getByText(/值太大，只显示了前 64 KB/)).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('复制值'))
+    await screen.findByLabelText('值已复制')
+    expect(copy).toHaveBeenCalledWith(big)
+  })
 })
