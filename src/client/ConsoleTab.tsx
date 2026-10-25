@@ -179,6 +179,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const runToken = useRef(0)
   /** Plans are invalidated by the same switching actions as query results. */
   const planToken = useRef(0)
+  /** The grid the plan replaced, so closing the plan can bring the rows back. */
+  const resultBeforePlan = useRef<QueryResult | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
@@ -403,6 +405,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setRowSort(null)
       setRowFilter('')
       setScriptResults([])
+      resultBeforePlan.current = null
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
       const token = ++runToken.current
@@ -594,6 +597,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     try {
       const next = await api.explain(selectedId, text, schema === '' ? undefined : schema)
       if (token !== planToken.current) return
+      if (plan === null) resultBeforePlan.current = result
       setPlan(next)
       setResult(next.plan ?? null)
       setPage(0)
@@ -604,7 +608,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     } catch (error) {
       if (token !== planToken.current) return
       setPlan(null)
-      setResult(null)
+      setResult(resultBeforePlan.current)
+      resultBeforePlan.current = null
       setFailure(failureText(error))
     } finally {
       if (token === planToken.current) setPlanRunning(false)
@@ -1706,7 +1711,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   variant="ghost"
                   onClick={() => {
                     setPlan(null)
-                    setResult(null)
+                    setResult(resultBeforePlan.current)
+                    resultBeforePlan.current = null
                   }}
                 >
                   关闭计划

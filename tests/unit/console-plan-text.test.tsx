@@ -138,6 +138,35 @@ describe('console tree-shaped execution plan', () => {
     expect(mocks.copies).toHaveBeenCalledWith(tree)
   })
 
+  it('brings the previous rows back when the plan closes', async () => {
+    mocks.query.mockResolvedValue({
+      sql: 'SELECT * FROM orders',
+      columns: [{ name: 'name', typeName: 'VARCHAR' }],
+      rows: [['alpha']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    mocks.explain.mockResolvedValue(treeExplain('-> Table scan on o'))
+
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM orders' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('alpha')
+
+    fireEvent.click(await screen.findByRole('button', { name: '执行计划' }))
+    await screen.findByLabelText('执行计划文本')
+    expect(screen.queryByText('alpha')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭计划' }))
+    await waitFor(() => expect(screen.getByText('alpha')).toBeTruthy())
+  })
+
   it('keeps tabular plans in the grid', async () => {
     mocks.explain.mockResolvedValue({
       dialect: 'mysql',
