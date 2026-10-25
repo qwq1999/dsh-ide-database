@@ -1474,7 +1474,26 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           </div>
 
           {valueError !== null ? (
-            <Banner tone="error" onClose={() => setValueError(null)}>
+            <Banner
+              tone="error"
+              onClose={() => setValueError(null)}
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="复制错误信息"
+                  onClick={() =>
+                    void copyText(
+                      valueError.detail === undefined
+                        ? valueError.message
+                        : valueError.message + String.fromCharCode(10) + valueError.detail,
+                    )
+                  }
+                >
+                  复制
+                </Button>
+              }
+            >
               {valueError.message}
               {valueError.detail ? `\n${valueError.detail}` : ''}
             </Banner>

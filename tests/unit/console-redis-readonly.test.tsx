@@ -20,6 +20,13 @@ vi.mock('../../src/client/api', () => ({
   ApiError: class ApiError extends Error {},
 }))
 
+const copies = vi.hoisted(() => ({ copyText: vi.fn() }))
+
+vi.mock('../../src/client/colmenu', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/client/colmenu')>()),
+  copyText: copies.copyText,
+}))
+
 import { ConsoleTab } from '../../src/client/ConsoleTab'
 import { waitForConsoleSource } from '../stubs/console-ready'
 
@@ -63,6 +70,7 @@ beforeEach(() => {
   })
   mocks.redisDatabases.mockResolvedValue({ databases: 16 })
   mocks.redisScan.mockResolvedValue({ keys: [], cursor: '0' })
+  copies.copyText.mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -79,6 +87,25 @@ describe('read-only Redis connection', () => {
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(await screen.findByText(/这是一条只读连接/)).toBeTruthy()
     expect(mocks.redisCommand).not.toHaveBeenCalled()
+  })
+
+  it('copies the refusal text from the banner', async () => {
+    render(consoleTab())
+    await waitForConsoleSource(mocks)
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+    const box = screen.getByPlaceholderText(/例如 GET/)
+    fireEvent.change(box, { target: { value: 'SET user:1 x' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await screen.findByText(/这是一条只读连接/)
+
+    fireEvent.click(screen.getByRole('button', { name: '复制' }))
+
+    await waitFor(() => expect(copies.copyText).toHaveBeenCalled())
+    expect(copies.copyText.mock.calls[0]?.[0]).toBe(
+      '这是一条只读连接，不能执行写命令' +
+        String.fromCharCode(10) +
+        '把连接设置里的「只读」关掉，再执行要修改 Redis 数据的命令',
+    )
   })
 
   it('marks the read-only source in the picker', async () => {
