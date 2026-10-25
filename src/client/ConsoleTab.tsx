@@ -260,6 +260,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         ? connection.database
         : connection.user
 
+  // A remembered schema can disappear (renamed or dropped): fall back instead of a blank picker.
+  useEffect(() => {
+    if (schema === '' || schema === defaultSchema || schemas.length === 0) return
+    if (schemas.some((item) => item.name === schema)) return
+    setSchema(defaultSchema)
+    if (selectedId !== '') writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, defaultSchema)
+  }, [defaultSchema, schema, schemas, selectedId])
+
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
       setConfirm({
