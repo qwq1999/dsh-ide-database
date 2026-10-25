@@ -166,6 +166,7 @@ export const ObjectRow = memo(function ObjectRow({
         type="button"
         className="dshdb-row"
         role="treeitem"
+        aria-level={4}
         aria-expanded={isRelation ? open : undefined}
         data-active={selected}
         data-kind={object.kind}

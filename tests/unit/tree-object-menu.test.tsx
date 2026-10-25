@@ -153,6 +153,16 @@ describe('tree row context menu', () => {
     expect(calls).toEqual(['console:c1:shop:orders'])
   })
 
+  it('tells the depth of each tree row', () => {
+    const { container } = render(<DataView {...props()} />)
+    const level = (kind: string): string | null =>
+      container.querySelector(`[data-kind="${kind}"]`)?.getAttribute('aria-level') ?? null
+    expect(level('datasource')).toBe('1')
+    expect(level('schema')).toBe('2')
+    expect(level('folder')).toBe('3')
+    expect(level('table')).toBe('4')
+  })
+
   it('closes on Escape', () => {
     render(<DataView {...props()} />)
     openMenu()

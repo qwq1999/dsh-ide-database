@@ -510,6 +510,7 @@ export function DataView(props: DataViewProps): ReactElement {
                     type="button"
                     className="dshdb-row"
                     role="treeitem"
+                    aria-level={1}
                     aria-expanded={isExpanded}
                     data-active={isSelected}
                     data-kind="datasource"
@@ -658,6 +659,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                   type="button"
                                   className="dshdb-row"
                                   role="treeitem"
+                                  aria-level={2}
                                   aria-expanded={schemaExpanded}
                                   data-active={props.selectedKey === `${connection.id}|schema:${schema.name}`}
                                   data-kind="schema"
@@ -713,6 +715,7 @@ export function DataView(props: DataViewProps): ReactElement {
                                                 type="button"
                                                 className="dshdb-row"
                                                 role="treeitem"
+                                                aria-level={3}
                                                 aria-expanded={folderExpanded}
                                                 data-active={
                                                   props.selectedKey === `${connection.id}|${schema.name}#${folder.id}`
