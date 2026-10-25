@@ -201,7 +201,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const activeSort = useMemo(() => parseOrderBy(stripKeyword(orderText, 'ORDER\\s+BY')), [orderText])
 
   const apply = useCallback(
-    (next: { page?: number; size?: number; where?: string; orderBy?: string }, override?: ColumnFilters): void => {
+    (
+      next: { page?: number; size?: number; where?: string; orderBy?: string; recount?: boolean },
+      override?: ColumnFilters,
+    ): void => {
       if (connection === null) return
       const manualWhere = next.where ?? whereText
       void load(connection, {
@@ -209,7 +212,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         size: next.size ?? pageSize,
         where: composeWhere(connection.dialect, manualWhere, columns, override ?? filters),
         orderBy: next.orderBy ?? orderText,
-        recount: next.where !== undefined || next.size !== undefined || next.page === 0,
+        recount: next.recount ?? (next.where !== undefined || next.size !== undefined || next.page === 0),
       })
     },
     [columns, connection, filters, load, orderText, page, pageSize, whereText],
@@ -345,6 +348,22 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
+
+  // Rows can disappear under the current page (deleted elsewhere, or a wider
+  // WHERE than when the total was measured): fall back to the last real page.
+  useEffect(() => {
+    if (loading || connection === null || total === undefined) return
+    if (rows.length > 0 || page === 0) return
+    const last = Math.max(Math.ceil(total / pageSize) - 1, 0)
+    if (last >= page) return
+    void load(connection, {
+      page: last,
+      size: pageSize,
+      where: composeWhere(connection.dialect, whereText, columns, filters),
+      orderBy: orderText,
+      recount: false,
+    })
+  }, [columns, connection, filters, load, loading, orderText, page, pageSize, rows.length, total, whereText])
   useEffect(() => {
     setPageDraft(String(page + 1))
   }, [page])
@@ -601,7 +620,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           className="dshdb-pager-btn"
           title="刷新"
           aria-label="刷新"
-          onClick={() => apply({})}
+          onClick={() => apply({ recount: true })}
           disabled={loading}
         >
           <RefreshIcon size={13} />
