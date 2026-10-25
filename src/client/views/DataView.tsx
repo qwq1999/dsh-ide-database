@@ -656,7 +656,13 @@ export function DataView(props: DataViewProps): ReactElement {
       // the connection status before searching so the attempt can retry later.
       if (servers[connection.id] === undefined) continue
       searched.current.add(connection.id)
-      for (const schema of schemaList) props.onLoadObjects(connection.id, schema.name)
+      for (const schema of schemaList) {
+        const key = `${connection.id}:${schema.name}`
+        // Object names are already in memory (or on the way): searching a new
+        // filter term must not re-query metadata for lists we already hold.
+        if (objects[key] !== undefined || props.loadingObjects[key] === true) continue
+        props.onLoadObjects(connection.id, schema.name)
+      }
     }
     // Redis has no schema: scan the displayed databases once so the filter can match keys.
     for (const connection of connections) {
