@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { redisTtlLabel, redisValueTable } from '../../src/client/redisvalue.js'
+import { prettyJsonText, redisTtlLabel, redisValueTable, redisValueText } from '../../src/client/redisvalue.js'
 
 const value = (type, raw) => ({ key: 'k', type, ttl: -1, value: raw, truncated: false, preview: '' })
 
@@ -50,5 +50,33 @@ describe('redisTtlLabel', () => {
     expect(redisTtlLabel(-1)).toBe('永久')
     expect(redisTtlLabel(-2)).toBe('已过期')
     expect(redisTtlLabel(59.6)).toBe('60s')
+  })
+})
+
+describe('redis JSON payloads', () => {
+  it('indents a stored JSON object so it can be read as a block', () => {
+    const stored = JSON.stringify({ name: '张伟', tags: ['a', 'b'] })
+    expect(prettyJsonText(stored)).toBe(JSON.stringify({ name: '张伟', tags: ['a', 'b'] }, null, 2))
+  })
+
+  it('leaves plain text, broken JSON and scalar text untouched', () => {
+    expect(prettyJsonText('hello')).toBe('hello')
+    expect(prettyJsonText('{ not json')).toBe('{ not json')
+    expect(prettyJsonText('42')).toBe('42')
+    expect(prettyJsonText('[1, 2')).toBe('[1, 2')
+  })
+
+  it('prints string values as they are and NULL for a missing value', () => {
+    expect(redisValueText('hello')).toBe('hello')
+    expect(redisValueText(JSON.stringify({ a: 1 }))).toBe(JSON.stringify({ a: 1 }, null, 2))
+    expect(redisValueText(42)).toBe('42')
+    expect(redisValueText(null)).toBe('NULL')
+  })
+
+  it('sends JSON strings to the block view instead of a one-cell table', () => {
+    expect(redisValueTable(value('string', JSON.stringify({ a: 1 })))).toBeNull()
+    expect(redisValueTable(value('string', '[1, 2]'))).toBeNull()
+    expect(redisValueTable(value('string', 'hello'))).toEqual({ headers: ['值'], rows: [['hello']] })
+    expect(redisValueTable(value('string', '42'))).toEqual({ headers: ['值'], rows: [['42']] })
   })
 })

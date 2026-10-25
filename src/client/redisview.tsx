@@ -5,8 +5,8 @@
  */
 import { memo, type ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
-import { formatCount, stringifyJson } from './format'
-import { redisTtlLabel, redisValueTable } from './redisvalue'
+import { formatCount } from './format'
+import { redisTtlLabel, redisValueTable, redisValueText } from './redisvalue'
 import { Tag } from './ui'
 
 export const RedisValuePanel = memo(function RedisValuePanel({
@@ -31,7 +31,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         ) : null}
       </div>
       {table === null ? (
-        <pre className="dshdb-console-value">{stringifyJson(value.value)}</pre>
+        <pre className="dshdb-console-value">{redisValueText(value.value)}</pre>
       ) : (
         <div className="dshdb-grid-wrap dshdb-redis-table">
           <table className="dshdb-grid">

@@ -1,5 +1,6 @@
 /** Turn a stored Redis value into a two-or-three column table, like IDEA's data viewer. */
 import type { JsonValue, RedisValue } from '../shared/types'
+import { stringifyJson } from './format'
 
 export interface RedisTable {
   headers: string[]
@@ -21,11 +22,43 @@ function asArray(value: JsonValue | undefined): JsonValue[] {
   return Array.isArray(value) ? (value as JsonValue[]) : []
 }
 
+/**
+ * A stored string is shown as it is: quoting it (and escaping every newline)
+ * hides what the key really holds. Values that parse as a JSON object or array
+ * get indented so hand-written payloads stay readable; anything else is
+ * returned untouched.
+ */
+function parseJsonContainer(text: string): object | null {
+  const trimmed = text.trim()
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed !== null && typeof parsed === 'object' ? (parsed as object) : null
+  } catch {
+    return null
+  }
+}
+
+export function prettyJsonText(text: string): string {
+  const parsed = parseJsonContainer(text)
+  return parsed === null ? text : JSON.stringify(parsed, null, 2)
+}
+
+/** What the value panel prints when the payload cannot be tabulated. */
+export function redisValueText(value: JsonValue): string {
+  if (typeof value === 'string') return prettyJsonText(value)
+  if (value === null) return 'NULL'
+  return stringifyJson(value)
+}
+
 /** NULL when the shape cannot be tabulated; callers then fall back to raw JSON. */
 export function redisValueTable(value: RedisValue): RedisTable | null {
   switch (value.type) {
-    case 'string':
-      return { headers: ['值'], rows: [[text(value.value)]] }
+    case 'string': {
+      const raw = text(value.value)
+      // JSON payloads read better as an indented block than squeezed into a cell.
+      return parseJsonContainer(raw) === null ? { headers: ['值'], rows: [[raw]] } : null
+    }
     case 'hash': {
       const record = asRecord(value.value)
       if (record === null) return null
