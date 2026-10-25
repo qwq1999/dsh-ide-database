@@ -644,11 +644,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             .catch(() => undefined)
         }
         scanCursorRef.current = next.cursor
-        setScan((previous) =>
-          append && previous !== null && next.cursor !== '0'
-            ? { ...next, keys: [...previous.keys, ...next.keys] }
-            : next,
-        )
+        setScan((previous) => {
+          if (!append || previous === null) return next
+          // SCAN may hand out the same key twice across cursor rounds, and the
+          // final round ends with cursor 0: keep what was already listed.
+          const seen = new Set(previous.keys.map((info) => info.key))
+          const fresh = next.keys.filter((info) => !seen.has(info.key))
+          return { ...next, keys: [...previous.keys, ...fresh] }
+        })
       } catch (error) {
         setValueError(failureText(error))
       } finally {
