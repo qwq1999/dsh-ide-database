@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextKeySort, sortKeys, sortKeysBySize } from '../../src/client/redissort'
+import { nextKeySort, sortKeys, sortKeysBySize, sortKeysByTtl } from '../../src/client/redissort'
 
 const keys = [
   { key: 'user:10' },
@@ -48,5 +48,25 @@ describe('redissort by size', () => {
     expect(sortKeysBySize(loose, 'asc').map((item) => item.key)).toEqual(['a', 'b'])
     expect(stored.map((item) => item.key)).toEqual(['user:10', 'user:9', 'order:1'])
     expect(sortKeysBySize(stored, 'none')).toBe(stored)
+  })
+})
+
+describe('sortKeysByTtl', () => {
+  const keys = [
+    { key: 'a', type: 'string', ttl: 300, size: 1 },
+    { key: 'b', type: 'string', ttl: -1, size: 1 },
+    { key: 'c', type: 'string', ttl: 60, size: 1 },
+  ]
+
+  it('puts the soonest expiry first and keys without one last', () => {
+    expect(sortKeysByTtl(keys, 'asc').map((item) => item.key)).toEqual(['c', 'a', 'b'])
+    expect(sortKeysByTtl(keys, 'desc').map((item) => item.key)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('keeps scan order and the input untouched', () => {
+    expect(sortKeysByTtl(keys, 'none')).toBe(keys)
+    const before = keys.map((item) => item.key)
+    sortKeysByTtl(keys, 'asc')
+    expect(keys.map((item) => item.key)).toEqual(before)
   })
 })

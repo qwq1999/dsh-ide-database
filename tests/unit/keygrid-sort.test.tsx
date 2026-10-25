@@ -59,6 +59,20 @@ describe('redis key grid sorting', () => {
     expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
   })
 
+  it('sorts by remaining lifetime with keys that never expire last', () => {
+    render(<KeyGrid keys={keys} selectedKey="" onSelect={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('TTL'))
+    expect(keyOrder()).toEqual(['user:9', 'user:10', 'order:1'])
+    expect(screen.getByRole('columnheader', { name: /^TTL/ }).getAttribute('aria-sort')).toBe('ascending')
+
+    fireEvent.click(screen.getByText('TTL'))
+    expect(keyOrder()).toEqual(['user:10', 'order:1', 'user:9'])
+
+    fireEvent.click(screen.getByText('TTL'))
+    expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])
+  })
+
   it('keeps the selection working after sorting', () => {
     const onSelect = vi.fn()
     render(<KeyGrid keys={keys} selectedKey="user:9" onSelect={onSelect} />)

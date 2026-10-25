@@ -34,3 +34,16 @@ export function sortKeysBySize(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInf
   })
   return sorted
 }
+
+/** Return a copy ordered by remaining lifetime; keys without expiry go last. */
+export function sortKeysByTtl(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInfo[] {
+  if (sort === 'none') return keys
+  const sorted = [...keys]
+  const ttlOf = (info: RedisKeyInfo): number => (info.ttl < 0 ? Number.POSITIVE_INFINITY : info.ttl)
+  sorted.sort((left, right) => {
+    const leftTtl = ttlOf(left)
+    const rightTtl = ttlOf(right)
+    return sort === 'asc' ? leftTtl - rightTtl : rightTtl - leftTtl
+  })
+  return sorted
+}

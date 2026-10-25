@@ -10,7 +10,7 @@ import { ClearIcon, CopyIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
 import { formatCount, formatTtl } from './format'
 import { copyText } from './colmenu'
-import { nextKeySort, sortKeys, sortKeysBySize, type KeySort } from './redissort'
+import { nextKeySort, sortKeys, sortKeysBySize, sortKeysByTtl, type KeySort } from './redissort'
 import { placeMenu, TreeMenu, type TreeMenuState } from './views/tree-menu'
 
 export { formatCount }
@@ -180,8 +180,12 @@ export const KeyGrid = memo(function KeyGrid({
 }): ReactElement {
   const [sort, setSort] = useState<KeySort>('none')
   const [sizeSort, setSizeSort] = useState<KeySort>('none')
+  const [ttlSort, setTtlSort] = useState<KeySort>('none')
   const [menu, setMenu] = useState<TreeMenuState | null>(null)
-  const rows = useMemo(() => sortKeysBySize(sortKeys(keys, sort), sizeSort), [keys, sort, sizeSort])
+  const rows = useMemo(
+    () => sortKeysBySize(sortKeysByTtl(sortKeys(keys, sort), ttlSort), sizeSort),
+    [keys, sort, sizeSort, ttlSort],
+  )
   const openMenu = useCallback((event: MouseEvent<HTMLTableRowElement>, key: RedisKeyInfo): void => {
     event.preventDefault()
     const items = [{ label: '复制键名', run: () => void copyText(key.key) }]
@@ -204,7 +208,16 @@ export const KeyGrid = memo(function KeyGrid({
             {sort === 'none' ? null : <span className="dshdb-sort-arrow">{sort === 'asc' ? '▲' : '▼'}</span>}
           </th>
           <th>类型</th>
-          <th>TTL</th>
+          <th
+            className="dshdb-th-sortable"
+            title={ttlSort === 'none' ? '按剩余时间升序' : ttlSort === 'asc' ? '按剩余时间降序' : '恢复扫描顺序'}
+            data-sorted={ttlSort === 'none' ? undefined : ttlSort}
+            aria-sort={ttlSort === 'asc' ? 'ascending' : ttlSort === 'desc' ? 'descending' : 'none'}
+            onClick={() => setTtlSort(nextKeySort(ttlSort))}
+          >
+            TTL
+            {ttlSort === 'none' ? null : <span className="dshdb-sort-arrow">{ttlSort === 'asc' ? '▲' : '▼'}</span>}
+          </th>
           <th
             className="dshdb-th-sortable"
             title={sizeSort === 'none' ? '按长度升序' : sizeSort === 'asc' ? '按长度降序' : '恢复扫描顺序'}
