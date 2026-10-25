@@ -1040,6 +1040,8 @@ export const CSS = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
+.dshdb-history-copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 0; border-radius: var(--ds-radius-sm, 4px); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.dshdb-history-copy:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
 .dshdb-history-star:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
 .dshdb-history-star[data-pinned="true"] { color: var(--dsw-alias-state-business-primary); }
 .dshdb-history-empty { padding: 6px 4px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }

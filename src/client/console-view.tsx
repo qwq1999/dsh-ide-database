@@ -6,9 +6,10 @@
 import { memo, useMemo, useState, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
-import { ClearIcon, StarIcon } from './icons'
+import { ClearIcon, CopyIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
 import { formatCount, formatTtl } from './format'
+import { copyText } from './colmenu'
 import { nextKeySort, sortKeys, type KeySort } from './redissort'
 
 export { formatCount }
@@ -34,6 +35,15 @@ function HistoryRow(props: {
       >
         <span className="dshdb-history-sql">{oneLine(props.entry.statement)}</span>
         <span className="dshdb-history-time">{historyAgo(props.entry.at)}</span>
+      </button>
+      <button
+        type="button"
+        className="dshdb-history-copy"
+        aria-label="复制语句"
+        title="复制语句"
+        onClick={() => void copyText(props.entry.statement)}
+      >
+        <CopyIcon size={11} />
       </button>
       <button
         type="button"
