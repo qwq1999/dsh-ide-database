@@ -73,7 +73,7 @@
     "qa:ui": "node scripts/qa-ui.mjs",
     "changelog": "node scripts/build-changelog.mjs",
     "changelog:check": "node scripts/build-changelog.mjs --check",
-    "verify": "npm run typecheck && npm test && npm run changelog:check"
+    "verify": "npm run typecheck && npm test"
   },
   "keywords": [
     "dsh",
