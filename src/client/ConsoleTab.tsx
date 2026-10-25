@@ -1667,9 +1667,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   setBase('')
                 }}
               >
-                {scriptResults.map((_, index) => (
+                {scriptResults.map((item, index) => (
                   <option key={index} value={index}>
-                    第 {index + 1} 条
+                    第 {index + 1} 条 · {formatCount(item.rows.length)} 行 · {formatMs(item.elapsedMs)}
                   </option>
                 ))}
               </select>

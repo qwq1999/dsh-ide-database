@@ -115,8 +115,8 @@ describe('console script results', () => {
 
     const picker = screen.getByLabelText('语句结果')
     expect(Array.from(picker.querySelectorAll('option')).map((item) => item.textContent)).toEqual([
-      '第 1 条',
-      '第 2 条',
+      '第 1 条 · 1 行 · 1 ms',
+      '第 2 条 · 1 行 · 1 ms',
     ])
     expect((picker as HTMLSelectElement).value).toBe('1')
 
