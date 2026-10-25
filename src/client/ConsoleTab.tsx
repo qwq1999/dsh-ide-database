@@ -164,6 +164,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [pattern, setPattern] = useState('*')
   const [scanType, setScanType] = useState('')
   const [ttlOnly, setTtlOnly] = useState(false)
+  const [scanMs, setScanMs] = useState<number | null>(null)
   const [scan, setScan] = useState<RedisScanResult | null>(null)
   const [scanning, setScanning] = useState(false)
   /** The pattern/type the listed keys were scanned with; a drifted box cannot continue. */
@@ -704,6 +705,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     async (append: boolean, overrideType?: string): Promise<void> => {
       if (selectedId === '') return
       const token = runToken.current
+      const startedAt = Date.now()
       setScanning(true)
       setValueError(null)
       const type = overrideType ?? scanType
@@ -729,6 +731,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             .catch(() => undefined)
         }
         scanCursorRef.current = next.cursor
+        setScanMs(Date.now() - startedAt)
         if (!append) setScanQuery({ pattern: patternText, type })
         setScan((previous) => {
           if (!append || previous === null) return next
@@ -1326,7 +1329,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               继续
             </Button>
             <span className="dshdb-qmeta">
-              {scan === null ? '' : `${formatCount(scan.keys.length)} 个键`}
+              {scan === null
+                ? ''
+                : ttlOnly
+                  ? `${formatCount(visibleKeys.length)} / ${formatCount(scan.keys.length)} 个键`
+                  : `${formatCount(scan.keys.length)} 个键`}
+              {scanMs === null ? '' : ` · ${formatMs(scanMs)}`}
               {scan !== null && scan.cursor !== '0' && scanQuery !== null &&
               (scanQuery.pattern !== (pattern.trim() === '' ? '*' : pattern.trim()) || scanQuery.type !== scanType)
                 ? ' · 条件已改，点「扫描」重新开始'

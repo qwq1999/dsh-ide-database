@@ -74,10 +74,12 @@ describe('Redis key filters', () => {
     await waitForConsoleSource(mocks)
     await screen.findByText('user:forever')
     expect(screen.getByText('user:session')).toBeTruthy()
+    expect(screen.getByText(/\d+ ms/)).toBeTruthy()
 
     fireEvent.click(screen.getByLabelText('只看有 TTL'))
     await waitFor(() => expect(screen.queryByText('user:forever')).toBeNull())
     expect(screen.getByText('user:session')).toBeTruthy()
+    expect(screen.getByText(/1 \/ 2 个键/)).toBeTruthy()
 
     fireEvent.click(screen.getByLabelText('只看有 TTL'))
     await waitFor(() => expect(screen.getByText('user:forever')).toBeTruthy())
