@@ -834,6 +834,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }, [activeRedisDb, selectedId, selectedKey])
 
+  /** Stable prop for the memoised value panel: an inline arrow re-rendered it on every keystroke. */
+  const refreshValueClick = useCallback((): void => {
+    void refreshValue()
+  }, [refreshValue])
+
   /** Stable for the memoised key rows: only a different key starts a new request. */
   const pickKey = useCallback(
     (key: RedisKeyInfo): void => {
@@ -1309,7 +1314,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           </div>
 
           {value !== null ? (
-            <RedisValuePanel value={value} onRefresh={() => void refreshValue()} refreshing={valueRefreshing} />
+            <RedisValuePanel value={value} onRefresh={refreshValueClick} refreshing={valueRefreshing} />
           ) : null}
 
           <div className="dshdb-qfilter">
