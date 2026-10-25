@@ -41,6 +41,7 @@ export async function copyText(text: string): Promise<boolean> {
     // Older WebViews (and jsdom) offer neither the async API nor execCommand:
     // report the failure instead of rejecting into a `void` call site.
     let area: HTMLTextAreaElement | undefined
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     try {
       area = document.createElement('textarea')
       area.value = text
@@ -53,6 +54,8 @@ export async function copyText(text: string): Promise<boolean> {
       return false
     } finally {
       area?.remove()
+      // Selecting the scratch textarea moved focus; put it back where it was.
+      if (previous !== null && previous.isConnected) previous.focus()
     }
   }
 }

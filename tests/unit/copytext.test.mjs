@@ -33,6 +33,19 @@ describe('copyText', () => {
     expect(document.querySelectorAll('textarea').length).toBe(0)
   })
 
+  it('gives focus back to the element that asked for the copy', async () => {
+    useClipboard()
+    clipboard.writeText.mockRejectedValueOnce(new Error('denied'))
+    document.execCommand = vi.fn(() => true)
+    const button = document.createElement('button')
+    document.body.appendChild(button)
+    button.focus()
+
+    await expect(copyText('hello')).resolves.toBe(true)
+    expect(document.activeElement).toBe(button)
+    button.remove()
+  })
+
   it('reports false instead of throwing when nothing can copy', async () => {
     useClipboard()
     clipboard.writeText.mockRejectedValueOnce(new Error('denied'))
