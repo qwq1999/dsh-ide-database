@@ -41,7 +41,7 @@ import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
-import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
+import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
   completionCandidates,
@@ -1093,6 +1093,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         label: '复制本列（逗号分隔）',
         disabled: filteredRows.length === 0 || index < 0,
         run: () => void copyText(commaValues(filteredRows, index)).then(noteCopied('逗号分隔')),
+      },
+      {
+        label: '复制全部列名',
+        disabled: displayColumns.length === 0,
+        run: () => void copyText(columnNames(connection?.dialect ?? 'mysql', displayColumns)).then(noteCopied('全部列名')),
       },
       {
         label: `复制查询语句（${displayColumns.length} 列）`,

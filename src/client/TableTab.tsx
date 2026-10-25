@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, columnNames, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -317,6 +317,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           label: '复制本列（逗号分隔）',
           disabled: rows.length === 0 || index < 0,
           run: () => void copyText(commaValues(rows, index)).then(noteCopied('逗号分隔')),
+        },
+        {
+          label: '复制全部列名',
+          disabled: displayColumns.length === 0,
+          run: () => void copyText(columnNames(connection?.dialect ?? 'mysql', displayColumns)).then(noteCopied('全部列名')),
         },
         {
           label: `复制查询语句（${displayColumns.length} 列）`,

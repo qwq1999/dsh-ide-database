@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cellWhere,
+  columnNames,
   composeWhere,
   filterExpression,
   insertStatement,
@@ -247,5 +248,17 @@ describe('inListOf', () => {
   it('escapes backslashes for MySQL literal text', () => {
     const backslash = String.fromCharCode(92)
     expect(inListOf('mysql', [['C:' + backslash + 'temp']], 0)).toBe("('C:" + backslash + backslash + "temp')")
+  })
+})
+
+describe('columnNames', () => {
+  it('joins quoted names and stays empty without columns', () => {
+    const columns = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'name', typeName: 'VARCHAR' },
+    ]
+    expect(columnNames('mysql', columns)).toBe('`id`, `name`')
+    expect(columnNames('oracle', columns)).toBe('"id", "name"')
+    expect(columnNames('mysql', [])).toBe('')
   })
 })

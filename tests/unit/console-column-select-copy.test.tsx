@@ -171,4 +171,18 @@ describe('console column select copy', () => {
       'SELECT `name`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `name` ORDER BY `count` DESC',
     )
   })
+  it('copies every column name from the header menu', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('name'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制全部列名' }))
+
+    expect(copies).toHaveBeenCalledWith('`id`, `name`, `total`')
+  })
 })

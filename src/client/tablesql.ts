@@ -57,6 +57,11 @@ export function tableSelectSql(
   return `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, size, 0)}`
 }
 
+/** Every column name, quoted the way the dialect wants, joined for a SELECT list. */
+export function columnNames(dialect: ClientConnection['dialect'], columns: ColumnInfo[]): string {
+  return columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
+}
+
 /**
  * A SELECT over every column the grid knows about: handy when a `SELECT *` should
  * become an explicit column list.
