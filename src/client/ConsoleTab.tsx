@@ -37,7 +37,7 @@ import { nextRowSort, sortRows, type RowSort } from './rowsort'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { downloadText, exportFilename, renderExport, type ExportFormat } from './export'
+import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
 import { insertStatement, tableFromStatement } from './tablesql'
 import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret, type Completion } from './complete'
 import { collectRows } from './pagedrows'
@@ -1318,6 +1318,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   </button>
                   <button type="button" role="menuitem" onClick={() => exportPage('md')}>
                     当前页 Markdown（{visibleRows.length} 行）
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void copyText(toMarkdown(displayColumns, visibleRows))}
+                  >
+                    复制当前页 Markdown
                   </button>
                   {base !== '' ? (
                     <>

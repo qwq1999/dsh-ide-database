@@ -22,6 +22,13 @@ vi.mock('../../src/client/api', () => {
   }
 })
 
+const copies = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+
+vi.mock('../../src/client/colmenu', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/client/colmenu')>()
+  return { ...actual, copyText: copies }
+})
+
 import { TableTab } from '../../src/client/TableTab'
 import { setConsoleTabOpener } from '../../src/client/tab-open'
 
@@ -99,6 +106,26 @@ describe('table export menu', () => {
     expect(await screen.findByRole('menu')).toBeTruthy()
     fireEvent.keyDown(document.body, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
+  it('copies the current page as a Markdown table', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制当前页 Markdown' }))
+
+    await waitFor(() => expect(copies).toHaveBeenCalled())
+    const expected = ['| total |', '| --- |', '| 93.02 |', ''].join(String.fromCharCode(10))
+    expect(copies.mock.calls.at(-1)?.[0]).toBe(expected)
   })
 
   it('hands the table and its filters to the query console', async () => {
