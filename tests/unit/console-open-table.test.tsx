@@ -102,7 +102,26 @@ describe('open the target table from the console', () => {
     await waitFor(() => expect(button.disabled).toBe(false))
     fireEvent.click(button)
 
-    expect(open).toHaveBeenCalledWith({ connectionId: 'mysql-1', schema: 'shop', table: 'orders', kind: 'table' })
+    await waitFor(() => expect(open).toHaveBeenCalledWith({ connectionId: 'mysql-1', schema: 'shop', table: 'orders', kind: 'table' }))
+  })
+
+  it('opens a view as a view so its DDL is read as a view', async () => {
+    const open = vi.fn()
+    setTableTabOpener(open)
+    mocks.objects.mockResolvedValue({ objects: [{ name: 'v_orders', kind: 'view' }] })
+    render(<ConsoleTab useTabInfo={tab} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM v_orders' } })
+
+    const button = (await screen.findByRole('button', { name: '打开数据表' })) as HTMLButtonElement
+    await waitFor(() => expect(button.disabled).toBe(false))
+    fireEvent.click(button)
+
+    await waitFor(() => expect(open).toHaveBeenCalledWith({ connectionId: 'mysql-1', schema: 'shop', table: 'v_orders', kind: 'view' }))
   })
 
   it('is disabled while the statement names no table', async () => {

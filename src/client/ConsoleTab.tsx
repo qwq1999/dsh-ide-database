@@ -1169,6 +1169,22 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     if (parsed === null) return null
     return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
   }
+  /**
+   * The tree knows whether an object is a view; here we only have the table name,
+   * so ask the cached object list before opening the tab with the right kind.
+   */
+  const openEditorTable = async (): Promise<void> => {
+    const target = editorTarget()
+    if (target === null || selectedId === '') return
+    let kind: 'table' | 'view' = 'table'
+    try {
+      const listed = await api.objects(selectedId, target.schema)
+      if (listed.objects.some((object) => object.name === target.table && object.kind === 'view')) kind = 'view'
+    } catch {
+      // The tab still opens; only the DDL button falls back to table semantics.
+    }
+    openTableTab({ connectionId: selectedId, schema: target.schema, table: target.table, kind })
+  }
   const noTableNote = (): void => {
     setExportNote('当前语句没有目标表，无法导出 SQL')
     setTimeout(() => setExportNote(''), 5000)
@@ -1765,11 +1781,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               icon={<TableIcon size={12} />}
               disabled={editorTarget() === null || selectedId === ''}
               title="在新标签页打开编辑器里这条语句查询的表"
-              onClick={() => {
-                const target = editorTarget()
-                if (target === null || selectedId === '') return
-                openTableTab({ connectionId: selectedId, schema: target.schema, table: target.table, kind: 'table' })
-              }}
+              onClick={() => void openEditorTable()}
             >
               打开数据表
             </Button>
