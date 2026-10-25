@@ -1072,6 +1072,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   /** `EXPLAIN FORMAT=TREE` style plans: one text column, rendered as preformatted text. */
   const planText = useMemo(() => planTextOf(plan?.plan), [plan])
+  /** Tree plans copy as-is; tabular plans copy as TSV so the grid is not lost. */
+  const planCopyText = useMemo(() => {
+    if (planText !== null) return planText
+    const table = plan?.plan
+    if (table === null || table === undefined || table.rows.length === 0) return null
+    return toTsv(table.columns, table.rows)
+  }, [plan, planText])
   const displayColumns = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder])
   const displayRows = useMemo(() => orderRows(filteredRows, columnOrder), [filteredRows, columnOrder])
   // Hiding is display-only: positions map back into the displayed columns, so
@@ -2302,9 +2309,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={planText === null}
+                  disabled={planCopyText === null}
+                  title={planText === null ? '把表格形式的计划复制成制表符分隔的文本' : '复制计划文本'}
                   onClick={() => {
-                    if (planText !== null) void copyText(planText)
+                    if (planCopyText !== null) void copyText(planCopyText)
                   }}
                 >
                   复制计划

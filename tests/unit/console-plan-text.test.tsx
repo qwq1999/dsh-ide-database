@@ -198,4 +198,38 @@ describe('console tree-shaped execution plan', () => {
     await waitFor(() => expect(screen.queryByLabelText('执行计划文本')).toBeNull())
     expect(await screen.findByText('orders')).toBeTruthy()
   })
+
+  it('copies a tabular plan as tab-separated text', async () => {
+    mocks.explain.mockResolvedValue({
+      dialect: 'mysql',
+      statements: ['EXPLAIN SELECT * FROM orders'],
+      plan: {
+        sql: 'EXPLAIN SELECT * FROM orders',
+        columns: [
+          { name: 'id', typeName: 'INT' },
+          { name: 'table', typeName: 'VARCHAR' },
+        ],
+        rows: [[1, 'orders']],
+        rowCount: 1,
+        truncated: false,
+        elapsedMs: 2,
+        warnings: [],
+      },
+      warnings: [],
+    })
+
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'EXPLAIN SELECT * FROM orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行计划' }))
+
+    await screen.findByText('orders')
+    fireEvent.click(screen.getByRole('button', { name: '复制计划' }))
+
+    const copied = mocks.copies.mock.calls.at(-1)?.[0] as string
+    expect(copied).toBe(['id', 'table'].join('\t') + '\n' + ['1', 'orders'].join('\t') + '\n')
+  })
 })
