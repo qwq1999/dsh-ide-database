@@ -86,12 +86,12 @@ describe('table filter column hints', () => {
   it('offers the table columns to the WHERE and ORDER BY boxes', async () => {
     render(<TableTab useTabInfo={tab} />)
     const where = screen.getByPlaceholderText(/过滤条件/) as HTMLInputElement
-    await waitFor(() => expect(where.getAttribute('list')).toBe('dshdb-table-columns'))
+    await waitFor(() => expect(where.getAttribute('list')).toBe('dshdb-columns-orders'))
 
     const order = screen.getByPlaceholderText(/排序列/) as HTMLInputElement
-    expect(order.getAttribute('list')).toBe('dshdb-table-columns')
+    expect(order.getAttribute('list')).toBe('dshdb-columns-orders')
 
-    const options = Array.from(document.querySelectorAll('#dshdb-table-columns option')).map(
+    const options = Array.from(document.querySelectorAll('#dshdb-columns-orders option')).map(
       (option) => (option as HTMLOptionElement).value,
     )
     expect(options).toEqual(['id', 'total'])

@@ -104,6 +104,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [pageSize, setPageSize] = useState(() => readPageSize(TABLE_PAGE_KEY, PAGE_SIZES, 500))
   const [pageDraft, setPageDraft] = useState('1')
   const [whereText, setWhereText] = useState('')
+  /** Two table tabs open at once must not share one datalist id. */
+  const columnsListId = `dshdb-columns-${params.table.replace(/[^\w-]/gu, '-')}`
   const [orderText, setOrderText] = useState('')
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
@@ -813,7 +815,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           ref={whereRef}
           className="dshdb-input dshdb-qfilter-input"
           placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
-          list="dshdb-table-columns"
+          list={columnsListId}
           title="Ctrl/⌘ + F 聚焦这里"
           value={whereText}
           spellCheck={false}
@@ -840,7 +842,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <input
           className="dshdb-input dshdb-qfilter-input dshdb-qfilter-order"
           placeholder="排序列，例如 ID DESC"
-          list="dshdb-table-columns"
+          list={columnsListId}
           value={orderText}
           spellCheck={false}
           onChange={(event) => setOrderText(event.target.value)}
@@ -862,7 +864,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             ×
           </button>
         )}
-        <datalist id="dshdb-table-columns">
+        <datalist id={columnsListId}>
           {columns.map((column) => (
             <option key={column.name} value={column.name} />
           ))}
