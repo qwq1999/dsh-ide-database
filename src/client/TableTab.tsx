@@ -301,26 +301,26 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
         { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
         { label: '清除排序', disabled: activeSort === undefined, run: clearSort },
-        { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+        { label: `复制列名「${column.name}」`, run: () => void copyText(column.name).then(noteCopied('列名')) },
         {
           label: `复制本列值（${rows.length} 行）`,
           disabled: rows.length === 0 || index < 0,
-          run: () => void copyText(columnValues(rows, index)),
+          run: () => void copyText(columnValues(rows, index)).then(noteCopied('本列值')),
         },
         {
           label: '复制为 IN 列表',
           disabled: rows.length === 0 || index < 0,
-          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)),
+          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)).then(noteCopied('IN 列表')),
         },
         {
           label: '复制本列（逗号分隔）',
           disabled: rows.length === 0 || index < 0,
-          run: () => void copyText(commaValues(rows, index)),
+          run: () => void copyText(commaValues(rows, index)).then(noteCopied('逗号分隔')),
         },
         {
           label: `复制查询语句（${displayColumns.length} 列）`,
           disabled: displayColumns.length === 0,
-          run: () => void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns)),
+          run: () => void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns)).then(noteCopied('查询语句')),
         },
         {
           label: `隐藏列「${column.name}」`,

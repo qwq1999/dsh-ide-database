@@ -137,6 +137,7 @@ describe('console column select copy', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制为 IN 列表' }))
 
     expect(copies).toHaveBeenCalledWith("('手机')")
+    expect(await screen.findByText('IN 列表 已复制')).toBeTruthy()
   })
 
   it('copies the column as one comma separated line', async () => {

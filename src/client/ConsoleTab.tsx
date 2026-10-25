@@ -1048,21 +1048,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
       { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
       { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
-      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name) },
+      { label: `复制列名「${column.name}」`, run: () => void copyText(column.name).then(noteCopied('列名')) },
       {
         label: `复制本列值（${filteredRows.length} 行）`,
         disabled: filteredRows.length === 0 || index < 0,
-        run: () => void copyText(columnValues(filteredRows, index)),
+        run: () => void copyText(columnValues(filteredRows, index)).then(noteCopied('本列值')),
       },
       {
         label: '复制为 IN 列表',
         disabled: filteredRows.length === 0 || index < 0,
-        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)),
+        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)).then(noteCopied('IN 列表')),
       },
       {
         label: '复制本列（逗号分隔）',
         disabled: filteredRows.length === 0 || index < 0,
-        run: () => void copyText(commaValues(filteredRows, index)),
+        run: () => void copyText(commaValues(filteredRows, index)).then(noteCopied('逗号分隔')),
       },
       {
         label: `复制查询语句（${displayColumns.length} 列）`,
@@ -1070,7 +1070,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         run: () => {
           const target = tableTarget()
           if (target === null) return
-          void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns))
+          void copyText(selectColumnsSql(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns)).then(noteCopied('查询语句'))
         },
       },
       {
