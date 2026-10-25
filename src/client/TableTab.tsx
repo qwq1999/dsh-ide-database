@@ -104,6 +104,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [order, setOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
+  const objectKind = params.kind === 'view' ? 'view' : 'table'
   const [ddl, setDdl] = useState<{ title: string; text: string; warnings: string[] } | null>(null)
   const [ddlBusy, setDdlBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -322,14 +323,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     if (connection === null) return
     setDdlBusy(true)
     try {
-      const result = await api.ddl(params.connectionId, params.schema, params.table, 'table')
-      setDdl({ title: `${params.schema}.${params.table} 的建表语句`, text: result.ddl, warnings: result.warnings })
+      const result = await api.ddl(params.connectionId, params.schema, params.table, objectKind)
+      setDdl({
+        title: `${params.schema}.${params.table} 的${objectKind === 'view' ? '视图定义' : '建表语句'}`,
+        text: result.ddl,
+        warnings: result.warnings,
+      })
     } catch (caught) {
       setError(failureText(caught))
     } finally {
       setDdlBusy(false)
     }
-  }, [connection, params.connectionId, params.schema, params.table])
+  }, [connection, objectKind, params.connectionId, params.schema, params.table])
 
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))
@@ -560,7 +565,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         return
       }
       const ddl = await api
-        .ddl(params.connectionId, params.schema, params.table, 'table')
+        .ddl(params.connectionId, params.schema, params.table, objectKind)
         .then((result) => result.ddl)
         .catch(() => null)
       const text = tableDumpText({

@@ -35,4 +35,23 @@ describe('readTableTabParams', () => {
     expect(readTableTabParams({ connectionId: 'mysql-1', schema: 'shop', table: '' })).toBeUndefined()
     expect(readTableTabParams({ connectionId: '', schema: 'shop', table: 'orders' })).toBeUndefined()
   })
+
+  it('remembers that the object is a view', () => {
+    expect(readTableTabParams({ connectionId: 'mysql-1', schema: 'shop', table: 'v_orders', kind: 'view' })).toEqual({
+      connectionId: 'mysql-1',
+      schema: 'shop',
+      table: 'v_orders',
+      kind: 'view',
+    })
+    expect(readTableTabParams({ connectionId: 'mysql-1', schema: 'shop', table: 'orders', kind: 'table' })).toEqual({
+      connectionId: 'mysql-1',
+      schema: 'shop',
+      table: 'orders',
+    })
+    expect(readTableTabParams({ connectionId: 'mysql-1', schema: 'shop', table: 'orders', kind: 'function' })).toEqual({
+      connectionId: 'mysql-1',
+      schema: 'shop',
+      table: 'orders',
+    })
+  })
 })

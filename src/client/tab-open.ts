@@ -12,6 +12,8 @@ export interface TableTabParams {
   connectionId: string
   schema: string
   table: string
+  /** Views need SHOW CREATE VIEW (or a view-shaped fallback), not a table's. */
+  kind?: 'table' | 'view'
 }
 
 type TableTabOpener = (params: TableTabParams) => void
@@ -35,7 +37,7 @@ export function readTableTabParams(params: unknown): TableTabParams | undefined 
   const { connectionId, schema, table } = value
   if (typeof connectionId !== 'string' || typeof schema !== 'string' || typeof table !== 'string') return undefined
   if (connectionId === '' || table === '') return undefined
-  return { connectionId, schema, table }
+  return { connectionId, schema, table, ...(value.kind === 'view' ? { kind: 'view' as const } : {}) }
 }
 
 /** What one query console tab starts with (both parts are optional). */

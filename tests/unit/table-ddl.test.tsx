@@ -60,6 +60,7 @@ const settings = {
 }
 
 const tab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })
+const viewTab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'v_orders', kind: 'view' } } } })
 
 const DDL = 'CREATE TABLE `orders` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n)'
 
@@ -119,5 +120,16 @@ describe('table DDL dialog', () => {
 
     await screen.findByLabelText('建表语句')
     expect(screen.getByText('服务器取不到 DDL：没有权限；按结构重建')).toBeTruthy()
+  })
+
+  it('asks for the view definition when the tab opened a view', async () => {
+    render(<TableTab useTabInfo={viewTab} />)
+
+    const button = (await screen.findByLabelText('查看建表语句')) as HTMLButtonElement
+    await waitFor(() => expect(button.disabled).toBe(false))
+    fireEvent.click(button)
+
+    await screen.findByLabelText('建表语句')
+    expect(mocks.ddl).toHaveBeenCalledWith('mysql-1', 'shop', 'v_orders', 'view')
   })
 })

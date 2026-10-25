@@ -362,7 +362,7 @@ export function App(props: AppProps): ReactElement {
               onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
               onOpenTable={(connectionId, schema, object) => {
                 selectConnection(connectionId)
-                openTableTab({ connectionId, schema, table: object.name })
+                openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })
               }}
             />
           </div>
