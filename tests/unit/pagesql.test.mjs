@@ -14,6 +14,20 @@ describe('pageable', () => {
     expect(pageable('SELECT * FROM t FETCH FIRST 5 ROWS ONLY')).toBe(false)
   })
 
+  it('rejects SELECT ... INTO and locking reads', () => {
+    expect(pageable('SELECT last_id INTO @id FROM shop.orders')).toBe(false)
+    expect(pageable('SELECT * FROM shop.orders FOR UPDATE')).toBe(false)
+    expect(pageable('SELECT * FROM shop.orders FOR NO KEY UPDATE')).toBe(false)
+    expect(pageable('SELECT * FROM shop.orders FOR SHARE')).toBe(false)
+    expect(pageable('SELECT * FROM shop.orders LOCK IN SHARE MODE')).toBe(false)
+  })
+
+  it('ignores those words inside literals and comments', () => {
+    expect(pageable("SELECT 'into @x' AS note FROM shop.orders")).toBe(true)
+    expect(pageable('SELECT 1 -- for update\nFROM shop.orders')).toBe(true)
+    expect(pageable('SELECT 1 /* into outfile */ FROM shop.orders')).toBe(true)
+  })
+
   it('rejects anything that is not one plain SELECT', () => {
     expect(pageable('UPDATE t SET a = 1')).toBe(false)
     expect(pageable('SELECT 1; SELECT 2')).toBe(false)
