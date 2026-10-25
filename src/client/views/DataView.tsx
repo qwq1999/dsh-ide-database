@@ -826,14 +826,27 @@ export function DataView(props: DataViewProps): ReactElement {
             </span>
           }
           actions={
-            detail.kind === 'table' || detail.kind === 'view' ? (
-              <Button
-                size="sm"
-                onClick={() => props.onShowDdl(selectedId, detail.schema, detail.table, detail.kind)}
-              >
-                DDL
-              </Button>
-            ) : null
+            <>
+              {detail.columns.length > 0 ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="按逗号复制这张表的所有列名"
+                  aria-label="复制列名"
+                  onClick={() => void copyText(detail.columns.map((column) => column.name).join(', '))}
+                >
+                  复制列名
+                </Button>
+              ) : null}
+              {detail.kind === 'table' || detail.kind === 'view' ? (
+                <Button
+                  size="sm"
+                  onClick={() => props.onShowDdl(selectedId, detail.schema, detail.table, detail.kind)}
+                >
+                  DDL
+                </Button>
+              ) : null}
+            </>
           }
           bodyClassName="dshdb-panel-body-pad"
           scroll
