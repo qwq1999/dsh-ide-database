@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount, oneLine } from '../../src/client/console-view'
 
 afterEach(() => cleanup())
@@ -27,6 +27,45 @@ describe('console presentational pieces', () => {
     )
     expect(screen.getByText('收藏 · 1')).toBeTruthy()
     expect(screen.getByText('最近执行 · 1')).toBeTruthy()
+  })
+
+  it('filters a long history by keyword', () => {
+    const now = Date.now()
+    const entries = [
+      { statement: 'select * from orders', at: now },
+      { statement: 'update users set age = 1', at: now - 1000 },
+      { statement: 'select count(*) from users', at: now - 2000 },
+      { statement: 'delete from sessions', at: now - 3000 },
+      { statement: 'select 1', at: now - 4000 },
+      { statement: 'show tables', at: now - 5000 },
+    ]
+    render(<HistoryPanel entries={entries} pins={[]} onPick={() => {}} onTogglePin={() => {}} onClear={() => {}} />)
+    const search = screen.getByLabelText('搜索历史语句')
+    fireEvent.change(search, { target: { value: 'select' } })
+    expect(screen.getByText('最近执行 · 3')).toBeTruthy()
+    expect(screen.queryByText('show tables')).toBeNull()
+    expect(screen.getByText('select 1')).toBeTruthy()
+
+    fireEvent.change(search, { target: { value: 'nothing-matches' } })
+    expect(screen.getByText('没有匹配的语句')).toBeTruthy()
+    expect(screen.getByText('最近执行 · 0')).toBeTruthy()
+  })
+
+  it('keeps the search box out of a short history', () => {
+    const now = Date.now()
+    render(
+      <HistoryPanel
+        entries={[
+          { statement: 'select 1', at: now },
+          { statement: 'select 2', at: now - 1000 },
+        ]}
+        pins={[]}
+        onPick={() => {}}
+        onTogglePin={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.queryByLabelText('搜索历史语句')).toBeNull()
   })
 
   it('renders redis keys with type and size', () => {

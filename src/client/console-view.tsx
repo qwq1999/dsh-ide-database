@@ -3,7 +3,7 @@
  * grid and pager buttons. They read nothing from the console state, so they
  * live here instead of growing ConsoleTab.tsx.
  */
-import { memo, type ReactElement } from 'react'
+import { memo, useState, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, StarIcon } from './icons'
@@ -55,15 +55,33 @@ export function HistoryPanel(props: {
   onTogglePin: (entry: HistoryEntry) => void
   onClear: () => void
 }): ReactElement {
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const matches = (entry: HistoryEntry): boolean => needle === '' || entry.statement.toLowerCase().includes(needle)
+  const pins = props.pins.filter(matches)
+  const entries = props.entries.filter(matches)
+  const searchable = props.pins.length + props.entries.length >= 6
   return (
     <div className="dshdb-history">
-      {props.pins.length > 0 ? (
+      {searchable ? (
+        <div className="dshdb-history-search">
+          <input
+            type="search"
+            className="dshdb-input"
+            aria-label="搜索历史语句"
+            placeholder="搜索历史语句"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      ) : null}
+      {pins.length > 0 ? (
         <div className="dshdb-history-group">
           <div className="dshdb-history-head">
-            <span className="dshdb-history-title">收藏 · {props.pins.length}</span>
+            <span className="dshdb-history-title">收藏 · {pins.length}</span>
           </div>
           <div className="dshdb-history-list">
-            {props.pins.map((entry, index) => (
+            {pins.map((entry, index) => (
               <HistoryRow
                 key={`pin-${entry.at}-${index}`}
                 entry={entry}
@@ -76,16 +94,16 @@ export function HistoryPanel(props: {
         </div>
       ) : null}
       <div className="dshdb-history-head">
-        <span className="dshdb-history-title">最近执行 · {props.entries.length}</span>
+        <span className="dshdb-history-title">最近执行 · {entries.length}</span>
         <Button size="sm" variant="ghost" icon={<ClearIcon size={12} />} onClick={props.onClear}>
           清空
         </Button>
       </div>
       <div className="dshdb-history-list">
-        {props.entries.length === 0 ? (
-          <span className="dshdb-history-empty">还没有执行过语句</span>
+        {entries.length === 0 ? (
+          <span className="dshdb-history-empty">{needle === '' ? '还没有执行过语句' : '没有匹配的语句'}</span>
         ) : (
-          props.entries.map((entry, index) => (
+          entries.map((entry, index) => (
             <HistoryRow
               key={`${entry.at}-${index}`}
               entry={entry}

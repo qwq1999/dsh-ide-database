@@ -998,6 +998,7 @@ export const CSS = `
   text-align: left;
   cursor: pointer;
 }
+.dshdb-history-search { padding: 0 0 4px; }
 .dshdb-history-group { display: flex; flex-direction: column; gap: 2px; }
 .dshdb-history-line { display: flex; align-items: center; gap: 2px; }
 .dshdb-history-line .dshdb-history-row { flex: 1; min-width: 0; }
