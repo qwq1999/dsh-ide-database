@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret } from '../../src/client/complete'
+import {
+  SQL_KEYWORDS,
+  applyCompletion,
+  completionCandidates,
+  keywordCompletions,
+  qualifierBefore,
+  wordAtCaret,
+} from '../../src/client/complete'
 
 describe('wordAtCaret', () => {
   it('finds the word the caret sits in', () => {
@@ -106,5 +113,19 @@ describe('qualifierBefore', () => {
 
   it('returns nothing for a bare dot', () => {
     expect(qualifierBefore('.', 1)).toEqual([])
+  })
+})
+
+describe('keywordCompletions', () => {
+  it('offers SQL words as keyword candidates', () => {
+    const keywords = keywordCompletions()
+    expect(keywords.length).toBe(SQL_KEYWORDS.length)
+    expect(keywords.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(keywords.map((item) => item.name)).toContain('SELECT')
+  })
+
+  it('filters keywords by prefix like other candidates', () => {
+    const matches = completionCandidates('sel', keywordCompletions())
+    expect(matches.map((item) => item.name)).toEqual(['SELECT'])
   })
 })

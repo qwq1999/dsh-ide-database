@@ -39,7 +39,14 @@ import { pickStatement } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
 import { insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
-import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret, type Completion } from './complete'
+import {
+  applyCompletion,
+  completionCandidates,
+  keywordCompletions,
+  qualifierBefore,
+  wordAtCaret,
+  type Completion,
+} from './complete'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -359,7 +366,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     const items = await loadSchemaCompletions(target)
     if (items === null) return
     setSuggestionIndex(0)
-    setSuggestions(items)
+    setSuggestions([...items, ...keywordCompletions()])
   }, [caretPos, connection, defaultSchema, loadSchemaCompletions, schema, statement])
 
   const insertSuggestion = useCallback(
@@ -1258,7 +1265,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       }}
                     >
                       <span className="dshdb-complete-name">{item.name}</span>
-                      <span className="dshdb-complete-kind">{item.kind === 'column' ? '列' : item.kind === 'table' ? '表' : '库'}</span>
+                      <span className="dshdb-complete-kind">
+                        {item.kind === 'column'
+                          ? '列'
+                          : item.kind === 'table'
+                            ? '表'
+                            : item.kind === 'schema'
+                              ? '库'
+                              : '关键字'}
+                      </span>
                     </button>
                   ))
                 )}

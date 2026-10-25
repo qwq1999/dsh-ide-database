@@ -125,7 +125,7 @@ describe('console table completion', () => {
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     expect(mocks.objects).toHaveBeenCalledWith('mysql-1', 'shop')
     const names = Array.from(list.querySelectorAll('.dshdb-complete-name')).map((item) => item.textContent)
-    expect(names).toEqual(['orders', 'order_items'])
+    expect(names).toEqual(['orders', 'order_items', 'ORDER'])
 
     fireEvent.mouseDown(screen.getByText('orders'))
     await waitFor(() => expect(editor().value).toBe('SELECT * FROM orders'))

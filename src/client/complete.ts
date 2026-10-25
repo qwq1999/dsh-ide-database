@@ -10,11 +10,28 @@
 import type { ClientConnection } from '../shared/types'
 import { quoteIdent } from './tablesql'
 
-export type CompletionKind = 'table' | 'schema' | 'column'
+export type CompletionKind = 'table' | 'schema' | 'column' | 'keyword'
 
 export interface Completion {
   name: string
   kind: CompletionKind
+}
+
+/**
+ * SQL words worth completing: the list stays short on purpose, because every
+ * extra entry pushes a table name down in the popup.
+ */
+export const SQL_KEYWORDS = [
+  'select', 'insert', 'update', 'delete', 'from', 'where', 'group', 'order', 'having',
+  'limit', 'offset', 'join', 'left', 'right', 'inner', 'outer', 'on', 'as', 'and', 'or',
+  'not', 'null', 'between', 'like', 'case', 'when', 'then', 'else', 'end', 'distinct',
+  'union', 'all', 'exists', 'into', 'values', 'set', 'recursive', 'with', 'explain',
+  'analyze', 'asc', 'desc',
+] as const
+
+/** Keyword candidates for the popup, in the order above. */
+export function keywordCompletions(): Completion[] {
+  return SQL_KEYWORDS.map((name) => ({ name: name.toUpperCase(), kind: 'keyword' as const }))
 }
 
 export interface WordAtCaret {
