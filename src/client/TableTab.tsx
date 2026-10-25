@@ -93,6 +93,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [error, setError] = useState<Failure | null>(null)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(500)
+  const [pageDraft, setPageDraft] = useState('1')
   const [whereText, setWhereText] = useState('')
   const [orderText, setOrderText] = useState('')
   const [filters, setFilters] = useState<ColumnFilters>({})
@@ -344,6 +345,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
+  useEffect(() => {
+    setPageDraft(String(page + 1))
+  }, [page])
+  const jumpToPage = useCallback((): void => {
+    const wanted = Number.parseInt(pageDraft, 10)
+    const target = Number.isFinite(wanted) && wanted >= 1 ? wanted - 1 : page
+    const bounded = lastPage === undefined ? target : Math.min(target, lastPage)
+    if (bounded === page) {
+      setPageDraft(String(page + 1))
+      return
+    }
+    apply({ page: bounded })
+  }, [apply, lastPage, page, pageDraft])
   const hasNext = lastPage === undefined ? rows.length >= pageSize : page < lastPage
   const rangeStart = rows.length === 0 ? 0 : offset + 1
   const rangeEnd = offset + rows.length
@@ -736,6 +750,25 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         </button>
         <span className="dshdb-pager-range" title={`${formatCount(rangeStart)}-${formatCount(rangeEnd)}`}>
           {formatCount(rangeStart)}-{formatCount(rangeEnd)}
+        </span>
+        <span className="dshdb-pager-jump">
+          <input
+            className="dshdb-input dshdb-pager-input"
+            type="number"
+            min={1}
+            inputMode="numeric"
+            aria-label="页码"
+            title="输入页码后回车跳到该页"
+            value={pageDraft}
+            disabled={loading}
+            onChange={(event) => setPageDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              jumpToPage()
+            }}
+            onBlur={jumpToPage}
+          />
         </span>
         <select
           className="dshdb-select dshdb-select-inline dshdb-pager-size"
