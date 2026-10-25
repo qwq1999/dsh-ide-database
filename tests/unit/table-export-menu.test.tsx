@@ -168,6 +168,33 @@ describe('table export menu', () => {
     }
   })
 
+  it('opens the console with a group-by count for one cell column', async () => {
+    const opened: unknown[] = []
+    setConsoleTabOpener((params) => opened.push(params))
+    try {
+      render(
+        <TableTab
+          useTabInfo={() => ({
+            tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+          })}
+        />,
+      )
+      await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+      fireEvent.contextMenu(await screen.findByText('93.02'))
+      fireEvent.click(await screen.findByRole('menuitem', { name: '按此列分组计数' }))
+
+      expect(opened).toEqual([
+        {
+          connectionId: mysql.id,
+          sql: 'SELECT `total`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `total` ORDER BY `count` DESC',
+        },
+      ])
+    } finally {
+      setConsoleTabOpener(null)
+    }
+  })
+
   it('opens the console with a WHERE clause for one cell value', async () => {
     const opened: unknown[] = []
     setConsoleTabOpener((params) => opened.push(params))

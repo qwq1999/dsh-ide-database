@@ -122,4 +122,21 @@ describe('console column select copy', () => {
 
     expect(copies).toHaveBeenCalledWith('SELECT `id`, `name`, `total` FROM `shop`.`orders`')
   })
+
+  it('fills the editor with a group-by count for that column', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('name'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '按此列分组计数' }))
+
+    expect(editor.value).toBe(
+      'SELECT `name`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `name` ORDER BY `count` DESC',
+    )
+  })
 })

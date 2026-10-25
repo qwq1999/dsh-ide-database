@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, insertStatement, pageClause, qualifiedName, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -357,6 +357,16 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               run: () => {
                 if (connection === null) return
                 void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row))
+              },
+            },
+            {
+              label: '按此列分组计数',
+              run: () => {
+                if (connection === null) return
+                openConsoleTab({
+                  connectionId: params.connectionId,
+                  sql: groupCountSql(connection.dialect, params.schema, params.table, cell.column),
+                })
               },
             },
             {

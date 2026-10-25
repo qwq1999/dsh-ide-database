@@ -10,6 +10,7 @@ import {
   qualifiedName,
   quoteIdent,
   quoteLiteral,
+  groupCountSql,
   selectColumnsSql,
   stripKeyword,
   tableFromStatement,
@@ -177,6 +178,18 @@ describe('tableSelectSql', () => {
   it('uses the Oracle paging form and always asks for at least one row', () => {
     expect(tableSelectSql('oracle', 'SHOP', 'ORDERS', '', '', 0)).toBe(
       'SELECT * FROM "SHOP"."ORDERS" OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY',
+    )
+  })
+})
+
+describe('groupCountSql', () => {
+  it('counts one column per group, quoted for the dialect', () => {
+    const status = { name: 'status', typeName: 'VARCHAR' }
+    expect(groupCountSql('mysql', 'shop', 'orders', status)).toBe(
+      'SELECT `status`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `status` ORDER BY `count` DESC',
+    )
+    expect(groupCountSql('oracle', 'SHOP', 'ORDERS', status)).toBe(
+      'SELECT "status", COUNT(*) AS "count" FROM "SHOP"."ORDERS" GROUP BY "status" ORDER BY "count" DESC',
     )
   })
 })

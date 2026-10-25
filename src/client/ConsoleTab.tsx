@@ -39,7 +39,7 @@ import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
-import { insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
+import { groupCountSql, insertStatement, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
   applyCompletion,
   completionCandidates,
@@ -928,6 +928,18 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         label: `隐藏列「${column.name}」`,
         disabled: shownColumns.length <= 1,
         run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+      },
+      {
+        label: '按此列分组计数',
+        disabled: tableTarget() === null,
+        run: () => {
+          const target = tableTarget()
+          if (target === null) return
+          setStatement(groupCountSql(connection?.dialect ?? 'mysql', target.schema, target.table, column))
+          setSelectedRun(false)
+          setCaretPos(0)
+          inputRef.current?.focus()
+        },
       },
       {
         label: '只看这一列',

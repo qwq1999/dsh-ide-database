@@ -175,6 +175,18 @@ export function cellWhere(
   return `${name} = ${quoteLiteral(String(value), dialect)}`
 }
 
+/** One column counted across the whole table: the quick "group by" report. */
+export function groupCountSql(
+  dialect: ClientConnection['dialect'],
+  schema: string,
+  table: string,
+  column: ColumnInfo,
+): string {
+  const name = quoteIdent(dialect, column.name)
+  const count = quoteIdent(dialect, 'count')
+  return `SELECT ${name}, COUNT(*) AS ${count} FROM ${qualifiedName(dialect, schema, table)} GROUP BY ${name} ORDER BY ${count} DESC`
+}
+
 /** Manual WHERE (optional) AND every column filter, joined for one query. */
 export function composeWhere(
   dialect: ClientConnection['dialect'],
