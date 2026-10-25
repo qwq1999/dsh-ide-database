@@ -41,6 +41,106 @@ interface Connected {
 
 const READ_ONLY_STARTERS = new Set(['select', 'with', 'show', 'describe', 'desc', 'explain', 'values'])
 
+/** True for identifier characters; deliberately ASCII plus anything above 127. */
+function isWordChar(char: string): boolean {
+  if (char === '_' || char === '$') return true
+  const code = char.codePointAt(0) ?? 0
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code > 127
+}
+
+function skipSpace(text: string, index: number): number {
+  let cursor = index
+  while (cursor < text.length) {
+    const char = text[cursor]
+    if (char !== ' ' && char !== '\t' && char !== '\n' && char !== '\r') break
+    cursor += 1
+  }
+  return cursor
+}
+
+function readWord(text: string, index: number): { word: string; end: number } {
+  let end = index
+  while (end < text.length && isWordChar(text[end] ?? '')) end += 1
+  return { word: text.slice(index, end).toLowerCase(), end }
+}
+
+/** Index of the parenthesis closing the one at `open`, skipping quoted text and comments. */
+function matchingParen(text: string, open: number): number {
+  let depth = 0
+  for (let index = open; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === "'" || char === '"' || char === '`') {
+      const quote = char
+      index += 1
+      while (index < text.length) {
+        if (text[index] === quote) {
+          if (text[index + 1] === quote) {
+            index += 2
+            continue
+          }
+          break
+        }
+        index += 1
+      }
+      continue
+    }
+    if (char === '-' && text[index + 1] === '-') {
+      const newline = text.indexOf('\n', index)
+      if (newline < 0) return -1
+      index = newline
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const end = text.indexOf('*/', index + 2)
+      if (end < 0) return -1
+      index = end + 1
+      continue
+    }
+    if (char === '(') depth += 1
+    else if (char === ')') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+/**
+ * The statement that follows a `WITH cte AS (...), ...` clause. Returns null
+ * when the CTE list cannot be parsed, which the read-only guard treats as a
+ * write.
+ */
+function statementAfterWith(text: string): string | null {
+  let cursor = skipSpace(text, 'with'.length)
+  const recursive = readWord(text, cursor)
+  if (recursive.word === 'recursive') cursor = skipSpace(text, recursive.end)
+  for (;;) {
+    const name = readWord(text, cursor)
+    if (name.word === '') return null
+    cursor = skipSpace(text, name.end)
+    if (text[cursor] === '(') {
+      const close = matchingParen(text, cursor)
+      if (close < 0) return null
+      cursor = skipSpace(text, close + 1)
+    }
+    const as = readWord(text, cursor)
+    if (as.word !== 'as') return null
+    cursor = skipSpace(text, as.end)
+    for (;;) {
+      const modifier = readWord(text, cursor)
+      if (modifier.word !== 'not' && modifier.word !== 'materialized') break
+      cursor = skipSpace(text, modifier.end)
+    }
+    if (text[cursor] !== '(') return null
+    const close = matchingParen(text, cursor)
+    if (close < 0) return null
+    cursor = skipSpace(text, close + 1)
+    if (text[cursor] !== ',') break
+    cursor = skipSpace(text, cursor + 1)
+  }
+  return text.slice(cursor)
+}
+
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
 export function isReadOnlySql(sql: string): boolean {
   let text = sql.trim()
@@ -63,7 +163,31 @@ export function isReadOnlySql(sql: string): boolean {
   const withoutTrailing = text.replace(/;+\s*$/, '')
   if (withoutTrailing.includes(';')) return false
   const first = /^[A-Za-z]+/.exec(withoutTrailing)
-  return first !== null && READ_ONLY_STARTERS.has(first[0].toLowerCase())
+  if (first === null) return false
+  const head = first[0].toLowerCase()
+  if (!READ_ONLY_STARTERS.has(head)) return false
+  if (head === 'with') {
+    // A CTE list can front any statement, including DELETE; judge what it runs.
+    const inner = statementAfterWith(withoutTrailing)
+    return inner !== null && isReadOnlySql(inner)
+  }
+  if (head === 'explain') {
+    // `EXPLAIN ANALYZE <statement>` runs <statement>; plain EXPLAIN only plans.
+    let rest = withoutTrailing.slice(first[0].length).trim()
+    const analyze = readWord(rest, 0)
+    if (analyze.word !== 'analyze') return true
+    rest = rest.slice(analyze.end).trim()
+    const format = readWord(rest, 0)
+    if (format.word === 'format') {
+      const equals = rest.indexOf('=')
+      if (equals < 0) return false
+      const value = readWord(rest, skipSpace(rest, equals + 1))
+      if (value.word === '') return false
+      rest = rest.slice(value.end).trim()
+    }
+    return rest !== '' && isReadOnlySql(rest)
+  }
+  return true
 }
 
 function parseNumber(value: unknown, fallback: number): number {
