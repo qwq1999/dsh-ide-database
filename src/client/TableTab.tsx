@@ -7,7 +7,7 @@
  * it is closed; a restored tab carries no parameters, so it reports that the
  * table has to be opened again instead of guessing.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
@@ -122,6 +122,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const applyRef = useRef<
     (next: { page?: number; size?: number; where?: string; orderBy?: string; recount?: boolean }, override?: ColumnFilters) => void
   >(() => undefined)
+  const whereRef = useRef<HTMLInputElement | null>(null)
   /** Latest load wins: an older page must not overwrite a newer one. */
   const loadToken = useRef(0)
 
@@ -481,6 +482,13 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setFilters({})
     if (connection !== null) apply({ where: composeWhere(connection.dialect, whereText, columns, {}), page: 0 })
   }, [apply, columns, connection, whereText])
+  /** Ctrl/⌘ + F jumps to the WHERE box instead of the browser find bar. */
+  const focusWhere = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'f') return
+    event.preventDefault()
+    whereRef.current?.focus()
+  }, [])
+
   const conditioned = whereText.trim() !== '' || activeFilterCount > 0
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
     setFilters((previous) => {
@@ -609,7 +617,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }
 
   return (
-    <div className="dshdb-qtab">
+    <div className="dshdb-qtab" onKeyDown={focusWhere}>
       <div className="dshdb-qbar">
         <span className="dshdb-qtable" title={`${params.schema}.${params.table}`}>
           <TableIcon size={13} />
@@ -755,9 +763,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       <div className="dshdb-qfilter">
         <span className="dshdb-qfilter-label">WHERE</span>
         <input
+          ref={whereRef}
           className="dshdb-input dshdb-qfilter-input"
           placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
           list="dshdb-table-columns"
+          title="Ctrl/⌘ + F 聚焦这里"
           value={whereText}
           spellCheck={false}
           onChange={(event) => setWhereText(event.target.value)}
