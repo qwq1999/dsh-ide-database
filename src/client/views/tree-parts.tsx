@@ -181,6 +181,13 @@ export const ObjectRow = memo(function ObjectRow({
           onSelect(connectionId, schema, object)
           onOpen(connectionId, schema, object)
         }}
+        onKeyDown={(event) => {
+          // Enter is the keyboard equivalent of double-clicking a table.
+          if (event.key !== 'Enter' || !isRelation) return
+          event.preventDefault()
+          onSelect(connectionId, schema, object)
+          onOpen(connectionId, schema, object)
+        }}
         onContextMenu={
           onMenu === undefined
             ? undefined
