@@ -1467,13 +1467,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 keys={visibleKeys}
                 selectedKey={selectedKey}
                 emptyText={
-                  ttlOnly
-                    ? '没有带过期时间的键'
-                    : keyFilter.trim() !== ''
-                      ? '没有包含这个关键字的键'
-                    : pattern.trim() === '' && scanType === ''
-                      ? '这个库还没有键'
-                      : '没有匹配的键'
+                  keyFilter.trim() !== ''
+                    ? '没有包含这个关键字的键'
+                    : ttlOnly
+                      ? '没有带过期时间的键'
+                      : pattern.trim() === '' && scanType === ''
+                        ? '这个库还没有键'
+                        : '没有匹配的键'
                 }
                 onSelect={pickKey}
               />

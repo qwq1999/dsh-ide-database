@@ -66,6 +66,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  // The tick is persisted, so leaving it behind would change the next case.
+  window.localStorage.clear()
 })
 
 describe('Redis key filters', () => {
@@ -98,6 +100,19 @@ describe('Redis key filters', () => {
 
     fireEvent.change(screen.getByPlaceholderText('筛选键名'), { target: { value: 'nothing' } })
     await waitFor(() => expect(screen.queryByText('没有包含这个关键字的键')).not.toBeNull())
+  })
+
+  it('blames the name filter when both filters leave nothing', async () => {
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await screen.findByText('user:forever')
+
+    fireEvent.click(screen.getByLabelText('只看有 TTL'))
+    await waitFor(() => expect(screen.queryByText('user:forever')).toBeNull())
+    fireEvent.change(screen.getByPlaceholderText('筛选键名'), { target: { value: 'nothing' } })
+
+    await waitFor(() => expect(screen.queryByText('没有包含这个关键字的键')).not.toBeNull())
+    expect(screen.queryByText('没有带过期时间的键')).toBeNull()
   })
 
   it('remembers the tick between visits', async () => {
