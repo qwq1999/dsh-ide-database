@@ -43,6 +43,11 @@ export function sortKeysByTtl(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInfo
   sorted.sort((left, right) => {
     const leftTtl = ttlOf(left)
     const rightTtl = ttlOf(right)
+    // "No expiry" is not a very long lifetime: keep those keys at the end in both directions.
+    if (leftTtl === Number.POSITIVE_INFINITY || rightTtl === Number.POSITIVE_INFINITY) {
+      if (leftTtl === rightTtl) return 0
+      return leftTtl === Number.POSITIVE_INFINITY ? 1 : -1
+    }
     return sort === 'asc' ? leftTtl - rightTtl : rightTtl - leftTtl
   })
   return sorted

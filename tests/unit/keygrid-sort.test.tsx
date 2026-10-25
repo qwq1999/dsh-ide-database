@@ -77,7 +77,7 @@ describe('redis key grid sorting', () => {
     expect(screen.getByRole('columnheader', { name: /^TTL/ }).getAttribute('aria-sort')).toBe('ascending')
 
     fireEvent.click(screen.getByText('TTL'))
-    expect(keyOrder()).toEqual(['user:10', 'order:1', 'user:9'])
+    expect(keyOrder()).toEqual(['user:9', 'user:10', 'order:1'])
 
     fireEvent.click(screen.getByText('TTL'))
     expect(keyOrder()).toEqual(['user:10', 'user:9', 'order:1'])

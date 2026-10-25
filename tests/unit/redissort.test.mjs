@@ -60,7 +60,7 @@ describe('sortKeysByTtl', () => {
 
   it('puts the soonest expiry first and keys without one last', () => {
     expect(sortKeysByTtl(keys, 'asc').map((item) => item.key)).toEqual(['c', 'a', 'b'])
-    expect(sortKeysByTtl(keys, 'desc').map((item) => item.key)).toEqual(['b', 'a', 'c'])
+    expect(sortKeysByTtl(keys, 'desc').map((item) => item.key)).toEqual(['a', 'c', 'b'])
   })
 
   it('keeps scan order and the input untouched', () => {
