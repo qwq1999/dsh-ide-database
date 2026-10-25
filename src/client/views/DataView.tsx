@@ -18,6 +18,7 @@ import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
 import { copyText } from '../colmenu'
+import { tableSelectSql } from '../tablesql'
 import { RedisDatabases } from './redis-databases'
 import { OBJECT_PAGE, objectWindow } from './objectlimit'
 import { TreeMenu, placeMenu, type TreeMenuState } from './tree-menu'
@@ -193,6 +194,12 @@ export function DataView(props: DataViewProps): ReactElement {
           ? [
               { label: '打开数据', run: () => props.onOpenTable(connectionId, schema, object) },
               { label: '在控制台查询', run: () => props.onOpenConsole(connectionId, schema, object.name) },
+              {
+                label: '复制查询语句',
+                // Same statement the console opens with; keeping it copyable
+                // saves a round trip through the other tab.
+                run: () => void copyText(tableSelectSql(props.connections.find((item) => item.id === connectionId)?.dialect ?? 'mysql', schema, object.name, '', '', 500)),
+              },
             ]
           : []),
         { label: '查看 DDL', run: () => props.onShowDdl(connectionId, schema, object.name, object.kind) },
@@ -201,7 +208,7 @@ export function DataView(props: DataViewProps): ReactElement {
       ]
       setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
-    [props.onOpenConsole, props.onOpenTable, props.onShowDdl],
+    [props.connections, props.onOpenConsole, props.onOpenTable, props.onShowDdl],
   )
 
   const openSchemaMenu = useCallback(

@@ -98,6 +98,13 @@ describe('tree row context menu', () => {
     }
   })
 
+  it('copies a paged SELECT for the table', () => {
+    render(<DataView {...props()} />)
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制查询语句' }))
+    expect(copy).toHaveBeenCalledWith('SELECT * FROM `shop`.`orders` LIMIT 500 OFFSET 0')
+  })
+
   it('copies the qualified name and closes', () => {
     render(<DataView {...props()} />)
     openMenu()
