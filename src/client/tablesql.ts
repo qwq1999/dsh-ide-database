@@ -144,6 +144,23 @@ export function filterExpression(
   return `${name} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
 }
 
+/**
+ * A `WHERE` fragment that finds the row behind one cell in the whole table.
+ * Numbers and booleans keep their literal form, text is quoted (and escaped on
+ * MySQL, where the backslash is an escape character).
+ */
+export function cellWhere(
+  dialect: ClientConnection['dialect'],
+  column: ColumnInfo,
+  value: CellValue,
+): string {
+  const name = quoteIdent(dialect, column.name)
+  if (value === null) return `${name} IS NULL`
+  if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
+  if (typeof value === 'boolean') return `${name} = ${value ? 'TRUE' : 'FALSE'}`
+  return `${name} = ${quoteLiteral(String(value), dialect)}`
+}
+
 /** Manual WHERE (optional) AND every column filter, joined for one query. */
 export function composeWhere(
   dialect: ClientConnection['dialect'],

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cellWhere,
   composeWhere,
   filterExpression,
   insertStatement,
@@ -176,5 +177,29 @@ describe('tableSelectSql', () => {
     expect(tableSelectSql('oracle', 'SHOP', 'ORDERS', '', '', 0)).toBe(
       'SELECT * FROM "SHOP"."ORDERS" OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY',
     )
+  })
+})
+
+describe('cellWhere', () => {
+  const column = { name: 'total', typeName: 'DECIMAL' }
+
+  it('keeps numeric cells unquoted so indexes still match', () => {
+    expect(cellWhere('mysql', column, 93.02)).toBe('`total` = 93.02')
+    expect(cellWhere('oracle', column, 7)).toBe('"total" = 7')
+  })
+
+  it('quotes text and escapes backslashes on MySQL', () => {
+    const backslash = String.fromCharCode(92)
+    const path = 'C:' + backslash + "temp's"
+    expect(cellWhere('mysql', { name: 'note', typeName: 'VARCHAR' }, path)).toBe(
+      '`note` = ' + "'C:" + backslash + backslash + "temp''s'",
+    )
+    expect(cellWhere('oracle', { name: 'note', typeName: 'VARCHAR' }, "it's")).toBe(`"note" = 'it''s'`)
+  })
+
+  it('matches NULL and boolean cells', () => {
+    expect(cellWhere('mysql', { name: 'note', typeName: 'VARCHAR' }, null)).toBe('`note` IS NULL')
+    expect(cellWhere('mysql', { name: 'paid', typeName: 'BIT' }, true)).toBe('`paid` = TRUE')
+    expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
   })
 })

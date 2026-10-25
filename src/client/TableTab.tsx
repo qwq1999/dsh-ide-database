@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
-import { composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
 
@@ -296,6 +296,17 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
+              label: '在控制台按该值查询',
+              run: () => {
+                if (connection === null) return
+                const where = cellWhere(connection.dialect, cell.column, cell.value)
+                openConsoleTab({
+                  connectionId: params.connectionId,
+                  sql: tableSelectSql(connection.dialect, params.schema, params.table, where, '', pageSize),
+                })
+              },
+            },
+            {
               label: '按此值筛选',
               run: () => {
                 setFiltersOpen(true)
@@ -313,7 +324,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 apply({ page: 0 })
               },
             },],
-    [connection, displayColumns, displayRows, params.schema, params.table],
+    [connection, displayColumns, displayRows, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
