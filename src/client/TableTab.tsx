@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, columnNames, selectColumnsSql, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -182,7 +182,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       try {
         const dialect = found.dialect
         const from = qualifiedName(dialect, params.schema, params.table)
-        const where = stripKeyword(target.where, 'WHERE')
+        const where = stripWhere(target.where)
         const orderBy = stripOrderBy(target.orderBy)
         const whereSql = where === '' ? '' : ` WHERE ${where}`
         const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`

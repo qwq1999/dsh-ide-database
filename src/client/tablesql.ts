@@ -29,12 +29,14 @@ export function pageClause(dialect: ClientConnection['dialect'], limit: number, 
   return `LIMIT ${limit} OFFSET ${offset}`
 }
 
-/** Strip a leading WHERE/ORDER BY keyword so the box takes just the expression. */
-export function stripKeyword(text: string, keyword: string): string {
+/** The keyword the WHERE box may start with; stripped before re-prefixing. */
+const WHERE_PATTERN = /^WHERE\b/iu
+
+/** Strip a leading WHERE keyword so the box takes just the expression. */
+export function stripWhere(text: string): string {
   const trimmed = text.trim().replace(/[\s;]+$/u, '')
   if (trimmed === '') return ''
-  const pattern = new RegExp(`^${keyword}\\b`, 'i')
-  return trimmed.replace(pattern, '').trim()
+  return trimmed.replace(WHERE_PATTERN, '').trim()
 }
 
 /**
@@ -219,7 +221,7 @@ export function composeWhere(
   filters: ColumnFilters,
 ): string {
   const parts: string[] = []
-  const manual = stripKeyword(base, 'WHERE')
+  const manual = stripWhere(base)
   if (manual !== '') parts.push(`(${manual})`)
   for (const column of columns) {
     const filter = filters[column.name]

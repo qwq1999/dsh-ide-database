@@ -14,7 +14,7 @@ import {
   groupCountSql,
   inListOf,
   selectColumnsSql,
-  stripKeyword,
+  stripWhere,
   tableFromStatement,
   tableSelectSql,
 } from '../../src/client/tablesql.ts'
@@ -46,15 +46,15 @@ describe('tablesql quoting', () => {
   })
 })
 
-describe('stripKeyword', () => {
+describe('stripWhere', () => {
   it('removes a leading keyword case-insensitively', () => {
-    expect(stripKeyword('where id > 3', 'WHERE')).toBe('id > 3')
-    expect(stripKeyword('ORDER BY id DESC;', 'ORDER\\s+BY')).toBe('id DESC')
+    expect(stripWhere('where id > 3')).toBe('id > 3')
+    expect(stripWhere('  WHERE   id > 3;  ')).toBe('id > 3')
   })
 
   it('keeps plain expressions and blanks empty input', () => {
-    expect(stripKeyword('1 = 1', 'WHERE')).toBe('1 = 1')
-    expect(stripKeyword('   ', 'WHERE')).toBe('')
+    expect(stripWhere('1 = 1')).toBe('1 = 1')
+    expect(stripWhere('   ')).toBe('')
   })
 })
 
