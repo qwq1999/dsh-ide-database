@@ -1418,6 +1418,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             {tx === 'open' ? <Tag tone="warn">事务进行中</Tag> : null}
             {txNote !== '' ? <Tag tone="business">{txNote}</Tag> : null}
             {base !== '' && !allRows ? <span className="dshdb-qmeta">可分页查询</span> : null}
+            {result !== null && result.truncated ? (
+              <Tag tone="warn" title="还有更多行没有取回：调大行数上限，或用导出的「全部」">
+                结果已截断，仅取回 {formatCount(rows.length)} 行
+              </Tag>
+            ) : null}
           </div>
 
           {historyOpen ? (

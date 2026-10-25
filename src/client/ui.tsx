@@ -177,9 +177,17 @@ export function Panel({
   )
 }
 
-export function Tag({ tone, children }: { tone?: 'business' | 'success' | 'warn' | 'error'; children: ReactNode }) {
+export function Tag({
+  tone,
+  title,
+  children,
+}: {
+  tone?: 'business' | 'success' | 'warn' | 'error'
+  title?: string
+  children: ReactNode
+}) {
   return (
-    <span className="dshdb-tag" data-tone={tone}>
+    <span className="dshdb-tag" data-tone={tone} title={title}>
       {children}
     </span>
   )
