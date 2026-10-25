@@ -12,7 +12,7 @@ import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatCount, formatMs } from './format'
-import { DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
+import { CopyIcon, DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, renderExport, toMarkdown, type ExportFormat } from './export'
 import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-open'
 import { copyText, columnValues, type ColumnMenuItem } from './colmenu'
@@ -861,9 +861,20 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       <div className="dshdb-pager">
         {loading ? <Tag tone="business">查询中</Tag> : null}
         {sqlText !== '' ? (
-          <span className="dshdb-pager-sql" title={sqlText}>
-            {sqlText}
-          </span>
+          <>
+            <span className="dshdb-pager-sql" title={sqlText}>
+              {sqlText}
+            </span>
+            <button
+              type="button"
+              className="dshdb-pager-btn"
+              title="复制实际执行的 SQL"
+              aria-label="复制 SQL"
+              onClick={() => void copyText(sqlText)}
+            >
+              <CopyIcon size={12} />
+            </button>
+          </>
         ) : null}
         <span className="dshdb-pager-spacer" />
         <button
