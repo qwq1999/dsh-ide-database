@@ -70,6 +70,8 @@ interface Failure {
   detail?: string
 }
 
+import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
+
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
 /** Pseudo page size meaning "run the statement once and show everything". */
 const ALL_PAGE_SIZE = 0
@@ -135,7 +137,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [failure, setFailure] = useState<Failure | null>(null)
   const [running, setRunning] = useState(false)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(500)
+  const [pageSize, setPageSize] = useState(() => readPageSize(CONSOLE_PAGE_KEY, PAGE_SIZES, 500))
   const [pageDraft, setPageDraft] = useState('1')
   const [pageFallback, setPageFallback] = useState(false)
   /** True while the page we are loading is the recovery run for an empty page. */
@@ -1813,6 +1815,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   onChange={(event) => {
                     const size = Number(event.target.value)
                     setPageSize(size)
+                    writePageSize(CONSOLE_PAGE_KEY, size)
                     if (base !== '') void execute({ statement: base, page: 0, size, allowWrite: false })
                   }}
                 >

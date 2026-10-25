@@ -39,6 +39,8 @@ interface Failure {
   detail?: string
 }
 
+import { TABLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
+
 const PAGE_SIZES = [100, 200, 500, 1000, 2000, 5000]
 
 const noTabInfo = (): undefined => undefined
@@ -95,7 +97,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [autoMs, setAutoMs] = useState(0)
   const [error, setError] = useState<Failure | null>(null)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(500)
+  const [pageSize, setPageSize] = useState(() => readPageSize(TABLE_PAGE_KEY, PAGE_SIZES, 500))
   const [pageDraft, setPageDraft] = useState('1')
   const [whereText, setWhereText] = useState('')
   const [orderText, setOrderText] = useState('')
@@ -202,7 +204,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         if (found.dialect === 'redis') throw new ApiError('unsupported', '数据表只能在关系型数据源中打开')
         if (cancelled) return
         setConnection(found)
-        await load(found, { page: 0, size: 500, where: '', orderBy: '', recount: true })
+        await load(found, { page: 0, size: pageSize, where: '', orderBy: '', recount: true })
       } catch (caught) {
         if (!cancelled) setError(failureText(caught))
       }
@@ -927,6 +929,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onChange={(event) => {
             const size = Number(event.target.value)
             setPageSize(size)
+            writePageSize(TABLE_PAGE_KEY, size)
             apply({ size, page: 0 })
           }}
         >
