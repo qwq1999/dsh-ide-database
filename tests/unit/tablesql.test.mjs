@@ -28,6 +28,12 @@ describe('tablesql quoting', () => {
     expect(quoteLiteral("O'Brien")).toBe("'O''Brien'")
   })
 
+  it('escapes backslashes as MySQL does but leaves standard SQL alone', () => {
+    expect(quoteLiteral('C:\\temp', 'mysql')).toBe("'C:\\\\temp'")
+    expect(quoteLiteral('C:\\temp', 'oracle')).toBe("'C:\\temp'")
+    expect(quoteLiteral("O'Brien", 'mysql')).toBe("'O''Brien'")
+  })
+
   it('builds the page clause per dialect', () => {
     expect(pageClause('mysql', 500, 1000)).toBe('LIMIT 500 OFFSET 1000')
     expect(pageClause('oracle', 200, 0)).toBe('OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY')
@@ -136,6 +142,20 @@ describe('insertStatement', () => {
       "INSERT INTO `shop`.`categories` (`id`, `name`) VALUES (1, '手机');\nINSERT INTO `shop`.`categories` (`id`, `name`) VALUES (2, NULL);\n",
     )
     expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [])).toBe('')
+  })
+})
+
+describe('insert fidelity', () => {
+  const path = 'C:\\temp'
+  it('replays a backslash path unchanged on MySQL', () => {
+    expect(insertStatement('mysql', 'shop', 'files', [column('id', 'int'), column('path', 'varchar(100)')], [1, path])).toBe(
+      "INSERT INTO `shop`.`files` (`id`, `path`) VALUES (1, 'C:\\\\temp');",
+    )
+  })
+  it('keeps the backslash as written on standard SQL', () => {
+    expect(insertStatement('oracle', 'SHOP', 'FILES', [column('ID', 'NUMBER'), column('PATH', 'VARCHAR2(100)')], [1, path])).toBe(
+      "INSERT INTO \"SHOP\".\"FILES\" (\"ID\", \"PATH\") VALUES (1, 'C:\\temp');",
+    )
   })
 })
 

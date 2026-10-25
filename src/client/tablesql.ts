@@ -61,8 +61,15 @@ export function isNumericType(typeName: string): boolean {
   return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }
 
-export function quoteLiteral(text: string): string {
-  return `'${text.replace(/'/gu, "''")}'`
+/**
+ * A quoted string literal. MySQL treats the backslash as an escape character,
+ * so a Windows path or a regexp has to be doubled there or the value that comes
+ * back is not the one that was exported; standard SQL dialects take the text
+ * verbatim and only need the quote doubled.
+ */
+export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] = 'generic'): string {
+  const escaped = dialect === 'mysql' ? text.replace(/\\/gu, '\\\\') : text
+  return `'${escaped.replace(/'/gu, "''")}'`
 }
 
 /**
@@ -78,17 +85,17 @@ export function insertStatement(
   row: CellValue[],
 ): string {
   const names = columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
-  const values = columns.map((column, index) => insertLiteral(column, row[index] ?? null)).join(', ')
+  const values = columns.map((column, index) => insertLiteral(dialect, column, row[index] ?? null)).join(', ')
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
 }
 
-function insertLiteral(column: ColumnInfo, value: CellValue): string {
+function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo, value: CellValue): string {
   if (value === null) return 'NULL'
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
   if (typeof value === 'number') return String(value)
   const text = String(value)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
-  return quoteLiteral(text)
+  return quoteLiteral(text, dialect)
 }
 
 /** Many rows as one INSERT-per-line SQL script, for the export menu. */
@@ -132,9 +139,9 @@ export function filterExpression(
   if (text === '') return undefined
   if (filter.op === 'eq') {
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
-    return `${name} = ${quoteLiteral(text)}`
+    return `${name} = ${quoteLiteral(text, dialect)}`
   }
-  return `${name} LIKE ${quoteLiteral(`%${text}%`)}`
+  return `${name} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
 }
 
 /** Manual WHERE (optional) AND every column filter, joined for one query. */
