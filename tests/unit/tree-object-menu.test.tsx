@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DataView, type DataViewProps } from '../../src/client/views/DataView'
@@ -113,12 +113,13 @@ describe('tree row context menu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('narrows the tree to the object it was opened on', () => {
+  it('narrows the tree to the object it was opened on', async () => {
     render(<DataView {...props()} />)
     openMenu()
     fireEvent.click(screen.getByRole('menuitem', { name: '只看这个表' }))
     const box = screen.getByLabelText('筛选库表') as HTMLInputElement
     expect(box.value).toBe('shop.orders')
+    await waitFor(() => expect(document.activeElement).toBe(box))
   })
 
   it('hands the object to the host callbacks', () => {

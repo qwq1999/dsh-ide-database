@@ -151,6 +151,11 @@ export function DataView(props: DataViewProps): ReactElement {
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
 
+  /** Put the caret in the tree filter, by name because the input is rendered further down. */
+  const focusTreeFilter = useCallback((): void => {
+    document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
+  }, [])
+
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
   const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -158,7 +163,7 @@ export function DataView(props: DataViewProps): ReactElement {
       const key = event.key.toLowerCase()
       if (key === 'f') {
         event.preventDefault()
-        document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
+        focusTreeFilter()
         return
       }
       if (key === 'r') {
@@ -216,11 +221,17 @@ export function DataView(props: DataViewProps): ReactElement {
         { label: '查看 DDL', run: () => props.onShowDdl(connectionId, schema, object.name, object.kind) },
         { label: '复制名称', run: () => void copyText(object.name) },
         { label: '复制限定名', run: () => void copyText(`${schema}.${object.name}`) },
-        { label: '只看这个表', run: () => setFilter(`${schema}.${object.name}`) },
+        {
+          label: '只看这个表',
+          run: () => {
+            setFilter(`${schema}.${object.name}`)
+            setTimeout(focusTreeFilter, 0)
+          },
+        },
       ]
       setObjectMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
-    [props.connections, props.onOpenConsole, props.onOpenTable, props.onShowDdl],
+    [focusTreeFilter, props.connections, props.onOpenConsole, props.onOpenTable, props.onShowDdl],
   )
 
   const openSchemaMenu = useCallback(
@@ -233,9 +244,7 @@ export function DataView(props: DataViewProps): ReactElement {
         run: () => {
           setFilter(`${schemaName}.`)
           // Put the caret in the filter box so the prefix can be extended instead of retyped.
-          setTimeout(() => {
-            document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"]')?.focus()
-          }, 0)
+          setTimeout(focusTreeFilter, 0)
         },
       },
       ]
