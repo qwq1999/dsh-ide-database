@@ -24,6 +24,9 @@ function numericColumn(column: ColumnInfo): boolean {
 }
 
 const GRID_ROW_HEIGHT = 22
+/** Cells longer than this are clipped on screen; the tooltip and the
+ * double-click dialog still carry the whole value. */
+const CELL_TEXT_LIMIT = 400
 const VIRTUAL_THRESHOLD = 200
 const OVERSCAN = 8
 
@@ -387,6 +390,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                   const value: CellValue = row[columnIndex] ?? null
                   // One format per cell: the same text feeds the tooltip and the body.
                   const text = formatCell(value)
+                  const shown = text.length > CELL_TEXT_LIMIT ? `${text.slice(0, CELL_TEXT_LIMIT)}…` : text
                   return (
                     <td
                       key={`${column.name}-${columnIndex}`}
@@ -407,7 +411,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                             }
                       }
                     >
-                      <span className={value === null ? 'dshdb-null' : undefined}>{text}</span>
+                      <span className={value === null ? 'dshdb-null' : undefined}>{shown}</span>
                     </td>
                   )
                 })}
