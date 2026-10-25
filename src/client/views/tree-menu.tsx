@@ -4,7 +4,7 @@
  * The tree has no shared menu provider: like the grid menu it is a fixed list
  * placed at the pointer, closed by the next click, Escape, or a resize.
  */
-import { useEffect, type ReactElement } from 'react'
+import { useEffect, useRef, type ReactElement } from 'react'
 
 export interface TreeMenuItem {
   label: string
@@ -29,11 +29,35 @@ export function placeMenu(clientX: number, clientY: number, items: TreeMenuItem[
 }
 
 export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClose: () => void }): ReactElement | null {
+  const listRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (menu === null) return undefined
     const close = (): void => onClose()
+    // Keyboard users land on the first actionable row straight away.
+    const enabled = (): HTMLButtonElement[] =>
+      Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? [])
+    enabled()[0]?.focus()
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') close()
+      if (event.key === 'Escape') {
+        close()
+        return
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return
+      const items = enabled()
+      if (items.length === 0) return
+      event.preventDefault()
+      const index = items.indexOf(document.activeElement as HTMLButtonElement)
+      const next =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? items.length - 1
+            : event.key === 'ArrowDown'
+              ? (index + 1) % items.length
+              : index <= 0
+                ? items.length - 1
+                : index - 1
+      items[next]?.focus()
     }
     window.addEventListener('pointerdown', close)
     window.addEventListener('keydown', onKey)
@@ -48,6 +72,7 @@ export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClos
   if (menu === null) return null
   return (
     <div
+      ref={listRef}
       className="dshdb-hmenu"
       role="menu"
       aria-label="对象操作"
