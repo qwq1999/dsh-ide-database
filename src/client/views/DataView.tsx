@@ -231,7 +231,7 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [normalizedFilter])
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
   // `库.表` narrows the object list by schema; the schema row then stays visible through its buckets.
-  const filterQuery = parseFilter(settledFilter)
+  const filterQuery = useMemo(() => parseFilter(settledFilter), [settledFilter])
 
   // Search inside collapsed schemas: fetch their object lists once per filter
   // so matches can be found even when the branch was never opened before.
@@ -277,19 +277,22 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [normalizedFilter, connections, schemas, servers])
 
   // An empty tree under a filter looks like a loading state; say what happened.
-  const filteredHits =
-    normalizedFilter === ''
-      ? -1
-      : connections.reduce((total, connection) => {
-          const schemaNames = schemas[connection.id] ?? []
-          if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) return total + 1
-          for (const [key, list] of Object.entries(objects)) {
-            if (!key.startsWith(`${connection.id}:`)) continue
-            const schemaName = key.slice(connection.id.length + 1)
-            if (list.some((object) => matchesFilteredObject(filterQuery, schemaName, object.name))) return total + 1
-          }
-          return total
-        }, 0)
+  const filteredHits = useMemo(
+    () =>
+      normalizedFilter === ''
+        ? -1
+        : connections.reduce((total, connection) => {
+            const schemaNames = schemas[connection.id] ?? []
+            if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) return total + 1
+            for (const [key, list] of Object.entries(objects)) {
+              if (!key.startsWith(`${connection.id}:`)) continue
+              const schemaName = key.slice(connection.id.length + 1)
+              if (list.some((object) => matchesFilteredObject(filterQuery, schemaName, object.name))) return total + 1
+            }
+            return total
+          }, 0),
+    [normalizedFilter, connections, schemas, objects, filterQuery],
+  )
 
   // While filtering, open the branches that contain a match so hits are not
   // hidden inside collapsed data sources or schemas.
