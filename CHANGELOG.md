@@ -4,8 +4,15 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（140）
+## 新功能（147）
 
+- `234b329` feat(redis): 命令补全名单补上常用命令
+- `4a96705` feat(tree): 对象菜单可把树筛成只看这个表
+- `aa1b21e` feat(table): 行数统计失败时说明「行数未知」
+- `c43f1bb` feat: Redis 命令历史也标出耗时
+- `06c359c` feat(console): 历史里标出语句的行数与耗时
+- `0905269` feat(console): 表格形式的执行计划也能复制
+- `c6844b9` feat(table): 排序条件按表记住
 - `b0954ca` feat(console): Ctrl+E 查看执行计划
 - `336ef99` feat(grid): 表头可用键盘切换排序
 - `8936bae` feat(tree): 表详情可复制列名写全的 SELECT
@@ -147,8 +154,9 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（60）
+## 修复（61）
 
+- `e28ccaa` fix(console): DDL 执行后清掉补全缓存
 - `58ce72f` fix(redis): 永不过期的键在 TTL 两种排序下都排最后
 - `44d02cd` fix(redis): 值面板的 TTL 与键表格用同一套单位
 - `2a6ec21` fix(ui): 超过一分钟的耗时按 分+秒 显示
@@ -248,8 +256,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（25）
+## 测试（26）
 
+- `1384433` test(console): 取编辑器统一改为异步查找
 - `e95c0eb` test(host): 覆盖 /status、/env 与驱动下载
 - `d26af99` test(host): 覆盖取消、设置更新与健康检查路由
 - `c4e1dd0` test(host): 覆盖连接保存与删除的会话处置
@@ -276,8 +285,10 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（12）
+## 文档（14）
 
+- `06f3886` docs: 快捷键表补上树刷新与 Redis 补全/选中
+- `37c895b` docs: 重新生成变更日志
 - `9a13eb5` docs: 去掉 Redis 说明里重复的半句话
 - `d2042d7` docs: 补上控制台 Ctrl+R 重跑语句的说明
 - `b84ff2b` docs: 重新生成变更日志
