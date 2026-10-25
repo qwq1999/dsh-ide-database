@@ -70,7 +70,9 @@
     "test": "vitest run",
     "pretest": "npm run build:host",
     "test:integration": "node scripts/integration-http.mjs",
-    "qa:ui": "node scripts/qa-ui.mjs"
+    "qa:ui": "node scripts/qa-ui.mjs",
+    "changelog": "node scripts/build-changelog.mjs",
+    "changelog:check": "node scripts/build-changelog.mjs --check"
   },
   "keywords": [
     "dsh",

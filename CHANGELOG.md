@@ -2,59 +2,24 @@
 
 本文件按提交类型分组，列出 `88205d8` 之后的自优化提交（最新在前）。每条改动都有对应测试与重建后的 `lib/` 产物。
 
-## 测试（10）
+由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-- `95fb576` test: 历史面板 memo 用例等编辑器就绪并冲洗挂起渲染
-- `c1968c9` test: 命令历史用例等命令框挂载后再操作
-- `a27cc5c` test: 另两处控制台用例等编辑器挂载后再输入
-- `4dacca9` test: 跳页回退用例等编辑器挂载后再输入
-- `1760723` test: 复制 SQL 用例等编辑器和选区就绪
-- `000911d` test: 清空编辑器用例等编辑器挂载后再操作
-- `1084b3b` test: 历史回看用例等编辑器挂载后再操作
-- `675651f` test: 跳页回退用例先等第一页渲染完再翻页
-- `9e57421` test: 控制台用例等数据源就绪再操作
-- `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
+## 新功能（114）
 
-## 文档（3）
-
-- `76b2715` docs: 补一份快捷键一览
-- `5f4e78c` docs: 补上树筛选命中数的说明
-- `44061d4` docs: 去掉键表格说明里重复的排序描述
-
-## 其它（196）
-
-- `ea7eede` fix(ui): 复制兜底后把焦点还给触发元素
-- `5e2e3d8` fix(redis): 键行菜单回调重新稳定，保住按行 memo
 - `e667cc7` feat(redis): 键行右键可复制当前列表的所有键名
 - `79d40cf` feat(ui): 查询输入框补上无障碍名称
-- `6c9351b` fix(console): 从控制台打开视图时按视图取 DDL
 - `035c6b7` feat(export): 当前页可复制成 TSV 文本
-- `b004c9a` fix(ui): 空白偏好值按未设置处理
-- `59ee442` fix(console): 补全弹层的元素 id 按标签页区分
-- `a25a69d` fix(table): 列名提示的 datalist id 按标签页区分
 - `1bc4bce` feat(grid): 结果表格给读屏一个名字
 - `ca584d5` feat(grid): 行号列给读屏一个名字
 - `233f94b` feat(console): 补全弹层的当前项告诉读屏
-- `e7fdece` fix(redis): 两个过滤同时清空时先说明是键名筛掉的
-- `c12df8d` fix(redis): 值被截断时说明复制到的只是取回的部分
 - `8b38b66` feat(tree): 焦点在树里时 Ctrl+F 跳进筛选框
 - `374c9ec` feat(redis): MATCH 与键名筛选框可一键清空
-- `4cb07ab` fix(ui): 树工具栏的刷新在完成前不再重复触发
 - `aca5809` feat(console): 复制 SQL 后给出已复制反馈
-- `a877c20` perf(redis): 刷新数据源时并行重读各逻辑库
-- `7ff7844` fix(console): 补全列表把高亮项滚进可视范围
 - `1cfac93` feat(tree): 选「只看这个库」后光标留在筛选框
-- `ec82004` chore(client): 删掉没人引用的图标与常量
-- `f0334ad` refactor(ui): 复制成功反馈收进一个钩子
 - `65a4f8b` feat(console): 底栏的实际 SQL 可一键复制
 - `1cf6a6f` feat(console): 格式化后光标留在原处附近
 - `e5ea4e6` feat(redis): 键列表的行可以用键盘选中
-- `2f6c43b` fix(table): 关掉标签页时停止全量导出
-- `fb56c7e` fix(console): 关掉标签页时取消正在执行的语句
 - `289bb73` feat(console): 复制 Redis 命令结果后给出已复制反馈
-- `356a629` fix(console): 执行中再按执行不会重复提交
-- `81846e7` fix(console): 输入法拼写时回车不再误执行
-- `9fbf004` fix(grid): 鼠标在窗口外松开时结束列宽拖动
 - `2cab567` feat(table): 记住列筛选行是开还是关
 - `14bc5e7` feat(redis): 记住「只看有 TTL」的勾选状态
 - `918098d` feat(console): 数据源下拉标出只读连接
@@ -68,7 +33,6 @@
 - `94da9a4` feat(redis): 扫描工具栏显示耗时与过滤后的键数
 - `787c434` feat(redis): 键列表可以只看设置过过期时间的键
 - `59663bc` feat(grid): 数字列右对齐，便于按位对数字
-- `f2b1682` fix(ui): 右键菜单关闭后把焦点还给触发者
 - `61aa8ed` feat(ui): 右键菜单打开后可用键盘操作
 - `ee190ab` feat(grid): 单元格菜单可复制为 WHERE 条件
 - `cd60e84` feat(redis): 命令结果下方显示耗时与是否写命令
@@ -76,24 +40,13 @@
 - `04e2534` feat(export): 当前页可复制成 JSON 文本
 - `fce0cba` feat(table): 打开列筛选时光标进入第一个输入框
 - `013a41a` feat(ui): 弹层打开时锁住页面滚动
-- `c72fe53` fix(console): 补全列表变短后回车仍能选中
 - `45663fe` feat(redis): 键列表可按剩余存活时间排序
-- `d7ce8b0` fix(table): 标签页在后台时跳过自动刷新
 - `becbc53` feat(redis): 键列表的行上右键可复制键名
-- `9640086` fix(console): 换数据源时清掉翻页回退提示与语句结果索引
 - `29e40c7` feat(table): Ctrl+F 直接跳进 WHERE 输入框
 - `3f22f69` feat(console): Ctrl+F 直接跳进结果筛选框
-- `c4f730d` chore(table): 删除重复的列筛选清理函数
-- `bfd0fa4` perf(grid): 控制台结果网格不再随编辑器输入重绘
-- `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
-- `57f80a2` fix(redis): 刷新键值后键列表的 TTL 与大小跟着更新
 - `dcdb606` feat(table): 列筛选可一次全部清除
 - `e498d6a` feat(redis): 键列表可按长度排序
 - `7cc6aea` feat(ui): 导出菜单选完一项后自动收起
-- `208190d` fix(console): 筛选没命中时不再导出空表
-- `b519660` perf(redis): 值面板不再随命令输入重绘
-- `aa626c4` fix(grid): 排序后行号仍标原始位置
-- `e9239f5` perf(tree): 筛选命中统计只在相关输入变化时重算
 - `6e0ef8a` feat(console): 语句结果下拉标出每条的耗时与行数
 - `30c8c8a` feat(redis): 键表头把排序方向也告诉读屏
 - `a2aced0` feat(export): 当前页可复制为 CSV 文本
@@ -110,17 +63,13 @@
 - `1ebd5d2` feat(tree): 对象右键可把该表在控制台打开
 - `b177c1c` feat(table): 自动刷新间隔也记住
 - `92dc405` feat(ui): 每页行数按标签页记住
-- `921a1f9` fix(console): 翻到超出结果范围的页时回到第一页
 - `d27c465` feat(tree): 筛选框有内容时显示一键清除按钮
-- `dc49284` fix(console): 筛选没命中时说明是筛选条件造成的
 - `67cfebb` feat(table): 底栏的实际 SQL 可一键复制
-- `3dba43d` fix(console): 改了 Redis 筛选条件后不允许接着旧游标翻页
 - `a32594c` feat(console): 工具栏可打开语句所查表的数据表标签页
 - `de83374` feat(console): 单元格右键可用该值筛选当前页
 - `635c244` feat(table): WHERE 与 ORDER BY 输入框下拉提示列名
 - `980581e` feat(grid): 列头菜单可把该列复制成 IN 列表
 - `f9b5083` feat(tree): 数据源节点右键可复制信息并重新连接
-- `e7a993b` fix(table): 视图标签页读取的是视图定义而不是表结构
 - `c1aa242` feat(tree): 筛选框按 Enter 立即匹配、Esc 清空
 - `91084e3` feat(grid): 列头菜单可直接按该列分组计数
 - `114be2c` feat(tree): 库节点右键可复制库名或只看这个库
@@ -128,41 +77,21 @@
 - `7a7a150` feat(ui): DDL 弹层说明为什么不直接来自服务器
 - `0113b0e` feat(tree): 筛选词支持写成 库.表
 - `0581e26` feat(console): Ctrl+Shift+Enter 只执行光标所在的语句
-- `ba6baac` fix(console): 写语句确认也识破 WITH 后的 DML
-- `91bf2b1` fix(console): SQL 历史回看也能退回正在输入的内容
-- `95ca632` fix(console): 分页不包装会赋值或加锁的查询
 - `774615b` feat(redis): 键详情面板可以重新读取当前键
 - `5737113` feat(grid): 列头菜单可只看当前这一列
-- `0e02e13` fix(console): 关闭执行计划后回到原来的结果
-- `b546593` fix(console): 换一条语句执行时清空结果筛选
-- `6ba3ab8` fix(console): 首次选中数据源时历史已就位
 - `b816158` feat(console): 执行计划文本可一键复制
-- `ce80c46` fix(table): 没有数据时区分空表与筛选无结果
-- `f81d6ce` fix(grid): 筛选结果时行号保持原始位置
 - `3b66926` feat(console): 结果可按关键字过滤当前页
 - `a79527d` feat(grid): 列头悬停时仍能看到列类型
 - `2b7502d` feat(table): 数据表标签页支持自动刷新
 - `f5528b0` feat(table): 数据表标签页可直接查看建表语句
-- `8d20768` fix(console): 切换数据源时丢弃过期的执行计划
 - `c07bf56` feat(redis): 键列表可按名称排序
-- `91c924e` fix(table): 切换排序或刷新时丢弃过期的分页结果
-- `1d33cc2` fix(console): Redis 逻辑库切换时丢弃旧的扫描与命令结果
-- `b1423b4` fix(console): 切换数据源时丢弃仍在执行的查询结果
-- `023e1c7` fix(ui): 复制 DDL 改走统一的剪贴板兜底
 - `0378143` feat(export): 全量导出可选取消，已取到的行不写文件
 - `dbbd5b6` feat(tree): 选中表或视图按回车打开数据
 - `5869b2d` feat(grid): 空结果在网格里给出说明
 - `c8d2e1d` feat(console): 补全列表也列出常用 SQL 关键字
-- `1b47833` perf(tree): 对象行只在自身状态变化时重绘
-- `18e6c5c` fix(table): 刷新后页码超出范围时回落到最后一页
 - `46df37c` feat(table): 页码输入框可直接跳到某一页
-- `724b347` fix(redis): 加载更多不再丢掉已经列出的键
 - `9c5646d` feat(console): 页码输入框可直接跳到某一页
-- `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 - `83191af` feat(console): 结果被行数上限截断时给出提示
-- `51f944c` fix(sql): 只读连接拒绝 SELECT INTO OUTFILE 这类落盘语句
-- `97d9f67` perf(console): 历史面板不再随编辑输入重绘
-- `6fbd0d7` fix(ui): 弹层打开时把焦点困在框内，关闭后还回触发者
 - `6e02e11` feat(table): 导出整表脚本，含建表语句与全部数据
 - `6881289` feat(grid): 列头菜单可复制带全部列名的查询语句
 - `5b18b53` feat(console): Ctrl+/ 注释或取消注释选中的 SQL 行
@@ -172,50 +101,136 @@
 - `e879d49` feat(export): 全量导出时显示已经取到多少行
 - `8cf5b7c` feat(agent): 新增 db_table_ddl 工具查看建表语句
 - `b12390d` feat(export): 当前页结果可复制成 Markdown 表格
-- `b6b91d7` refactor(tree): 拆出架构选择器与 Redis 库列表
 - `af94441` feat(redis): 键列表可按类型过滤
-- `0a5ba3e` fix(redis): 命令历史回看更顺手，能退回正在输入的内容
 - `22bb56a` feat(console): 表名后按下补全键可列出该表的列
 - `a7dc1a5` feat(redis): 值面板可一键复制完整键名
-- `6b5acf0` fix(ui): 剪贴板不可用时不再抛未捕获异常
-- `4ec37f2` perf(host): 大响应按 gzip 压缩并补齐 content-length
 - `e5e8ac8` feat(console): 结果单元格可复制整行 INSERT
 - `629c5b5` feat(grid): 双击单元格查看完整值
-- `a850d63` perf(tree): 筛选输入停顿后再整树匹配
 - `d3a96b1` feat(redis): 键列表的 TTL 按最合适的单位展示
 - `229c281` feat(redis): 命令回显里的 JSON 也缩进显示
 - `da63fbc` feat(redis): 字符串里的 JSON 值缩进成块显示
-- `2215db0` fix(table): 单元格菜单的筛选项随条件更新
 - `60e177a` feat(table): 单元格菜单可在控制台按该值查询
 - `c1e2b6e` feat(console): 历史面板可按关键字搜索
-- `a31bb4b` perf(console): 普通查询不再重取数据库列表
-- `fbb141a` perf(redis): 键列表按行 memo，命令行打字不再重绘整表
-- `c77fb22` refactor(format): 计数格式化复用一个 NumberFormat
 - `de5223a` feat(console): Ctrl+S 把编辑器内容存成 SQL 文件
 - `cd16c35` feat(grid): 表头菜单可隐藏列并记住设置
 - `12eee69` feat(console): 文本执行计划按缩进原样排版
-- `f225ab2` refactor(tree): 拆出树形展示组件
 - `1b2d254` feat(export): 结果可导出为 Markdown 表格
+- `a69bdab` feat(console): 多语句执行后可切换每条语句的结果
+- `0e8c66c` feat(console): 按 Ctrl+Space 补全表名与库名
+- `9e15757` feat(table): 数据表标签页可跳转到查询控制台
+- `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
+- `57d5388` feat(console): 支持导入 .sql 文件到编辑器
+
+## 修复（50）
+
+- `ea7eede` fix(ui): 复制兜底后把焦点还给触发元素
+- `5e2e3d8` fix(redis): 键行菜单回调重新稳定，保住按行 memo
+- `6c9351b` fix(console): 从控制台打开视图时按视图取 DDL
+- `b004c9a` fix(ui): 空白偏好值按未设置处理
+- `59ee442` fix(console): 补全弹层的元素 id 按标签页区分
+- `a25a69d` fix(table): 列名提示的 datalist id 按标签页区分
+- `e7fdece` fix(redis): 两个过滤同时清空时先说明是键名筛掉的
+- `c12df8d` fix(redis): 值被截断时说明复制到的只是取回的部分
+- `4cb07ab` fix(ui): 树工具栏的刷新在完成前不再重复触发
+- `7ff7844` fix(console): 补全列表把高亮项滚进可视范围
+- `2f6c43b` fix(table): 关掉标签页时停止全量导出
+- `fb56c7e` fix(console): 关掉标签页时取消正在执行的语句
+- `356a629` fix(console): 执行中再按执行不会重复提交
+- `81846e7` fix(console): 输入法拼写时回车不再误执行
+- `9fbf004` fix(grid): 鼠标在窗口外松开时结束列宽拖动
+- `f2b1682` fix(ui): 右键菜单关闭后把焦点还给触发者
+- `c72fe53` fix(console): 补全列表变短后回车仍能选中
+- `d7ce8b0` fix(table): 标签页在后台时跳过自动刷新
+- `9640086` fix(console): 换数据源时清掉翻页回退提示与语句结果索引
+- `57f80a2` fix(redis): 刷新键值后键列表的 TTL 与大小跟着更新
+- `208190d` fix(console): 筛选没命中时不再导出空表
+- `aa626c4` fix(grid): 排序后行号仍标原始位置
+- `921a1f9` fix(console): 翻到超出结果范围的页时回到第一页
+- `dc49284` fix(console): 筛选没命中时说明是筛选条件造成的
+- `3dba43d` fix(console): 改了 Redis 筛选条件后不允许接着旧游标翻页
+- `e7a993b` fix(table): 视图标签页读取的是视图定义而不是表结构
+- `ba6baac` fix(console): 写语句确认也识破 WITH 后的 DML
+- `91bf2b1` fix(console): SQL 历史回看也能退回正在输入的内容
+- `95ca632` fix(console): 分页不包装会赋值或加锁的查询
+- `0e02e13` fix(console): 关闭执行计划后回到原来的结果
+- `b546593` fix(console): 换一条语句执行时清空结果筛选
+- `6ba3ab8` fix(console): 首次选中数据源时历史已就位
+- `ce80c46` fix(table): 没有数据时区分空表与筛选无结果
+- `f81d6ce` fix(grid): 筛选结果时行号保持原始位置
+- `8d20768` fix(console): 切换数据源时丢弃过期的执行计划
+- `91c924e` fix(table): 切换排序或刷新时丢弃过期的分页结果
+- `1d33cc2` fix(console): Redis 逻辑库切换时丢弃旧的扫描与命令结果
+- `b1423b4` fix(console): 切换数据源时丢弃仍在执行的查询结果
+- `023e1c7` fix(ui): 复制 DDL 改走统一的剪贴板兜底
+- `18e6c5c` fix(table): 刷新后页码超出范围时回落到最后一页
+- `724b347` fix(redis): 加载更多不再丢掉已经列出的键
+- `51f944c` fix(sql): 只读连接拒绝 SELECT INTO OUTFILE 这类落盘语句
+- `6fbd0d7` fix(ui): 弹层打开时把焦点困在框内，关闭后还回触发者
+- `0a5ba3e` fix(redis): 命令历史回看更顺手，能退回正在输入的内容
+- `6b5acf0` fix(ui): 剪贴板不可用时不再抛未捕获异常
+- `2215db0` fix(table): 单元格菜单的筛选项随条件更新
 - `9f07860` fix(console): 分页包装让行尾注释不再吞掉右括号
-- `76b9204` perf(table): 行数统计与分页查询并行执行
-- `b69ccb0` perf(structure): 结构接口直接复用缓存序列化结果
-- `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `cc75dfe` fix(console): EXPLAIN ANALYZE 的写语句也按写处理并弹确认
 - `020ecc5` fix(sql): 只读校验识破 EXPLAIN ANALYZE 与 WITH 后的写语句
 - `b4e1530` fix(export): MySQL 字面量转义反斜杠，导出的 INSERT 还原原值
+
+## 性能（22）
+
+- `a877c20` perf(redis): 刷新数据源时并行重读各逻辑库
+- `bfd0fa4` perf(grid): 控制台结果网格不再随编辑器输入重绘
+- `b519660` perf(redis): 值面板不再随命令输入重绘
+- `e9239f5` perf(tree): 筛选命中统计只在相关输入变化时重算
+- `1b47833` perf(tree): 对象行只在自身状态变化时重绘
+- `97d9f67` perf(console): 历史面板不再随编辑输入重绘
+- `4ec37f2` perf(host): 大响应按 gzip 压缩并补齐 content-length
+- `a850d63` perf(tree): 筛选输入停顿后再整树匹配
+- `a31bb4b` perf(console): 普通查询不再重取数据库列表
+- `fbb141a` perf(redis): 键列表按行 memo，命令行打字不再重绘整表
+- `76b9204` perf(table): 行数统计与分页查询并行执行
+- `b69ccb0` perf(structure): 结构接口直接复用缓存序列化结果
 - `d5c3963` perf(table): 网格回调保持稳定，条件输入时不再重绘整表
 - `e88e9d6` perf(grid): 结果网格改为 memo 且控制台回调保持稳定
-- `a69bdab` feat(console): 多语句执行后可切换每条语句的结果
-- `0e8c66c` feat(console): 按 Ctrl+Space 补全表名与库名
 - `5c2f0a2` perf(redis): 连接时并行加载各逻辑库的键
 - `bffd8f1` perf(grid): 单元格显示文本只格式化一次
 - `4d5110d` perf(console): 结果排序改为按依赖缓存
-- `9e15757` feat(table): 数据表标签页可跳转到查询控制台
-- `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
-- `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
-- `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 - `7ad7557` perf(tree): 筛选时跳过已缓存的对象列表
 - `b3085c5` perf(bridge): 按行切分改用块数组避免重复拷贝
 - `abee938` perf(grid): 复用 Intl.Collator 加速结果排序
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
+
+## 重构（6）
+
+- `f0334ad` refactor(ui): 复制成功反馈收进一个钩子
+- `b6b91d7` refactor(tree): 拆出架构选择器与 Redis 库列表
+- `c77fb22` refactor(format): 计数格式化复用一个 NumberFormat
+- `f225ab2` refactor(tree): 拆出树形展示组件
+- `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
+- `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
+
+## 测试（10）
+
+- `95fb576` test: 历史面板 memo 用例等编辑器就绪并冲洗挂起渲染
+- `c1968c9` test: 命令历史用例等命令框挂载后再操作
+- `a27cc5c` test: 另两处控制台用例等编辑器挂载后再输入
+- `4dacca9` test: 跳页回退用例等编辑器挂载后再输入
+- `1760723` test: 复制 SQL 用例等编辑器和选区就绪
+- `000911d` test: 清空编辑器用例等编辑器挂载后再操作
+- `1084b3b` test: 历史回看用例等编辑器挂载后再操作
+- `675651f` test: 跳页回退用例先等第一页渲染完再翻页
+- `9e57421` test: 控制台用例等数据源就绪再操作
+- `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
+
+## 文档（4）
+
+- `af0f566` docs: 补一份按类型分组的更新日志
+- `76b2715` docs: 补一份快捷键一览
+- `5f4e78c` docs: 补上树筛选命中数的说明
+- `44061d4` docs: 去掉键表格说明里重复的排序描述
+
+## 杂项（4）
+
+- `ec82004` chore(client): 删掉没人引用的图标与常量
+- `c4f730d` chore(table): 删除重复的列筛选清理函数
+- `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
+- `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
