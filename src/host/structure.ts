@@ -217,6 +217,16 @@ export class StructureStore {
     return entry === undefined ? undefined : (JSON.parse(JSON.stringify(entry)) as CachedStructure)
   }
 
+  /** When the entry was last refreshed, without cloning its (possibly large) payload. */
+  fetchedAt(connectionId: string): string | undefined {
+    return this.data[connectionId]?.fetchedAt
+  }
+
+  /** Cached `CONFIG GET databases` value, without cloning the whole entry. */
+  redisDatabases(connectionId: string): number | undefined {
+    return this.data[connectionId]?.redis?.databases
+  }
+
   putSchemas(connectionId: string, schemas: SchemaInfo[]): void {
     const previous = this.data[connectionId]
     const objects: Record<string, SchemaObject[]> = {}

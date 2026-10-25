@@ -165,7 +165,7 @@ async function readDescription(
   } catch (error) {
     const description = deps.structure.getDescription(id, schema, table)
     if (description === undefined) throw error
-    return { ...description, cached: true, fetchedAt: deps.structure.get(id)?.fetchedAt }
+    return { ...description, cached: true, fetchedAt: deps.structure.fetchedAt(id) }
   }
 }
 
@@ -381,8 +381,9 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
         typeof data.count === 'number' ? data.count : deps.config.settings().redisScanCount,
       )
       // Offline browsing mirrors the SQL structure cache: the key list is kept,
-      // replacing it whenever a new scan starts from cursor 0.
-      deps.structure.putRedisDatabases(id, deps.structure.get(id)?.redis?.databases ?? 16)
+      // replacing it whenever a new scan starts from cursor 0. `putRedisKeys`
+      // creates the Redis entry (database count defaulting to 16) on its own, so
+      // paging no longer re-stamps the count and rewrites the cache file.
       deps.structure.putRedisKeys(id, db, result.keys, result.cursor, cursor === '0')
       sendJson(response, 200, { ok: true, data: result })
       return
@@ -399,11 +400,11 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
           data: { databases, redisDb: connection.redisDb, cached: false } satisfies RedisDatabasesResult,
         })
       } catch (error) {
-        const cached = deps.structure.get(id)?.redis
+        const cached = deps.structure.redisDatabases(id)
         if (cached === undefined) throw error
         sendJson(response, 200, {
           ok: true,
-          data: { databases: cached.databases, redisDb: connection.redisDb, cached: true, error: errorText(error) } satisfies RedisDatabasesResult,
+          data: { databases: cached, redisDb: connection.redisDb, cached: true, error: errorText(error) } satisfies RedisDatabasesResult,
         })
       }
       return
