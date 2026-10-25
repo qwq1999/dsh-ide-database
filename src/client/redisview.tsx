@@ -3,13 +3,19 @@
  * tabulated payload. Shared by the console and the data tree so both present a
  * key the same way.
  */
-import type { ReactElement } from 'react'
+import { memo, type ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
 import { formatCount, stringifyJson } from './format'
 import { redisTtlLabel, redisValueTable } from './redisvalue'
 import { Tag } from './ui'
 
-export function RedisValuePanel({ value, showKey = true }: { value: RedisValue; showKey?: boolean }): ReactElement {
+export const RedisValuePanel = memo(function RedisValuePanel({
+  value,
+  showKey = true,
+}: {
+  value: RedisValue
+  showKey?: boolean
+}): ReactElement {
   const table = redisValueTable(value)
   return (
     <div className="dshdb-redis-value">
@@ -54,4 +60,4 @@ export function RedisValuePanel({ value, showKey = true }: { value: RedisValue; 
       )}
     </div>
   )
-}
+})

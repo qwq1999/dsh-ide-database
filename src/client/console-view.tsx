@@ -3,7 +3,7 @@
  * grid and pager buttons. They read nothing from the console state, so they
  * live here instead of growing ConsoleTab.tsx.
  */
-import type { ReactElement } from 'react'
+import { memo, type ReactElement } from 'react'
 import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, StarIcon } from './icons'
@@ -100,7 +100,34 @@ export function HistoryPanel(props: {
   )
 }
 
-export function KeyGrid({
+/** One key row; memoised so typing in the command box leaves the table alone. */
+const KeyRow = memo(function KeyRow({
+  info,
+  index,
+  active,
+  onSelect,
+}: {
+  info: RedisKeyInfo
+  index: number
+  active: boolean
+  onSelect: (key: RedisKeyInfo) => void
+}): ReactElement {
+  return (
+    <tr data-active={active} onClick={() => onSelect(info)} style={{ cursor: 'pointer' }}>
+      <td className="dshdb-num">{index + 1}</td>
+      <td title={info.key}>
+        <span className="dshdb-mono">{info.key}</span>
+      </td>
+      <td>
+        <Tag>{info.type}</Tag>
+      </td>
+      <td className="dshdb-num">{info.ttl < 0 ? '永久' : `${info.ttl}s`}</td>
+      <td className="dshdb-num">{info.size === undefined ? '' : formatCount(info.size)}</td>
+    </tr>
+  )
+})
+
+export const KeyGrid = memo(function KeyGrid({
   keys,
   selectedKey,
   onSelect,
@@ -122,27 +149,12 @@ export function KeyGrid({
       </thead>
       <tbody>
         {keys.map((key, index) => (
-          <tr
-            key={key.key}
-            data-active={key.key === selectedKey}
-            onClick={() => onSelect(key)}
-            style={{ cursor: 'pointer' }}
-          >
-            <td className="dshdb-num">{index + 1}</td>
-            <td title={key.key}>
-              <span className="dshdb-mono">{key.key}</span>
-            </td>
-            <td>
-              <Tag>{key.type}</Tag>
-            </td>
-            <td className="dshdb-num">{key.ttl < 0 ? '永久' : `${key.ttl}s`}</td>
-            <td className="dshdb-num">{key.size === undefined ? '' : formatCount(key.size)}</td>
-          </tr>
+          <KeyRow key={key.key} info={key} index={index} active={key.key === selectedKey} onSelect={onSelect} />
         ))}
       </tbody>
     </table>
   )
-}
+})
 
 export function PagerButton({
   label,

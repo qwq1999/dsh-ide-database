@@ -602,18 +602,29 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setCommand(history[next]!.statement)
   }
 
-  const selectKey = async (key: RedisKeyInfo): Promise<void> => {
-    setSelectedKey(key.key)
-    setValue(null)
-    setValueError(null)
-    if (selectedId === '') return
-    try {
-      const next = await withConnection(selectedId, () => api.redisKey(selectedId, key.key, activeRedisDb))
-      setValue(next)
-    } catch (error) {
-      setValueError(failureText(error))
-    }
-  }
+  const selectKey = useCallback(
+    async (key: RedisKeyInfo): Promise<void> => {
+      setSelectedKey(key.key)
+      setValue(null)
+      setValueError(null)
+      if (selectedId === '') return
+      try {
+        const next = await withConnection(selectedId, () => api.redisKey(selectedId, key.key, activeRedisDb))
+        setValue(next)
+      } catch (error) {
+        setValueError(failureText(error))
+      }
+    },
+    [activeRedisDb, selectedId],
+  )
+
+  /** Stable for the memoised key rows: only a different key starts a new request. */
+  const pickKey = useCallback(
+    (key: RedisKeyInfo): void => {
+      void selectKey(key)
+    },
+    [selectKey],
+  )
 
   // Switching data source resets both modes, so results never look like another source's.
   useEffect(() => {
@@ -959,7 +970,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <EmptyState icon={<DatabaseIcon size={22} />} title="没有匹配的键" description={pattern} />
               )
             ) : (
-              <KeyGrid keys={scan.keys} selectedKey={selectedKey} onSelect={(key) => void selectKey(key)} />
+              <KeyGrid keys={scan.keys} selectedKey={selectedKey} onSelect={pickKey} />
             )}
           </div>
 
