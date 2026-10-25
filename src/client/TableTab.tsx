@@ -643,7 +643,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             {exporting ? <Spinner /> : <DownloadIcon size={13} />}
           </button>
           {exportOpen ? (
-            <span className="dshdb-menu" role="menu">
+            <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
               <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'page')}>
                 当前页 CSV（{formatCount(rows.length)} 行）
               </button>

@@ -123,6 +123,23 @@ describe('table export menu', () => {
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
   })
 
+  it('closes the menu after picking an item', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制当前页 Markdown' }))
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+  })
+
   it('copies the current page as a Markdown table', async () => {
     render(
       <TableTab

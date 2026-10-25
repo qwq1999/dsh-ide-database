@@ -1615,7 +1615,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <DownloadIcon size={13} />
               </button>
               {exportOpen ? (
-                <span className="dshdb-menu" role="menu">
+                <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
                   <button type="button" role="menuitem" onClick={() => exportPage('csv')} disabled={filteredRows.length === 0}>
                     当前页 CSV（{filteredRows.length} 行）
                   </button>
