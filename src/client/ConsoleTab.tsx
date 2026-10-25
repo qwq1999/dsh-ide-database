@@ -1518,6 +1518,20 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <Button
               size="sm"
               variant="ghost"
+              onClick={() => {
+                setStatement('')
+                setSelectedRun(false)
+                setCaretPos(0)
+                inputRef.current?.focus()
+              }}
+              disabled={statement === ''}
+              title="清空编辑器里的 SQL（不影响已经拿到的结果）"
+            >
+              清空
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => void explainPlan()}
               loading={planRunning}
               disabled={statement.trim() === '' || running}
