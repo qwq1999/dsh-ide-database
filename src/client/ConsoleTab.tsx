@@ -1507,6 +1507,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <input
               className="dshdb-input dshdb-qfilter-input dshdb-command-input"
               placeholder="例如 GET shop:customer:42"
+                  aria-label="Redis 命令"
               value={command}
               spellCheck={false}
               onChange={(event) => {
@@ -1565,6 +1566,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <textarea
               className="dshdb-input dshdb-console-input"
               placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + Enter 执行光标所在的语句，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+                  aria-label="SQL 编辑器"
               ref={inputRef}
               aria-controls={suggestions === null ? undefined : `${completeId}-list`}
               aria-activedescendant={

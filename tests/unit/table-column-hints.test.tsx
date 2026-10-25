@@ -85,6 +85,8 @@ describe('table filter column hints', () => {
 
   it('offers the table columns to the WHERE and ORDER BY boxes', async () => {
     render(<TableTab useTabInfo={tab} />)
+    expect(screen.getByLabelText('过滤条件')).toBeTruthy()
+    expect(screen.getByLabelText('排序列')).toBeTruthy()
     const where = screen.getByPlaceholderText(/过滤条件/) as HTMLInputElement
     await waitFor(() => expect(where.getAttribute('list')).toBe('dshdb-columns-orders'))
 

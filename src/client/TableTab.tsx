@@ -818,6 +818,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           ref={whereRef}
           className="dshdb-input dshdb-qfilter-input"
           placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
+          aria-label="过滤条件"
           list={columnsListId}
           title="Ctrl/⌘ + F 聚焦这里"
           value={whereText}
@@ -845,6 +846,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         <input
           className="dshdb-input dshdb-qfilter-input dshdb-qfilter-order"
           placeholder="排序列，例如 ID DESC"
+          aria-label="排序列"
           list={columnsListId}
           value={orderText}
           spellCheck={false}

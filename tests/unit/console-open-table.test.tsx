@@ -94,6 +94,7 @@ describe('open the target table from the console', () => {
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
 
+    expect(screen.getByLabelText('SQL 编辑器')).toBeTruthy()
     const editor = document.querySelector('textarea')
     if (editor === null) throw new Error('missing SQL editor')
     fireEvent.change(editor, { target: { value: 'SELECT * FROM orders' } })
