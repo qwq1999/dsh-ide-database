@@ -43,6 +43,7 @@ import { applyCompletion, completionCandidates, qualifierBefore, wordAtCaret, ty
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
+import { toggleSqlComment } from './sqlcomment'
 import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TerminalIcon } from './icons'
 import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -1129,7 +1130,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           <span className="dshdb-complete-anchor" ref={completionAnchor}>
             <textarea
               className="dshdb-input dshdb-console-input"
-              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
               value={statement}
               spellCheck={false}
@@ -1165,6 +1166,25 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
                   event.preventDefault()
                   saveSqlFile()
+                  return
+                }
+                if ((event.ctrlKey || event.metaKey) && event.key === '/') {
+                  event.preventDefault()
+                  const area = inputRef.current
+                  const next = toggleSqlComment(
+                    statement,
+                    area?.selectionStart ?? caretPos,
+                    area?.selectionEnd ?? caretPos,
+                  )
+                  if (next.text !== statement) {
+                    setSelectedRun(false)
+                    setStatement(next.text)
+                    setCaretPos(next.selectionEnd)
+                    setTimeout(() => {
+                      area?.focus()
+                      area?.setSelectionRange(next.selectionStart, next.selectionEnd)
+                    })
+                  }
                   return
                 }
                 if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
