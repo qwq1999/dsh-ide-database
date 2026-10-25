@@ -35,6 +35,11 @@ describe('redis value panel', () => {
     expect(copy).toHaveBeenCalledWith(JSON.stringify(payload, null, 2))
   })
 
+  it('says the copy only covers the fetched part when the list was truncated', () => {
+    render(<RedisValuePanel value={{ ...stored('a,b,c'), truncated: true }} />)
+    expect(screen.getByLabelText('复制值').getAttribute('title')).toContain('截断')
+  })
+
   it('copies the key name and confirms it', async () => {
     render(<RedisValuePanel value={stored('hello')} />)
     fireEvent.click(screen.getByLabelText('复制键名'))

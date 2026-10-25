@@ -50,7 +50,15 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         <button
           type="button"
           className="dshdb-row-action"
-          title={copiedValue ? '已复制值' : '复制值'}
+          title={
+            value.truncated
+              ? copiedValue
+                ? '已复制取回的部分（列表已截断）'
+                : '复制取回的部分（列表已截断）'
+              : copiedValue
+                ? '已复制值'
+                : '复制值'
+          }
           aria-label={copiedValue ? '值已复制' : '复制值'}
           onClick={() => {
             void copyText(redisValueText(value.value)).then((ok) => valueFlash.flash(ok))
