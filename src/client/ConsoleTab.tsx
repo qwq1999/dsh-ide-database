@@ -304,6 +304,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
   const [multiProgress, setMultiProgress] = useState<{ index: number; total: number } | null>(null)
   const [multiNote, setMultiNote] = useState('')
+  const [scriptResults, setScriptResults] = useState<QueryResult[]>([])
+  const [scriptIndex, setScriptIndex] = useState(0)
 
   const [pattern, setPattern] = useState('*')
   const [scan, setScan] = useState<RedisScanResult | null>(null)
@@ -476,6 +478,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const execute = useCallback(
     async (target: { statement: string; page: number; size: number; allowWrite: boolean }): Promise<void> => {
       setRowSort(null)
+      setScriptResults([])
       const text = target.statement.trim()
       if (text === '' || selectedId === '') return
       const stmtKey = `console-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -505,15 +508,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     [connection?.dialect, loadSchemaList, schema, selectedId],
   )
 
-  /** Run several statements in order, then show the result of the last one. */
+  /** Run several statements in order; every result is kept so the grid can flip between them. */
   const executeScript = async (parts: string[]): Promise<void> => {
     setRowSort(null)
+    setScriptResults([])
     if (selectedId === '') return
     setRunning(true)
     setPlan(null)
     setFailure(null)
     setMultiNote('')
     setExportOpen(false)
+    const collected: QueryResult[] = []
     let last: QueryResult | null = null
     try {
       for (const [index, part] of parts.entries()) {
@@ -529,7 +534,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             stmtKey,
             schema,
           )
+          collected.push(last)
         } catch (error) {
+          setScriptResults(collected)
+          setScriptIndex(Math.max(0, collected.length - 1))
           const failure = failureText(error)
           setFailure({ message: `第 ${index + 1}/${parts.length} 条语句执行失败：${failure.message}`, detail: failure.detail ?? part })
           if (last !== null) {
@@ -541,6 +549,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         }
       }
       setResult(last)
+      setScriptResults(collected)
+      setScriptIndex(Math.max(0, collected.length - 1))
       setPage(0)
       setBase('')
       setSourceSql(parts[parts.length - 1] ?? '')
@@ -775,6 +785,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   // Switching data source resets both modes, so results never look like another source's.
   useEffect(() => {
     setResult(null)
+    setScriptResults([])
     setFailure(null)
     // A statement handed over by a table tab is the reason this tab was opened.
     if (seededStatement.current) seededStatement.current = false
@@ -1315,6 +1326,28 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 </span>
               ) : null}
             </span>
+            {scriptResults.length > 1 ? (
+              <select
+                className="dshdb-input dshdb-console-select"
+                aria-label="语句结果"
+                value={scriptIndex}
+                onChange={(event) => {
+                  const index = Number(event.target.value)
+                  const picked = scriptResults[index]
+                  if (picked === undefined) return
+                  setScriptIndex(index)
+                  setResult(picked)
+                  setPage(0)
+                  setBase('')
+                }}
+              >
+                {scriptResults.map((_, index) => (
+                  <option key={index} value={index}>
+                    第 {index + 1} 条
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <span className="dshdb-qbar-spacer" />
             {exportNote !== '' ? <Tag tone="business">{exportNote}</Tag> : null}
             {multiProgress !== null ? (
