@@ -125,6 +125,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const whereRef = useRef<HTMLInputElement | null>(null)
   /** Latest load wins: an older page must not overwrite a newer one. */
   const loadToken = useRef(0)
+  const filterRowRef = useRef<HTMLTableRowElement | null>(null)
 
   // Column drag order is display-only; reset it when the result set changes shape.
   const signature = columnSignature(columns)
@@ -477,6 +478,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const timer = setTimeout(() => applyRef.current({ page: 0 }), 400)
     return () => clearTimeout(timer)
   }, [filters, filtersOpen, connection])
+
+  // Opening the filter row should land the caret in the first box.
+  useEffect(() => {
+    if (!filtersOpen) return
+    filterRowRef.current?.querySelector('input')?.focus()
+  }, [filtersOpen])
 
   const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
 
@@ -856,7 +863,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           headerMenu={columnMenu}
           onSort={sortTable}
           onReorderColumns={gridReorder}
-          headerExtra={filtersOpen ?               <tr className="dshdb-filter-row">
+          headerExtra={filtersOpen ? (
+              <tr className="dshdb-filter-row" ref={filterRowRef}>
                 <th className="dshdb-num">
                   {activeFilterCount > 0 ? (
                     <button type="button" className="dshdb-row-action" title="清除所有列筛选" aria-label="清除列筛选" onClick={clearColumnFilters}>
@@ -904,7 +912,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                     </th>
                   )
                 })}
-              </tr> : null}
+              </tr>
+            ) : null}
           cellClass={gridCellClass}
           cellMenu={gridCellMenu}
           onCellOpen={gridCellOpen}
