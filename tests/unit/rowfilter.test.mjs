@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterRowIndexes, rowMatches } from '../../src/client/rowfilter'
+import { filterRowIndexes, filterRowIndexesByHaystacks, rowHaystacks, rowMatches } from '../../src/client/rowfilter'
 
 describe('rowMatches', () => {
   it('matches any cell by its displayed text', () => {
@@ -30,3 +30,17 @@ describe('filterRowIndexes', () => {
   })
 })
 
+describe('prebuilt haystacks', () => {
+  const rows = [['Goods', 42, null], ['beta', true], ['gamma', 'x']]
+
+  it('agree with filterRowIndexes for every needle', () => {
+    for (const needle of ['', '  ', 'goods', '42', 'NULL', 'TRUE', 'a', 'zzz']) {
+      expect(filterRowIndexesByHaystacks(rowHaystacks(rows), needle)).toEqual(filterRowIndexes(rows, needle))
+    }
+  })
+
+  it('does not let a needle match across two cells', () => {
+    expect(filterRowIndexesByHaystacks(rowHaystacks([['ab', 'cd']]), 'abcd')).toEqual([])
+    expect(filterRowIndexesByHaystacks(rowHaystacks([['ab', 'cd']]), 'cd')).toEqual([0])
+  })
+})

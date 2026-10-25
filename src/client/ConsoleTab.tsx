@@ -35,7 +35,7 @@ import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
 import { nextRowSort, sortRowsWithOrder, type RowSort } from './rowsort'
-import { filterRowIndexes } from './rowfilter'
+import { filterRowIndexesByHaystacks, rowHaystacks } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { applyCommandCompletion, commandCompletion, keyCompletion } from './rediscommands'
 import { pickStatement, statementAtCaret } from './sqlselection'
@@ -1058,7 +1058,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const sorted = useMemo(() => sortRowsWithOrder(columns, rows, rowSort), [columns, rows, rowSort])
   const visibleRows = sorted.rows
   // The text filter is a view over the page: exports of "current page" follow it.
-  const filteredIndexes = useMemo(() => filterRowIndexes(visibleRows, rowFilter), [visibleRows, rowFilter])
+  const rowHaystack = useMemo(() => rowHaystacks(visibleRows), [visibleRows])
+  const filteredIndexes = useMemo(
+    () => filterRowIndexesByHaystacks(rowHaystack, rowFilter),
+    [rowHaystack, rowFilter],
+  )
   const filteredRows = useMemo(() => filteredIndexes.map((index) => visibleRows[index] as Row), [filteredIndexes, visibleRows])
   // A fresh array on every render re-renders the memoised grid on every keystroke.
   const rowNumbers = useMemo(
