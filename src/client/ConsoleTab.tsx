@@ -1686,6 +1686,16 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <Button
                   size="sm"
                   variant="ghost"
+                  disabled={planText === null}
+                  onClick={() => {
+                    if (planText !== null) void copyText(planText)
+                  }}
+                >
+                  复制计划
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   onClick={() => {
                     setPlan(null)
                     setResult(null)

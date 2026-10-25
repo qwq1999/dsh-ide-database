@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   redisKey: vi.fn(),
   redisCommand: vi.fn(),
   explain: vi.fn(),
+  copies: vi.fn(),
 }))
 
 vi.mock('../../src/client/api', () => {
@@ -38,6 +39,11 @@ vi.mock('../../src/client/api', () => {
       explain: mocks.explain,
     },
   }
+})
+
+vi.mock('../../src/client/colmenu', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return { ...actual, copyText: mocks.copies }
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
@@ -113,6 +119,23 @@ describe('console tree-shaped execution plan', () => {
     expect(pre.tagName).toBe('PRE')
     expect(pre.textContent).toBe(tree)
     expect(document.querySelector('[role="grid"]')).toBeNull()
+  })
+
+  it('copies the plan text from the plan bar', async () => {
+    const tree = '-> Table scan on o'
+    mocks.explain.mockResolvedValue(treeExplain(tree))
+
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'EXPLAIN FORMAT=TREE SELECT * FROM orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行计划' }))
+
+    await screen.findByLabelText('执行计划文本')
+    fireEvent.click(screen.getByRole('button', { name: '复制计划' }))
+    expect(mocks.copies).toHaveBeenCalledWith(tree)
   })
 
   it('keeps tabular plans in the grid', async () => {
