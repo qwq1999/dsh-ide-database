@@ -53,7 +53,7 @@ import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { toggleSqlComment } from './sqlcomment'
-import { ClockIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
+import { ClockIcon, CopyIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
 import { openTableTab, readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
@@ -1982,6 +1982,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 <span className="dshdb-pager-sql" title={result.sql}>
                   {result.sql}
                 </span>
+                <button
+                  type="button"
+                  className="dshdb-pager-btn"
+                  title="复制实际执行的 SQL"
+                  aria-label="复制实际执行的 SQL"
+                  onClick={() => void copyText(result.sql)}
+                >
+                  <CopyIcon size={12} />
+                </button>
                 <span className="dshdb-pager-spacer" />
                 <span className="dshdb-pager-filter" title="按任意列在网格里显示的文字过滤当前页（Ctrl/⌘ + F 聚焦，Esc 清空）">
                   <input

@@ -100,8 +100,7 @@ describe('console failure banner', () => {
     render(<ConsoleTab useTabInfo={tab} />)
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
-    const editor = document.querySelector('textarea')
-    if (editor === null) throw new Error('missing SQL editor')
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
     fireEvent.change(editor, { target: { value: 'SELECT nope' } })
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
 
@@ -109,5 +108,22 @@ describe('console failure banner', () => {
     expect(text).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制' }))
     await waitFor(() => expect(copies).toHaveBeenCalledWith("Unknown column\nColumn 'nope' not found"))
+  })
+  it('copies the statement that actually ran', async () => {
+    mocks.query.mockResolvedValue({
+      columns: [{ name: 'id' }],
+      rows: [[1]],
+      elapsedMs: 1,
+      sql: 'SELECT `id` FROM `shop`.`orders`',
+    })
+    render(<ConsoleTab useTabInfo={tab} />)
+    await waitForConsoleSource(mocks)
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+    fireEvent.change(editor, { target: { value: 'SELECT id FROM orders' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+
+    await screen.findByRole('button', { name: '复制实际执行的 SQL' })
+    fireEvent.click(screen.getByRole('button', { name: '复制实际执行的 SQL' }))
+    await waitFor(() => expect(copies).toHaveBeenCalledWith('SELECT `id` FROM `shop`.`orders`'))
   })
 })
