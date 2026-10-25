@@ -48,6 +48,8 @@ import { readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
 import { redisValueText } from './redisvalue'
+import { CellValueModal } from './CellValueModal'
+import { cellValueView, type CellValueView } from './cellvalue'
 
 /** What the tab body receives: the framework's tab reader. */
 export interface ConsoleTabProps {
@@ -130,6 +132,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
   const [columnOrder, setColumnOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden('console:sql'))
+  const [cellView, setCellView] = useState<CellValueView | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportNote, setExportNote] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -737,11 +740,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   )
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => [
+      { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)) },
       { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)) },
     ],
     [displayColumns],
   )
+  const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
+    setCellView(cellValueView(column.name, value))
+  }, [])
 
   if (loadError !== '') {
     return (
@@ -1283,6 +1290,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             </Banner>
           ) : null}
 
+          <CellValueModal view={cellView} onClose={() => setCellView(null)} />
+
           {result !== null && rows.length > 0 ? (
             planText !== null ? (
               <pre className="dshdb-plan-text" aria-label="执行计划文本">
@@ -1299,6 +1308,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 onReorderColumns={gridReorder}
                 headerMenu={columnMenu}
                 cellMenu={gridCellMenu}
+                onCellOpen={gridCellOpen}
               />
             )
           ) : (

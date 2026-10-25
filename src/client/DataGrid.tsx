@@ -39,6 +39,8 @@ export interface DataGridProps {
   headerExtra?: ReactNode
   cellClass?: (column: ColumnInfo, value: CellValue) => string | undefined
   onCellClick?: (column: ColumnInfo, value: CellValue) => void
+  /** Double-clicking a cell opens it; pages show the whole value themselves. */
+  onCellOpen?: (column: ColumnInfo, value: CellValue) => void
   /** Remember user-dragged column widths under this key. */
   storageKey?: string
   /** Active sort; the matching header shows an arrow. */
@@ -114,8 +116,21 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
 }
 
 export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactElement {
-  const { columns, rows, offset, headerExtra, cellClass, onCellClick, storageKey, sort, onSort, headerMenu, cellMenu, onReorderColumns } =
-    props
+  const {
+    columns,
+    rows,
+    offset,
+    headerExtra,
+    cellClass,
+    onCellClick,
+    onCellOpen,
+    storageKey,
+    sort,
+    onSort,
+    headerMenu,
+    cellMenu,
+    onReorderColumns,
+  } = props
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const dragIndex = useRef<number | null>(null)
@@ -324,6 +339,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                       title={text}
                       className={cellClass?.(column, value)}
                       onClick={onCellClick === undefined ? undefined : () => onCellClick(column, value)}
+                      onDoubleClick={onCellOpen === undefined ? undefined : () => onCellOpen(column, value)}
                       onContextMenu={
                         cellMenu === undefined
                           ? undefined

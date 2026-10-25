@@ -24,6 +24,8 @@ import { nextOrderBy, parseOrderBy, quoteSortColumn } from './sorting'
 import { cellWhere, composeWhere, insertStatement, pageClause, qualifiedName, stripKeyword, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, EmptyState, Spinner, Tag } from './ui'
+import { CellValueModal } from './CellValueModal'
+import { cellValueView, type CellValueView } from './cellvalue'
 
 /** What the tab body receives: the framework's tab reader. */
 export interface TableTabProps {
@@ -96,6 +98,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [order, setOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
+  const [cellView, setCellView] = useState<CellValueView | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState('')
@@ -274,12 +277,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     },
     [displayColumns.length, hiddenView.positions],
   )
+  const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
+    setCellView(cellValueView(column.name, value))
+  }, [])
   const gridCellClass = useCallback(
     (): string | undefined => (filtersOpen ? 'dshdb-cell-filterable' : undefined),
     [filtersOpen],
   )
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => [
+            {
+              label: '查看完整值',
+              run: () => setCellView(cellValueView(cell.column.name, cell.value)),
+            },
             {
               label: '复制单元格值',
               run: () => void copyText(cellCopyText(cell.value)),
@@ -634,6 +644,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               </tr> : null}
           cellClass={gridCellClass}
           cellMenu={gridCellMenu}
+          onCellOpen={gridCellOpen}
           onCellClick={
             filtersOpen
               ? (column, value) => {
@@ -714,6 +725,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           ▶|
         </button>
       </div>
+
+      <CellValueModal view={cellView} onClose={() => setCellView(null)} />
     </div>
   )
 }
