@@ -1005,7 +1005,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           <span className="dshdb-complete-anchor" ref={completionAnchor}>
             <textarea
               className="dshdb-input dshdb-console-input"
-              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名，Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
               ref={inputRef}
               value={statement}
               spellCheck={false}
@@ -1037,6 +1037,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       return
                     }
                   }
+                }
+                if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
+                  event.preventDefault()
+                  saveSqlFile()
+                  return
                 }
                 if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                   event.preventDefault()
