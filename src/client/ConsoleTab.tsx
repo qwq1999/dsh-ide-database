@@ -751,14 +751,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
    * for the next render to pick the state up.
    */
   const loadKeys = useCallback(
-    async (append: boolean, overrideType?: string): Promise<void> => {
+    async (append: boolean, overrideType?: string, overridePattern?: string): Promise<void> => {
       if (selectedId === '') return
       const token = runToken.current
       const startedAt = Date.now()
       setScanning(true)
       setValueError(null)
       const type = overrideType ?? scanType
-      const patternText = pattern.trim() === '' ? '*' : pattern.trim()
+      const rawPattern = overridePattern ?? pattern
+      const patternText = rawPattern.trim() === '' ? '*' : rawPattern.trim()
       try {
         const cursor = append ? scanCursorRef.current : '0'
         const next = await withConnection(selectedId, () =>
@@ -1346,6 +1347,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 if (event.key === 'Enter') void loadKeys(false)
               }}
             />
+            {pattern.trim() === '' || pattern.trim() === '*' ? null : (
+              <button
+                type="button"
+                className="dshdb-row-action"
+                title="清空键模式"
+                aria-label="清空键模式"
+                onClick={() => {
+                  setPattern('*')
+                  scanCursorRef.current = '0'
+                  void loadKeys(false, undefined, '*')
+                }}
+              >
+                ×
+              </button>
+            )}
             <label className="dshdb-qmeta" title="只列出设置了过期时间的键">
               <input
                 type="checkbox"
@@ -1366,6 +1382,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               value={keyFilter}
               onChange={(event) => setKeyFilter(event.target.value)}
             />
+            {keyFilter === '' ? null : (
+              <button
+                type="button"
+                className="dshdb-row-action"
+                title="清空键名筛选"
+                aria-label="清空键名筛选"
+                onClick={() => setKeyFilter('')}
+              >
+                ×
+              </button>
+            )}
             <select
               className="dshdb-input dshdb-qfilter-input"
               aria-label="键类型"
