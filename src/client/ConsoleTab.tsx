@@ -39,7 +39,7 @@ import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
-import { readAllowedNumber, readFlag, writeFlag, writeNumber } from './prefs'
+import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
@@ -77,6 +77,7 @@ import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
 /** Redis accepts up to 16 logical databases by default; allow a generous ceiling. */
 const REDIS_DB_CHOICES = Array.from({ length: 4096 }, (_, index) => index)
 const REDIS_DB_KEY_PREFIX = 'dsh-ide-database.redis-db.v1:'
+const SCHEMA_KEY_PREFIX = 'dsh-ide-database.schema.v1:'
 
 const TTL_ONLY_KEY = 'dsh-ide-database.redis.ttl-only.v1'
 /** 中文输入法用回车确认候选词时，KeyboardEvent 带 isComposing 标记。 */
@@ -975,13 +976,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setValue(null)
     setValueError(null)
     setCommandResult(null)
-    setSchema(
+    const fallbackSchema =
       connection === undefined
         ? ''
         : connection.dialect === 'mysql' || connection.dialect === 'generic'
           ? connection.database
-          : connection.user,
-    )
+          : connection.user
+    // Per connection, so a schema picked once survives switching tabs around.
+    setSchema(selectedId === '' ? fallbackSchema : readText(`${SCHEMA_KEY_PREFIX}${selectedId}`, fallbackSchema))
     setSchemas([])
     setRedisDb(null)
     setRedisDatabases(null)
@@ -1354,6 +1356,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             onChange={(event) => {
               invalidateRun()
               setSchema(event.target.value)
+              writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, event.target.value)
             }}
           >
             <option value={defaultSchema}>默认{defaultSchema === '' ? '' : `（${defaultSchema}）`}</option>
