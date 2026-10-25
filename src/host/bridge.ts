@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import { DbError } from './errors.js'
+import { LineSplitter } from './lines.js'
 
 export interface BridgeOptions {
   javaPath: string
@@ -45,7 +46,7 @@ function messageOf(error: unknown): string {
 export class BridgeClient {
   private child: ChildProcessWithoutNullStreams | undefined
   private starting: Promise<void> | undefined
-  private buffer = ''
+  private readonly lines = new LineSplitter()
   private stderrTail = ''
   private seq = 0
   private disposed = false
@@ -74,7 +75,7 @@ export class BridgeClient {
       windowsHide: true,
     }) as ChildProcessWithoutNullStreams
     this.child = child
-    this.buffer = ''
+    this.lines.reset()
     this.stderrTail = ''
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
@@ -95,13 +96,9 @@ export class BridgeClient {
   }
 
   private onStdout(chunk: string): void {
-    this.buffer += chunk
-    let index = this.buffer.indexOf('\n')
-    while (index >= 0) {
-      const line = this.buffer.slice(0, index).trim()
-      this.buffer = this.buffer.slice(index + 1)
-      if (line !== '') this.onLine(line)
-      index = this.buffer.indexOf('\n')
+    for (const line of this.lines.push(chunk)) {
+      const text = line.trim()
+      if (text !== '') this.onLine(text)
     }
   }
 
