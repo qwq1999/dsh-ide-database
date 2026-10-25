@@ -92,7 +92,7 @@ describe('run the statement under the caret', () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
 
-    const editor = screen.getByPlaceholderText(/输入 SQL/) as HTMLTextAreaElement
+    const editor = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     const script = ['SELECT 1', 'SELECT 2'].join(';' + String.fromCharCode(10))
     fireEvent.change(editor, { target: { value: script } })
     editor.setSelectionRange(script.indexOf('SELECT 2') + 3, script.indexOf('SELECT 2') + 3)
@@ -110,7 +110,7 @@ describe('run the statement under the caret', () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
 
-    const editor = screen.getByPlaceholderText(/输入 SQL/) as HTMLTextAreaElement
+    const editor = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     const script = ['SELECT 1', 'SELECT 2'].join(';' + String.fromCharCode(10))
     fireEvent.change(editor, { target: { value: script } })
 
@@ -124,7 +124,7 @@ describe('run the statement under the caret', () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
 
-    const editor = screen.getByPlaceholderText(/输入 SQL/) as HTMLTextAreaElement
+    const editor = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     fireEvent.change(editor, { target: { value: 'SELECT 1' } })
     fireEvent.keyDown(editor, { key: 'r', ctrlKey: true })
 

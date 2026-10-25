@@ -71,14 +71,6 @@ const settings = {
 
 const tab = { tab: { navigation: { params: { connectionId: 'mysql-1' } } } }
 
-function editor(): HTMLTextAreaElement {
-  return screen.getByPlaceholderText(/输入 SQL/) as HTMLTextAreaElement
-}
-
-function recall(key: 'ArrowUp' | 'ArrowDown'): void {
-  fireEvent.keyDown(editor(), { key, ctrlKey: true })
-}
-
 describe('sql editor history recall', () => {
   afterEach(() => {
     cleanup()
