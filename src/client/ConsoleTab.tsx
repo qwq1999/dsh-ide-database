@@ -172,6 +172,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const scanCursorRef = useRef('0')
   const redisDatabasesLoaded = useRef(false)
   const recallRef = useRef(-1)
+  const recallDraft = useRef('')
 
   const connection = connections.find((item) => item.id === selectedId)
   const isRedis = connection?.dialect === 'redis'
@@ -636,6 +637,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       const ok = await askConfirm('即将执行会修改 Redis 数据的命令。', text)
       if (!ok) return
     }
+    recallRef.current = -1
+    recallDraft.current = ''
     setHistory(pushHistory('redis', text))
     setCommandRunning(true)
     setValueError(null)
@@ -652,12 +655,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }
 
-  /** ↑ / ↓ in the command box walk the command history. */
+  /** ↑ / ↓ in the command box walk the command history, ↓ past the newest returns to the draft. */
   const recallCommand = (delta: 1 | -1): void => {
     if (history.length === 0) return
-    const next = Math.min(history.length - 1, Math.max(0, recallRef.current + delta))
+    const current = recallRef.current
+    const next = Math.min(history.length - 1, Math.max(-1, current + delta))
+    if (next === current) return
+    if (current === -1) recallDraft.current = command
     recallRef.current = next
-    setCommand(history[next]!.statement)
+    setCommand(next === -1 ? recallDraft.current : history[next]!.statement)
   }
 
   const selectKey = useCallback(
@@ -1056,7 +1062,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               placeholder="例如 GET shop:customer:42"
               value={command}
               spellCheck={false}
-              onChange={(event) => setCommand(event.target.value)}
+              onChange={(event) => {
+                recallRef.current = -1
+                setCommand(event.target.value)
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void runCommand()
                 if (event.key === 'ArrowUp') {
