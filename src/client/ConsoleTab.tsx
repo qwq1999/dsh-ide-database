@@ -174,6 +174,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const stmtRef = useRef('')
   /** Bumped whenever a request must no longer touch the UI (source/schema switch). */
   const runToken = useRef(0)
+  /** Plans are invalidated by the same switching actions as query results. */
+  const planToken = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedRun, setSelectedRun] = useState(false)
@@ -577,11 +579,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
     const text = picked.statement.trim()
     if (text === '' || selectedId === '' || running) return
+    const token = ++planToken.current
     setPlanRunning(true)
     setFailure(null)
     setMultiNote('')
     try {
       const next = await api.explain(selectedId, text, schema === '' ? undefined : schema)
+      if (token !== planToken.current) return
       setPlan(next)
       setResult(next.plan ?? null)
       setPage(0)
@@ -590,11 +594,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setFailure({ message: next.warnings.join('；') || '没有返回执行计划', detail: next.statements.join('\n') })
       }
     } catch (error) {
+      if (token !== planToken.current) return
       setPlan(null)
       setResult(null)
       setFailure(failureText(error))
     } finally {
-      setPlanRunning(false)
+      if (token === planToken.current) setPlanRunning(false)
     }
   }
 
@@ -685,6 +690,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   /** Any queued request (SQL, command, scan, plan) belongs to the old source after a switch. */
   const invalidateRun = useCallback((): void => {
     runToken.current += 1
+    planToken.current += 1
     setRunning(false)
     setPlanRunning(false)
     setCommandRunning(false)
