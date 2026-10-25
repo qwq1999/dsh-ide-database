@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextRowSort, sortRows } from '../../src/client/rowsort'
+import { nextRowSort, sortRows, sortRowsWithOrder } from '../../src/client/rowsort'
 
 const columns = [
   { name: 'id', typeName: 'INT' },
@@ -32,6 +32,13 @@ describe('sortRows', () => {
   it('sorts numbers numerically', () => {
     expect(sortRows(columns, rows, { column: 'id', direction: 'asc' }).map((row) => row[0])).toEqual([1, 2, 3])
     expect(sortRows(columns, rows, { column: 'id', direction: 'desc' }).map((row) => row[0])).toEqual([3, 2, 1])
+  })
+
+  it('reports where each sorted row came from', () => {
+    const sorted = sortRowsWithOrder(columns, rows, { column: 'id', direction: 'desc' })
+    expect(sorted.rows.map((row) => row[0])).toEqual([3, 2, 1])
+    expect(sorted.order).toEqual([0, 2, 1])
+    expect(sortRowsWithOrder(columns, rows, null).order).toEqual([0, 1, 2])
   })
 
   it('keeps empty cells at the bottom in both directions', () => {

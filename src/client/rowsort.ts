@@ -34,18 +34,33 @@ function order(left: CellValue, right: CellValue): number {
   return COLLATOR.compare(String(left), String(right))
 }
 
-/** Sort a page of rows by one column; empty cells always sink to the bottom. */
-export function sortRows(columns: ColumnInfo[], rows: Row[], sort: RowSort | null): Row[] {
-  if (sort === null) return rows
+/**
+ * Sort a page of rows by one column; empty cells always sink to the bottom.
+ * `order` maps each sorted position back to the row's position before sorting,
+ * so callers can keep showing the original row numbers.
+ */
+export function sortRowsWithOrder(
+  columns: ColumnInfo[],
+  rows: Row[],
+  sort: RowSort | null,
+): { rows: Row[]; order: number[] } {
+  const identity = rows.map((_row, index) => index)
+  if (sort === null) return { rows, order: identity }
   const index = columns.findIndex((column) => column.name === sort.column)
-  if (index < 0) return rows
+  if (index < 0) return { rows, order: identity }
   const factor = sort.direction === 'asc' ? 1 : -1
-  return [...rows].sort((left, right) => {
-    const a = left[index]
-    const b = right[index]
+  const positions: number[] = [...identity].sort((left, right) => {
+    const a = rows[left]?.[index]
+    const b = rows[right]?.[index]
     const aEmpty = a === null || a === undefined
     const bEmpty = b === null || b === undefined
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
     return factor * order(a, b)
   })
+  return { rows: positions.map((position) => rows[position] as Row), order: positions }
+}
+
+/** Sort a page of rows by one column; empty cells always sink to the bottom. */
+export function sortRows(columns: ColumnInfo[], rows: Row[], sort: RowSort | null): Row[] {
+  return sortRowsWithOrder(columns, rows, sort).rows
 }

@@ -33,7 +33,7 @@ import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHi
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
-import { nextRowSort, sortRows, type RowSort } from './rowsort'
+import { nextRowSort, sortRowsWithOrder, type RowSort } from './rowsort'
 import { filterRowIndexes } from './rowfilter'
 import { pageable, wrapPage } from './pagesql'
 import { pickStatement, statementAtCaret } from './sqlselection'
@@ -906,7 +906,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const columns = result?.columns ?? EMPTY_COLUMNS
   const rows = result?.rows ?? EMPTY_ROWS
   // Sorting only reshapes the current page; a new query or page resets it.
-  const visibleRows = useMemo(() => sortRows(columns, rows, rowSort), [columns, rows, rowSort])
+  const sorted = useMemo(() => sortRowsWithOrder(columns, rows, rowSort), [columns, rows, rowSort])
+  const visibleRows = sorted.rows
   // The text filter is a view over the page: exports of "current page" follow it.
   const filteredIndexes = useMemo(() => filterRowIndexes(visibleRows, rowFilter), [visibleRows, rowFilter])
   const filteredRows = useMemo(() => filteredIndexes.map((index) => visibleRows[index] as Row), [filteredIndexes, visibleRows])
@@ -1756,7 +1757,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 columns={shownColumns}
                 rows={shownRows}
                 offset={offset}
-                rowNumbers={filteredIndexes.map((index) => offset + index + 1)}
+                rowNumbers={filteredIndexes.map((index) => offset + (sorted.order[index] ?? index) + 1)}
                 storageKey="console:sql"
                 sort={rowSort}
                 onSort={gridSort}
