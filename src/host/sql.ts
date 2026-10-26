@@ -603,7 +603,7 @@ export class SqlService {
         const ddl = cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), '')
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('服务器没有返回 DDL 文本')
-      } else if (dialect === 'sqlite' && (kind === 'table' || kind === 'view')) {
+      } else if (dialect === 'sqlite' && (kind === 'table' || kind === 'view' || kind === 'trigger')) {
         const statement = `SELECT sql FROM sqlite_master WHERE type = ${quoteLiteral(kind)} AND name = ${quoteLiteral(table)}`
         const result = await this.query(connId, statement, { maxRows: 1 })
         const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
@@ -615,6 +615,12 @@ export class SqlService {
         const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('OBJECT_DEFINITION 没有返回内容（可能没有查看定义的权限）')
+      } else if (dialect === 'postgres' && kind === 'trigger') {
+        const statement = `SELECT pg_get_triggerdef(t.oid) AS ddl FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE t.tgname = ${quoteLiteral(table)} AND n.nspname = ${quoteLiteral(schema)} LIMIT 1`
+        const result = await this.query(connId, statement, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('pg_get_triggerdef 没有返回内容')
       } else if (dialect === 'postgres' && kind === 'view') {
         const statement = `SELECT pg_get_viewdef(to_regclass(${quoteLiteral(qualified)}) , true) AS ddl`
         const result = await this.query(connId, statement, { maxRows: 1 })

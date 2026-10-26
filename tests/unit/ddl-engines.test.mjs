@@ -83,3 +83,25 @@ describe('SQL Server view definitions', () => {
     expect(result.ddl).toBe('CREATE VIEW dbo.v_users AS SELECT 1')
   })
 })
+
+describe('trigger definitions', () => {
+  it('reads a PostgreSQL trigger with pg_get_triggerdef', async () => {
+    const { service, calls } = makeService(connection('pg', 'postgres', 'postgres', 'app'), 'CREATE TRIGGER t AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()')
+
+    const result = await service.ddl('pg', 'postgres', 'public', 't', 'trigger')
+
+    expect(calls[0].sql).toBe(
+      "SELECT pg_get_triggerdef(t.oid) AS ddl FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE t.tgname = 't' AND n.nspname = 'public' LIMIT 1",
+    )
+    expect(result).toMatchObject({ kind: 'trigger', source: 'server' })
+  })
+
+  it('reads a SQLite trigger from sqlite_master', async () => {
+    const { service, calls } = makeService(connection('lite', 'sqlite', 'sqlite', './app.db'), 'CREATE TRIGGER t AFTER INSERT ON users BEGIN SELECT 1; END')
+
+    const result = await service.ddl('lite', 'sqlite', 'main', 't', 'trigger')
+
+    expect(calls[0].sql).toBe("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 't'")
+    expect(result).toMatchObject({ kind: 'trigger', source: 'server' })
+  })
+})
