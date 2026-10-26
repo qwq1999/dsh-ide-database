@@ -90,4 +90,23 @@ describe('table error banner', () => {
     await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(before))
     await waitFor(() => expect(screen.queryByRole('button', { name: '重试' })).toBeNull())
   })
+
+  it('retries from the banner shown above the rows', async () => {
+    let fail = false
+    mocks.query.mockImplementation(async (request: { sql: string }) => {
+      if (request.sql.includes('COUNT(*)')) return { columns: [{ name: 'n', type: 'bigint' }], rows: [[1]], elapsedMs: 1, sql: request.sql }
+      if (fail) return Promise.reject(new ApiError('sql', 'refresh failed'))
+      return { columns: [{ name: 'id', type: 'int' }], rows: [[1]], elapsedMs: 1, sql: request.sql }
+    })
+    render(<TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />)
+
+    await waitFor(() => expect(screen.queryAllByRole('cell').length).toBeGreaterThan(0))
+    fail = true
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    await screen.findByText(/refresh failed/)
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    await waitFor(() => expect(screen.queryByText(/refresh failed/)).toBeNull())
+  })
 })
