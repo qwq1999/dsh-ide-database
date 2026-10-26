@@ -126,4 +126,21 @@ describe('console failure banner', () => {
     fireEvent.click(screen.getByRole('button', { name: '复制实际执行的 SQL' }))
     await waitFor(() => expect(copies).toHaveBeenCalledWith('SELECT `id` FROM `shop`.`orders`'))
   })
+
+  it('retries the failing statement from the banner', async () => {
+    mocks.query.mockRejectedValueOnce(new ApiError('sql', 'boom'))
+    mocks.query.mockResolvedValue({ columns: [{ name: 'name', type: 'varchar' }], rows: [['beta']], elapsedMs: 5, sql: 'SELECT * FROM users' })
+    render(<ConsoleTab useTabInfo={tab} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM users' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+
+    await screen.findByText(/boom/)
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    await waitFor(() => expect(screen.queryByText(/boom/)).toBeNull())
+    expect(await screen.findByText('beta')).not.toBeNull()
+  })
 })

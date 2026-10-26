@@ -216,6 +216,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const resultBeforePlan = useRef<QueryResult | null>(null)
   /** Row count and duration of the run that just finished, for the history list. */
   const lastRun = useRef<{ rows: number; elapsedMs: number } | null>(null)
+  /** Text of the last submitted run so the error banner can retry it. */
+  const lastAttempt = useRef<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   /** Two console tabs open at once must not share the completion popup ids. */
   const completeId = useId()
@@ -653,6 +655,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   /** Shared by both run entry points: confirm writes, split, execute. */
   const runText = async (text: string): Promise<void> => {
+    lastAttempt.current = text
     setExportOpen(false)
     const body = text.trim()
     if (body === '') return
@@ -704,6 +707,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     if (found.statement === '') return
     setSelectedRun(false)
     await runText(found.statement)
+  }
+
+  const retryLast = (): void => {
+    const text = lastAttempt.current
+    if (text === null) return
+    setFailure(null)
+    void runText(text)
   }
 
   /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
@@ -2175,6 +2185,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               tone="error"
               onClose={() => setFailure(null)}
               actions={
+                <>
+                  <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => retryLast()}
+                >
+                  重试
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -2187,6 +2205,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 >
                   复制
                 </Button>
+                </>
               }
             >
               {failure.message}
