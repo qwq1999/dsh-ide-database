@@ -1654,6 +1654,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   input.setSelectionRange(next.caret, next.caret)
                   return
                 }
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+                  event.preventDefault()
+                  setCommand('')
+                  recallRef.current = -1
+                  setCaretPos(0)
+                  return
+                }
                 if (event.key === 'Enter') void runCommand()
                 if (event.key === 'ArrowUp') {
                   event.preventDefault()
