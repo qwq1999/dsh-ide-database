@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppConfig } from '../../src/shared/types'
@@ -53,6 +53,7 @@ const config = {
 
 describe('table error banner', () => {
   beforeEach(() => {
+    cleanup()
     vi.clearAllMocks()
     mocks.status.mockResolvedValue({ config, drivers: [], env: {} })
     mocks.copyText.mockResolvedValue(true)
@@ -68,4 +69,5 @@ describe('table error banner', () => {
     await waitFor(() => expect(mocks.copyText).toHaveBeenCalled())
     expect(mocks.copyText.mock.calls[0]?.[0]).toBe("Unknown column\nColumn 'nope' not found")
   })
+
 })
