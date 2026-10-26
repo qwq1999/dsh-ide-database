@@ -64,6 +64,15 @@ describe('server side DDL for the newer engines', () => {
 })
 
 describe('SQL Server view definitions', () => {
+  it('reads a procedure body with the same catalog function', async () => {
+    const { service, calls } = makeService(connection('ms', 'mssql', 'mssql', 'app'), 'CREATE PROCEDURE dbo.rebuild AS SELECT 1')
+
+    const result = await service.ddl('ms', 'mssql', 'dbo', 'rebuild', 'procedure')
+
+    expect(calls[0].sql).toBe("SELECT OBJECT_DEFINITION(OBJECT_ID('[dbo].[rebuild]')) AS ddl")
+    expect(result).toMatchObject({ kind: 'procedure', source: 'server' })
+  })
+
   it('reads a view body from OBJECT_DEFINITION', async () => {
     const { service, calls } = makeService(connection('ms', 'mssql', 'mssql', 'app'), 'CREATE VIEW dbo.v_users AS SELECT 1')
 
