@@ -399,8 +399,11 @@ final class SqlExecutor {
                             String type = rs.getString(2);
                             Map<String, Object> row = new LinkedHashMap<String, Object>();
                             row.put("name", rs.getString(1));
-                            row.put("kind", "VIEW".equalsIgnoreCase(type)
-                                    || "SYSTEM VIEW".equalsIgnoreCase(type) ? "view" : "table");
+                            String kind = "VIEW".equalsIgnoreCase(type)
+                                    || "SYSTEM VIEW".equalsIgnoreCase(type)
+                                    ? "view"
+                                    : "SEQUENCE".equalsIgnoreCase(type) ? "sequence" : "table";
+                            row.put("kind", kind);
                             row.put("comment", rs.getString(3));
                             result.add(row);
                         }
