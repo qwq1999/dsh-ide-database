@@ -6,6 +6,8 @@
  * move to the front instead of piling up.
  */
 
+import { agoText } from './relativetime'
+
 export type HistoryKind = 'sql' | 'redis'
 
 export interface HistoryEntry {
@@ -111,13 +113,7 @@ export function clearHistory(kind: HistoryKind): HistoryEntry[] {
 
 /** "刚刚 / 5 分钟前 / 2 小时前 / 3 天前" for the history rows. */
 export function historyAgo(at: number, now: number = Date.now()): string {
-  const seconds = Math.max(0, Math.round((now - at) / 1000))
-  if (seconds < 60) return '刚刚'
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  return `${Math.floor(hours / 24)} 天前`
+  return agoText((now - at) / 1000)
 }
 
 type Pinned = Record<HistoryKind, HistoryEntry[]>
