@@ -927,6 +927,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onChange={(event) => setWhereText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') apply({ where: whereText, page: 0 })
+            if (event.key === 'Escape') {
+              setWhereText('')
+              apply({ where: '', page: 0 })
+            }
           }}
         />
         {whereText === '' ? null : (

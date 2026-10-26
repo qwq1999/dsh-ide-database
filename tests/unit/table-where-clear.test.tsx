@@ -95,4 +95,16 @@ describe('table where bar', () => {
     await waitFor(() => expect(pageSqls().at(-1)).not.toContain('WHERE'))
     expect(screen.queryByRole('button', { name: '清空过滤条件' })).toBeNull()
   })
+
+  it('clears the condition with Escape as well', async () => {
+    render(<TableTab useTabInfo={tab} />)
+    const box = (await screen.findByPlaceholderText(/过滤条件/)) as HTMLInputElement
+    fireEvent.change(box, { target: { value: 'id = 9' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(pageSqls().at(-1)).toContain('id = 9'))
+
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(box.value).toBe(''))
+    expect(pageSqls().at(-1)).not.toContain('WHERE')
+  })
 })
