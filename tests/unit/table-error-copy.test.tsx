@@ -70,4 +70,24 @@ describe('table error banner', () => {
     expect(mocks.copyText.mock.calls[0]?.[0]).toBe("Unknown column\nColumn 'nope' not found")
   })
 
+
+  it('retries the same request from the banner', async () => {
+    let fail = true
+    mocks.query.mockImplementation(async (request: { sql: string }) => {
+      if (request.sql.includes('COUNT(*)')) {
+        return { columns: [{ name: 'n', type: 'bigint' }], rows: [[1]], elapsedMs: 1, sql: request.sql }
+      }
+      if (fail) return Promise.reject(new ApiError('sql', 'boom'))
+      return { columns: [{ name: 'id', type: 'int' }], rows: [[1]], elapsedMs: 1, sql: request.sql }
+    })
+    render(<TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />)
+
+    await screen.findByText(/boom/)
+    const before = mocks.query.mock.calls.length
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '重试' })).toBeNull())
+  })
 })

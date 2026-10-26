@@ -171,6 +171,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const whereRef = useRef<HTMLInputElement | null>(null)
   /** Latest load wins: an older page must not overwrite a newer one. */
   const loadToken = useRef(0)
+  /** Remembers what the last load asked for so the error banner can retry it. */
+  const lastLoad = useRef<{
+    found: ClientConnection
+    target: { page: number; size: number; where: string; orderBy: string; recount: boolean }
+  } | null>(null)
   const storedOrderApplied = useRef(false)
   const filterRowRef = useRef<HTMLTableRowElement | null>(null)
 
@@ -194,6 +199,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
       const token = ++loadToken.current
+      lastLoad.current = { found, target }
       setLoading(true)
       setError(null)
       try {
@@ -719,9 +725,22 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           tone="error"
           onClose={() => setError(null)}
           actions={
-            <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
-              复制
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const last = lastLoad.current
+                  if (last === null) return
+                  void load(last.found, last.target)
+                }}
+              >
+                重试
+              </Button>
+              <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
+                复制
+              </Button>
+            </>
           }
         >
           {error.message}
