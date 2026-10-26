@@ -854,6 +854,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             .then((info) => {
               redisDatabasesLoaded.current = true
               setRedisDatabases(info.databases)
+              // The remembered index can outlive the server that had that many
+              // databases; sending it would fail before the first scan.
+              if (info.databases > 0 && activeRedisDb >= info.databases) {
+                setRedisDb(0)
+                writeNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, 0)
+              }
             })
             .catch(() => undefined)
         }
