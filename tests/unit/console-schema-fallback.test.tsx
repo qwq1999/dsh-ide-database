@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { ConsoleTab } from '../../src/client/ConsoleTab'
+import { waitForConsoleSource } from '../stubs/console-ready'
 
 const mocks = vi.hoisted(() => ({
   status: vi.fn(),
@@ -13,77 +16,66 @@ const mocks = vi.hoisted(() => ({
   redisKey: vi.fn(),
   redisCommand: vi.fn(),
   explain: vi.fn(),
+  cancel: vi.fn(),
 }))
 
-vi.mock('../../src/client/api', () => ({
-  api: { ...mocks },
-  ApiError: class ApiError extends Error {},
-}))
+vi.mock('../../src/client/api', () => ({ api: mocks }))
 
-import { ConsoleTab } from '../../src/client/ConsoleTab'
-import { waitForConsoleSource } from '../stubs/console-ready'
+const SCHEMA_KEY = 'dsh-ide-database.schema.v1:mysql-1'
 
-function consoleTab(): JSX.Element {
-  return <ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />
+function settings() {
+  return {
+    maxRows: 500,
+    queryTimeoutSec: 30,
+    connectTimeoutSec: 10,
+    javaPath: '',
+    mavenMirror: '',
+    allowAgentWrites: false,
+    redisScanCount: 200,
+    confirmDestructive: true,
+  }
 }
 
-const settings = {
-  maxRows: 500,
-  queryTimeoutSec: 60,
-  connectTimeoutSec: 15,
-  javaPath: '',
-  mavenMirror: '',
-  allowAgentWrites: false,
-  redisScanCount: 200,
-  confirmDestructive: false,
-}
-
-const KEY = 'dsh-ide-database.schema.v1:mysql-1'
-
-beforeEach(() => {
-  window.localStorage.clear()
-  vi.clearAllMocks()
-  mocks.status.mockResolvedValue({
-    config: {
-      connections: [
-        {
-          id: 'mysql-1',
-          name: '演示 MySQL',
-          driver: 'mysql',
-          dialect: 'mysql',
-          host: '127.0.0.1',
-          port: 3306,
-          user: 'root',
-          hasPassword: false,
-          database: 'shop',
-          redisDb: 0,
-          params: {},
-          readOnly: false,
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-      settings,
-      drivers: [],
-    },
-    drivers: [],
-    env: {},
+describe('remembered schema', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
   })
-  mocks.schemas.mockResolvedValue({ schemas: [{ name: 'shop' }, { name: 'other' }] })
-  mocks.objects.mockResolvedValue({ objects: [] })
-})
 
-afterEach(() => {
-  cleanup()
-  window.localStorage.clear()
-})
+  it('falls back to the connection default when the remembered schema is gone', async () => {
+    localStorage.setItem(SCHEMA_KEY, 'gone')
+    mocks.status.mockResolvedValue({
+      config: {
+        connections: [
+          {
+            id: 'mysql-1',
+            name: '演示 MySQL',
+            dialect: 'mysql',
+            host: '127.0.0.1',
+            port: 3306,
+            user: 'root',
+            database: 'shop',
+            readOnly: false,
+          },
+        ],
+        settings: settings(),
+        drivers: [],
+      },
+      drivers: [],
+      env: {},
+    })
+    mocks.schemas.mockResolvedValue({ schemas: [{ name: 'shop' }] })
+    mocks.query.mockResolvedValue({ columns: [], rows: [], elapsedMs: 1, sql: 'SELECT 1' })
 
-describe('console schema fallback', () => {
-  it('falls back to the default when the remembered schema is gone', async () => {
-    window.localStorage.setItem(KEY, 'gone')
-    render(consoleTab())
+    render(
+      <ConsoleTab
+        useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })}
+      />,
+    )
     await waitForConsoleSource(mocks)
-    const picker = screen.getByLabelText('数据库')
-    await waitFor(() => expect(picker).toHaveProperty('value', 'shop'))
-    expect(window.localStorage.getItem(KEY)).toBe('shop')
+
+    const select = (await screen.findByLabelText('数据库')) as HTMLSelectElement
+    await waitFor(() => expect(select.value).toBe('shop'))
+    expect(localStorage.getItem(SCHEMA_KEY)).toBe('shop')
   })
 })

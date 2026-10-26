@@ -348,6 +348,19 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     void loadSchemaList(selectedId)
   }, [isRedis, loadSchemaList, selectedId])
 
+  // A remembered schema can disappear (dropped database, revoked privilege);
+  // fall back instead of sending the host a name it can no longer resolve.
+  useEffect(() => {
+    if (selectedId === '' || schema === '' || schemas.length === 0) return
+    const insensitive = connection?.dialect === 'mysql' || connection?.dialect === 'generic'
+    const known = schemas.some((item) =>
+      insensitive ? item.name.toLowerCase() === schema.toLowerCase() : item.name === schema,
+    )
+    if (known) return
+    setSchema(defaultSchema)
+    writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, defaultSchema)
+  }, [connection?.dialect, defaultSchema, schema, schemas, selectedId])
+
   /* -- Ctrl+Space table completion ------------------------------------------
    * Suggestions come from the object list of the schema the console runs in;
    * the list is cached per schema so reopening the popup never refetches. */
