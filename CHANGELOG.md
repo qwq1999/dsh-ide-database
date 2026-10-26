@@ -4,8 +4,10 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（153）
+## 新功能（155）
 
+- `70438ce` feat(driver): 新增 MariaDB 预设
+- `38537f9` feat(driver): 新增 PostgreSQL 预设与方言支持
 - `1029023` feat(console): 命令框按 Ctrl/⌘ + L 清空
 - `ac219f8` feat(tree): 库节点可导出整个库的建表语句
 - `6dc6f7e` feat(tree): Redis 逻辑库与键行也标上层级
@@ -160,8 +162,12 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（65）
+## 修复（69）
 
+- `88cf4d5` fix(tree): 23 小时 40 分不再显示成 24 小时前
+- `c7f8609` fix(ui): TTL 的 59.5 秒显示成 1m 而不是 59s
+- `26beeb2` fix(ui): 文件大小 1023.6 字节显示成 1.0 KB 而不是 1024 B
+- `3cc7ff5` fix(ui): 耗时接近 1 秒时不再显示 1000 ms
 - `9c00b95` fix(table): 记住的排序列不存在时不再把坏 SQL 发出去
 - `a6262d5` fix(console): 记住的 Redis 逻辑库超出范围时回退 0
 - `a1feb6f` fix(console): 记住的库已被删掉时回退默认库
@@ -257,8 +263,9 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（8）
+## 重构（9）
 
+- `864db0f` refactor(ui): 历史与树详情共用一个时间描述函数
 - `c206a05` refactor(table): WHERE 前缀剥离也改用正则字面量
 - `42ccc99` refactor(table): ORDER BY 前缀剥离集中成一个函数
 - `f0334ad` refactor(ui): 复制成功反馈收进一个钩子
@@ -268,8 +275,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（26）
+## 测试（27）
 
+- `7523386` test: 补 MariaDB 预设与两处用例的稳定性
 - `1384433` test(console): 取编辑器统一改为异步查找
 - `e95c0eb` test(host): 覆盖 /status、/env 与驱动下载
 - `d26af99` test(host): 覆盖取消、设置更新与健康检查路由
@@ -297,8 +305,12 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（17）
+## 文档（21）
 
+- `c122417` docs(agent): 数据库工具说明补上 PostgreSQL
+- `4b31843` docs: 修正数据表每页行数选项
+- `140342e` docs: 说明记住的排序列失效时会自动丢弃
+- `45abd30` docs: 重新生成变更日志
 - `13d88b2` docs: 去掉快捷键表里重复的数据源树行
 - `a14793c` docs: 重新生成变更日志
 - `f5eb83f` docs: 重新生成变更日志
