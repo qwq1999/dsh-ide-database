@@ -7,7 +7,8 @@ export function dialectLabel(dialect: Dialect | undefined): string {
 
 export function formatMs(ms: number | undefined): string {
   if (ms === undefined || Number.isNaN(ms)) return '—'
-  if (ms < 1000) return `${Math.max(1, Math.round(ms))} ms`
+  const rounded = Math.max(1, Math.round(ms))
+  if (rounded < 1000) return `${rounded} ms`
   const seconds = Math.round(ms / 1000)
   if (seconds >= 60) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
   return `${(ms / 1000).toFixed(2)} s`
