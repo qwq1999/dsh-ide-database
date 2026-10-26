@@ -62,3 +62,15 @@ describe('server side DDL for the newer engines', () => {
     expect(result).toMatchObject({ schema: 'public', table: 'v_users', kind: 'view', source: 'server' })
   })
 })
+
+describe('SQL Server view definitions', () => {
+  it('reads a view body from OBJECT_DEFINITION', async () => {
+    const { service, calls } = makeService(connection('ms', 'mssql', 'mssql', 'app'), 'CREATE VIEW dbo.v_users AS SELECT 1')
+
+    const result = await service.ddl('ms', 'mssql', 'dbo', 'v_users', 'view')
+
+    expect(calls[0].sql).toBe("SELECT OBJECT_DEFINITION(OBJECT_ID('[dbo].[v_users]')) AS ddl")
+    expect(result).toMatchObject({ schema: 'dbo', table: 'v_users', kind: 'view', source: 'server' })
+    expect(result.ddl).toBe('CREATE VIEW dbo.v_users AS SELECT 1')
+  })
+})

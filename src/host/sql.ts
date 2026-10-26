@@ -239,11 +239,11 @@ function parseNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-/** Quote one identifier for the dialect (MySQL style backticks, otherwise ANSI quotes). */
+/** Quote one identifier the way the dialect wants (backticks, square brackets, ANSI quotes). */
 function quoteIdent(dialect: SqlDialect, name: string): string {
-  return dialect === 'mysql'
-    ? `\`${name.replace(/`/g, '``')}\``
-    : `"${name.replace(/"/g, '""')}"`
+  if (dialect === 'mysql') return `\`${name.replace(/`/g, '``')}\``
+  if (dialect === 'mssql') return `[${name.replace(/]/g, ']]')}]`
+  return `"${name.replace(/"/g, '""')}"`
 }
 
 function quoteLiteral(value: string): string {
@@ -609,6 +609,12 @@ export class SqlService {
         const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('sqlite_master 没有返回定义')
+      } else if (dialect === 'mssql' && kind === 'view') {
+        const statement = `SELECT OBJECT_DEFINITION(OBJECT_ID(${quoteLiteral(qualified)})) AS ddl`
+        const result = await this.query(connId, statement, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('OBJECT_DEFINITION 没有返回内容')
       } else if (dialect === 'postgres' && kind === 'view') {
         const statement = `SELECT pg_get_viewdef(to_regclass(${quoteLiteral(qualified)}) , true) AS ddl`
         const result = await this.query(connId, statement, { maxRows: 1 })
