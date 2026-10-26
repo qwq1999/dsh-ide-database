@@ -117,6 +117,8 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
   const customId = isCustom ? choice.slice('custom:'.length) : undefined
   const customDriver = customDrivers.find((driver) => driver.id === customId)
   const preset = !isCustom ? presetOf(choice) : undefined
+  /** File based engines have no host, port or credentials to fill in. */
+  const fileBased = preset?.hostOptional === true
   const dialect = isCustom ? customDriver?.dialect : preset?.dialect
   const isRedis = dialect === 'redis'
 
@@ -257,33 +259,37 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
               <Banner tone="warn">还没有自定义驱动，请先在「设置」标签页新增。</Banner>
             </div>
           ) : null}
-          <Field label="主机" required>
-            <TextInput value={host} onChange={(event) => setHost(event.target.value)} placeholder="127.0.0.1" />
-          </Field>
-          <Field label="端口" required>
-            <TextInput
-              value={port}
-              inputMode="numeric"
-              onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ''))}
-            />
-          </Field>
-          <Field label="用户名">
-            <TextInput value={user} onChange={(event) => setUser(event.target.value)} placeholder={isRedis ? 'default' : '用户名'} />
-          </Field>
-          <Field label="密码" hint={editing?.hasPassword ? '已保存密码，留空则保持不变' : undefined}>
-            <TextInput
-              type="password"
-              value={password}
-              autoComplete="new-password"
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder={editing?.hasPassword ? '留空则保持不变' : '密码'}
-            />
-          </Field>
-          {editing?.hasPassword ? (
-            <div className="dshdb-span-2">
-              <Switch checked={clearPassword} onChange={setClearPassword} label="清除已保存的密码" />
-            </div>
-          ) : null}
+          {fileBased ? null : (
+            <>
+              <Field label="主机" required>
+                <TextInput value={host} onChange={(event) => setHost(event.target.value)} placeholder="127.0.0.1" />
+              </Field>
+              <Field label="端口" required>
+                <TextInput
+                  value={port}
+                  inputMode="numeric"
+                  onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </Field>
+              <Field label="用户名">
+                <TextInput value={user} onChange={(event) => setUser(event.target.value)} placeholder={isRedis ? 'default' : '用户名'} />
+              </Field>
+              <Field label="密码" hint={editing?.hasPassword ? '已保存密码，留空则保持不变' : undefined}>
+                <TextInput
+                  type="password"
+                  value={password}
+                  autoComplete="new-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={editing?.hasPassword ? '留空则保持不变' : '密码'}
+                />
+              </Field>
+              {editing?.hasPassword ? (
+                <div className="dshdb-span-2">
+                  <Switch checked={clearPassword} onChange={setClearPassword} label="清除已保存的密码" />
+                </div>
+              ) : null}
+            </>
+          )}
           {isRedis ? (
             <Field label="逻辑库序号" hint="Redis 数据库编号，默认 0">
               <TextInput
@@ -293,8 +299,12 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
               />
             </Field>
           ) : (
-            <Field label="数据库 / 服务名" hint={preset?.databaseHint ?? '可留空，连接后再选择 schema'}>
-              <TextInput value={database} onChange={(event) => setDatabase(event.target.value)} placeholder="可留空" />
+            <Field label="数据库 / 服务名" span={fileBased} hint={preset?.databaseHint ?? '可留空，连接后再选择 schema'}>
+              <TextInput
+                value={database}
+                onChange={(event) => setDatabase(event.target.value)}
+                placeholder={fileBased ? '例如 ./data/app.db' : '可留空'}
+              />
             </Field>
           )}
           {!isRedis ? (

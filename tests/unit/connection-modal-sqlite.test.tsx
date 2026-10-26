@@ -36,6 +36,17 @@ describe('connection modal for file based engines', () => {
     mocks.saveConnection.mockResolvedValue({})
   })
 
+  it('hides the host and credentials for a file based engine', () => {
+    renderNew()
+
+    fireEvent.change(screen.getByLabelText(/^驱动/), { target: { value: 'sqlite' } })
+
+    expect(screen.queryByLabelText(/^主机/)).toBeNull()
+    expect(screen.queryByLabelText(/^端口/)).toBeNull()
+    expect(screen.queryByLabelText(/^用户名/)).toBeNull()
+    expect(screen.getByLabelText(/数据库 \/ 服务名/)).toBeTruthy()
+  })
+
   it('requires a database file before saving SQLite', async () => {
     renderNew()
 
