@@ -174,6 +174,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       },
     [],
   )
+  /** Copy and export notes are transient: they clear themselves so the bar does not stale. */
+  useEffect(() => {
+    if (exportNote === '') return undefined
+    const timer = setTimeout(() => setExportNote(''), 2500)
+    return () => clearTimeout(timer)
+  }, [exportNote])
   const exportCancelled = useRef(false)
   const [exporting, setExporting] = useState(false)
   const exportAnchor = useRef<HTMLSpanElement>(null)

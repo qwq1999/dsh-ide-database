@@ -105,5 +105,6 @@ describe('redis copy key names', () => {
 
     await waitFor(() => expect(mocks.copies).toHaveBeenCalledWith(['user:1', 'user:2'].join(String.fromCharCode(10))))
     expect(await screen.findByText('键名（2 个） 已复制')).not.toBeNull()
+    await waitFor(() => expect(screen.queryByText('键名（2 个） 已复制')).toBeNull(), { timeout: 4000 })
   })
 })
