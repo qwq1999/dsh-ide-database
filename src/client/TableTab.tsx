@@ -958,6 +958,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onChange={(event) => setOrderText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') apply({ orderBy: orderText, page: 0 })
+            if (event.key === 'Escape') {
+              setOrderText('')
+              apply({ orderBy: '', page: 0 })
+            }
           }}
         />
         {orderText === '' ? null : (

@@ -95,4 +95,16 @@ describe('table order bar', () => {
     await waitFor(() => expect(pageSqls().at(-1)).not.toContain('ORDER BY'))
     expect(screen.queryByRole('button', { name: '清空排序' })).toBeNull()
   })
+
+  it('clears the sort with Escape as well', async () => {
+    render(<TableTab useTabInfo={tab} />)
+    const box = (await screen.findByPlaceholderText(/排序列/)) as HTMLInputElement
+    fireEvent.change(box, { target: { value: 'id DESC' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(pageSqls().at(-1)).toContain('ORDER BY id DESC'))
+
+    fireEvent.keyDown(box, { key: 'Escape' })
+    await waitFor(() => expect(box.value).toBe(''))
+    expect(pageSqls().at(-1)).not.toContain('ORDER BY')
+  })
 })
