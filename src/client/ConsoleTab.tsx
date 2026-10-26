@@ -1548,6 +1548,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               placeholder="筛选键名"
               value={keyFilter}
               onChange={(event) => setKeyFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setKeyFilter('')
+              }}
             />
             {keyFilter === '' ? null : (
               <button

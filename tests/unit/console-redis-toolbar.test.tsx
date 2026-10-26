@@ -96,4 +96,26 @@ describe('Redis console toolbar', () => {
     await waitFor(() => expect(screen.queryByText('GET user:9')).toBeNull())
     window.localStorage.clear()
   })
+
+  it('clears the key filter with Escape', async () => {
+    mocks.redisScan.mockResolvedValue({
+      keys: [
+        { key: 'user:1', db: 0, type: 'string', ttl: -1, size: 5 },
+        { key: 'order:1', db: 0, type: 'string', ttl: -1, size: 5 },
+      ],
+      cursor: '0',
+    })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    expect(await screen.findByText('user:1')).not.toBeNull()
+    expect(screen.getByText('order:1')).not.toBeNull()
+
+    const filter = screen.getByLabelText('筛选键名') as HTMLInputElement
+    fireEvent.change(filter, { target: { value: 'user' } })
+    await waitFor(() => expect(screen.queryByText('order:1')).toBeNull())
+
+    fireEvent.keyDown(filter, { key: 'Escape' })
+    await waitFor(() => expect(filter.value).toBe(''))
+    expect(await screen.findByText('order:1')).not.toBeNull()
+  })
 })
