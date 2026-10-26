@@ -25,6 +25,7 @@ import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
 import { formatCell, formatMs, looksLikeDdl, looksLikeRedisWrite, looksLikeWrite } from './format'
 import { annotateHistory, clearHistory, pushHistory, readHistory, readPins, togglePin, type HistoryEntry } from './history'
+import { filterRedisKeys } from './rediskeys'
 import { formatSql } from './sqlformat'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
@@ -1038,13 +1039,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     void refreshValue()
   }, [refreshValue])
 
-  const visibleKeys = useMemo(() => {
-    if (scan === null) return []
-    const needle = keyFilter.trim().toLowerCase()
-    return scan.keys.filter(
-      (info) => (!ttlOnly || info.ttl >= 0) && (needle === '' || info.key.toLowerCase().includes(needle)),
-    )
-  }, [keyFilter, scan, ttlOnly])
+  const visibleKeys = useMemo(
+    () => (scan === null ? [] : filterRedisKeys(scan.keys, { needle: keyFilter, ttlOnly })),
+    [keyFilter, scan, ttlOnly],
+  )
 
   /** Stable for the memoised key rows: only a different key starts a new request. */
   const pickKey = useCallback(
