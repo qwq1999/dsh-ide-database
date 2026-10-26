@@ -182,7 +182,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           name: { type: 'string', description: 'Display name, for example 演示 MySQL.' },
           driver: {
             type: 'string',
-            description: 'Driver id: mysql, oracle, dameng, oceanbase-mysql, oceanbase-oracle, postgresql, redis or custom.',
+            description: 'Driver id: mysql, oracle, dameng, postgres, oceanbase-mysql, oceanbase-oracle, redis or custom.',
           },
           host: { type: 'string', description: 'Host name or IP address.' },
           port: { type: 'number', description: 'Port, for example 3306 for MySQL or 6379 for Redis.' },
@@ -708,7 +708,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_download_driver',
       description:
-        'Download the JDBC driver jars for a preset (mysql, oracle, dameng, oceanbase-mysql, oceanbase-oracle) or a custom driver into the plugin data directory. Needed before a JDBC connection can be opened.',
+        'Download the JDBC driver jars for a preset (mysql, oracle, dameng, postgres, oceanbase-mysql, oceanbase-oracle) or a custom driver into the plugin data directory. Needed before a JDBC connection can be opened.',
       parameters: {
         type: 'object',
         properties: {
