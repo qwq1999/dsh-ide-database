@@ -434,9 +434,34 @@ final class SqlExecutor {
                     return metadataObjects(entry, schema);
                 }
             }
+            if ("sqlite".equals(entry.dialect)) {
+                List<Object> sqliteObjects = metadataObjects(entry, schema);
+                readSqliteTriggers(entry, sqliteObjects);
+                return sqliteObjects;
+            }
             return metadataObjects(entry, schema);
         } finally {
             entry.lock.unlock();
+        }
+    }
+
+    /** SQLite exposes triggers only through sqlite_master (JDBC metadata has no such table type). */
+    private void readSqliteTriggers(Conn entry, List<Object> result) {
+        String sql = "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name";
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql);
+                ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                String name = rs.getString(1);
+                if (name == null) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<String, Object>();
+                row.put("name", name);
+                row.put("kind", "trigger");
+                result.add(row);
+            }
+        } catch (SQLException ignored) {
+            // Triggers are a bonus; never hide the tables when this query fails.
         }
     }
 
