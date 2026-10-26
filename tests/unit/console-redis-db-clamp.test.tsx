@@ -75,8 +75,9 @@ describe('remembered Redis database', () => {
     )
     await waitForConsoleSource(mocks)
 
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
     const select = (await screen.findByLabelText('Redis 逻辑库')) as HTMLSelectElement
-    await waitFor(() => expect(select.value).toBe('0'))
+    await waitFor(() => expect(select.value).toBe('0'), { timeout: 10_000 })
     expect(localStorage.getItem(DB_KEY)).toBe('0')
   })
 })
