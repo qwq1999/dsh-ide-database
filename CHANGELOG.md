@@ -4,8 +4,12 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（169）
+## 新功能（173）
 
+- `f1a6f08` feat(redis): 命令失败时可以直接重试
+- `bc593f6` feat(console): 查询失败时可以直接重试上一次提交
+- `ecce46e` feat(table): 有数据时的错误横幅也能重试
+- `ce5b044` feat(console): Ctrl/⌘+L 清空编辑器
 - `0763e84` feat(table): 查询失败时可以直接重试那一页
 - `78bafc8` feat(ddl): 序列也能看到建序列语句
 - `51525b9` feat(mssql): 树里列出例程、触发器与序列
@@ -176,8 +180,10 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（73）
+## 修复（75）
 
+- `00fe2c3` fix(console): Redis 连接上不再出现 SQL 专属按钮
+- `a087e81` fix(console): 键详情失败时重试的是那次读取
 - `c0037a4` fix(host): 空白 MATCH 模式按匹配全部处理
 - `892ae55` fix(bridge): MariaDB 序列在树里显示为序列而不是表
 - `3e7a8b8` fix(ui): 文件型数据库保存时不带上一个预设的主机与端口
@@ -330,8 +336,9 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（27）
+## 文档（28）
 
+- `8610386` docs: 重新生成变更日志
 - `f3bd5be` docs: 补齐新引擎的 DDL 与执行计划来源说明
 - `f26d9b5` docs(agent): 执行计划工具说明补上新引擎
 - `51bab61` docs: 重新生成变更日志
