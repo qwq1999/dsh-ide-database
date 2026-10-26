@@ -4,8 +4,16 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（155）
+## 新功能（163）
 
+- `fcc5e8d` feat(tree): 数据源右键可直接打开查询控制台
+- `9183486` feat(ui): 文件型数据库的表单只留名称与路径
+- `f955713` feat(trigger): PostgreSQL 与 SQLite 的触发器定义读服务器原文
+- `37c1b72` feat(mssql): 存储过程、函数与触发器也读服务器定义
+- `28b99ff` feat(mssql): 视图定义直接读服务器，标识符统一用方括号
+- `d20a83c` feat(explain): SQL Server 支持 SHOWPLAN_ALL 执行计划
+- `be62fa1` feat(driver): 新增 SQL Server 预设与方言支持
+- `dfae3b2` feat(driver): 新增 SQLite 预设与方言支持
 - `70438ce` feat(driver): 新增 MariaDB 预设
 - `38537f9` feat(driver): 新增 PostgreSQL 预设与方言支持
 - `1029023` feat(console): 命令框按 Ctrl/⌘ + L 清空
@@ -162,8 +170,9 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（69）
+## 修复（70）
 
+- `5f1524b` fix(ui): 文件型数据库新建时必须填数据文件
 - `88cf4d5` fix(tree): 23 小时 40 分不再显示成 24 小时前
 - `c7f8609` fix(ui): TTL 的 59.5 秒显示成 1m 而不是 59s
 - `26beeb2` fix(ui): 文件大小 1023.6 字节显示成 1.0 KB 而不是 1024 B
@@ -275,8 +284,10 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（27）
+## 测试（29）
 
+- `8f53843` test: 补齐新引擎的分页、标识符与执行计划用例
+- `90e3947` test(host): 覆盖 SQLite 与 PostgreSQL 的服务器端 DDL
 - `7523386` test: 补 MariaDB 预设与两处用例的稳定性
 - `1384433` test(console): 取编辑器统一改为异步查找
 - `e95c0eb` test(host): 覆盖 /status、/env 与驱动下载
@@ -305,8 +316,9 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（21）
+## 文档（22）
 
+- `6f766bf` docs: 重新生成变更日志
 - `c122417` docs(agent): 数据库工具说明补上 PostgreSQL
 - `4b31843` docs: 修正数据表每页行数选项
 - `140342e` docs: 说明记住的排序列失效时会自动丢弃
@@ -329,8 +341,9 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（9）
+## 杂项（10）
 
+- `4f08953` chore(build): 同步 MariaDB 预设的构建产物
 - `e14946f` chore: 删掉只剩测试在用的导出
 - `95ed75d` chore: 内部辅助函数不再对外导出
 - `c62f3bf` chore: 更新日志检查不再放进每次提交的 verify
