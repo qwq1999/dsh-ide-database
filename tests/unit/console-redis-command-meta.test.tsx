@@ -87,4 +87,20 @@ describe('Redis command output', () => {
     expect(mocks.copies).toHaveBeenCalledWith('hello')
     expect(await screen.findByRole('button', { name: '已复制' })).toBeTruthy()
   })
+
+  it('retries the failing command from the banner', async () => {
+    mocks.redisCommand.mockRejectedValueOnce(new Error('boom'))
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+
+    const box = screen.getByPlaceholderText(/例如 GET/)
+    fireEvent.change(box, { target: { value: 'GET user:1' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await screen.findByText(/boom/)
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    expect(await screen.findByText('hello')).not.toBeNull()
+    await waitFor(() => expect(screen.queryByText(/boom/)).toBeNull())
+  })
 })

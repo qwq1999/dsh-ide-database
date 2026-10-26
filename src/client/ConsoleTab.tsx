@@ -195,6 +195,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [selectedKey, setSelectedKey] = useState('')
   const [value, setValue] = useState<RedisValue | null>(null)
   const [valueError, setValueError] = useState<Failure | null>(null)
+  /** Last Redis command text so the error banner can retry it. */
+  const lastCommand = useRef<string | null>(null)
   const [command, setCommand] = useState('')
   const [commandRunning, setCommandRunning] = useState(false)
   const [commandResult, setCommandResult] = useState<RedisCommandResult | null>(null)
@@ -912,8 +914,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }, [])
 
   const runCommand = async (): Promise<void> => {
-    const text = command.trim()
+    await runCommandText(command.trim())
+  }
+
+  const runCommandText = async (text: string): Promise<void> => {
     if (text === '' || selectedId === '') return
+    lastCommand.current = text
     const isWrite = looksLikeRedisWrite(text)
     if (isWrite && connection?.readOnly === true) {
       setValueError({
@@ -1608,13 +1614,26 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               tone="error"
               onClose={() => setValueError(null)}
               actions={
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  title="复制错误信息"
-                  onClick={() =>
-                    void copyText(
-                      valueError.detail === undefined
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      const text = lastCommand.current
+                      if (text === null) return
+                      setValueError(null)
+                      void runCommandText(text)
+                    }}
+                  >
+                    重试
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="复制错误信息"
+                    onClick={() =>
+                      void copyText(
+                        valueError.detail === undefined
                         ? valueError.message
                         : valueError.message + String.fromCharCode(10) + valueError.detail,
                     )
@@ -1622,6 +1641,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 >
                   复制
                 </Button>
+                </>
               }
             >
               {valueError.message}
