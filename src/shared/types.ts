@@ -10,6 +10,7 @@ export type SqlDialect = Exclude<Dialect, 'redis'>
 
 export type PresetId =
   | 'mysql'
+  | 'mariadb'
   | 'oceanbase-mysql'
   | 'oceanbase-oracle'
   | 'oracle'

@@ -15,6 +15,7 @@ import { Banner, Button, Field, Modal, Select, Spinner, Switch, Tag, TextArea, T
 
 const PRESET_LABEL: Record<PresetId, string> = {
   mysql: 'MySQL',
+  mariadb: 'MariaDB',
   'oceanbase-mysql': 'OceanBase（MySQL 模式）',
   'oceanbase-oracle': 'OceanBase（Oracle 模式）',
   oracle: 'Oracle',
