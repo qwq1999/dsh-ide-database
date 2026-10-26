@@ -4,8 +4,13 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（163）
+## 新功能（168）
 
+- `78bafc8` feat(ddl): 序列也能看到建序列语句
+- `51525b9` feat(mssql): 树里列出例程、触发器与序列
+- `69bc3c6` feat(postgres): 树里列出序列、例程与触发器
+- `75d971e` feat(sqlite): 树里能看到触发器
+- `704040f` feat(ui): 测试 SQLite 时提示文件不存在会新建空库
 - `fcc5e8d` feat(tree): 数据源右键可直接打开查询控制台
 - `9183486` feat(ui): 文件型数据库的表单只留名称与路径
 - `f955713` feat(trigger): PostgreSQL 与 SQLite 的触发器定义读服务器原文
@@ -170,8 +175,9 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（70）
+## 修复（71）
 
+- `3e7a8b8` fix(ui): 文件型数据库保存时不带上一个预设的主机与端口
 - `5f1524b` fix(ui): 文件型数据库新建时必须填数据文件
 - `88cf4d5` fix(tree): 23 小时 40 分不再显示成 24 小时前
 - `c7f8609` fix(ui): TTL 的 59.5 秒显示成 1m 而不是 59s
@@ -272,8 +278,9 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（9）
+## 重构（10）
 
+- `f5122ec` refactor(ddl): 单行文本查询收成一个私有方法
 - `864db0f` refactor(ui): 历史与树详情共用一个时间描述函数
 - `c206a05` refactor(table): WHERE 前缀剥离也改用正则字面量
 - `42ccc99` refactor(table): ORDER BY 前缀剥离集中成一个函数
@@ -284,8 +291,10 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（29）
+## 测试（31）
 
+- `36ea240` test(host): 覆盖 MariaDB 风格序列的 DDL 查询
+- `9061c0c` test: 库记忆用例等写入完成再断言
 - `8f53843` test: 补齐新引擎的分页、标识符与执行计划用例
 - `90e3947` test(host): 覆盖 SQLite 与 PostgreSQL 的服务器端 DDL
 - `7523386` test: 补 MariaDB 预设与两处用例的稳定性
@@ -316,8 +325,10 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（22）
+## 文档（24）
 
+- `554f954` docs: 更正「限制」里说 SQL Server/PostgreSQL 没有预设
+- `d0623cf` docs: 重新生成变更日志
 - `6f766bf` docs: 重新生成变更日志
 - `c122417` docs(agent): 数据库工具说明补上 PostgreSQL
 - `4b31843` docs: 修正数据表每页行数选项
