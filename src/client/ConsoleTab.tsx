@@ -730,6 +730,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   )
 
   const runTx = async (action: TxAction): Promise<void> => {
+    if (isRedis) return
     if (selectedId === '' || txBusy) return
     setTxBusy(true)
     setFailure(null)
@@ -752,7 +753,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     const area = inputRef.current
     const picked = area === null ? { statement, selected: false } : pickStatement(statement, area.selectionStart, area.selectionEnd)
     const text = picked.statement.trim()
-    if (text === '' || selectedId === '' || running) return
+    if (text === '' || selectedId === '' || isRedis || running) return
     const token = ++planToken.current
     setPlanRunning(true)
     setFailure(null)
@@ -2006,6 +2007,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             >
               {statementFlash.copied ? '已复制' : '复制 SQL'}
             </Button>
+            {isRedis ? null : (
+              <>
             <Button
               size="sm"
               variant="ghost"
@@ -2053,6 +2056,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             >
               回滚
             </Button>
+              </>
+            )}
             <span className="dshdb-menu-wrap" ref={exportAnchor}>
               <button
                 type="button"
