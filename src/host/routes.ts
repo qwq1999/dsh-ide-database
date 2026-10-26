@@ -385,7 +385,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
         id,
         db,
         cursor,
-        typeof data.pattern === 'string' ? data.pattern : '*',
+        typeof data.pattern === 'string' && data.pattern.trim() !== '' ? data.pattern.trim() : '*',
         typeof data.type === 'string' ? data.type : undefined,
         typeof data.count === 'number' ? data.count : deps.config.settings().redisScanCount,
       )

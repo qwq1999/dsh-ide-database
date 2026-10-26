@@ -117,4 +117,12 @@ describe('POST /redis/scan over HTTP', () => {
     expect(calls.scan).toEqual([['r1', 7, '12', 'user:*', 'hash', 50]])
     expect(calls.put[0][1]).toBe(7)
   })
+
+  it('treats a blank pattern as match-all', async () => {
+    const url = await start()
+
+    await post(url, { id: 'r1', pattern: '   ' })
+
+    expect(calls.scan).toEqual([['r1', 3, '0', '*', undefined, 321]])
+  })
 })
