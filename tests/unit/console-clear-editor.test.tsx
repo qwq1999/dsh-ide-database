@@ -85,4 +85,15 @@ describe('clear editor', () => {
     expect((editor as HTMLTextAreaElement).value).toBe('')
     expect((clear as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('empties the editor with Ctrl/⌘ + L', async () => {
+    render(<ConsoleTab useTabInfo={tab} />)
+    await waitForConsoleSource(mocks)
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+
+    fireEvent.change(editor, { target: { value: 'SELECT 1' } })
+    fireEvent.keyDown(editor, { key: 'l', ctrlKey: true })
+
+    expect((editor as HTMLTextAreaElement).value).toBe('')
+  })
 })
