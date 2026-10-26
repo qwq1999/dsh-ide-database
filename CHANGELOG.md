@@ -4,8 +4,16 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（173）
+## 新功能（181）
 
+- `9f613e0` feat(table): 底栏提示也会自动消失
+- `9a8b1ca` feat(console): 底栏的复制/导出提示会自动消失
+- `16adaa9` feat(redis): 复制键名后提示条数
+- `e59cb79` feat(redis): 键名筛选框按 Esc 清空
+- `d8d79eb` feat(table): ORDER BY 框也支持按 Esc 清空
+- `490a8a8` feat(table): WHERE 框按 Esc 清空条件
+- `38bdb4c` feat(console): 历史面板可以用 Esc 收起
+- `2197389` feat(redis): 命令框旁增加「清空」按钮
 - `f1a6f08` feat(redis): 命令失败时可以直接重试
 - `bc593f6` feat(console): 查询失败时可以直接重试上一次提交
 - `ecce46e` feat(table): 有数据时的错误横幅也能重试
@@ -287,8 +295,9 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（10）
+## 重构（11）
 
+- `4c37147` refactor(redis): 键名筛选抽成 filterRedisKeys
 - `f5122ec` refactor(ddl): 单行文本查询收成一个私有方法
 - `864db0f` refactor(ui): 历史与树详情共用一个时间描述函数
 - `c206a05` refactor(table): WHERE 前缀剥离也改用正则字面量
@@ -300,8 +309,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（33）
+## 测试（34）
 
+- `4a6089c` test: 列名提示用例等输入框挂载后再断言
 - `7415e23` test(console): 逻辑库回退用例等待记忆写入完成
 - `cbf7392` test(ui): 错误横幅用例之间清理 DOM
 - `36ea240` test(host): 覆盖 MariaDB 风格序列的 DDL 查询
@@ -336,8 +346,12 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（28）
+## 文档（32）
 
+- `294b037` docs: 补上新引擎的使用提醒
+- `fc35ea4` docs: 底栏提示会自动消失的说明
+- `ca849d4` docs: 快捷键表补上历史面板的 Esc
+- `54ec5e7` docs: 重新生成变更日志
 - `8610386` docs: 重新生成变更日志
 - `f3bd5be` docs: 补齐新引擎的 DDL 与执行计划来源说明
 - `f26d9b5` docs(agent): 执行计划工具说明补上新引擎
