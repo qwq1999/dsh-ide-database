@@ -104,6 +104,8 @@ export interface DataViewProps {
   /** Double-click on a table/view: open its rows in their own Sidebar tab. */
   onOpenTable: (connectionId: string, schema: string, object: { name: string; kind: string }) => void
   onOpenConsole: (connectionId: string, schema: string, table: string) => void
+  /** Opens a query console for this connection, without a prepared statement. */
+  onOpenConsoleTab?: (connectionId: string) => void
 }
 
 type FolderId = 'table' | 'view' | 'routine' | 'sequence' | 'trigger' | 'other'
@@ -285,11 +287,14 @@ export function DataView(props: DataViewProps): ReactElement {
       const items = [
         { label: '复制连接名', run: () => void copyText(connection.name) },
         { label: '复制地址', run: () => void copyText(`${connection.host}:${connection.port}`) },
+        ...(props.onOpenConsoleTab === undefined
+          ? []
+          : [{ label: '打开控制台', run: () => props.onOpenConsoleTab?.(connection.id) }]),
         { label: '重新连接', run: () => props.onConnect(connection.id) },
       ]
       setConnectionMenu({ ...placeMenu(event.clientX, event.clientY, items), items })
     },
-    [props.onConnect],
+    [props.onConnect, props.onOpenConsoleTab],
   )
 
   const normalizedFilter = settledFilter.trim().toLowerCase()

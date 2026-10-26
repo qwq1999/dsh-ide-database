@@ -398,7 +398,11 @@ export function App(props: AppProps): ReactElement {
                 selectConnection(connectionId)
                 openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })
               }}
-              onOpenConsole={(connectionId, schema, table) => {
+              onOpenConsoleTab={(connectionId) => {
+              selectConnection(connectionId)
+              openConsoleTab({ connectionId })
+            }}
+            onOpenConsole={(connectionId, schema, table) => {
                 const connection = connections.find((item) => item.id === connectionId)
                 if (connection === undefined) return
                 selectConnection(connectionId)

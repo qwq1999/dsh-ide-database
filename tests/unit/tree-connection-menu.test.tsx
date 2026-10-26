@@ -98,6 +98,14 @@ describe('connection context menu', () => {
     await waitFor(() => expect(copy).toHaveBeenCalledWith('127.0.0.1:33061'))
   })
 
+  it('opens a query console from the menu', async () => {
+    const onOpenConsoleTab = vi.fn()
+    render(<DataView {...props({ onOpenConsoleTab })} />)
+    fireEvent.contextMenu(connectionRow())
+    fireEvent.click(await screen.findByRole('menuitem', { name: '打开控制台' }))
+    expect(onOpenConsoleTab).toHaveBeenCalledWith('c1')
+  })
+
   it('reconnects from the menu', async () => {
     const onConnect = vi.fn()
     render(<DataView {...props({ onConnect })} />)
