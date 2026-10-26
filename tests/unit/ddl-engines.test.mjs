@@ -105,3 +105,24 @@ describe('trigger definitions', () => {
     expect(result).toMatchObject({ kind: 'trigger', source: 'server' })
   })
 })
+
+describe('sequence definitions', () => {
+  it('builds a CREATE SEQUENCE for PostgreSQL from pg_sequences', async () => {
+    const { service, calls } = makeService(connection('pg', 'postgres', 'postgres', 'app'), 'CREATE SEQUENCE public.s START WITH 1 INCREMENT BY 1')
+
+    const result = await service.ddl('pg', 'postgres', 'public', 's', 'sequence')
+
+    expect(calls[0].sql).toContain('FROM pg_sequences WHERE schemaname = \'public\' AND sequencename = \'s\'')
+    expect(result).toMatchObject({ kind: 'sequence', source: 'server' })
+    expect(result.ddl).toBe('CREATE SEQUENCE public.s START WITH 1 INCREMENT BY 1')
+  })
+
+  it('builds a CREATE SEQUENCE for SQL Server from sys.sequences', async () => {
+    const { service, calls } = makeService(connection('ms', 'mssql', 'mssql', 'app'), 'CREATE SEQUENCE [dbo].[s] START WITH 1 INCREMENT BY 1')
+
+    const result = await service.ddl('ms', 'mssql', 'dbo', 's', 'sequence')
+
+    expect(calls[0].sql).toContain('FROM sys.sequences WHERE SCHEMA_NAME(schema_id) = \'dbo\' AND name = \'s\'')
+    expect(result).toMatchObject({ kind: 'sequence', source: 'server' })
+  })
+})
