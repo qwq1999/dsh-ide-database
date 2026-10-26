@@ -179,6 +179,7 @@ describe('table export menu', () => {
     expect(await screen.findByText('JSON 已复制')).toBeTruthy()
     // Announced politely instead of silently changing a corner of the toolbar.
     expect(screen.getByRole('status').textContent).toBe('JSON 已复制')
+    await waitFor(() => expect(screen.queryByText('JSON 已复制')).toBeNull(), { timeout: 4000 })
     const text = String(copies.mock.calls.at(-1)?.[0] ?? '')
     expect(text).toContain('"total"')
     expect(text).toContain('93.02')

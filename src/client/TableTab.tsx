@@ -145,6 +145,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exporting, setExporting] = useState(false)
   const exportingRef = useRef(false)
   const [exportNote, setExportNote] = useState('')
+  /** Copy and export notes clear themselves so the footer does not stale. */
+  useEffect(() => {
+    if (exportNote === '') return undefined
+    const timer = setTimeout(() => setExportNote(''), 2500)
+    return () => clearTimeout(timer)
+  }, [exportNote])
   /** Copies from the export menu and reports it in the bar, like the toolbar copies do. */
   const noteCopied = useCallback(
     (label: string) =>
