@@ -64,6 +64,7 @@ describe('connection modal for file based engines', () => {
     expect(mocks.saveConnection.mock.calls[0][0]).toMatchObject({
       driver: 'sqlite',
       database: './tmp/app.db',
+      host: '',
       port: 0,
     })
   })

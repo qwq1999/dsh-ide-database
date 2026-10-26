@@ -144,8 +144,9 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     name: name.trim(),
     driver: isCustom ? 'custom' : (choice as PresetId),
     customDriverId: isCustom ? customId : undefined,
-    host: host.trim(),
-    port: Number.parseInt(port, 10) || 0,
+    // File based engines keep no host; do not persist whatever the previous preset left behind.
+    host: fileBased ? '' : host.trim(),
+    port: fileBased ? 0 : Number.parseInt(port, 10) || 0,
     user: user.trim(),
     ...(password !== '' ? { password } : {}),
     ...(clearPassword ? { clearPassword: true } : {}),
