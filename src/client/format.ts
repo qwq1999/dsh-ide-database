@@ -18,10 +18,11 @@ export function formatMs(ms: number | undefined): string {
 export function formatTtl(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—'
   if (seconds < 0) return '永久'
-  if (seconds < 60) return `${Math.floor(seconds)}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
-  return `${Math.floor(seconds / 86400)}d`
+  const whole = Math.round(seconds)
+  if (whole < 60) return `${whole}s`
+  if (whole < 3600) return `${Math.floor(whole / 60)}m`
+  if (whole < 86400) return `${Math.floor(whole / 3600)}h`
+  return `${Math.floor(whole / 86400)}d`
 }
 
 export function formatBytes(bytes: number | undefined): string {
