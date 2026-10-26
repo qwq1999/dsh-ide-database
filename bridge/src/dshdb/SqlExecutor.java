@@ -439,9 +439,59 @@ final class SqlExecutor {
                 readSqliteTriggers(entry, sqliteObjects);
                 return sqliteObjects;
             }
+            if ("postgres".equals(entry.dialect)) {
+                // JDBC metadata stops at tables and views; sequences, routines and
+                // triggers live in the catalog views instead.
+                List<Object> pgObjects = metadataObjects(entry, schema);
+                readPgObjects(entry, schema, pgObjects);
+                return pgObjects;
+            }
             return metadataObjects(entry, schema);
         } finally {
             entry.lock.unlock();
+        }
+    }
+
+    /** Values a PostgreSQL schema exposes beyond tables and views. */
+    private void readPgObjects(Conn entry, String schema, List<Object> result) {
+        appendCatalog(entry, result, "SELECT sequencename FROM pg_sequences WHERE schemaname = ? ORDER BY sequencename",
+                schema, null, "sequence");
+        appendCatalog(entry, result,
+                "SELECT p.proname, CASE WHEN p.prokind = 'p' THEN 'procedure' ELSE 'function' END"
+                        + " FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
+                        + " WHERE n.nspname = ? ORDER BY p.proname",
+                schema, Integer.valueOf(2), null);
+        appendCatalog(entry, result,
+                "SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                        + " WHERE n.nspname = ? AND NOT t.tgisinternal ORDER BY t.tgname",
+                schema, null, "trigger");
+    }
+
+    /** Runs a two-column catalog query and appends its rows; failures stay silent. */
+    private void appendCatalog(
+            Conn entry,
+            List<Object> result,
+            String sql,
+            String schema,
+            Integer kindColumn,
+            String fixedKind) {
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString(1);
+                    if (name == null) {
+                        continue;
+                    }
+                    Map<String, Object> row = new LinkedHashMap<String, Object>();
+                    row.put("name", name);
+                    row.put("kind", fixedKind != null ? fixedKind : rs.getString(kindColumn.intValue()));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException ignored) {
+            // Missing privileges or an older server must not hide the tables.
         }
     }
 
