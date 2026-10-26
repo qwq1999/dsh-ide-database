@@ -26,7 +26,8 @@ export function formatTtl(seconds: number): string {
 
 export function formatBytes(bytes: number | undefined): string {
   if (bytes === undefined) return ''
-  if (bytes < 1024) return `${bytes} B`
+  const rounded = Math.round(bytes)
+  if (rounded < 1024) return `${rounded} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

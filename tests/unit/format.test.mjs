@@ -31,6 +31,7 @@ describe('format helpers', () => {
     expect(formatMs(65000)).toBe('1m 5s')
     expect(formatMs(600000)).toBe('10m 0s')
     expect(formatBytes(512)).toBe('512 B')
+    expect(formatBytes(1023.6)).toBe('1.0 KB')
     expect(formatBytes(2048)).toBe('2.0 KB')
   })
 
