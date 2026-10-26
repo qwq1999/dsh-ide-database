@@ -126,3 +126,14 @@ describe('sequence definitions', () => {
     expect(result).toMatchObject({ kind: 'sequence', source: 'server' })
   })
 })
+
+describe('MariaDB style sequences', () => {
+  it('asks for SHOW CREATE SEQUENCE on the MySQL dialect', async () => {
+    const { service, calls } = makeService(connection('my', 'mysql', 'mysql', 'shop'), 'CREATE SEQUENCE `s` START WITH 1')
+
+    const result = await service.ddl('my', 'mysql', 'shop', 's', 'sequence')
+
+    expect(calls[0].sql).toBe('SHOW CREATE SEQUENCE `shop`.`s`')
+    expect(result).toMatchObject({ kind: 'sequence', source: 'server' })
+  })
+})
