@@ -274,7 +274,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ? 'public'
           : connection.dialect === 'sqlite'
             ? 'main'
-            : connection.user
+            : connection.dialect === 'mssql'
+              ? 'dbo'
+              : connection.user
 
   // A remembered schema can disappear (renamed or dropped): fall back instead of a blank picker.
   useEffect(() => {

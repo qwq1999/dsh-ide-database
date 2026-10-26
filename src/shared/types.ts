@@ -10,6 +10,7 @@ export type Dialect =
   | 'dameng'
   | 'postgres'
   | 'sqlite'
+  | 'mssql'
   | 'oceanbase-oracle'
   | 'generic'
   | 'redis'
@@ -25,6 +26,7 @@ export type PresetId =
   | 'dameng'
   | 'postgres'
   | 'sqlite'
+  | 'mssql'
   | 'redis'
 
 export type DriverChoice = PresetId | 'custom'
@@ -33,6 +35,8 @@ export interface JarRef {
   group: string
   artifact: string
   version: string
+  /** Maven artifact classifier, e.g. `jre8` for mssql-jdbc. */
+  classifier?: string
 }
 
 export interface JarStatus extends JarRef {

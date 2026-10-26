@@ -2,7 +2,7 @@
 
 DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧边栏的数据库工具窗，以及一组供 Agent 查询/操作数据库的工具。
 
-支持 MySQL、MariaDB、PostgreSQL、SQLite、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
+支持 MySQL、MariaDB、PostgreSQL、SQLite、SQL Server、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
 
 ![数据源树](docs/screenshots/database-tree.png)
 
@@ -11,7 +11,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ## 功能
 
 - **右侧边栏入口**：在右侧边栏的「+」新标签页菜单里选择「数据库」，或在 Guide 页点击「数据库」胶囊；标签页会保持挂载，切换会话不丢状态；重新打开面板时会回到上次选中的数据源（连接被删掉则回到第一个）。
-- **预设数据源**：MySQL、MariaDB、PostgreSQL、SQLite、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板（MariaDB 走 MySQL 方言；SQLite 直接填数据库文件路径，不需要主机和端口）。
+- **预设数据源**：MySQL、MariaDB、PostgreSQL、SQLite、SQL Server、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板（MariaDB 走 MySQL 方言；SQLite 直接填数据库文件路径，不需要主机和端口；SQL Server 用 `mssql-jdbc` 的 jre8 构建）。
 - **自定义驱动**：填写驱动名、方言、驱动类、URL 模板和 Maven 坐标（可多个 jar），点击下载即可从 Maven Central / 阿里云镜像拉取并缓存，无需手动放置 jar。
 - **数据浏览**：仿 JetBrains Database 工具窗口——工具栏「新增 / 刷新 / 删除 / 控制台 / 设置」左对齐，下方是所有数据源 → Schema → 表 / 视图 / 例程 / 序列 / 触发器 的树，每类按文件夹分组并显示数量（表里还能继续展开「列 / 键 / 索引」），单个分组对象很多时先列前 200 个、点「显示剩余 N 个」继续展开；数据源节点上右键可以复制连接名、复制地址或重新连接，库节点上右键可以复制库名、「只看这个库」（选完光标会落在筛选框里，方便接着补表名），或把整个库的表和视图定义导出成一个 `.sql` 文件；右键菜单打开后可用方向键在菜单项间移动、Enter 执行、Esc 关闭；焦点在树里时 `Ctrl/⌘ + F` 直接跳进上方的筛选框；选中表在下方显示列、默认值、主键、索引与注释，右上角的「DDL」按钮弹出该表的建表语句（旁边的「复制列名」按逗号复制全部列名，「复制查询」拼一条列名写全的 `SELECT`）（服务器取不到时按结构重建，并在弹层里说明原因）；对象上右键还有「打开数据 / 在控制台查询 / 复制查询语句 / 查看 DDL / 复制名称 / 复制限定名 / 只看这个表」菜单（「在控制台查询」会拼好带分页的 `SELECT` 放进新的查询控制台，只填不执行；「只看这个表」与库节点的「只看这个库」一样，选完光标会落在筛选框里）；选中函数、存储过程、触发器或序列时，下方直接展示服务器返回的定义。
 - **Redis 键空间**：Redis 连接按「数据源 → `db{库号}`（可展开/收起）→ 键」浏览，每个逻辑库独立分页扫描、各自「加载更多键」，筛选框会自动扫描匹配的键，旁边的类型下拉可以只看 string / list / set / hash / zset / stream（Redis 6 起由 SCAN TYPE 在服务端过滤），「继续」只在筛选条件没变时可用（改了 MATCH 或类型后需要重新点「扫描」，否则游标会接错批次）；点键在下方直接看值（表格化返回 hash / list / set / zset，string 原样展示；string 里存的是 JSON 对象/数组时自动缩进成块，方便直接读配置），值面板上方可一键复制键名或完整值，也能点刷新重新读一次这个键（键列表里的 TTL 与大小跟着更新））。行尾可以勾选要展示的逻辑库（默认只展示连接配置里的库，范围为 Redis 的 `databases` 数量）；未连接或未打开过时行尾显示「连接」按钮，连上自动加载 Schema / 键空间，断线后仍可用缓存浏览。
@@ -32,7 +32,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **执行历史**：控制台会记住最近执行过的 50 条 SQL / Redis 命令（存在浏览器本地，刷新和重开控制台都还在）。「历史」按钮展开列表，点一条即回填到编辑器；列表超过 5 条时顶部出现搜索框，按关键字过滤（收藏和最近执行一起过滤）；SQL 编辑器里 `Ctrl/⌘ + ↑ / ↓` 直接翻历史，Redis 命令框用 `↑ / ↓`，重复的语句会提到最前而不是堆叠；每条右侧的小图标可一键复制该语句（不用先回填编辑器），执行过的语句还会标出行数与耗时（Redis 命令只有耗时）；「清空」要点两次，避免误删。
 - **只执行选中内容**：在 SQL 编辑器里选中一段语句再执行，就只跑选中部分（多语句脚本里挑一句跑很顺手），没选中时仍然执行全文；控制台会提示「已执行选中内容」。
 - **多语句执行**：一次粘贴整段脚本也没问题——控制台按分号拆成独立语句逐条执行（字符串、引号标识符与注释里的分号不会误拆），网格先展示最后一条的结果，状态栏提示「已顺序执行 N 条语句」，旁边的「语句结果」下拉可以翻看任意一条的结果（下拉里标着每条的耗时与行数）；中途失败会指出是第几条并停止，错误提示旁的「复制」能把整段报错（含服务器返回的细节）带走。
-- **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL / PostgreSQL 走 `EXPLAIN`（PostgreSQL 的是文本计划），Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，达梦走驱动自带的 `getExplainInfo`（`EXPLAIN` 语句在达梦上只返回空结果），结果标出「执行计划」后展示，看完点「关闭计划」回到编辑器；`EXPLAIN FORMAT=TREE` 这类单列文本计划会按缩进原样排版，不会被网格压成一行；底栏的「复制计划」可以把文本计划整段复制出去（表格形式的计划会按制表符分隔复制，粘到表格软件里还是分列的），看完关闭计划会回到原来的结果行。
+- **执行计划**：查询控制台的「执行计划」按钮会对当前语句（或选中部分）取执行计划而不是真的执行它——MySQL / PostgreSQL 走 `EXPLAIN`（PostgreSQL 的是文本计划；SQL Server 暂不支持，执行计划按钮会给出提示），Oracle / OceanBase-Oracle 走 `EXPLAIN PLAN FOR` + `DBMS_XPLAN`，达梦走驱动自带的 `getExplainInfo`（`EXPLAIN` 语句在达梦上只返回空结果），结果标出「执行计划」后展示，看完点「关闭计划」回到编辑器；`EXPLAIN FORMAT=TREE` 这类单列文本计划会按缩进原样排版，不会被网格压成一行；底栏的「复制计划」可以把文本计划整段复制出去（表格形式的计划会按制表符分隔复制，粘到表格软件里还是分列的），看完关闭计划会回到原来的结果行。
 - **SQL 格式化**：查询控制台的「格式化」按钮（或 `Ctrl/⌘ + Shift + F`）会把关键字统一大写，按 `SELECT / FROM / WHERE / GROUP BY / ORDER BY / LIMIT` 等子句换行并缩进子查询；字符串、反引号标识符、`--` 与 `/* */` 注释里的内容一概不动；格式化后光标基本留在原处，不用再滚动找位置。
 - **导入 SQL 文件**：工具栏「导入」按钮可以直接选一个 `.sql` / `.txt` 文件，脚本按光标位置插入编辑器并停在脚本末尾（不会覆盖已经写好的语句，可以叠加多个文件）；CRLF 统一成 LF，超过 2 MB 的文件会被拒绝并提示上限。
 - **注释切换**：在 SQL 编辑器里按 `Ctrl/⌘ + /` 给光标所在行（有选中时是选中的每一行）加上 `-- ` 前缀，再按一次就取消；缩进保留，空行不动。
@@ -43,7 +43,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **结果筛选**：结果底栏的「筛选结果」输入框按任意列在网格里显示的文字过滤当前页（大小写不敏感，`null` 也能搜），旁边实时显示「命中数 / 本页行数」，行号仍标原始位置（不会重新编号），按 `Esc` 或旁边的小 × 清空，`Ctrl/⌘ + F` 直接跳进筛选框、`Ctrl/⌘ + R` 重跑当前语句（筛选没命中时导出菜单不会给出空表），换一条语句执行也会清空；一条都没命中时网格会说明「当前页没有匹配筛选条件的行」，而不是当成查询没返回数据；单元格右键的「用该值筛选当前页」会把该值填进这个框；「当前页」的导出与复制跟着筛选后的行走，「全部」仍然导出整条语句的结果。
 - **空结果提示**：语句没有返回任何行时，结果网格里直接写明「这条语句没有返回任何行」，不再只留一行表头；数据表标签页同理（「这里没有符合条件的行」）。
 - **列头菜单**：在结果网格的列头上点右键，可以「按此列升序 / 降序 / 清除排序」，或者「复制列名」「复制本列值」（一行一个值）；「复制全部列名」把网格里每一列的名字按方言加引号拼成一段，方便自己拼 `SELECT`；「复制查询语句」则直接生成一条带全部列名的完整 `SELECT`，省得手写；「复制为 IN 列表、复制本列（逗号分隔）」把这一列的值拼成 `(1, 'a', NULL)` 形式的过滤条件；「按此列分组计数」直接生成 `SELECT 列, COUNT(*) … GROUP BY 列 ORDER BY count DESC`，数据表标签页会把它丢进查询控制台、控制台则填进编辑器——两处都支持。
-- **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，PostgreSQL 的视图走 `pg_get_viewdef`（表没有内置的取 DDL 函数，按结构重建并在弹窗里说明），服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。函数、存储过程、触发器、序列没有列结构，选中后直接在详情面板展示服务器返回的定义（MySQL `SHOW CREATE FUNCTION/PROCEDURE/TRIGGER/SEQUENCE`，Oracle/达梦 `DBMS_METADATA.GET_DDL`）；取不到时提示去 SQL 控制台查看，不会拼假 DDL。
+- **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，PostgreSQL 的视图走 `pg_get_viewdef`（表没有内置的取 DDL 函数，按结构重建并在弹窗里说明）、SQL Server 没有内置取 DDL 的方式同样按结构重建，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。函数、存储过程、触发器、序列没有列结构，选中后直接在详情面板展示服务器返回的定义（MySQL `SHOW CREATE FUNCTION/PROCEDURE/TRIGGER/SEQUENCE`，Oracle/达梦 `DBMS_METADATA.GET_DDL`）；取不到时提示去 SQL 控制台查看，不会拼假 DDL。
 - **Agent 工具**：16 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
 - **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
@@ -197,6 +197,7 @@ dsh --profile dbweb --port 16402 --no-open
 | MariaDB | MariaDB | 3306 | `org.mariadb.jdbc.Driver` | `org.mariadb.jdbc:mariadb-java-client:3.4.1` |
 | PostgreSQL | PostgreSQL | 5432 | `org.postgresql.Driver` | `org.postgresql:postgresql:42.7.4` |
 | SQLite | SQLite | — | `org.sqlite.JDBC` | `org.xerial:sqlite-jdbc:3.46.1.3` |
+| SQL Server | SQL Server | 1433 | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | `com.microsoft.sqlserver:mssql-jdbc:9.4.1:jre8` |
 | OceanBase（MySQL 模式） | MySQL | 2881 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
 | OceanBase（Oracle 模式） | OceanBase Oracle | 2881 | `com.oceanbase.jdbc.Driver` | `com.oceanbase:oceanbase-client:2.4.19` |
 | Oracle | Oracle | 1521 | `oracle.jdbc.OracleDriver` | `com.oracle.database.jdbc:ojdbc8:23.26.3.0.0` |

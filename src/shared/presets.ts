@@ -87,6 +87,21 @@ export const PRESETS: Record<PresetId, PresetSpec> = {
     hostOptional: true,
     needsJava: true,
   },
+  mssql: {
+    id: 'mssql',
+    dialect: 'mssql',
+    defaultPort: 1433,
+    driverClass: 'com.microsoft.sqlserver.jdbc.SQLServerDriver',
+    urlTemplate: 'jdbc:sqlserver://{{host}}:{{port}};databaseName={{database}};encrypt=true;trustServerCertificate=true',
+    jar: {
+      group: 'com.microsoft.sqlserver',
+      artifact: 'mssql-jdbc',
+      version: '9.4.1',
+      classifier: 'jre8',
+    },
+    databaseHint: '数据库名，例如 master',
+    needsJava: true,
+  },
   redis: {
     id: 'redis',
     dialect: 'redis',
@@ -105,6 +120,7 @@ export const PRESET_ORDER: PresetId[] = [
   'dameng',
   'postgres',
   'sqlite',
+  'mssql',
   'redis',
 ]
 
@@ -114,6 +130,7 @@ export const SQL_DIALECT_LABEL: Record<SqlDialect, string> = {
   dameng: '达梦 DM',
   postgres: 'PostgreSQL',
   sqlite: 'SQLite',
+  mssql: 'SQL Server',
   'oceanbase-oracle': 'OceanBase (Oracle)',
   generic: '自定义 JDBC',
 }
@@ -124,11 +141,13 @@ export const DIALECT_LABEL: Record<Dialect, string> = {
 }
 
 function jarFileName(jar: JarRef): string {
-  return `${jar.artifact}-${jar.version}.jar`
+  const classifier = jar.classifier === undefined ? '' : `-${jar.classifier}`
+  return `${jar.artifact}-${jar.version}${classifier}.jar`
 }
 
 export function jarCoordinates(jar: JarRef): string {
-  return `${jar.group}:${jar.artifact}:${jar.version}`
+  const classifier = jar.classifier === undefined ? '' : `:${jar.classifier}`
+  return `${jar.group}:${jar.artifact}:${jar.version}${classifier}`
 }
 
 export function jarRelativePath(jar: JarRef): string {

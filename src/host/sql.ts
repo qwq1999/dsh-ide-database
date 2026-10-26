@@ -637,6 +637,9 @@ export class SqlService {
     if (dialect === 'postgres' && kind === 'table') {
       warnings.push('PostgreSQL 没有内置的建表语句查询，这张表是按结构重建的')
     }
+    if (dialect === 'mssql' && kind === 'table') {
+      warnings.push('SQL Server 没有内置的取建表语句的方法，这张表是按结构重建的')
+    }
     return { schema, table, kind, ddl: generateDdl(dialect, description), source: 'generated', warnings }
   }
 
@@ -649,6 +652,13 @@ export class SqlService {
     this.requireConnected(connId)
     const sql = statement.trim()
     if (sql === '') throw new DbError('invalid', 'SQL 不能为空')
+    if (connection.dialect === 'mssql') {
+      throw new DbError(
+        'unsupported',
+        'SQL Server 连接暂不支持执行计划',
+        '可以在控制台先执行 SET SHOWPLAN_ALL ON，再执行要看的语句。',
+      )
+    }
     const queryOptions: QueryOptions = { maxRows: 500, ...options }
     const statements: string[] = []
     if (connection.dialect === 'oracle' || connection.dialect === 'oceanbase-oracle') {

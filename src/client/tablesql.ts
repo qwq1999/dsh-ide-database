@@ -15,7 +15,9 @@ export interface ColumnFilter {
 export type ColumnFilters = Record<string, ColumnFilter>
 
 export function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
-  return dialect === 'mysql' ? `\`${name}\`` : `"${name}"`
+  if (dialect === 'mysql') return `\`${name}\``
+  if (dialect === 'mssql') return `[${name.replaceAll(']', ']]')}]`
+  return `"${name}"`
 }
 
 export function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
@@ -23,9 +25,17 @@ export function qualifiedName(dialect: ClientConnection['dialect'], schema: stri
   return schema === '' ? tableName : `${quoteIdent(dialect, schema)}.${tableName}`
 }
 
+/** SQL Server requires ORDER BY before OFFSET/FETCH; fall back to a stable dummy order. */
+export function orderByForPaging(dialect: ClientConnection['dialect'], orderBy: string): string {
+  if (orderBy !== '') return ` ORDER BY ${orderBy}`
+  return dialect === 'mssql' ? ' ORDER BY (SELECT NULL)' : ''
+}
+
 /** One page of rows: LIMIT/OFFSET on MySQL-family servers, OFFSET FETCH elsewhere. */
 export function pageClause(dialect: ClientConnection['dialect'], limit: number, offset: number): string {
-  if (dialect === 'oracle' || dialect === 'oceanbase-oracle') return `OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
+  if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'mssql') {
+    return `OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`
+  }
   return `LIMIT ${limit} OFFSET ${offset}`
 }
 
@@ -54,7 +64,7 @@ export function tableSelectSql(
 ): string {
   const from = qualifiedName(dialect, schema, table)
   const whereSql = where.trim() === '' ? '' : ` WHERE ${where.trim()}`
-  const orderSql = orderBy.trim() === '' ? '' : ` ORDER BY ${orderBy.trim()}`
+  const orderSql = orderByForPaging(dialect, orderBy.trim())
   const size = Math.max(1, Math.trunc(limit) || 1)
   return `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, size, 0)}`
 }

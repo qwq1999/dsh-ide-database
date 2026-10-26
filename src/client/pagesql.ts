@@ -97,6 +97,11 @@ export function wrapPage(
 ${text}
 ) dshdb_page OFFSET ${offset} ROWS FETCH NEXT ${size} ROWS ONLY`
   }
+  if (dialect === 'mssql') {
+    return `SELECT * FROM (
+${text}
+) dshdb_page ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${size} ROWS ONLY`
+  }
   return `SELECT * FROM (
 ${text}
 ) dshdb_page LIMIT ${size} OFFSET ${offset}`

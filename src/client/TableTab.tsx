@@ -21,7 +21,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
@@ -202,7 +202,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         const where = stripWhere(target.where)
         const orderBy = stripOrderBy(target.orderBy)
         const whereSql = where === '' ? '' : ` WHERE ${where}`
-        const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
+        const orderSql = orderByForPaging(dialect, orderBy)
         const offset = target.page * target.size
         const pageSql = `SELECT * FROM ${from}${whereSql}${orderSql} ${pageClause(dialect, target.size, offset)}`
         // The total is only a pager label, so it runs alongside the page instead of after it.
@@ -615,7 +615,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     const where = composeWhere(dialect, whereText, columns, filters)
     const whereSql = where === '' ? '' : ` WHERE ${where}`
     const orderBy = stripOrderBy(orderText)
-    const orderSql = orderBy === '' ? '' : ` ORDER BY ${orderBy}`
+    const orderSql = orderByForPaging(dialect, orderBy)
     const batch = 2000
     let seeded = false
     let collectedColumns = displayColumns

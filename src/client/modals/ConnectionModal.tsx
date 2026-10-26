@@ -22,6 +22,7 @@ const PRESET_LABEL: Record<PresetId, string> = {
   dameng: '达梦 DM',
   postgres: 'PostgreSQL',
   sqlite: 'SQLite',
+  mssql: 'SQL Server',
   redis: 'Redis',
 }
 

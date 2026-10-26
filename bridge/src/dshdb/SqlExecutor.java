@@ -65,6 +65,10 @@ final class SqlExecutor {
             new HashSet<String>(Arrays.asList("pg_catalog", "information_schema", "pg_toast"));
     private static final Set<String> DAMENG_SYSTEM =
             new HashSet<String>(Arrays.asList("SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "SYSJOB", "CTISYS"));
+    private static final Set<String> MSSQL_SYSTEM =
+            new HashSet<String>(Arrays.asList("sys", "information_schema", "guest", "db_owner",
+                    "db_accessadmin", "db_securityadmin", "db_ddladmin", "db_backupoperator",
+                    "db_datareader", "db_datawriter", "db_denydatareader", "db_denydatawriter"));
 
     Map<String, Object> connect(Map<String, Object> params) throws Exception {
         String connId = Json.string(params.get("connId"), "");
@@ -1106,6 +1110,9 @@ final class SqlExecutor {
         }
         if ("dameng".equals(dialect)) {
             return DAMENG_SYSTEM.contains(name.toUpperCase());
+        }
+        if ("mssql".equals(dialect)) {
+            return MSSQL_SYSTEM.contains(name.toLowerCase());
         }
         if ("postgres".equals(dialect)) {
             String lower = name.toLowerCase();
