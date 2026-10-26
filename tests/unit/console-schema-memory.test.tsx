@@ -85,7 +85,8 @@ describe('console schema memory', () => {
     await waitFor(() => expect(picker).toHaveProperty('value', 'shop'))
 
     fireEvent.change(picker, { target: { value: 'other' } })
-    expect(window.localStorage.getItem(KEY)).toBe('other')
+    // The picker writes through an effect, so wait instead of reading straight away.
+    await waitFor(() => expect(window.localStorage.getItem(KEY)).toBe('other'))
 
     cleanup()
     render(consoleTab())
