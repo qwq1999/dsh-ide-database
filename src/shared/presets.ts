@@ -76,6 +76,17 @@ export const PRESETS: Record<PresetId, PresetSpec> = {
     databaseHint: '数据库名（留空时连当前用户的默认库）',
     needsJava: true,
   },
+  sqlite: {
+    id: 'sqlite',
+    dialect: 'sqlite',
+    defaultPort: 0,
+    driverClass: 'org.sqlite.JDBC',
+    urlTemplate: 'jdbc:sqlite:{{database}}',
+    jar: { group: 'org.xerial', artifact: 'sqlite-jdbc', version: '3.46.1.3' },
+    databaseHint: '数据库文件路径，例如 D:/data/app.db 或 :memory:',
+    hostOptional: true,
+    needsJava: true,
+  },
   redis: {
     id: 'redis',
     dialect: 'redis',
@@ -93,6 +104,7 @@ export const PRESET_ORDER: PresetId[] = [
   'oracle',
   'dameng',
   'postgres',
+  'sqlite',
   'redis',
 ]
 
@@ -101,6 +113,7 @@ export const SQL_DIALECT_LABEL: Record<SqlDialect, string> = {
   oracle: 'Oracle',
   dameng: '达梦 DM',
   postgres: 'PostgreSQL',
+  sqlite: 'SQLite',
   'oceanbase-oracle': 'OceanBase (Oracle)',
   generic: '自定义 JDBC',
 }

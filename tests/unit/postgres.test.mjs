@@ -17,7 +17,8 @@ describe('PostgreSQL preset', () => {
 
   it('shows up in the picker before Redis', () => {
     expect(PRESET_ORDER).toContain('postgres')
-    expect(PRESET_ORDER.indexOf('postgres')).toBe(PRESET_ORDER.indexOf('redis') - 1)
+    expect(PRESET_ORDER.indexOf('postgres')).toBeLessThan(PRESET_ORDER.indexOf('sqlite'))
+    expect(PRESET_ORDER.indexOf('sqlite')).toBeLessThan(PRESET_ORDER.indexOf('redis'))
     expect(SQL_DIALECT_LABEL.postgres).toBe('PostgreSQL')
     expect(DIALECT_LABEL.postgres).toBe('PostgreSQL')
   })

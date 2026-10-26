@@ -21,6 +21,7 @@ const PRESET_LABEL: Record<PresetId, string> = {
   oracle: 'Oracle',
   dameng: '达梦 DM',
   postgres: 'PostgreSQL',
+  sqlite: 'SQLite',
   redis: 'Redis',
 }
 
@@ -153,8 +154,12 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
 
   const validate = (draft: ConnectionDraft): string => {
     if (draft.name === '') return '请填写连接名称'
-    if (draft.host === '') return '请填写主机地址'
-    if (!Number.isInteger(draft.port) || draft.port < 1 || draft.port > 65535) return '端口需在 1-65535 之间'
+    const spec = isCustom ? undefined : PRESETS[choice as PresetId]
+    const hostOptional = spec?.hostOptional === true
+    if (draft.host === '' && !hostOptional) return '请填写主机地址'
+    if (!hostOptional && (!Number.isInteger(draft.port) || draft.port < 1 || draft.port > 65535)) {
+      return '端口需在 1-65535 之间'
+    }
     if (isCustom && !customDriver) return '请选择或先新增一个自定义驱动'
     return ''
   }

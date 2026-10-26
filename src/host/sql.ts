@@ -603,6 +603,12 @@ export class SqlService {
         const ddl = cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), '')
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('服务器没有返回 DDL 文本')
+      } else if (dialect === 'sqlite' && (kind === 'table' || kind === 'view')) {
+        const statement = `SELECT sql FROM sqlite_master WHERE type = ${quoteLiteral(kind)} AND name = ${quoteLiteral(table)}`
+        const result = await this.query(connId, statement, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('sqlite_master 没有返回定义')
       } else if (dialect === 'postgres' && kind === 'view') {
         const statement = `SELECT pg_get_viewdef(to_regclass(${quoteLiteral(qualified)}) , true) AS ddl`
         const result = await this.query(connId, statement, { maxRows: 1 })
@@ -669,6 +675,12 @@ export class SqlService {
       // API DmdbConnection.getExplainInfo(text) is the supported way to read it.
       const bridge = await this.ensureBridge()
       const plan = await bridge.request<QueryResult>('explain', { connId, sql }, 60_000)
+      return { dialect: connection.dialect, statements, plan, warnings: [] }
+    }
+    if (connection.dialect === 'sqlite') {
+      const explain = `EXPLAIN QUERY PLAN ${sql}`
+      statements.push(explain)
+      const plan = await this.query(connId, explain, queryOptions)
       return { dialect: connection.dialect, statements, plan, warnings: [] }
     }
     const explain = `EXPLAIN ${sql}`

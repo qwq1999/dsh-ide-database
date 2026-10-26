@@ -2,7 +2,7 @@
 
 DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧边栏的数据库工具窗，以及一组供 Agent 查询/操作数据库的工具。
 
-支持 MySQL、MariaDB、PostgreSQL、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
+支持 MySQL、MariaDB、PostgreSQL、SQLite、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
 
 ![数据源树](docs/screenshots/database-tree.png)
 
@@ -11,7 +11,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 ## 功能
 
 - **右侧边栏入口**：在右侧边栏的「+」新标签页菜单里选择「数据库」，或在 Guide 页点击「数据库」胶囊；标签页会保持挂载，切换会话不丢状态；重新打开面板时会回到上次选中的数据源（连接被删掉则回到第一个）。
-- **预设数据源**：MySQL、MariaDB、PostgreSQL、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板（MariaDB 走 MySQL 方言）。
+- **预设数据源**：MySQL、MariaDB、PostgreSQL、SQLite、OceanBase（MySQL / Oracle 模式）、Oracle、达梦 DM、Redis，新建连接时自动带出默认端口、驱动类和 URL 模板（MariaDB 走 MySQL 方言；SQLite 直接填数据库文件路径，不需要主机和端口）。
 - **自定义驱动**：填写驱动名、方言、驱动类、URL 模板和 Maven 坐标（可多个 jar），点击下载即可从 Maven Central / 阿里云镜像拉取并缓存，无需手动放置 jar。
 - **数据浏览**：仿 JetBrains Database 工具窗口——工具栏「新增 / 刷新 / 删除 / 控制台 / 设置」左对齐，下方是所有数据源 → Schema → 表 / 视图 / 例程 / 序列 / 触发器 的树，每类按文件夹分组并显示数量（表里还能继续展开「列 / 键 / 索引」），单个分组对象很多时先列前 200 个、点「显示剩余 N 个」继续展开；数据源节点上右键可以复制连接名、复制地址或重新连接，库节点上右键可以复制库名、「只看这个库」（选完光标会落在筛选框里，方便接着补表名），或把整个库的表和视图定义导出成一个 `.sql` 文件；右键菜单打开后可用方向键在菜单项间移动、Enter 执行、Esc 关闭；焦点在树里时 `Ctrl/⌘ + F` 直接跳进上方的筛选框；选中表在下方显示列、默认值、主键、索引与注释，右上角的「DDL」按钮弹出该表的建表语句（旁边的「复制列名」按逗号复制全部列名，「复制查询」拼一条列名写全的 `SELECT`）（服务器取不到时按结构重建，并在弹层里说明原因）；对象上右键还有「打开数据 / 在控制台查询 / 复制查询语句 / 查看 DDL / 复制名称 / 复制限定名 / 只看这个表」菜单（「在控制台查询」会拼好带分页的 `SELECT` 放进新的查询控制台，只填不执行；「只看这个表」与库节点的「只看这个库」一样，选完光标会落在筛选框里）；选中函数、存储过程、触发器或序列时，下方直接展示服务器返回的定义。
 - **Redis 键空间**：Redis 连接按「数据源 → `db{库号}`（可展开/收起）→ 键」浏览，每个逻辑库独立分页扫描、各自「加载更多键」，筛选框会自动扫描匹配的键，旁边的类型下拉可以只看 string / list / set / hash / zset / stream（Redis 6 起由 SCAN TYPE 在服务端过滤），「继续」只在筛选条件没变时可用（改了 MATCH 或类型后需要重新点「扫描」，否则游标会接错批次）；点键在下方直接看值（表格化返回 hash / list / set / zset，string 原样展示；string 里存的是 JSON 对象/数组时自动缩进成块，方便直接读配置），值面板上方可一键复制键名或完整值，也能点刷新重新读一次这个键（键列表里的 TTL 与大小跟着更新））。行尾可以勾选要展示的逻辑库（默认只展示连接配置里的库，范围为 Redis 的 `databases` 数量）；未连接或未打开过时行尾显示「连接」按钮，连上自动加载 Schema / 键空间，断线后仍可用缓存浏览。
@@ -196,6 +196,7 @@ dsh --profile dbweb --port 16402 --no-open
 | MySQL | MySQL | 3306 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
 | MariaDB | MariaDB | 3306 | `org.mariadb.jdbc.Driver` | `org.mariadb.jdbc:mariadb-java-client:3.4.1` |
 | PostgreSQL | PostgreSQL | 5432 | `org.postgresql.Driver` | `org.postgresql:postgresql:42.7.4` |
+| SQLite | SQLite | — | `org.sqlite.JDBC` | `org.xerial:sqlite-jdbc:3.46.1.3` |
 | OceanBase（MySQL 模式） | MySQL | 2881 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
 | OceanBase（Oracle 模式） | OceanBase Oracle | 2881 | `com.oceanbase.jdbc.Driver` | `com.oceanbase:oceanbase-client:2.4.19` |
 | Oracle | Oracle | 1521 | `oracle.jdbc.OracleDriver` | `com.oracle.database.jdbc:ojdbc8:23.26.3.0.0` |

@@ -698,6 +698,16 @@ final class SqlExecutor {
     private List<Object> metadataSchemas(Conn entry, String filter) throws SQLException {
         List<Object> result = new ArrayList<Object>();
         DatabaseMetaData metadata = entry.connection.getMetaData();
+        if ("sqlite".equals(entry.dialect)) {
+            // SQLite reports no schemas through JDBC; the attached database is always "main".
+            if (filter.isEmpty() || "main".toLowerCase().contains(filter.toLowerCase())) {
+                Map<String, Object> row = new LinkedHashMap<String, Object>();
+                row.put("name", "main");
+                row.put("system", Boolean.FALSE);
+                result.add(row);
+            }
+            return result;
+        }
         boolean mysql = "mysql".equals(entry.dialect);
         try (ResultSet rs = mysql ? metadata.getCatalogs() : metadata.getSchemas()) {
             while (rs.next()) {
@@ -719,8 +729,9 @@ final class SqlExecutor {
         List<Object> result = new ArrayList<Object>();
         DatabaseMetaData metadata = entry.connection.getMetaData();
         boolean mysql = "mysql".equals(entry.dialect);
+        boolean sqlite = "sqlite".equals(entry.dialect);
         String catalog = mysql ? schema : null;
-        String schemaPattern = mysql ? null : schema;
+        String schemaPattern = mysql || sqlite ? null : schema;
         try (ResultSet rs = metadata.getTables(
                 catalog, schemaPattern, "%", new String[] {"TABLE", "VIEW"})) {
             while (rs.next()) {
@@ -749,8 +760,9 @@ final class SqlExecutor {
             throws SQLException {
         DatabaseMetaData metadata = entry.connection.getMetaData();
         boolean mysql = "mysql".equals(entry.dialect);
+        boolean sqlite = "sqlite".equals(entry.dialect);
         String catalog = mysql ? schema : null;
-        String schemaPattern = mysql ? null : schema;
+        String schemaPattern = mysql || sqlite ? null : schema;
         Set<String> primary = new HashSet<String>();
         try (ResultSet rs = metadata.getPrimaryKeys(catalog, schemaPattern, table)) {
             while (rs.next()) {

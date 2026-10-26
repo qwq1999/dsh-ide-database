@@ -4,7 +4,15 @@
  * /dsh-ide-database/api boundary and are stored in the profile data file.
  */
 
-export type Dialect = 'mysql' | 'oracle' | 'dameng' | 'postgres' | 'oceanbase-oracle' | 'generic' | 'redis'
+export type Dialect =
+  | 'mysql'
+  | 'oracle'
+  | 'dameng'
+  | 'postgres'
+  | 'sqlite'
+  | 'oceanbase-oracle'
+  | 'generic'
+  | 'redis'
 
 export type SqlDialect = Exclude<Dialect, 'redis'>
 
@@ -16,6 +24,7 @@ export type PresetId =
   | 'oracle'
   | 'dameng'
   | 'postgres'
+  | 'sqlite'
   | 'redis'
 
 export type DriverChoice = PresetId | 'custom'
@@ -44,6 +53,8 @@ export interface PresetSpec {
   jar?: JarRef
   /** Shown in the connection form under the database field. */
   databaseHint: string
+  /** File-based engines (SQLite) do not use host or port. */
+  hostOptional?: boolean
   needsJava: boolean
 }
 
