@@ -446,10 +446,47 @@ final class SqlExecutor {
                 readPgObjects(entry, schema, pgObjects);
                 return pgObjects;
             }
+            if ("mssql".equals(entry.dialect)) {
+                List<Object> mssqlObjects = metadataObjects(entry, schema);
+                readMssqlObjects(entry, schema, mssqlObjects);
+                return mssqlObjects;
+            }
             return metadataObjects(entry, schema);
         } finally {
             entry.lock.unlock();
         }
+    }
+
+    /** Routines, triggers and sequences from sys.objects (tables/views come from metadata). */
+    private void readMssqlObjects(Conn entry, String schema, List<Object> result) {
+        String sql = "SELECT name, type FROM sys.objects WHERE schema_id = SCHEMA_ID(?)"
+                + " AND type IN ('P','FN','IF','TF','TR','SO') ORDER BY name";
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString(1);
+                    if (name == null) {
+                        continue;
+                    }
+                    Map<String, Object> row = new LinkedHashMap<String, Object>();
+                    row.put("name", name);
+                    row.put("kind", mssqlObjectKind(rs.getString(2)));
+                    result.add(row);
+                }
+            }
+        } catch (SQLException ignored) {
+            // Older servers or a restricted login must not hide the tables.
+        }
+    }
+
+    private static String mssqlObjectKind(String type) {
+        String value = type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
+        if (value.equals("P")) return "procedure";
+        if (value.equals("FN") || value.equals("IF") || value.equals("TF")) return "function";
+        if (value.equals("TR")) return "trigger";
+        if (value.equals("SO")) return "sequence";
+        return "other";
     }
 
     /** Values a PostgreSQL schema exposes beyond tables and views. */
