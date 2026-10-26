@@ -89,6 +89,9 @@ describe('redis key type filter', () => {
 
     const picker = screen.getByLabelText('键类型') as HTMLSelectElement
     expect(picker.value).toBe('')
+    // The first scan runs on mount; wait it out before measuring the picker's scan.
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+    mocks.redisScan.mockClear()
     fireEvent.change(picker, { target: { value: 'hash' } })
 
     await waitFor(() =>
@@ -104,6 +107,7 @@ describe('redis key type filter', () => {
     await waitForConsoleSource(mocks)
 
     const picker = screen.getByLabelText('键类型') as HTMLSelectElement
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
     fireEvent.change(picker, { target: { value: 'zset' } })
     await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
 

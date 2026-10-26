@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForConsoleSource } from '../stubs/console-ready'
@@ -94,12 +94,15 @@ describe('console grid rendering', () => {
     fireEvent.change(editor, { target: { value: 'SELECT * FROM t' } })
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
     await screen.findByText('alpha')
+    // Let any state updates queued by the first render land before counting.
+    await act(async () => {})
 
     const painted = mocks.cells.mock.calls.length
     expect(painted).toBeGreaterThan(0)
 
     fireEvent.change(editor, { target: { value: 'SELECT * FROM t /* note */' } })
     await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('note'))
+    await act(async () => {})
     expect(mocks.cells.mock.calls.length).toBe(painted)
   })
 })
