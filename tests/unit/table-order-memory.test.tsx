@@ -102,7 +102,9 @@ describe('table sort order memory', () => {
     render(<TableTab useTabInfo={tab} />)
 
     await screen.findByText('alpha')
-    expect(pageSqls().at(0)).toContain('ORDER BY id DESC')
+    // The ordering is applied once the first page has told us the columns exist.
+    await waitFor(() => expect(pageSqls().at(-1)).toContain('ORDER BY id DESC'))
+    expect((screen.getByLabelText('排序列') as HTMLInputElement).value).toBe('id DESC')
   })
 
   it('forgets the order when the sort is cleared', async () => {

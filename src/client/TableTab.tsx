@@ -120,6 +120,22 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
   const [order, setOrder] = useState<number[] | null>(null)
+  // The ordering saved with the tab is only applied after the first page tells us
+  // which columns exist; a column that was dropped or renamed is simply dropped.
+  useEffect(() => {
+    if (columns.length === 0 || storedOrderApplied.current) return
+    storedOrderApplied.current = true
+    const remembered = readText(orderStorageKey)
+    if (remembered === '') return
+    const parsed = parseOrderBy(stripOrderBy(remembered))
+    if (parsed === undefined) return
+    if (!columns.some((column) => column.name === parsed.column)) {
+      writeText(orderStorageKey, '')
+      return
+    }
+    setOrderText(remembered)
+    applyRef.current({ orderBy: remembered, page: 0, recount: false })
+  }, [columns, orderStorageKey])
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const objectKind = params.kind === 'view' ? 'view' : 'table'
@@ -155,6 +171,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const whereRef = useRef<HTMLInputElement | null>(null)
   /** Latest load wins: an older page must not overwrite a newer one. */
   const loadToken = useRef(0)
+  const storedOrderApplied = useRef(false)
   const filterRowRef = useRef<HTMLTableRowElement | null>(null)
 
   // Column drag order is display-only; reset it when the result set changes shape.
@@ -242,7 +259,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         if (found.dialect === 'redis') throw new ApiError('unsupported', '数据表只能在关系型数据源中打开')
         if (cancelled) return
         setConnection(found)
-        await load(found, { page: 0, size: pageSize, where: '', orderBy: readText(orderStorageKey), recount: true })
+        await load(found, { page: 0, size: pageSize, where: '', orderBy: '', recount: true })
       } catch (caught) {
         if (!cancelled) setError(failureText(caught))
       }
