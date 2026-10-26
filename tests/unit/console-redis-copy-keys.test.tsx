@@ -104,5 +104,6 @@ describe('redis copy key names', () => {
     fireEvent.click(screen.getByRole('button', { name: /复制键名/ }))
 
     await waitFor(() => expect(mocks.copies).toHaveBeenCalledWith(['user:1', 'user:2'].join(String.fromCharCode(10))))
+    expect(await screen.findByText('键名（2 个） 已复制')).not.toBeNull()
   })
 })

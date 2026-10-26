@@ -1616,10 +1616,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               variant="ghost"
               disabled={visibleKeys.length === 0}
               title="把当前列表里的键名按换行复制出来"
-              onClick={() => void copyText(visibleKeys.map((info) => info.key).join('\n')).then(noteCopied('键名'))}
+              onClick={() => void copyText(visibleKeys.map((info) => info.key).join('\n')).then(noteCopied(`键名（${formatCount(visibleKeys.length)} 个）`))}
             >
               复制键名
             </Button>
+            {exportNote !== '' ? (
+              <Tag tone="business" role="status">
+                {exportNote}
+              </Tag>
+            ) : null}
           </div>
 
           {valueError !== null ? (
