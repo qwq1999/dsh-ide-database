@@ -270,7 +270,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       ? ''
       : connection.dialect === 'mysql' || connection.dialect === 'generic'
         ? connection.database
-        : connection.user
+        : connection.dialect === 'postgres'
+          ? 'public'
+          : connection.user
 
   // A remembered schema can disappear (renamed or dropped): fall back instead of a blank picker.
   useEffect(() => {

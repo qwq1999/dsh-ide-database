@@ -412,6 +412,11 @@ export class SqlService {
       case 'dameng':
         props.connectTimeout ??= timeoutMs
         break
+      case 'postgres':
+        // PostgreSQL measures connectTimeout in seconds, matching our setting.
+        props.connectTimeout ??= String(settings.connectTimeoutSec)
+        props.ApplicationName ??= 'dsh-ide-database'
+        break
       default:
         break
     }
@@ -598,6 +603,12 @@ export class SqlService {
         const ddl = cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), '')
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('服务器没有返回 DDL 文本')
+      } else if (dialect === 'postgres' && kind === 'view') {
+        const statement = `SELECT pg_get_viewdef(to_regclass(${quoteLiteral(qualified)}) , true) AS ddl`
+        const result = await this.query(connId, statement, { maxRows: 1 })
+        const ddl = typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+        if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
+        warnings.push('pg_get_viewdef 没有返回内容')
       } else if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
         const objectType = kind.toUpperCase()
         const statement = `SELECT DBMS_METADATA.GET_DDL(${quoteLiteral(objectType)}, ${quoteLiteral(table)}, ${quoteLiteral(schema)}) AS DDL FROM DUAL`
@@ -617,6 +628,9 @@ export class SqlService {
       )
     }
     const description = await this.describe(connId, schema, table, kind)
+    if (dialect === 'postgres' && kind === 'table') {
+      warnings.push('PostgreSQL 没有内置的建表语句查询，这张表是按结构重建的')
+    }
     return { schema, table, kind, ddl: generateDdl(dialect, description), source: 'generated', warnings }
   }
 

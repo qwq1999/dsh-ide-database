@@ -4,7 +4,7 @@
  * /dsh-ide-database/api boundary and are stored in the profile data file.
  */
 
-export type Dialect = 'mysql' | 'oracle' | 'dameng' | 'oceanbase-oracle' | 'generic' | 'redis'
+export type Dialect = 'mysql' | 'oracle' | 'dameng' | 'postgres' | 'oceanbase-oracle' | 'generic' | 'redis'
 
 export type SqlDialect = Exclude<Dialect, 'redis'>
 
@@ -14,6 +14,7 @@ export type PresetId =
   | 'oceanbase-oracle'
   | 'oracle'
   | 'dameng'
+  | 'postgres'
   | 'redis'
 
 export type DriverChoice = PresetId | 'custom'

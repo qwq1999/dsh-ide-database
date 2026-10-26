@@ -61,6 +61,8 @@ final class SqlExecutor {
                     "WMSYS", "XDB", "XS$NULL", "ANONYMOUS", "PUBLIC", "ORACLE_OCM",
                     "SYSBACKUP", "SYSDG", "SYSKM", "SYSRAC", "SYS$UMF", "DBSFWUSER",
                     "REMOTE_SCHEDULER_AGENT", "SYS$IMPORT", "SYS$EXPORT"));
+    private static final Set<String> POSTGRES_SYSTEM =
+            new HashSet<String>(Arrays.asList("pg_catalog", "information_schema", "pg_toast"));
     private static final Set<String> DAMENG_SYSTEM =
             new HashSet<String>(Arrays.asList("SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "SYSJOB", "CTISYS"));
 
@@ -1092,6 +1094,10 @@ final class SqlExecutor {
         }
         if ("dameng".equals(dialect)) {
             return DAMENG_SYSTEM.contains(name.toUpperCase());
+        }
+        if ("postgres".equals(dialect)) {
+            String lower = name.toLowerCase();
+            return POSTGRES_SYSTEM.contains(lower) || lower.startsWith("pg_");
         }
         return ORACLE_SYSTEM.contains(name.toUpperCase());
     }

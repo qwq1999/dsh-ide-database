@@ -82,7 +82,7 @@ export class DriverManager {
     const jars = preset.jar === undefined ? [] : [this.jarStatus(preset.jar)]
     return {
       id,
-      name: id === 'oceanbase-mysql' ? 'OceanBase (MySQL)' : id === 'oceanbase-oracle' ? 'OceanBase (Oracle)' : id === 'dameng' ? '达梦 DM' : id === 'mysql' ? 'MySQL' : id === 'oracle' ? 'Oracle' : 'Redis',
+      name: id === 'oceanbase-mysql' ? 'OceanBase (MySQL)' : id === 'oceanbase-oracle' ? 'OceanBase (Oracle)' : id === 'dameng' ? '达梦 DM' : id === 'postgres' ? 'PostgreSQL' : id === 'mysql' ? 'MySQL' : id === 'oracle' ? 'Oracle' : 'Redis',
       preset: id,
       dialect: preset.dialect,
       ...(preset.driverClass === undefined ? {} : { driverClass: preset.driverClass }),

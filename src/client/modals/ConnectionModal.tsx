@@ -19,6 +19,7 @@ const PRESET_LABEL: Record<PresetId, string> = {
   'oceanbase-oracle': 'OceanBase（Oracle 模式）',
   oracle: 'Oracle',
   dameng: '达梦 DM',
+  postgres: 'PostgreSQL',
   redis: 'Redis',
 }
 

@@ -56,6 +56,16 @@ export const PRESETS: Record<PresetId, PresetSpec> = {
     databaseHint: '模式名（Schema，可留空）',
     needsJava: true,
   },
+  postgres: {
+    id: 'postgres',
+    dialect: 'postgres',
+    defaultPort: 5432,
+    driverClass: 'org.postgresql.Driver',
+    urlTemplate: 'jdbc:postgresql://{{host}}:{{port}}/{{database}}',
+    jar: { group: 'org.postgresql', artifact: 'postgresql', version: '42.7.4' },
+    databaseHint: '数据库名（留空时连当前用户的默认库）',
+    needsJava: true,
+  },
   redis: {
     id: 'redis',
     dialect: 'redis',
@@ -71,6 +81,7 @@ export const PRESET_ORDER: PresetId[] = [
   'oceanbase-oracle',
   'oracle',
   'dameng',
+  'postgres',
   'redis',
 ]
 
@@ -78,6 +89,7 @@ export const SQL_DIALECT_LABEL: Record<SqlDialect, string> = {
   mysql: 'MySQL',
   oracle: 'Oracle',
   dameng: '达梦 DM',
+  postgres: 'PostgreSQL',
   'oceanbase-oracle': 'OceanBase (Oracle)',
   generic: '自定义 JDBC',
 }
