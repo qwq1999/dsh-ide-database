@@ -325,7 +325,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
         {testResult ? (
           <Banner tone={testResult.ok ? 'success' : 'error'}>
             {testResult.ok
-              ? `连接成功 · ${testResult.server?.product ?? ''} ${testResult.server?.version ?? ''} · ${formatMs(testResult.latencyMs)}`
+              ? `连接成功 · ${testResult.server?.product ?? ''} ${testResult.server?.version ?? ''} · ${formatMs(testResult.latencyMs)}${testResult.note === undefined ? '' : ` · ${testResult.note}`}`
               : `连接失败：${testResult.message ?? '未知错误'}`}
           </Banner>
         ) : null}

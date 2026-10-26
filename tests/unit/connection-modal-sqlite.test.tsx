@@ -47,6 +47,23 @@ describe('connection modal for file based engines', () => {
     expect(screen.getByLabelText(/数据库 \/ 服务名/)).toBeTruthy()
   })
 
+  it('shows the note from a successful SQLite probe', async () => {
+    mocks.testConnection.mockResolvedValue({
+      ok: true,
+      latencyMs: 5,
+      server: { product: 'SQLite', version: '3.46.1' },
+      note: '文件不存在，连接时会新建一个空数据库',
+    })
+    renderNew()
+
+    fireEvent.change(screen.getByLabelText(/^驱动/), { target: { value: 'sqlite' } })
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '本地库' } })
+    fireEvent.change(screen.getByLabelText(/数据库 \/ 服务名/), { target: { value: './tmp/app.db' } })
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+
+    await waitFor(() => expect(screen.getByText(/文件不存在，连接时会新建一个空数据库/)).toBeTruthy())
+  })
+
   it('requires a database file before saving SQLite', async () => {
     renderNew()
 

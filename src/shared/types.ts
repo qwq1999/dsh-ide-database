@@ -385,6 +385,8 @@ export interface ConnectionTestResult {
   server?: ServerInfo
   latencyMs: number
   message?: string
+  /** Extra remark shown next to a successful result (for example a SQLite file that will be created). */
+  note?: string
 }
 
 export interface RedisKeyInfo {

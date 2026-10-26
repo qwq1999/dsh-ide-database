@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
 
 import type {
   ColumnDetail,
@@ -235,6 +236,12 @@ export function isReadOnlySql(sql: string): boolean {
   return true
 }
 
+/** SQLite silently creates the file when it is missing; say so instead of pretending it existed. */
+export function fileDatabaseNote(dialect: SqlDialect, database: string, exists: boolean): string | null {
+  if (dialect !== 'sqlite' || database.trim() === '' || exists) return null
+  return '文件不存在，连接时会新建一个空数据库'
+}
+
 function parseNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -469,7 +476,8 @@ export class SqlService {
         (settings.connectTimeoutSec + 15) * 1000,
       )
       await bridge.request('disconnect', { connId: syntheticId }, 15_000).catch(() => undefined)
-      return { ok: true, server, latencyMs: Date.now() - started }
+      const note = fileDatabaseNote(driver.dialect, connection.database, existsSync(connection.database))
+      return { ok: true, server, latencyMs: Date.now() - started, ...(note === null ? {} : { note }) }
     } catch (error) {
       if (this.bridge !== undefined && driver !== undefined) {
         await this.bridge.request('disconnect', { connId: syntheticId }, 10_000).catch(() => undefined)
