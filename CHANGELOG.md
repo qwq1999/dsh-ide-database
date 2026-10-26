@@ -4,8 +4,9 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（152）
+## 新功能（153）
 
+- `1029023` feat(console): 命令框按 Ctrl/⌘ + L 清空
 - `ac219f8` feat(tree): 库节点可导出整个库的建表语句
 - `6dc6f7e` feat(tree): Redis 逻辑库与键行也标上层级
 - `72013fb` feat(tree): 对象下的列/键/索引分组也标层级
@@ -159,8 +160,12 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（61）
+## 修复（65）
 
+- `9c00b95` fix(table): 记住的排序列不存在时不再把坏 SQL 发出去
+- `a6262d5` fix(console): 记住的 Redis 逻辑库超出范围时回退 0
+- `a1feb6f` fix(console): 记住的库已被删掉时回退默认库
+- `f3904a9` fix(table): 全量导出的排序前缀不再重复
 - `e28ccaa` fix(console): DDL 执行后清掉补全缓存
 - `58ce72f` fix(redis): 永不过期的键在 TTL 两种排序下都排最后
 - `44d02cd` fix(redis): 值面板的 TTL 与键表格用同一套单位
@@ -252,8 +257,10 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（6）
+## 重构（8）
 
+- `c206a05` refactor(table): WHERE 前缀剥离也改用正则字面量
+- `42ccc99` refactor(table): ORDER BY 前缀剥离集中成一个函数
 - `f0334ad` refactor(ui): 复制成功反馈收进一个钩子
 - `b6b91d7` refactor(tree): 拆出架构选择器与 Redis 库列表
 - `c77fb22` refactor(format): 计数格式化复用一个 NumberFormat
@@ -290,8 +297,10 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（15）
+## 文档（17）
 
+- `13d88b2` docs: 去掉快捷键表里重复的数据源树行
+- `a14793c` docs: 重新生成变更日志
 - `f5eb83f` docs: 重新生成变更日志
 - `06f3886` docs: 快捷键表补上树刷新与 Redis 补全/选中
 - `37c895b` docs: 重新生成变更日志
