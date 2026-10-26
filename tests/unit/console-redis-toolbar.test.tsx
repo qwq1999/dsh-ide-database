@@ -82,4 +82,18 @@ describe('Redis console toolbar', () => {
     expect((box as HTMLTextAreaElement).value).toBe('')
     expect((clear as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('closes the command history with Escape', async () => {
+    window.localStorage.setItem('dsh-ide-database.history.v1', JSON.stringify({ sql: [], redis: [{ statement: 'GET user:9', at: Date.now() }] }))
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: '历史' }))
+    expect(await screen.findByText('GET user:9')).not.toBeNull()
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/例如 GET/), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByText('GET user:9')).toBeNull())
+    window.localStorage.clear()
+  })
 })

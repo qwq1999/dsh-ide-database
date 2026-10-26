@@ -1707,6 +1707,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               }}
               onKeyDown={(event) => {
                 if (composing(event)) return
+                if (event.key === 'Escape' && historyOpen) {
+                  setHistoryOpen(false)
+                  return
+                }
                 if (event.key === 'Tab') {
                   const input = event.currentTarget
                   const caret = input.selectionStart ?? command.length
@@ -1817,6 +1821,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               onKeyDown={(event) => {
                 // 中文输入法用回车确认候选词，这时不应该顺手执行语句。
                 if (composing(event)) return
+                if (event.key === 'Escape' && historyOpen) {
+                  setHistoryOpen(false)
+                  return
+                }
                 if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
                   event.preventDefault()
                   void openSuggestions()
