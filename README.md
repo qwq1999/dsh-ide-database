@@ -277,6 +277,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 ## 限制
 
 - MariaDB、PostgreSQL、SQLite、SQL Server 已内置预设；其它 JDBC 数据库仍可通过「自定义驱动」接入。
+- 新引擎的几个小提醒：SQLite 是单文件库，连接里只填 `.db` 路径（主机/端口/密码不适用），文件不存在时测试会提示将新建空库；SQL Server 需要能访问 1433 端口，JDBC 驱动默认会走加密协商；PostgreSQL 把 `public` 作为默认 Schema；MariaDB 复用 MySQL 方言与转义规则。
 - 不提供 SSH 隧道、整库导出/导入（`.sql` 脚本可通过控制台的「导入」/「保存」与编辑器往返）、执行计划图形化（文本与表格计划都支持，但没有连线图）。
 - 驱动层一次只接受一条语句：控制台会把分号分隔的脚本拆开逐条执行（`db_query` 等 Agent 工具仍按单条提交）。
 - Oracle 仅 thin 模式，不支持 thick（OCI）模式。
