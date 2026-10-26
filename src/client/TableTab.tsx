@@ -763,6 +763,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           <TableIcon size={13} />
           {params.table}
         </span>
+        {connection?.readOnly === true ? (
+          <Tag tone="warn" title="这条连接是只读的，写语句会被拒绝">
+            只读
+          </Tag>
+        ) : null}
         <span className="dshdb-qbar-spacer" />
         {loading ? <Spinner /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}

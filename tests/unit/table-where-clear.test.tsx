@@ -107,4 +107,10 @@ describe('table where bar', () => {
     await waitFor(() => expect(box.value).toBe(''))
     expect(pageSqls().at(-1)).not.toContain('WHERE')
   })
+
+  it('marks the tab as read only when the connection is', async () => {
+    mocks.status.mockResolvedValue({ config: { connections: [{ ...mysql, readOnly: true }], settings, drivers: [] }, drivers: [], env: {} })
+    render(<TableTab useTabInfo={tab} />)
+    expect(await screen.findByText('只读')).not.toBeNull()
+  })
 })
