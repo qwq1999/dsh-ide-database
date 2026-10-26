@@ -1742,6 +1742,19 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             <Button
               size="sm"
               variant="ghost"
+              onClick={() => {
+                setCommand('')
+                recallRef.current = -1
+                setCaretPos(0)
+              }}
+              disabled={command === ''}
+              title="清空命令框（Ctrl/⌘ + L）"
+            >
+              清空
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               icon={<ClockIcon size={12} />}
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((open) => !open)}

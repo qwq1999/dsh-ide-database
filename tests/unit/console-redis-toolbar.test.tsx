@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForConsoleSource } from '../stubs/console-ready'
@@ -65,5 +65,21 @@ describe('Redis console toolbar', () => {
     expect(screen.queryByRole('button', { name: '执行计划' })).toBeNull()
     expect(screen.queryByRole('button', { name: '事务' })).toBeNull()
     expect(screen.queryByRole('button', { name: '打开数据表' })).toBeNull()
+  })
+
+  it('clears the command box from the toolbar button', async () => {
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+    await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())
+
+    const clear = screen.getByRole('button', { name: '清空' }) as HTMLButtonElement
+    expect(clear.disabled).toBe(true)
+
+    const box = screen.getByPlaceholderText(/例如 GET/)
+    fireEvent.change(box, { target: { value: 'GET user:1' } })
+    expect((clear as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(clear)
+    expect((box as HTMLTextAreaElement).value).toBe('')
+    expect((clear as HTMLButtonElement).disabled).toBe(true)
   })
 })
