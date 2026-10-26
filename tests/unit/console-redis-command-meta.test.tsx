@@ -103,4 +103,21 @@ describe('Redis command output', () => {
     expect(await screen.findByText('hello')).not.toBeNull()
     await waitFor(() => expect(screen.queryByText(/boom/)).toBeNull())
   })
+
+  it('retries loading the key when the detail call failed', async () => {
+    mocks.redisScan.mockResolvedValue({ keys: [{ key: 'user:1', db: 0, type: 'string', ttl: -1, size: 5 }], cursor: '0' })
+    mocks.redisKey
+      .mockRejectedValueOnce(new Error('key boom'))
+      .mockResolvedValue({ key: 'user:1', db: 0, type: 'string', ttl: -1, size: 5, value: 'hello' })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'redis-1' } } } })} />)
+    await waitForConsoleSource(mocks)
+
+    fireEvent.click(await screen.findByText('user:1'))
+    await screen.findByText(/key boom/)
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    expect(await screen.findByText('hello')).not.toBeNull()
+    await waitFor(() => expect(screen.queryByText(/key boom/)).toBeNull())
+    expect(mocks.redisCommand).not.toHaveBeenCalled()
+  })
 })

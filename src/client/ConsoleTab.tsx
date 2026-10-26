@@ -195,6 +195,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [selectedKey, setSelectedKey] = useState('')
   const [value, setValue] = useState<RedisValue | null>(null)
   const [valueError, setValueError] = useState<Failure | null>(null)
+  /** What the value banner retries: the failing command, key load or refresh. */
+  const [valueRetry, setValueRetry] = useState<(() => void) | null>(null)
   /** Last Redis command text so the error banner can retry it. */
   const lastCommand = useRef<string | null>(null)
   const [command, setCommand] = useState('')
@@ -949,6 +951,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     } catch (error) {
       if (token !== runToken.current) return
       setValueError(failureText(error))
+      setValueRetry(() => () => {
+        void runCommandText(text)
+      })
     } finally {
       if (token === runToken.current) setCommandRunning(false)
     }
@@ -979,6 +984,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       } catch (error) {
         if (token !== runToken.current) return
         setValueError(failureText(error))
+        setValueRetry(() => () => {
+          void selectKey(key)
+        })
       }
     },
     [activeRedisDb, selectedId],
@@ -1016,6 +1024,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     } catch (error) {
       if (token !== runToken.current) return
       setValueError(failureText(error))
+      setValueRetry(() => () => {
+        void refreshValue()
+      })
     } finally {
       if (token === runToken.current) setValueRefreshing(false)
     }
@@ -1619,10 +1630,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     size="sm"
                     variant="ghost"
                     onClick={() => {
-                      const text = lastCommand.current
-                      if (text === null) return
+                      const retry = valueRetry
+                      if (retry === null) return
                       setValueError(null)
-                      void runCommandText(text)
+                      retry()
                     }}
                   >
                     重试
