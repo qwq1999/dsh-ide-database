@@ -1,7 +1,7 @@
 {
   "id": "dsh-ide-database",
   "name": "Database",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "main": "./lib/index.js",
   "description": "JetBrains Database-style data source tool window and agent tools for DeepSeek Harness.",
   "engines": {
@@ -15,14 +15,14 @@
       "db_delete_connection",
       "db_refresh_connection",
       "db_test_connection",
-      "db_list_databases",
+      "db_list_schemas",
       "db_list_objects",
       "db_describe_table",
-      "db_table_ddl",
-      "db_query",
+      "db_get_ddl",
+      "db_execute_sql",
       "db_explain",
       "db_redis_scan",
-      "db_redis_get",
+      "db_redis_inspect",
       "db_redis_command",
       "db_download_driver"
     ],

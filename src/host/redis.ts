@@ -197,9 +197,28 @@ const READ_ONLY_COMMANDS = new Set([
   'memory',
   'bitcount',
   'geopos',
+  'xread',
+  'xinfo',
+  'lindex',
+  'zcount',
+  'zlexcount',
+  'zrank',
+  'zrevrank',
+  'zmscore',
+  'hstrlen',
+  'hexists',
+  'hrandfield',
+  'getbit',
+  'bitpos',
+  'geodist',
+  'geohash',
+  'geosearch',
+  'pfcount',
+  'srandmember',
 ])
 
-const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf'])
+// FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.
+const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf', 'flushdb', 'flushall'])
 
 /** Splits a Redis command line into argv, honouring single and double quotes. */
 function tokenizeCommand(input: string): string[] {
@@ -511,13 +530,14 @@ export class RedisManager {
   }
 
   async command(connId: string, db: number, input: string, allowWrite: boolean): Promise<RedisCommandResult> {
-    const session = await this.ensureSession(connId, db)
     const tokens = tokenizeCommand(input)
     if (tokens.length === 0) throw new DbError('invalid', '命令不能为空')
     const command = tokens[0].toUpperCase()
+    // Deny before connecting: a forbidden command must not open a session either.
     if (DENIED_COMMANDS.has(command.toLowerCase())) {
       throw new DbError('read-only', `该命令被插件禁止执行：${command}`)
     }
+    const session = await this.ensureSession(connId, db)
     const readOnlyCommand = READ_ONLY_COMMANDS.has(command.toLowerCase())
     if (!readOnlyCommand && (session.readOnly || !allowWrite)) {
       throw new DbError('read-only', session.readOnly ? '该连接已标记为只读，拒绝写命令' : '当前操作不允许写命令')

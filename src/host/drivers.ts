@@ -160,7 +160,7 @@ export class DriverManager {
     throw new DbError(
       'jar-missing',
       `驱动 jar 尚未下载：${missing.map((jar) => jar.coordinates).join('、')}`,
-      `调用 /drivers/${encodeURIComponent(driver.id)}/download 下载。`,
+      `请先调用工具 db_download_driver（driver: "${driver.id}"）下载。`,
     )
   }
 

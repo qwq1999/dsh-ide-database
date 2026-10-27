@@ -10,7 +10,6 @@ declare module '@deepseek-ai/dsh-tools' {
     description: string
     parameters: Record<string, unknown>
     output?: Record<string, unknown>
-    readOnly?: boolean
     timeoutMs?: number
     execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown> | unknown
   }

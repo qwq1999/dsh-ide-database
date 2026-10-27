@@ -9,6 +9,7 @@ import { DbError, errorMessage } from './errors.js'
 import type { PluginPaths } from './paths.js'
 import type { StructureStore } from './structure.js'
 import type { ConnectionConfig, ObjectKind, PresetId, SqlDialect } from '../shared/types.js'
+import { PRESETS, PRESET_ORDER } from '../shared/presets.js'
 
 export interface ToolDeps {
   config: ConfigStore
@@ -73,6 +74,24 @@ function resolveConnection(config: ConfigStore, reference: string): ConnectionCo
   return byName
 }
 
+/** Connection params may carry credentials (e.g. a JDBC `password`); never hand them to a model verbatim. */
+const SECRET_PARAM = /pass|secret|token|credential|key/i
+
+function maskConnection(connection: ConnectionConfig): ConnectionConfig {
+  const params = connection.params ?? {}
+  const masked: Record<string, string> = {}
+  let changed = false
+  for (const [key, value] of Object.entries(params)) {
+    if (SECRET_PARAM.test(key)) {
+      masked[key] = '***'
+      changed = true
+    } else {
+      masked[key] = value
+    }
+  }
+  return changed ? { ...connection, params: masked } : connection
+}
+
 async function ensureSql(deps: ToolDeps, connection: ConnectionConfig): Promise<SqlService> {
   if (!deps.sql.isConnected(connection.id)) await deps.sql.connect(connection.id)
   return deps.sql
@@ -89,7 +108,6 @@ interface ToolAuthorDefinition {
     properties: Record<string, PropertySchema>
     required?: readonly string[]
   }
-  readOnly?: boolean
   timeoutMs?: number
   execute: (args: Record<string, unknown>, ctx: { signal?: AbortSignal }) => Promise<unknown> | unknown
 }
@@ -129,17 +147,18 @@ function parameterSpec(parameters: ToolAuthorDefinition['parameters']): Record<s
  * and a pure renderer; this wrapper supplies the JSON output and text renderer.
  */
 function tool(definition: ToolAuthorDefinition): ToolDefinition {
-  const { readOnly: _readOnly, ...rest } = definition
   return defineTool({
-    name: rest.name,
-    description: rest.description,
-    parameters: parameterSpec(rest.parameters),
+    name: definition.name,
+    description: definition.description,
+    parameters: parameterSpec(definition.parameters),
     output: {
       schema: { type: 'json' },
-      render: (_args: unknown, value: unknown) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+      // Compact JSON: agent results are read by a model, and pretty-printing roughly
+      // doubles the tokens of every returned row.
+      render: (_args: unknown, value: unknown) => [{ type: 'text', text: JSON.stringify(value) }],
     },
-    ...(rest.timeoutMs === undefined ? {} : { timeoutMs: rest.timeoutMs }),
-    execute: async (args, exec) => rest.execute(args as Record<string, unknown>, exec),
+    ...(definition.timeoutMs === undefined ? {} : { timeoutMs: definition.timeoutMs }),
+    execute: async (args, exec) => definition.execute(args as Record<string, unknown>, exec),
   })
 }
 
@@ -156,13 +175,12 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: [],
       },
-      readOnly: true,
       execute: (args) => {
         try {
           const snapshot = deps.config.snapshot()
           const includeDrivers = args.includeDrivers !== false
           return {
-            connections: snapshot.connections,
+            connections: snapshot.connections.map(maskConnection),
             settings: snapshot.settings,
             ...(includeDrivers ? { drivers: deps.drivers.statuses() } : {}),
           }
@@ -175,17 +193,18 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_create_connection',
       description:
-        'Create and save a database connection (MySQL, Oracle, Dameng, OceanBase, Postgres, Redis or a custom JDBC driver). The password goes to the plugin secret store, never to the config file. Run db_test_connection with a draft first when the parameters are uncertain.',
+        'Create and save a database connection (MySQL/MariaDB, Oracle, Dameng, OceanBase, Postgres, SQLite, SQL Server, Redis or a custom JDBC driver). The password goes to the plugin secret store, never to the config file. host/port are optional: the preset supplies the standard port, and SQLite only needs database (a file path).',
       parameters: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'Display name, for example 演示 MySQL.' },
           driver: {
             type: 'string',
-            description: 'Driver id: mysql, oracle, dameng, postgres, oceanbase-mysql, oceanbase-oracle, redis or custom.',
+            enum: [...PRESET_ORDER, 'custom'],
+            description: 'Driver preset id, or "custom" together with customDriverId.',
           },
-          host: { type: 'string', description: 'Host name or IP address.' },
-          port: { type: 'number', description: 'Port, for example 3306 for MySQL or 6379 for Redis.' },
+          host: { type: 'string', description: 'Host name or IP address. Optional for SQLite.' },
+          port: { type: 'number', description: 'Port. Optional: the preset default is used (3306 MySQL, 5432 Postgres, 6379 Redis, ...).' },
           user: { type: 'string', description: 'User name (Redis ignores it).' },
           password: { type: 'string', description: 'Password; stored in the secret store, never echo it back to the user.' },
           database: { type: 'string', description: 'Default database/schema; may be empty.' },
@@ -194,17 +213,19 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           params: { type: 'object', additionalProperties: true, description: 'Extra JDBC parameters.' },
           customDriverId: { type: 'string', description: 'Custom driver id to use when driver=custom.' },
         },
-        required: ['name', 'driver', 'host', 'port'],
+        required: ['name', 'driver'],
       },
       timeoutMs: 60_000,
       execute: (args) => {
         try {
-          if (args.port === undefined) throw new DbError('invalid', '缺少参数 port')
+          const driver = text(args, 'driver')
+          const preset = driver === 'custom' ? undefined : PRESETS[driver as PresetId]
+          const hostOptional = preset?.hostOptional === true
           const draft: Record<string, unknown> = {
             name: text(args, 'name'),
-            driver: text(args, 'driver'),
-            host: text(args, 'host'),
-            port: integer(args, 'port', 0, 1, 65535),
+            driver,
+            host: text(args, 'host', !hostOptional),
+            port: integer(args, 'port', preset?.defaultPort ?? 0, 0, 65535),
             user: text(args, 'user', false),
             database: text(args, 'database', false),
             redisDb: integer(args, 'redisDb', 0, 0, 255),
@@ -226,7 +247,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_update_connection',
       description:
-        'Update a saved connection by id or name. Only the given fields change; pass password to replace the stored secret, or clearPassword=true to remove it.',
+        'Update a saved connection by id or name. Only the given fields change; pass password to replace the stored secret, or clearPassword=true to remove it. The cached session is disconnected so the next call reconnects with the new settings.',
       parameters: {
         type: 'object',
         properties: {
@@ -245,7 +266,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         required: ['connection'],
       },
       timeoutMs: 60_000,
-      execute: (args) => {
+      execute: async (args) => {
         try {
           const existing = resolveConnection(deps.config, text(args, 'connection'))
           const draft: Record<string, unknown> = {
@@ -265,7 +286,11 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (password !== undefined && password !== '') draft.password = password
           if (args.clearPassword === true) draft.clearPassword = true
           const updated = deps.config.saveConnection(draft as never)
-          return { updated }
+          // The cached session still points at the old host/credentials; drop it so the
+          // next call reconnects with the saved values.
+          await deps.sql.disconnect(existing.id).catch(() => undefined)
+          await deps.redis.disconnect(existing.id).catch(() => undefined)
+          return { updated, note: '已保存；下一次调用时会用新参数重新连接。' }
         } catch (error) {
           return fail(error)
         }
@@ -368,7 +393,6 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: [],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const draft = objectArg(args, 'draft')
@@ -402,7 +426,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     }),
 
     tool({
-      name: 'db_list_databases',
+      name: 'db_list_schemas',
       description:
         'List schemas/databases visible on a SQL connection. For MySQL/OceanBase-MySQL this lists databases, for Oracle/Dameng/OceanBase-Oracle it lists schemas. Use db_list_objects next to explore one schema.',
       parameters: {
@@ -413,7 +437,6 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
@@ -429,31 +452,39 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
 
     tool({
       name: 'db_list_objects',
-      description: 'List objects (tables, views, procedures, functions, sequences, triggers) in a schema of a SQL connection. Requires a schema name from db_list_databases.',
+      description: 'List objects (tables, views, procedures, functions, sequences, triggers) in a schema of a SQL connection. Requires a schema name from db_list_schemas. Large schemas are truncated at `limit`.',
       parameters: {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Connection id or name.' },
           schema: { type: 'string', description: 'Schema or database name.' },
-          kinds: {
+          kind: {
             type: 'string',
             enum: ['all', 'table', 'view', 'procedure', 'function', 'sequence', 'trigger', 'other'],
             description: 'Restrict the object kind (default all). Routines are procedure/function.',
           },
+          limit: { type: 'number', description: 'Maximum objects to return (1-2000, default 200).' },
         },
         required: ['connection', 'schema'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接不支持对象浏览')
           const schema = text(args, 'schema')
-          const kinds = text(args, 'kinds', false) || 'all'
+          const kind = text(args, 'kind', false) || 'all'
           const sql = await ensureSql(deps, connection)
           const objects = await sql.objects(connection.id, schema)
-          const filtered = kinds === 'all' ? objects : objects.filter((object) => object.kind === kinds)
-          return { connection: { id: connection.id, name: connection.name }, schema, count: filtered.length, objects: filtered }
+          const filtered = kind === 'all' ? objects : objects.filter((object) => object.kind === kind)
+          const limit = integer(args, 'limit', 200, 1, 2_000)
+          return {
+            connection: { id: connection.id, name: connection.name },
+            schema,
+            kind,
+            count: filtered.length,
+            truncated: filtered.length > limit,
+            objects: filtered.slice(0, limit),
+          }
         } catch (error) {
           return fail(error)
         }
@@ -469,11 +500,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           connection: { type: 'string', description: 'Connection id or name.' },
           schema: { type: 'string', description: 'Schema or database name.' },
           table: { type: 'string', description: 'Table or view name.' },
-          kind: { type: 'string', enum: ['table', 'view', 'other'], description: 'Object kind (default table).' },
+          kind: { type: 'string', enum: ['table', 'view'], description: 'Object kind (default table).' },
         },
         required: ['connection', 'schema', 'table'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
@@ -491,33 +521,32 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     }),
 
     tool({
-      name: 'db_table_ddl',
+      name: 'db_get_ddl',
       description:
-        'Get the DDL of a table or view: the server-side definition when the driver can provide one, otherwise a reconstruction from the described columns and indexes. Check "source" and "warnings"; routines, sequences and triggers come from the server only.',
+        'Get the DDL of a table, view, routine, sequence or trigger: the server-side definition when the driver can provide one, otherwise a reconstruction from the described columns and indexes. Check "source" and "warnings".',
       parameters: {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Connection id or name.' },
           schema: { type: 'string', description: 'Schema or database name.' },
-          table: { type: 'string', description: 'Table, view or other object name.' },
+          object: { type: 'string', description: 'Table, view, routine, sequence or trigger name.' },
           kind: {
             type: 'string',
             enum: ['table', 'view', 'procedure', 'function', 'sequence', 'trigger'],
             description: 'Object kind (default table).',
           },
         },
-        required: ['connection', 'schema', 'table'],
+        required: ['connection', 'schema', 'object'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接不支持表结构')
           const schema = text(args, 'schema')
-          const table = text(args, 'table')
+          const object = text(args, 'object')
           const kind = (text(args, 'kind', false) || 'table') as ObjectKind
           const sql = await ensureSql(deps, connection)
-          const result = await sql.ddl(connection.id, connection.dialect, schema, table, kind)
+          const result = await sql.ddl(connection.id, connection.dialect, schema, object, kind)
           return { connection: { id: connection.id, name: connection.name }, ...result }
         } catch (error) {
           return fail(error)
@@ -526,9 +555,9 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     }),
 
     tool({
-      name: 'db_query',
+      name: 'db_execute_sql',
       description:
-        'Run a SQL statement on a saved SQL connection and return rows (columns + values, capped by the row limit). Only read-only statements are allowed unless "allowAgentWrites" is enabled in the Database settings and the connection is not read-only. One statement per call; write statements affect the real database.',
+        'Execute one SQL statement on a saved SQL connection and return rows (columns + values, capped by the row limit) or the affected row count. Only read-only statements are allowed unless "allowAgentWrites" is enabled in the Database settings; write statements affect the real database.',
       parameters: {
         type: 'object',
         properties: {
@@ -540,13 +569,13 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection', 'sql'],
       },
-      readOnly: false,
       timeoutMs: 660_000,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接请使用 db_redis_command')
           const statement = text(args, 'sql')
+          if (statement.trim() === '') throw new DbError('invalid', 'SQL 不能为空')
           const settings = deps.config.settings()
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
           if (!allowWrite && !isReadOnlySql(statement)) {
@@ -586,7 +615,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_explain',
       description:
-        'Explain a SQL statement and return the plan rows. MySQL/OceanBase-MySQL/MariaDB use EXPLAIN; Oracle/OceanBase-Oracle run EXPLAIN PLAN FOR then read DBMS_XPLAN; Dameng uses EXPLAIN; PostgreSQL uses EXPLAIN FORMAT JSON; SQLite uses EXPLAIN QUERY PLAN; SQL Server reads SHOWPLAN_ALL instead of running the statement. Read-only.',
+        'Explain a SQL statement and return the plan rows. MySQL/OceanBase-MySQL/MariaDB use EXPLAIN; Oracle/OceanBase-Oracle run EXPLAIN PLAN FOR then read DBMS_XPLAN; Dameng uses EXPLAIN; PostgreSQL uses EXPLAIN FORMAT JSON; SQLite uses EXPLAIN QUERY PLAN; SQL Server reads SHOWPLAN_ALL instead of running the statement. EXPLAIN ANALYZE executes its statement, so it is subject to the same write protection as db_execute_sql.',
       parameters: {
         type: 'object',
         properties: {
@@ -596,15 +625,27 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection', 'sql'],
       },
-      readOnly: true,
       timeoutMs: 120_000,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
+          if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接请使用 db_redis_command')
           const statement = text(args, 'sql')
+          if (statement.trim() === '') throw new DbError('invalid', 'SQL 不能为空')
+          const settings = deps.config.settings()
+          const allowWrite = settings.allowAgentWrites && !connection.readOnly
+          // EXPLAIN ANALYZE really runs the statement; a read-only plan request must not become a write.
+          if (!allowWrite && !isReadOnlySql(statement)) {
+            throw new DbError(
+              'read-only',
+              '当前配置不允许代理执行会真实运行的写语句',
+              'EXPLAIN ANALYZE 会执行语句；可改用不带 ANALYZE 的 EXPLAIN，或在设置中开启 allowAgentWrites',
+            )
+          }
           const schema = text(args, 'schema', false)
           const sql = await ensureSql(deps, connection)
-          return await sql.explain(connection.id, statement, schema === '' ? {} : { schema })
+          const result = await sql.explain(connection.id, statement, schema === '' ? {} : { schema })
+          return { connection: { id: connection.id, name: connection.name }, ...result }
         } catch (error) {
           return fail(error)
         }
@@ -626,7 +667,6 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
@@ -642,7 +682,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
             text(args, 'type', false) || undefined,
             integer(args, 'count', settings.redisScanCount, 1, 10_000),
           )
-          return { connection: { id: connection.id, name: connection.name }, ...result }
+          return { connection: { id: connection.id, name: connection.name }, db, ...result }
         } catch (error) {
           return fail(error)
         }
@@ -650,7 +690,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     }),
 
     tool({
-      name: 'db_redis_get',
+      name: 'db_redis_inspect',
       description: 'Inspect one Redis key: type, TTL, size and value preview (strings, lists, sets, hashes, sorted sets, streams). Read-only.',
       parameters: {
         type: 'object',
@@ -661,14 +701,13 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection', 'key'],
       },
-      readOnly: true,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           await deps.redis.connect(connection.id)
           const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
-          return { connection: { id: connection.id, name: connection.name }, ...(await deps.redis.inspect(connection.id, db, text(args, 'key'))) }
+          return { connection: { id: connection.id, name: connection.name }, db, ...(await deps.redis.inspect(connection.id, db, text(args, 'key'))) }
         } catch (error) {
           return fail(error)
         }
@@ -688,7 +727,6 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         },
         required: ['connection', 'command'],
       },
-      readOnly: false,
       execute: async (args) => {
         try {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
@@ -698,7 +736,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
           const result = await deps.redis.command(connection.id, db, text(args, 'command'), allowWrite)
-          return { connection: { id: connection.id, name: connection.name }, ...result }
+          return { connection: { id: connection.id, name: connection.name }, db, ...result }
         } catch (error) {
           return fail(error)
         }
@@ -712,22 +750,21 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
       parameters: {
         type: 'object',
         properties: {
-          driverId: { type: 'string', description: 'Preset id or custom driver id.' },
+          driver: { type: 'string', description: 'Preset id (mysql, mariadb, postgres, oracle, dameng, oceanbase-mysql, oceanbase-oracle, sqlite, mssql) or a custom driver id.' },
         },
-        required: ['driverId'],
+        required: ['driver'],
       },
-      readOnly: false,
       timeoutMs: 300_000,
       execute: async (args) => {
         try {
-          const driverId = text(args, 'driverId')
+          const driverId = text(args, 'driver')
           const status = deps.drivers.statuses().find((entry) => entry.id === driverId)
           if (status === undefined) throw new DbError('not-found', `驱动不存在：${driverId}`)
-          if (!status.needsJava) return status
+          if (!status.needsJava) return { driverId, needsJava: false, status }
           const resolved =
             status.preset !== null ? deps.drivers.resolvePreset(status.preset as PresetId) : deps.drivers.resolveCustom(status.id)
           const jars = await deps.drivers.ensureJars(resolved)
-          return { driverId, jars, dataDir: deps.paths.dataDir }
+          return { driverId, needsJava: true, jars, dataDir: deps.paths.dataDir }
         } catch (error) {
           return fail(error)
         }

@@ -51,6 +51,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN DELETE FROM t')).toBe(true)
   })
 
+  it('judges an EXPLAIN (...) option list by whether ANALYZE runs the statement', () => {
+    expect(isReadOnlySql('EXPLAIN (ANALYZE) SELECT 1')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN (ANALYZE, FORMAT JSON) DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYZE) UPDATE t SET a = 1')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (FORMAT JSON) DELETE FROM t')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN (VERBOSE, ANALYZE) DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYZE)')).toBe(false)
+  })
+
   it('judges the statement a CTE list runs', () => {
     expect(isReadOnlySql('WITH c AS (SELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('with recursive c as (select 1) select 1 from c')).toBe(true)

@@ -74,6 +74,19 @@ describe('ConfigStore', () => {
     expect(() => config.updateSettings({ maxRows: 5_001 })).toThrow(/最大返回行数/)
   })
 
+  it('saves a SQLite connection without host and port', () => {
+    const { config } = store()
+    const saved = config.saveConnection({ name: 'Local SQLite', driver: 'sqlite', database: 'D:/data/app.db' })
+    expect(saved).toMatchObject({ dialect: 'sqlite', host: '', port: 0, database: 'D:/data/app.db' })
+    expect(() => config.saveConnection({ name: 'no file', driver: 'sqlite' })).toThrow(/database/)
+  })
+
+  it('fills the preset default port when the agent omits it', () => {
+    const { config } = store()
+    const saved = config.saveConnection({ name: 'Local PG', driver: 'postgres', host: '127.0.0.1', database: 'app' })
+    expect(saved.port).toBe(5432)
+  })
+
   it('stores rebindings, drops unusable ones on load and refuses bad saves', () => {
     const { config, dir } = store()
     config.updateSettings({ keybindings: { 'console.clear': 'MOD+K' } })

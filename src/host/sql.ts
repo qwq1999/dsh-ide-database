@@ -216,8 +216,16 @@ export function isReadOnlySql(sql: string): boolean {
     return inner !== null && isReadOnlySql(inner)
   }
   if (head === 'explain') {
-    // `EXPLAIN ANALYZE <statement>` runs <statement>; plain EXPLAIN only plans.
+    // `EXPLAIN ANALYZE <statement>` and the parenthesised `EXPLAIN (ANALYZE, ...)`
+    // form run <statement>; plain EXPLAIN only plans.
     let rest = withoutTrailing.slice(first[0].length).trim()
+    if (rest.startsWith('(')) {
+      const close = matchingParen(rest, 0)
+      if (close < 0) return false
+      if (!/\banalyze\b/.test(withoutLiterals(rest.slice(1, close)))) return true
+      rest = rest.slice(close + 1).trim()
+      return rest !== '' && isReadOnlySql(rest)
+    }
     const analyze = readWord(rest, 0)
     if (analyze.word !== 'analyze') return true
     rest = rest.slice(analyze.end).trim()

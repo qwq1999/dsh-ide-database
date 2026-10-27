@@ -118,11 +118,11 @@ describe.skipIf(!MYSQL_PORT)('MySQL JDBC integration', () => {
       if (found === undefined) throw new Error(`missing tool ${name}`)
       return found
     }
-    const databases = await byName('db_list_databases').execute({ connection: mysqlId })
+    const databases = await byName('db_list_schemas').execute({ connection: mysqlId })
     expect(databases.schemas.map((schema) => schema.name)).toContain('app')
     const objects = await byName('db_list_objects').execute({ connection: mysqlId, schema: 'app' })
     expect(objects.objects.some((object) => object.name === 'users')).toBe(true)
-    const query = await byName('db_query').execute({
+    const query = await byName('db_execute_sql').execute({
       connection: 'Integration MySQL',
       sql: 'SELECT name FROM users ORDER BY id',
       maxRows: 5,

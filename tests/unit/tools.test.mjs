@@ -90,16 +90,16 @@ describe('createDatabaseTools', () => {
       'db_delete_connection',
       'db_describe_table',
       'db_download_driver',
+      'db_execute_sql',
       'db_explain',
+      'db_get_ddl',
       'db_list_connections',
-      'db_list_databases',
       'db_list_objects',
-      'db_query',
+      'db_list_schemas',
       'db_redis_command',
-      'db_redis_get',
+      'db_redis_inspect',
       'db_redis_scan',
       'db_refresh_connection',
-      'db_table_ddl',
       'db_test_connection',
       'db_update_connection',
     ])
@@ -121,7 +121,7 @@ describe('createDatabaseTools', () => {
 
   it('runs read-only SQL with agent writes disabled', async () => {
     const { byName, query } = harness()
-    const result = await byName('db_query').execute({ connection: 'MySQL', sql: 'SELECT * FROM users' })
+    const result = await byName('db_execute_sql').execute({ connection: 'MySQL', sql: 'SELECT * FROM users' })
     expect(result.rowCount).toBe(1)
     expect(query).toHaveBeenCalledTimes(1)
     expect(query.mock.calls[0][2]).toMatchObject({ allowWrite: false, maxRows: 200, timeoutSec: 30 })
@@ -129,20 +129,20 @@ describe('createDatabaseTools', () => {
 
   it('blocks write SQL unless allowAgentWrites is enabled', async () => {
     const { byName } = harness()
-    await expect(byName('db_query').execute({ connection: 'c1', sql: 'DELETE FROM users' })).rejects.toThrow(/不允许代理执行写语句/)
+    await expect(byName('db_execute_sql').execute({ connection: 'c1', sql: 'DELETE FROM users' })).rejects.toThrow(/不允许代理执行写语句/)
     const writable = harness({ settings: { allowAgentWrites: true } })
-    await writable.byName('db_query').execute({ connection: 'c1', sql: 'DELETE FROM users' })
+    await writable.byName('db_execute_sql').execute({ connection: 'c1', sql: 'DELETE FROM users' })
     expect(writable.query.mock.calls[0][2].allowWrite).toBe(true)
   })
 
   it('never writes on a read-only connection', async () => {
     const { byName } = harness({ connection: { readOnly: true }, settings: { allowAgentWrites: true } })
-    await expect(byName('db_query').execute({ connection: 'c1', sql: 'UPDATE users SET age = 1' })).rejects.toThrow(/只读/)
+    await expect(byName('db_execute_sql').execute({ connection: 'c1', sql: 'UPDATE users SET age = 1' })).rejects.toThrow(/只读/)
   })
 
   it('routes redis connections away from SQL tools', async () => {
     const { byName } = harness()
-    await expect(byName('db_query').execute({ connection: 'r1', sql: 'SELECT 1' })).rejects.toThrow(/db_redis_command/)
+    await expect(byName('db_execute_sql').execute({ connection: 'r1', sql: 'SELECT 1' })).rejects.toThrow(/db_redis_command/)
   })
 
   it('forwards the chosen redis logical database to commands', async () => {
@@ -156,17 +156,18 @@ describe('createDatabaseTools', () => {
     const { byName, deps } = harness()
     const value = await byName('db_explain').execute({ connection: 'c1', sql: 'SELECT * FROM users' })
     expect(deps.sql.explain).toHaveBeenCalledWith('c1', 'SELECT * FROM users', {})
+    expect(value.connection.id).toBe('c1')
     expect(value.statements).toEqual(['EXPLAIN SELECT 1'])
     expect(value.plan.rowCount).toBe(1)
   })
 
   it('returns the DDL of a table and keeps redis out', async () => {
     const { byName, deps } = harness()
-    const value = await byName('db_table_ddl').execute({ connection: 'c1', schema: 'shop', table: 'users' })
+    const value = await byName('db_get_ddl').execute({ connection: 'c1', schema: 'shop', object: 'users' })
     expect(deps.sql.ddl).toHaveBeenCalledWith('c1', 'mysql', 'shop', 'users', 'table')
     expect(value.ddl).toBe('CREATE TABLE users (id INT)')
     expect(value.source).toBe('generated')
-    await expect(byName('db_table_ddl').execute({ connection: 'r1', schema: '0', table: 'k' })).rejects.toThrow(/Redis/)
+    await expect(byName('db_get_ddl').execute({ connection: 'r1', schema: '0', object: 'k' })).rejects.toThrow(/Redis/)
   })
 
   it('creates a connection through the agent tool', async () => {
@@ -221,5 +222,57 @@ describe('createDatabaseTools', () => {
     expect(blocks).toHaveLength(1)
     expect(blocks[0].type).toBe('text')
     expect(JSON.parse(blocks[0].text).connections).toHaveLength(2)
+  })
+
+  it('masks credential-like connection params', async () => {
+    const { byName } = harness({ connection: { params: { password: 'p@ss', sslMode: 'require', apiToken: 't' } } })
+    const value = await byName('db_list_connections').execute({})
+    const masked = value.connections.find((entry) => entry.id === 'c1')
+    expect(masked.params).toEqual({ password: '***', sslMode: 'require', apiToken: '***' })
+  })
+
+  it('lets the preset supply host and port', async () => {
+    const { byName } = harness()
+    await expect(byName('db_create_connection').execute({ name: 'pg', driver: 'postgres' })).rejects.toThrow(/缺少参数 host/)
+
+    const sqlite = harness()
+    await sqlite.byName('db_create_connection').execute({ name: 'local', driver: 'sqlite', database: '/tmp/app.db' })
+    expect(sqlite.saveConnection.mock.calls[0][0]).toMatchObject({ driver: 'sqlite', host: '', port: 0, database: '/tmp/app.db' })
+
+    const postgres = harness()
+    await postgres.byName('db_create_connection').execute({ name: 'pg', driver: 'postgres', host: 'db', database: 'app' })
+    expect(postgres.saveConnection.mock.calls[0][0]).toMatchObject({ port: 5432 })
+  })
+
+  it('truncates a large object listing', async () => {
+    const { byName, deps } = harness()
+    deps.sql.objects.mockResolvedValue([
+      { schema: 'shop', name: 'a', kind: 'table' },
+      { schema: 'shop', name: 'b', kind: 'table' },
+      { schema: 'shop', name: 'c', kind: 'view' },
+    ])
+    const value = await byName('db_list_objects').execute({ connection: 'c1', schema: 'shop', kind: 'table', limit: 1 })
+    expect(value.count).toBe(2)
+    expect(value.truncated).toBe(true)
+    expect(value.objects).toHaveLength(1)
+  })
+
+  it('rejects an empty statement instead of a confusing write refusal', async () => {
+    const { byName } = harness()
+    await expect(byName('db_execute_sql').execute({ connection: 'c1', sql: '   ' })).rejects.toThrow(/SQL 不能为空/)
+    await expect(byName('db_explain').execute({ connection: 'c1', sql: '' })).rejects.toThrow(/SQL 不能为空/)
+  })
+
+  it('drops the cached session after an update', async () => {
+    const { byName, deps } = harness()
+    await byName('db_update_connection').execute({ connection: 'c1', port: 3307 })
+    expect(deps.sql.disconnect).toHaveBeenCalledWith('c1')
+  })
+
+  it('guards EXPLAIN ANALYZE like a write', async () => {
+    const { byName } = harness()
+    await expect(byName('db_explain').execute({ connection: 'c1', sql: 'EXPLAIN ANALYZE DELETE FROM users' })).rejects.toThrow(
+      /不允许代理执行/,
+    )
   })
 })

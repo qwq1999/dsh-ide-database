@@ -187,14 +187,14 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | `db_delete_connection` | 删除数据源并断开连接、清理结构缓存；必须显式 `confirm: true` |
 | `db_refresh_connection` | 重连并重新拉取 Schema 到结构缓存（Redis 为重连） |
 | `db_test_connection` | 测试保存的连接或临时草稿（不落盘） |
-| `db_list_databases` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
-| `db_list_objects` | 列出指定 Schema 下的表、视图、例程、序列与触发器 |
+| `db_list_schemas` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
+| `db_list_objects` | 列出指定 Schema 下的表、视图、例程、序列与触发器；大 Schema 按 `limit` 截断 |
 | `db_describe_table` | 列、类型、可空、主键、索引、注释 |
-| `db_table_ddl` | 表/视图的建表语句；服务端拿不到时按描述生成，并标注来源与告警 |
-| `db_query` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写 |
+| `db_get_ddl` | 表/视图/例程/序列/触发器的建表语句；服务端拿不到时按描述生成，并标注来源与告警 |
+| `db_execute_sql` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写；空语句直接拒绝 |
 | `db_explain` | MySQL `EXPLAIN`、Oracle/达梦执行计划 |
 | `db_redis_scan` | 游标 SCAN，返回键名/类型/TTL；可传 `db` 指定逻辑库 |
-| `db_redis_get` | 读取键详情（自动识别类型，限制大小）；可传 `db` 指定逻辑库 |
+| `db_redis_inspect` | 读取键详情（自动识别类型，限制大小）；可传 `db` 指定逻辑库 |
 | `db_redis_command` | 执行 Redis 命令（可传 `db` 指定逻辑库）；写命令受 `allowAgentWrites` 与只读连接限制 |
 | `db_download_driver` | 下载缺失的预置驱动 jar |
 
@@ -239,7 +239,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 - MariaDB、PostgreSQL、SQLite、SQL Server 已内置预设；其它 JDBC 数据库仍可通过「自定义驱动」接入。
 - 新引擎的几个小提醒：SQLite 是单文件库，连接里只填 `.db` 路径（主机/端口/密码不适用），文件不存在时测试会提示将新建空库；SQL Server 需要能访问 1433 端口，JDBC 驱动默认会走加密协商；PostgreSQL 把 `public` 作为默认 Schema；MariaDB 复用 MySQL 方言与转义规则。
 - 不提供 SSH 隧道、整库导出/导入（`.sql` 脚本可通过控制台的「导入」/「保存」与编辑器往返）、执行计划图形化（文本与表格计划都支持，但没有连线图）。
-- 驱动层一次只接受一条语句：控制台会把分号分隔的脚本拆开逐条执行（`db_query` 等 Agent 工具仍按单条提交）。
+- 驱动层一次只接受一条语句：控制台会把分号分隔的脚本拆开逐条执行（`db_execute_sql` 等 Agent 工具仍按单条提交）。
 - Oracle 仅 thin 模式，不支持 thick（OCI）模式。
 - Redis 命令白名单以只读命令 + 常用写命令为主，未覆盖的命令请通过 `db_redis_command` 的完整命令参数使用（仍受只读/危险命令限制）。
 
