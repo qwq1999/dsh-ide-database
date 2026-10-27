@@ -4,8 +4,10 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（181）
+## 新功能（183）
 
+- `9dc6928` feat(settings): 面板快捷键可在设置里重绑定
+- `51c94f5` feat(table): 标签页标题旁标出只读连接
 - `9f613e0` feat(table): 底栏提示也会自动消失
 - `9a8b1ca` feat(console): 底栏的复制/导出提示会自动消失
 - `16adaa9` feat(redis): 复制键名后提示条数
@@ -346,8 +348,11 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（32）
+## 文档（35）
 
+- `24f631b` docs: README 只留两张截图，其余收进截图索引
+- `d72ed9c` docs: 快捷键表补上数据表页的 Esc
+- `cfbdd77` docs: 重新生成变更日志
 - `294b037` docs: 补上新引擎的使用提醒
 - `fc35ea4` docs: 底栏提示会自动消失的说明
 - `ca849d4` docs: 快捷键表补上历史面板的 Esc
@@ -393,3 +398,7 @@
 - `c4f730d` chore(table): 删除重复的列筛选清理函数
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
+
+## 其它（1）
+
+- `e87808e` style(grid): 结果表格悬停整行高亮
