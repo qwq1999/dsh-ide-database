@@ -4,8 +4,9 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（183）
+## 新功能（184）
 
+- `eaeee6b` feat(agent): 工具改名并修复写保护，发布 0.3.0
 - `9dc6928` feat(settings): 面板快捷键可在设置里重绑定
 - `51c94f5` feat(table): 标签页标题旁标出只读连接
 - `9f613e0` feat(table): 底栏提示也会自动消失
@@ -386,8 +387,10 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（10）
+## 杂项（12）
 
+- `37f6635` chore(plugin): 补全 contributes.tools 清单
+- `c29c18b` chore(release): 发布 0.2.0
 - `4f08953` chore(build): 同步 MariaDB 预设的构建产物
 - `e14946f` chore: 删掉只剩测试在用的导出
 - `95ed75d` chore: 内部辅助函数不再对外导出
