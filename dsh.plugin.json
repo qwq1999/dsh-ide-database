@@ -10,10 +10,15 @@
   "contributes": {
     "tools": [
       "db_list_connections",
+      "db_create_connection",
+      "db_update_connection",
+      "db_delete_connection",
+      "db_refresh_connection",
       "db_test_connection",
       "db_list_databases",
       "db_list_objects",
       "db_describe_table",
+      "db_table_ddl",
       "db_query",
       "db_explain",
       "db_redis_scan",
