@@ -4,9 +4,9 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 
 支持 MySQL、MariaDB、PostgreSQL、SQLite、SQL Server、Oracle、Redis、达梦 DM、OceanBase（MySQL / Oracle 两种模式），也可以配置任意自定义 JDBC 驱动。
 
-![数据源树](docs/screenshots/database-tree.png)
+![数据源树](https://raw.githubusercontent.com/qwq1999/dsh-ide-database/main/docs/screenshots/database-tree.png)
 
-![SQL 查询控制台](docs/screenshots/database-console.png)
+![SQL 查询控制台](https://raw.githubusercontent.com/qwq1999/dsh-ide-database/main/docs/screenshots/database-console.png)
 
 ## 功能
 
@@ -48,68 +48,25 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
 - **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
 
-![展开表查看列、键与索引](docs/screenshots/database-columns.png)
-
-![双击表打开分页查询标签页](docs/screenshots/database-table-tab.png)
-
-![按城市列筛选 customers](docs/screenshots/database-filters.png)
-
-![导出筛选结果](docs/screenshots/database-export.png)
-
-![600 行结果滚动到中段](docs/screenshots/database-virtual.png)
-
-![拖动调整列宽](docs/screenshots/database-column-widths.png)
-
-![筛选 orders：自动展开并高亮命中](docs/screenshots/database-filter.png)
-
-![点表头按城市降序](docs/screenshots/database-sort.png)
-
 ### 键盘操作
 
 数据源树可以用键盘操作：`↑`/`↓` 在行之间移动，`Home`/`End` 跳到首尾，`→` 展开、`←` 收起当前行，`Enter` 或空格选中该行（连接、查看结构），在表或视图上按 `Enter` 会直接打开数据表标签页（等同双击）。展开/收起由行首箭头触发（或 `→`/`←`），双击数据源、Schema 或分组行也可以；点击行名不会折叠正在浏览的分支，双击表名仍是打开数据表标签页。焦点所在行有清晰的焦点框，方便只用键盘浏览库表。
-
-![键盘操作数据源树](docs/screenshots/database-keyboard.png)
 
 ### 手动事务
 
 SQL 控制台工具条的「事务」通过 JDBC 关闭连接的 auto-commit 来开启事务，不再依赖 `BEGIN` 语句（Oracle 没有 `BEGIN`，只有 PL/SQL 块开头，直接发送会报 `ORA-06550`）；「提交」「回滚」调用驱动的 `commit()` / `rollback()`，完成后恢复 auto-commit，MySQL、Oracle、达梦等都适用。开启后「提交」「回滚」才可用，工具条同时显示「事务进行中」与操作结果提示。切换数据源或关闭标签页时，未提交的事务会被自动回滚。JDBC 桥接按连接复用同一个数据库会话，因此多条语句共享事务。
 
-![事务进行中](docs/screenshots/database-transaction.png)
-
 ### Redis 值表格化
 
-选中键后按类型展示成表格：hash 拆成「字段 / 值」，list、set 带序号，zset 展示「成员 / 分数」，stream 展示「ID / 字段」；表头显示类型、TTL（`永久` 表示无过期）与条目数，未知类型回退为原始 JSON。截图为 `shop:customer:42` 的 hash。
+选中键后按类型展示成表格：hash 拆成「字段 / 值」，list、set 带序号，zset 展示「成员 / 分数」，stream 展示「ID / 字段」；表头显示类型、TTL（`永久` 表示无过期）与条目数，未知类型回退为原始 JSON。
 
-![Redis 值以表格展示](docs/screenshots/database-redis-value.png)
+## 界面截图
 
-![查询控制台历史](docs/screenshots/database-history.png)
-
-![把常用语句收藏到历史顶部](docs/screenshots/database-history-pins.png)
-
-![SQL 格式化](docs/screenshots/database-format.png)
-
-![执行计划：索引命中情况](docs/screenshots/database-explain.png)
-
-![多语句顺序执行：最后一条的查询结果](docs/screenshots/database-multi-statement.png)
-
-
-![查询控制台导出当前页](docs/screenshots/database-console-export.png)
-
-![导出整条查询的全部结果](docs/screenshots/database-export-all.png)
-
-![控制台按 name 降序](docs/screenshots/database-console-sort.png)
-
-![列头右键菜单](docs/screenshots/database-column-menu.png)
-
-![表结构 DDL](docs/screenshots/database-ddl.png)
-
-![结构缓存：断开后仍可浏览](docs/screenshots/database-cache.png)
-
-![Redis 控制台](docs/screenshots/redis.png)
-
-![设置：运行环境、驱动与安全开关](docs/screenshots/database-settings.png)
+顶部只保留两张总览图，其余截图按主题整理在 [docs/SCREENSHOTS.md](https://github.com/qwq1999/dsh-ide-database/blob/main/docs/SCREENSHOTS.md)：数据源树与结构缓存、数据表标签页与导出、查询控制台（历史 / 格式化 / 执行计划 / 多语句）、事务与 Redis、设置。
 
 ## 快捷键一览
+
+下表是默认键位；除纯按键（`Esc`、`↑`/`↓`、`Enter`、`Tab`、空格）外，带修饰键的项都能在「设置 → 快捷键」里改成自己的组合键（需要带 `Ctrl/⌘` 或 `Alt`，功能键可单独使用；同一区域不能重复）。
 
 | 位置 | 快捷键 | 作用 |
 | --- | --- | --- |
@@ -200,7 +157,7 @@ dsh --profile dbweb --port 16402 --no-open
 | MariaDB | MariaDB | 3306 | `org.mariadb.jdbc.Driver` | `org.mariadb.jdbc:mariadb-java-client:3.4.1` |
 | PostgreSQL | PostgreSQL | 5432 | `org.postgresql.Driver` | `org.postgresql:postgresql:42.7.4` |
 | SQLite | SQLite | — | `org.sqlite.JDBC` | `org.xerial:sqlite-jdbc:3.46.1.3` |
-| SQL Server | SQL Server | 1433 | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | `com.microsoft.sqlserver:mssql-jdbc:9.4.1:jre8` |
+| SQL Server | SQL Server | 1433 | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | `com.microsoft.sqlserver:mssql-jdbc:9.4.1.jre8` |
 | OceanBase（MySQL 模式） | MySQL | 2881 | `com.mysql.cj.jdbc.Driver` | `com.mysql:mysql-connector-j:8.4.0` |
 | OceanBase（Oracle 模式） | OceanBase Oracle | 2881 | `com.oceanbase.jdbc.Driver` | `com.oceanbase:oceanbase-client:2.4.19` |
 | Oracle | Oracle | 1521 | `oracle.jdbc.OracleDriver` | `com.oracle.database.jdbc:ojdbc8:23.26.3.0.0` |
@@ -267,6 +224,8 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | `logs/` | 预留日志目录 |
 
 环境变量 `DSH_IDE_DATABASE_DATA` 也可用于在隔离目录中做 UI 验收。
+
+快捷键重绑定存在 `connections.json` 的 `settings.keybindings` 里，只保存改动过的项（形如 `{"console.clear": "mod+k"}`，`mod` 表示 `Ctrl` 或 `⌘`），没改的仍走内置默认值。
 
 ## 安全说明
 
