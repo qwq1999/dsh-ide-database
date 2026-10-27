@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis'
+import type { Redis as RedisClient } from 'ioredis'
 
 import type {
   ConnectionConfig,
@@ -14,9 +14,38 @@ import { DbError } from './errors.js'
 import type { SecretStore } from './secrets.js'
 
 interface Session {
-  client: Redis
+  client: RedisClient
   readOnly: boolean
   db: number
+}
+
+type RedisConstructor = new (options: never) => RedisClient
+
+let redisConstructor: RedisConstructor | undefined
+
+/**
+ * Load `ioredis` on first use instead of at module scope.
+ *
+ * The plugin's activation path must not depend on a CommonJS dependency being
+ * loadable: if `ioredis` is missing or its interop misbehaves, the plugin would
+ * otherwise fail to import and stay inactive with no usable tools at all. Doing
+ * it lazily turns that into a `driver-missing` error on the one connection that
+ * actually needs Redis.
+ */
+async function redisDriver(): Promise<RedisConstructor> {
+  if (redisConstructor !== undefined) return redisConstructor
+  try {
+    const loaded = (await import('ioredis')) as {
+      Redis?: RedisConstructor
+      default?: { Redis?: RedisConstructor }
+    }
+    const candidate = loaded.Redis ?? loaded.default?.Redis
+    if (typeof candidate !== 'function') throw new Error('ioredis 未导出 Redis 构造器')
+    redisConstructor = candidate
+    return candidate
+  } catch (error) {
+    throw new DbError('driver-missing', `Redis 驱动不可用：${messageOf(error)}`)
+  }
 }
 
 /** One session per connection *and* logical database (`SELECT`). */
@@ -115,7 +144,7 @@ function typeOf(slot: PipelineSlot, key: string): string {
  * batch, so a 200-key page costs two round trips instead of hundreds — the
  * single biggest cost of browsing a big Redis keyspace.
  */
-export async function keyInfos(client: Redis, keys: string[]): Promise<RedisKeyInfo[]> {
+export async function keyInfos(client: RedisClient, keys: string[]): Promise<RedisKeyInfo[]> {
   if (keys.length === 0) return []
   const meta = client.pipeline()
   for (const key of keys) {
@@ -308,6 +337,7 @@ export class RedisManager {
     const key = sessionKey(connId, db)
     const existing = this.sessions.get(key)
     if (existing !== undefined) return this.serverInfo(conn, existing.client)
+    const Redis = await redisDriver()
     const client = new Redis(this.options(conn, db) as never)
     try {
       await client.connect()
@@ -333,6 +363,7 @@ export class RedisManager {
     if (existing !== undefined && existing.client.status === 'ready') return existing
     const live = [...this.sessions.keys()].some((entry) => entry.startsWith(`${connId}\u0000`))
     if (!live) throw new DbError('not-connected', '连接尚未打开')
+    const Redis = await redisDriver()
     const client = new Redis(this.options(conn, db) as never)
     try {
       await client.connect()
@@ -346,7 +377,7 @@ export class RedisManager {
     return session
   }
 
-  private async serverInfo(conn: ConnectionConfig, client: Redis): Promise<ServerInfo> {
+  private async serverInfo(conn: ConnectionConfig, client: RedisClient): Promise<ServerInfo> {
     let version = ''
     try {
       const info = await client.info('server')
