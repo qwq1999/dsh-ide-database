@@ -35,7 +35,7 @@ export interface JarRef {
   group: string
   artifact: string
   version: string
-  /** Maven artifact classifier, e.g. `jre8` for mssql-jdbc. */
+  /** Maven artifact classifier, e.g. `sources`. */
   classifier?: string
 }
 
@@ -107,6 +107,11 @@ export interface DbSettings {
   redisScanCount: number
   /** Confirm destructive actions in the panel. */
   confirmDestructive: boolean
+  /**
+   * Panel shortcuts the user rebound, keyed by shortcut id; only the changed
+   * ones are stored, the rest fall back to the defaults in shared/keymap.ts.
+   */
+  keybindings: Record<string, string>
 }
 
 export interface ConnectionConfig {

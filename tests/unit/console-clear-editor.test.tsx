@@ -30,6 +30,7 @@ vi.mock('../../src/client/api', () => {
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
+import { setKeybindings } from '../../src/client/keymap'
 import { waitForConsoleSource } from '../stubs/console-ready'
 
 const connection = {
@@ -64,6 +65,7 @@ const tab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } 
 describe('clear editor', () => {
   afterEach(() => {
     cleanup()
+    setKeybindings({})
   })
 
   beforeEach(() => {
@@ -94,6 +96,20 @@ describe('clear editor', () => {
     fireEvent.change(editor, { target: { value: 'SELECT 1' } })
     fireEvent.keyDown(editor, { key: 'l', ctrlKey: true })
 
+    expect((editor as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('follows a rebound shortcut and forgets the built-in one', async () => {
+    setKeybindings({ 'console.clear': 'mod+k' })
+    render(<ConsoleTab useTabInfo={tab} />)
+    await waitForConsoleSource(mocks)
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+
+    fireEvent.change(editor, { target: { value: 'SELECT 1' } })
+    fireEvent.keyDown(editor, { key: 'l', ctrlKey: true })
+    expect((editor as HTMLTextAreaElement).value).toBe('SELECT 1')
+
+    fireEvent.keyDown(editor, { key: 'k', ctrlKey: true })
     expect((editor as HTMLTextAreaElement).value).toBe('')
   })
 })

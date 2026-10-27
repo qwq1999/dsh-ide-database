@@ -27,11 +27,11 @@ describe('SQL Server preset', () => {
     expect(preset.urlTemplate).toContain('databaseName={{database}}')
     const jar = preset.jar
     if (jar === undefined) throw new Error('missing jar')
-    expect(jar.version).toBe('9.4.1')
-    expect(jar.classifier).toBe('jre8')
-    expect(jarCoordinates(jar)).toBe('com.microsoft.sqlserver:mssql-jdbc:9.4.1:jre8')
+    expect(jar.version).toBe('9.4.1.jre8')
+    expect(jar.classifier).toBeUndefined()
+    expect(jarCoordinates(jar)).toBe('com.microsoft.sqlserver:mssql-jdbc:9.4.1.jre8')
     expect(jarRelativePath(jar)).toBe(
-      'com/microsoft/sqlserver/mssql-jdbc/9.4.1/mssql-jdbc-9.4.1-jre8.jar',
+      'com/microsoft/sqlserver/mssql-jdbc/9.4.1.jre8/mssql-jdbc-9.4.1.jre8.jar',
     )
   })
 

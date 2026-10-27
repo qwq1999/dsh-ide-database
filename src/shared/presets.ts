@@ -93,12 +93,8 @@ export const PRESETS: Record<PresetId, PresetSpec> = {
     defaultPort: 1433,
     driverClass: 'com.microsoft.sqlserver.jdbc.SQLServerDriver',
     urlTemplate: 'jdbc:sqlserver://{{host}}:{{port}};databaseName={{database}};encrypt=true;trustServerCertificate=true',
-    jar: {
-      group: 'com.microsoft.sqlserver',
-      artifact: 'mssql-jdbc',
-      version: '9.4.1',
-      classifier: 'jre8',
-    },
+    // mssql-jdbc 把 JRE 版本写进 artifact 版本号，仓库里不存在 9.4.1 这个目录。
+    jar: { group: 'com.microsoft.sqlserver', artifact: 'mssql-jdbc', version: '9.4.1.jre8' },
     databaseHint: '数据库名，例如 master',
     needsJava: true,
   },
@@ -123,6 +119,20 @@ export const PRESET_ORDER: PresetId[] = [
   'mssql',
   'redis',
 ]
+
+/** Per-preset display name; dialect labels cannot carry it because mariadb shares 'mysql'. */
+export const PRESET_LABEL: Record<PresetId, string> = {
+  mysql: 'MySQL',
+  mariadb: 'MariaDB',
+  'oceanbase-mysql': 'OceanBase（MySQL 模式）',
+  'oceanbase-oracle': 'OceanBase（Oracle 模式）',
+  oracle: 'Oracle',
+  dameng: '达梦 DM',
+  postgres: 'PostgreSQL',
+  sqlite: 'SQLite',
+  mssql: 'SQL Server',
+  redis: 'Redis',
+}
 
 export const SQL_DIALECT_LABEL: Record<SqlDialect, string> = {
   mysql: 'MySQL',

@@ -1,9 +1,10 @@
-import { useCallback, useState, type CSSProperties, type ReactElement } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import { ROUTE_PREFIX } from '../shared/presets'
 import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
 import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
+import { setKeybindings } from './keymap'
 import { copyText } from './colmenu'
 import { EditIcon, PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
@@ -156,6 +157,12 @@ export function App(props: AppProps): ReactElement {
     updateDrivers,
     applySettings,
   } = useDataSources(notify)
+
+  // 快捷键处理函数在下面的各个组件里，绑定统一在这里发布一次，
+  // 免得为了一个 Record 把每一层组件的 props 都改一遍。
+  useEffect(() => {
+    setKeybindings(snapshot?.settings.keybindings)
+  }, [snapshot?.settings.keybindings])
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {

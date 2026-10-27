@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 import { isPresetId, isSqlDialect, PRESETS, presetOf } from '../shared/presets.js'
+import { lenientKeybindings, parseKeybindings } from '../shared/keymap.js'
 import type {
   ClientConfig,
   ClientConnection,
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   allowAgentWrites: false,
   redisScanCount: 200,
   confirmDestructive: true,
+  keybindings: {},
 }
 
 const NAME_MAX = 80
@@ -50,6 +52,7 @@ export const SETTING_KEYS: (keyof DbSettings)[] = [
   'allowAgentWrites',
   'redisScanCount',
   'confirmDestructive',
+  'keybindings',
 ]
 
 function nowIso(): string {
@@ -188,6 +191,9 @@ export class ConfigStore {
             break
           case 'confirmDestructive':
             settings.confirmDestructive = value !== false
+            break
+          case 'keybindings':
+            settings.keybindings = lenientKeybindings(value)
             break
         }
       } catch {
@@ -413,6 +419,14 @@ export class ConfigStore {
         case 'confirmDestructive':
           if (typeof value !== 'boolean') throw new DbError('invalid', 'confirmDestructive 必须是布尔值')
           next.confirmDestructive = value
+          break
+        case 'keybindings':
+          // 组合键是否冲突由共享注册表判断，这里只负责报错信息。
+          try {
+            next.keybindings = parseKeybindings(value)
+          } catch (error) {
+            throw new DbError('invalid', errorMessage(error))
+          }
           break
       }
     }

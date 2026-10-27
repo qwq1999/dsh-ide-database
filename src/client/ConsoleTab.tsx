@@ -42,6 +42,8 @@ import { applyCommandCompletion, commandCompletion, keyCompletion } from './redi
 import { pickStatement, statementAtCaret } from './sqlselection'
 import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
+import { shortcutHit, shortcutLabel } from './keymap'
+import type { ShortcutId } from '../shared/keymap'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, tableFromStatement } from './tablesql'
 import {
@@ -787,18 +789,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }
 
-  /** Ctrl/⌘ + F jumps to the result filter (browsers would open their own find bar);
-   *  Ctrl/⌘ + R re-runs the statement instead of reloading the whole page. */
+  /** 结果区的两个快捷键：跳到筛选框、原地重跑（不刷新整页）。 */
   const panelShortcuts = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
-      if (!(event.ctrlKey || event.metaKey)) return
-      const key = event.key.toLowerCase()
-      if (key === 'f') {
+      if (shortcutHit(event, 'result.filter')) {
         event.preventDefault()
         filterRef.current?.focus()
         return
       }
-      if (key === 'r') {
+      if (shortcutHit(event, 'result.rerun')) {
         event.preventDefault()
         void run()
       }
@@ -1737,7 +1736,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   input.setSelectionRange(next.caret, next.caret)
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+                if (shortcutHit(event, 'redis.clear')) {
                   event.preventDefault()
                   setCommand('')
                   recallRef.current = -1
@@ -1764,7 +1763,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 setCaretPos(0)
               }}
               disabled={command === ''}
-              title="清空命令框（Ctrl/⌘ + L）"
+              title={`清空命令框（${shortcutLabel('redis.clear')}）`}
             >
               清空
             </Button>
@@ -1813,7 +1812,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           <span className="dshdb-complete-anchor" ref={completionAnchor}>
             <textarea
               className="dshdb-input dshdb-console-input"
-              placeholder="输入 SQL，Ctrl/⌘ + Enter 执行（有选中内容时只执行选中部分），Ctrl/⌘ + Space 补全表名和列名（`表.` 后补全列名），Ctrl/⌘ + S 存成 .sql，Ctrl/⌘ + E 查看执行计划，Ctrl/⌘ + L 清空编辑器，Ctrl/⌘ + / 注释，Ctrl/⌘ + Shift + Enter 执行光标所在的语句，Ctrl/⌘ + Shift + F 格式化，Ctrl/⌘ + ↑↓ 切换历史"
+              placeholder={`输入 SQL，${shortcutLabel('console.run')} 执行（有选中内容时只执行选中部分），${shortcutLabel('console.complete')} 补全表名和列名（\`表.\` 后补全列名），${shortcutLabel('console.save')} 存成 .sql，${shortcutLabel('console.explain')} 查看执行计划，${shortcutLabel('console.clear')} 清空编辑器，${shortcutLabel('console.comment')} 注释，${shortcutLabel('console.runCaret')} 执行光标所在的语句，${shortcutLabel('console.format')} 格式化，${shortcutLabel('console.historyOlder')} / ${shortcutLabel('console.historyNewer')} 切换历史（可在设置里改）`}
                   aria-label="SQL 编辑器"
               ref={inputRef}
               aria-controls={suggestions === null ? undefined : `${completeId}-list`}
@@ -1837,8 +1836,14 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   setHistoryOpen(false)
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
+                // 命中编辑器自己的快捷键就吃掉事件，免得冒泡到结果区同键的绑定。
+                const shortcut = (id: ShortcutId): boolean => {
+                  if (!shortcutHit(event, id)) return false
                   event.preventDefault()
+                  event.stopPropagation()
+                  return true
+                }
+                if (shortcut('console.complete')) {
                   void openSuggestions()
                   return
                 }
@@ -1858,18 +1863,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     }
                   }
                 }
-                if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
-                  event.preventDefault()
+                if (shortcut('console.save')) {
                   saveSqlFile()
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e' && !isRedis) {
-                  event.preventDefault()
+                if (!isRedis && shortcut('console.explain')) {
                   void explainPlan()
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && event.key === '/') {
-                  event.preventDefault()
+                if (shortcut('console.comment')) {
                   const area = inputRef.current
                   const next = toggleSqlComment(
                     statement,
@@ -1887,33 +1889,32 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   }
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && (event.key === 'l' || event.key === 'L')) {
+                if (shortcut('console.clear')) {
                   if (statement.trim() === '') return
-                  event.preventDefault()
                   setStatement('')
                   setSelectedRun(false)
                   setCaretPos(0)
                   inputRef.current?.focus()
                   return
                 }
-                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && event.shiftKey) {
-                  event.preventDefault()
+                if (shortcut('console.runCaret')) {
                   void runCaret()
                   return
                 }
-                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-                  event.preventDefault()
+                if (shortcut('console.run')) {
                   void run()
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
-                  event.preventDefault()
+                if (shortcut('console.format')) {
                   applyFormat()
                   return
                 }
-                if ((event.ctrlKey || event.metaKey) && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-                  event.preventDefault()
-                  recallHistory(event.key === 'ArrowUp' ? 1 : -1)
+                if (shortcut('console.historyOlder')) {
+                  recallHistory(1)
+                  return
+                }
+                if (shortcut('console.historyNewer')) {
+                  recallHistory(-1)
                 }
               }}
             />
@@ -1974,7 +1975,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               variant="ghost"
               onClick={applyFormat}
               disabled={statement.trim() === ''}
-              title="整理关键字大小写与换行（Ctrl/⌘ + Shift + F）"
+              title={`整理关键字大小写与换行（${shortcutLabel('console.format')}）`}
             >
               格式化
             </Button>
@@ -2345,7 +2346,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   <CopyIcon size={12} />
                 </button>
                 <span className="dshdb-pager-spacer" />
-                <span className="dshdb-pager-filter" title="按任意列在网格里显示的文字过滤当前页（Ctrl/⌘ + F 聚焦，Esc 清空）">
+                <span className="dshdb-pager-filter" title={`按任意列在网格里显示的文字过滤当前页（${shortcutLabel('result.filter')} 聚焦，Esc 清空）`}>
                   <input
                     ref={filterRef}
                     className="dshdb-input dshdb-qfilter-input"

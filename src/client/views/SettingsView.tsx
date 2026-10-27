@@ -1,8 +1,97 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type { CustomDriverStatus, DbSettings, DriverStatus, EnvStatus } from '../../shared/types'
+import {
+  SHORTCUTS,
+  SHORTCUT_SCOPE_LABEL,
+  bindingFromEvent,
+  bindingOf,
+  conflictingShortcut,
+  formatBinding,
+  shortcutDef,
+  type ShortcutDef,
+  type ShortcutScope,
+} from '../../shared/keymap'
 import { formatBytes } from '../format'
+import { IS_MAC } from '../keymap'
 import { DatabaseIcon, DownloadIcon, EditIcon, PlusIcon, RefreshIcon, TrashIcon } from '../icons'
 import { Banner, Button, Field, Panel, Select, Spinner, Switch, Tag, TextInput } from '../ui'
+
+/** Panel order: the editor first, then everything the user reaches with a mouse. */
+const SHORTCUT_SCOPES: ShortcutScope[] = ['console', 'result', 'table', 'tree', 'redis']
+
+function ShortcutRow(props: {
+  def: ShortcutDef
+  overrides: Record<string, string>
+  onChange: (binding: string | null) => void
+}): ReactElement {
+  const { def, overrides, onChange } = props
+  const [recording, setRecording] = useState(false)
+  const [problem, setProblem] = useState('')
+  const binding = bindingOf(def.id, overrides)
+
+  /** Record the keypress itself; Esc leaves, Delete clears the override. */
+  const capture = (event: KeyboardEvent<HTMLInputElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    const field = event.currentTarget
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      setRecording(false)
+      field.blur()
+      return
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      setProblem('')
+      setRecording(false)
+      onChange(null)
+      field.blur()
+      return
+    }
+    const next = bindingFromEvent(event)
+    if (next === null) {
+      setProblem('要带 Ctrl/⌘ 或 Alt，功能键（F1–F12）可以单独用')
+      return
+    }
+    const taken = conflictingShortcut(def.id, next, overrides)
+    if (taken !== null) {
+      setProblem(`与「${shortcutDef(taken).label}」冲突`)
+      return
+    }
+    setProblem('')
+    setRecording(false)
+    onChange(next)
+    field.blur()
+  }
+
+  return (
+    <div className="dshdb-driver-row">
+      <div className="dshdb-driver-main">
+        <div className="dshdb-driver-name">{def.label}</div>
+        {problem !== '' ? <div className="dshdb-field-error">{problem}</div> : null}
+      </div>
+      <TextInput
+        readOnly
+        style={{ width: 168, textAlign: 'center' }}
+        aria-label={`${def.label} 的快捷键`}
+        title="点一下再按新的组合键（Esc 取消，Delete 恢复默认）"
+        value={recording ? '按下组合键…' : formatBinding(binding, IS_MAC)}
+        onFocus={() => {
+          setRecording(true)
+          setProblem('')
+        }}
+        onBlur={() => setRecording(false)}
+        onKeyDown={capture}
+      />
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={overrides[def.id] === undefined}
+        onClick={() => onChange(null)}
+      >
+        恢复默认
+      </Button>
+    </div>
+  )
+}
 
 export interface SettingsViewProps {
   settings: DbSettings
@@ -90,6 +179,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
   const presets = props.drivers.filter((driver) => driver.preset !== null)
   const customs = props.drivers.filter((driver) => driver.preset === null)
+  const keybindings = draft.keybindings ?? {}
 
   return (
     <div className="dshdb-scroll dshdb-scroll-thin" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -201,6 +291,45 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
             />
           </div>
         </div>
+      </Panel>
+
+      <Panel
+        title="快捷键"
+        actions={
+          <div className="dshdb-inline">
+            <Button size="sm" variant="ghost" onClick={() => update('keybindings', {})}>
+              全部恢复默认
+            </Button>
+            <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
+              保存
+            </Button>
+          </div>
+        }
+        bodyClassName="dshdb-panel-body-pad"
+      >
+        <div className="dshdb-muted" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+          点一下组合键框，再按下新的组合键即可（Esc 取消，Delete 恢复这一项的默认）。组合键要带 Ctrl/⌘ 或 Alt，功能键可以单独用；同一区域里不能重复，改完点「保存」。
+        </div>
+        {SHORTCUT_SCOPES.map((scope) => (
+          <div key={scope} style={{ marginTop: 8 }}>
+            <div className="dshdb-qfilter-label">{SHORTCUT_SCOPE_LABEL[scope]}</div>
+            <div className="dshdb-list">
+              {SHORTCUTS.filter((def) => def.scope === scope).map((def) => (
+                <ShortcutRow
+                  key={def.id}
+                  def={def}
+                  overrides={keybindings}
+                  onChange={(binding) => {
+                    const next = { ...keybindings }
+                    if (binding === null) delete next[def.id]
+                    else next[def.id] = binding
+                    update('keybindings', next)
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </Panel>
 
       <Panel

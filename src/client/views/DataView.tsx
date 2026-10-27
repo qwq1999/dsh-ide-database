@@ -15,6 +15,7 @@ import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
 import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
 import { nextRowIndex } from '../treekeys'
+import { shortcutHit } from '../keymap'
 import { highlightParts } from '../highlight'
 import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
@@ -162,19 +163,16 @@ export function DataView(props: DataViewProps): ReactElement {
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
   const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.ctrlKey || event.metaKey) {
-      const key = event.key.toLowerCase()
-      if (key === 'f') {
-        event.preventDefault()
-        focusTreeFilter()
-        return
-      }
-      if (key === 'r') {
-        // Ctrl/⌘+R would reload the whole app; re-read the tree instead.
-        event.preventDefault()
-        props.onRefresh?.()
-        return
-      }
+    if (shortcutHit(event, 'tree.filter')) {
+      event.preventDefault()
+      focusTreeFilter()
+      return
+    }
+    if (shortcutHit(event, 'tree.refresh')) {
+      // 浏览器默认会把组合键当成刷新整页，这里只重读树。
+      event.preventDefault()
+      props.onRefresh?.()
+      return
     }
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button.dshdb-row'))
     if (rows.length === 0) return

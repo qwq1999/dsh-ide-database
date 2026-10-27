@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
-import { PRESET_ORDER, PRESETS, presetOf } from '../../shared/presets'
+import { PRESET_LABEL, PRESET_ORDER, PRESETS, presetOf } from '../../shared/presets'
 import type {
   ClientConnection,
   ConnectionDraft,
@@ -12,19 +12,6 @@ import { copyText } from '../colmenu'
 import { dialectLabel, formatMs } from '../format'
 import { DatabaseIcon, PlusIcon, TrashIcon } from '../icons'
 import { Banner, Button, Field, Modal, Select, Spinner, Switch, Tag, TextArea, TextInput } from '../ui'
-
-const PRESET_LABEL: Record<PresetId, string> = {
-  mysql: 'MySQL',
-  mariadb: 'MariaDB',
-  'oceanbase-mysql': 'OceanBase（MySQL 模式）',
-  'oceanbase-oracle': 'OceanBase（Oracle 模式）',
-  oracle: 'Oracle',
-  dameng: '达梦 DM',
-  postgres: 'PostgreSQL',
-  sqlite: 'SQLite',
-  mssql: 'SQL Server',
-  redis: 'Redis',
-}
 
 export interface ConnectionModalProps {
   open: boolean

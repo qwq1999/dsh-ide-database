@@ -74,6 +74,20 @@ describe('ConfigStore', () => {
     expect(() => config.updateSettings({ maxRows: 5_001 })).toThrow(/最大返回行数/)
   })
 
+  it('stores rebindings, drops unusable ones on load and refuses bad saves', () => {
+    const { config, dir } = store()
+    config.updateSettings({ keybindings: { 'console.clear': 'MOD+K' } })
+    expect(config.snapshot().settings.keybindings).toEqual({ 'console.clear': 'mod+k' })
+    expect(() => config.updateSettings({ keybindings: { 'console.clear': 'mod+enter' } })).toThrow(/同时绑给了/)
+    expect(() => config.updateSettings({ keybindings: { nope: 'mod+k' } })).toThrow(/未知的快捷键/)
+    expect(config.snapshot().settings.keybindings).toEqual({ 'console.clear': 'mod+k' })
+
+    const secrets = new SecretStore(join(dir, 'secrets.json'))
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), secrets)
+    reloaded.load()
+    expect(reloaded.snapshot().settings.keybindings).toEqual({ 'console.clear': 'mod+k' })
+  })
+
   it('persists custom drivers and settings to disk', () => {
     const { config, dir } = store()
     config.upsertDriver({

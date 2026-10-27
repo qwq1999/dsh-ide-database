@@ -23,6 +23,7 @@ import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
 import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
+import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { DdlModal } from './DdlModal'
@@ -588,17 +589,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setFilters({})
     if (connection !== null) apply({ where: composeWhere(connection.dialect, whereText, columns, {}), page: 0 })
   }, [apply, columns, connection, whereText])
-  /** Ctrl/⌘ + F jumps to the WHERE box instead of the browser find bar. */
+  /** 跳到 WHERE 框、刷新当前页这两个键都能在设置里改。 */
   const handleShortcuts = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
-    if (!(event.ctrlKey || event.metaKey)) return
-    const key = event.key.toLowerCase()
-    if (key === 'f') {
+    if (shortcutHit(event, 'table.where')) {
       event.preventDefault()
       whereRef.current?.focus()
       return
     }
-    if (key === 'r') {
-      // Ctrl/⌘+R would reload the whole page; reload just this page of rows.
+    if (shortcutHit(event, 'table.refresh')) {
+      // 浏览器默认会把这个组合键当成刷新整页，这里只刷当前页的行。
       event.preventDefault()
       applyRef.current({ recount: true })
     }
@@ -932,7 +931,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           placeholder="过滤条件，例如 ID > 10 AND BCH = '6084'"
           aria-label="过滤条件"
           list={columnsListId}
-          title="Ctrl/⌘ + F 聚焦这里"
+          title={`${shortcutLabel('table.where')} 聚焦这里`}
           value={whereText}
           spellCheck={false}
           onChange={(event) => setWhereText(event.target.value)}
