@@ -49,7 +49,16 @@ jobs:
           java-version: '17'
 
       - name: 校验 tag 与清单版本一致
-        run: node scripts/check-release-version.mjs "$TAG"
+        run: |
+          set -euo pipefail
+          # 检出的是 tag 的树；补发老 tag 时树里还没有这个脚本，从 main 取一份再跑。
+          if [ -f scripts/check-release-version.mjs ]; then
+            check=scripts/check-release-version.mjs
+          else
+            check="$RUNNER_TEMP/check-release-version.mjs"
+            git show origin/main:scripts/check-release-version.mjs > "$check"
+          fi
+          node "$check" "$TAG"
 
       - name: 安装依赖
         run: npm ci
