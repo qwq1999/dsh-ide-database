@@ -1,7 +1,7 @@
 name: Release
 
 # 推 v* tag 时自动构建并挂出 tgz；也可以在 Actions 里手动指定一个已有 tag 补发。
-on: 
+on:
   push:
     tags:
       - 'v*'
@@ -61,7 +61,10 @@ jobs:
         run: npm run build
 
       - name: 打包
-        run: npm pack --pack-destination dist
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          npm pack --pack-destination dist
 
       - name: 创建或补发 Release
         env:
