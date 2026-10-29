@@ -79,12 +79,20 @@ jobs:
         run: |
           set -euo pipefail
           ls -l dist
+          # GitHub 把"最后创建"的 Release 当成 latest，补发老 tag 会把新版本顶下去。
+          # 只有 TAG 确实是当前最高版本时才声明 latest。
+          HIGHEST=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ "$HIGHEST" = "$TAG" ]; then LATEST_FLAG="--latest"; else LATEST_FLAG="--latest=false"; fi
+          echo "最高 tag=$HIGHEST，本次 $TAG -> $LATEST_FLAG"
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，替换附件"
             gh release upload "$TAG" dist/*.tgz --clobber
+            gh release edit "$TAG" "$LATEST_FLAG"
           else
             gh release create "$TAG" dist/*.tgz \
               --title "dsh-ide-database $TAG" \
               --generate-notes \
-              --verify-tag
+              --verify-tag \
+              "$LATEST_FLAG"
           fi
