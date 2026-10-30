@@ -300,11 +300,12 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_delete_connection',
       description:
-        'Delete a saved connection, its stored password and its cached structure. When the settings ask for destructive confirmation, pass confirm=true to proceed.',
+        'Delete a saved connection. By default it moves to the recycle bin and can be restored from there; pass permanent=true to purge it together with its stored password and cached structure. When the settings ask for destructive confirmation, pass confirm=true to proceed.',
       parameters: {
         type: 'object',
         properties: {
           connection: { type: 'string', description: 'Saved connection id or name.' },
+          permanent: { type: 'boolean', description: 'Purge instead of moving to the recycle bin.' },
           confirm: { type: 'boolean', description: 'Required when confirmDestructive is on.' },
         },
         required: ['connection'],
@@ -322,11 +323,19 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           }
           await deps.sql.disconnect(connection.id).catch(() => undefined)
           await deps.redis.disconnect(connection.id).catch(() => undefined)
-          deps.structure.clear(connection.id)
-          deps.config.deleteConnection(connection.id)
+          const permanent = args.permanent === true
+          if (permanent) {
+            deps.config.purgeConnection(connection.id)
+            deps.structure.clear(connection.id)
+          } else {
+            deps.config.trashConnection(connection.id)
+          }
+          const snapshot = deps.config.get()
           return {
             deleted: { id: connection.id, name: connection.name, dialect: connection.dialect },
-            remaining: deps.config.get().connections.map((entry) => ({ id: entry.id, name: entry.name, dialect: entry.dialect })),
+            trashed: !permanent,
+            remaining: snapshot.connections.map((entry) => ({ id: entry.id, name: entry.name, dialect: entry.dialect })),
+            trashCount: snapshot.trash.length,
           }
         } catch (error) {
           return fail(error)

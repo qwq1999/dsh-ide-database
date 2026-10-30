@@ -306,3 +306,17 @@ export function ClearIcon(props: IconProps): ReactElement {
     </Svg>
   )
 }
+
+export function RecycleIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M7 19H4.8a1.8 1.8 0 0 1-1.6-.9 1.8 1.8 0 0 1 0-1.8l3.9-6.8" />
+      <path d="M11 19h8.2a1.8 1.8 0 0 0 1.6-.9 1.8 1.8 0 0 0 0-1.8l-1.2-2.1" />
+      <path d="M14 16l-3 3 3 3" />
+      <path d="M8.3 13.6 7.2 9.5 3.1 10.6" />
+      <path d="M9.3 5.8 10.4 3.9A1.8 1.8 0 0 1 12 3a1.8 1.8 0 0 1 1.5.9l3.9 6.8" />
+      <path d="m13.4 9.6 4.1 1.1 1.1-4.1" />
+    </Svg>
+  )
+}
+

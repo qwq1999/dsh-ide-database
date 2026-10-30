@@ -46,13 +46,17 @@ function harness(initial = {}) {
   }))
   const saveConnection = vi.fn((draft) => ({ ...connection(draft), id: draft.id ?? 'new1' }))
   const deleteConnection = vi.fn()
+  const trashConnection = vi.fn(() => ({ ...sqlConnection, deletedAt: '2026-10-30T12:00:00.000Z' }))
+  const purgeConnection = vi.fn(() => sqlConnection)
   const config = {
-    snapshot: () => ({ connections: [sqlConnection, redisConnection], settings, drivers: [] }),
+    snapshot: () => ({ connections: [sqlConnection, redisConnection], trash: [], settings, drivers: [] }),
     settings: () => settings,
     connection: (reference) => [sqlConnection, redisConnection].find((entry) => entry.id === reference || entry.name === reference),
-    get: () => ({ connections: [sqlConnection, redisConnection], settings, drivers: [] }),
+    get: () => ({ connections: [sqlConnection, redisConnection], trash: [], settings, drivers: [] }),
     saveConnection,
     deleteConnection,
+    trashConnection,
+    purgeConnection,
   }
   const structure = { clear: vi.fn(), putSchemas: vi.fn(), get: vi.fn(() => undefined) }
   const deps = {
@@ -79,7 +83,20 @@ function harness(initial = {}) {
     if (found === undefined) throw new Error(`missing tool ${name}`)
     return found
   }
-  return { tools, byName, query, deps, settings, sqlConnection, redisConnection, saveConnection, deleteConnection, structure }
+  return {
+    tools,
+    byName,
+    query,
+    deps,
+    settings,
+    sqlConnection,
+    redisConnection,
+    saveConnection,
+    deleteConnection,
+    trashConnection,
+    purgeConnection,
+    structure,
+  }
 }
 
 describe('createDatabaseTools', () => {
@@ -198,11 +215,23 @@ describe('createDatabaseTools', () => {
     expect(draft.password).toBeUndefined()
   })
 
-  it('asks for confirmation before deleting a connection', async () => {
-    const { byName, deleteConnection } = harness()
+  it('asks for confirmation before moving a connection to the recycle bin', async () => {
+    const { byName, trashConnection, purgeConnection, deps } = harness()
     await expect(byName('db_delete_connection').execute({ connection: 'c1' })).rejects.toThrow(/confirm: true/)
-    await byName('db_delete_connection').execute({ connection: 'c1', confirm: true })
-    expect(deleteConnection).toHaveBeenCalledWith('c1')
+    const value = await byName('db_delete_connection').execute({ connection: 'c1', confirm: true })
+    expect(trashConnection).toHaveBeenCalledWith('c1')
+    expect(purgeConnection).not.toHaveBeenCalled()
+    expect(deps.structure.clear).not.toHaveBeenCalled()
+    expect(value).toMatchObject({ deleted: { id: 'c1' }, trashed: true, trashCount: 0 })
+  })
+
+  it('purges a connection permanently when asked', async () => {
+    const { byName, trashConnection, purgeConnection, deps } = harness()
+    const value = await byName('db_delete_connection').execute({ connection: 'c1', confirm: true, permanent: true })
+    expect(purgeConnection).toHaveBeenCalledWith('c1')
+    expect(trashConnection).not.toHaveBeenCalled()
+    expect(deps.structure.clear).toHaveBeenCalledWith('c1')
+    expect(value).toMatchObject({ deleted: { id: 'c1' }, trashed: false })
   })
 
   it('refreshes schemas and rewrites the structure cache', async () => {

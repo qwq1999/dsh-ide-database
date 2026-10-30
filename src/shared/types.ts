@@ -154,6 +154,16 @@ export interface ClientConnection {
   lastUsedAt?: string
 }
 
+/** A connection removed from the list, kept recoverable in the recycle bin. */
+export interface TrashedConnection extends ConnectionConfig {
+  /** When the user deleted it; ISO timestamp. */
+  deletedAt: string
+}
+
+export interface ClientTrashedConnection extends ClientConnection {
+  deletedAt: string
+}
+
 export interface ConnectionDraft {
   id?: string
   name: string
@@ -173,12 +183,16 @@ export interface ConnectionDraft {
 export interface DbConfigFile {
   version: 1
   connections: ConnectionConfig[]
+  /** Deleted connections, newest first; purged or restored from the recycle bin. */
+  trash: TrashedConnection[]
   drivers: DriverConfig[]
   settings: DbSettings
 }
 
 export interface ClientConfig {
   connections: ClientConnection[]
+  /** Deleted connections shown in the recycle bin, newest first. */
+  trash: ClientTrashedConnection[]
   drivers: DriverConfig[]
   settings: DbSettings
 }

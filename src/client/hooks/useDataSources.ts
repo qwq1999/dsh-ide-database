@@ -13,6 +13,7 @@ import { readText, writeText } from '../prefs'
 const LAST_CONNECTION_KEY = 'dsh-ide-database.last-connection.v1'
 import type {
   ClientConnection,
+  ClientTrashedConnection,
   DbSettings,
   DriverStatus,
   EnvStatus,
@@ -29,6 +30,7 @@ import { objectKindLabel } from '../format'
 
 export interface Snapshot {
   connections: ClientConnection[]
+  trash: ClientTrashedConnection[]
   drivers: DriverStatus[]
   settings: DbSettings
   env: EnvStatus
@@ -50,6 +52,8 @@ export interface DataSources {
   servers: Record<string, ServerInfo>
   connectingId: string
   connections: ClientConnection[]
+  /** Deleted connections kept in the recycle bin, newest first. */
+  trash: ClientTrashedConnection[]
   schemas: Record<string, SchemaInfo[]>
   objects: Record<string, SchemaObject[]>
   expanded: Record<string, boolean>
@@ -176,7 +180,13 @@ export function useDataSources(notify: Notify): DataSources {
   const refresh = useCallback(async () => {
     try {
       const data = await api.status()
-      setSnapshot({ connections: data.config.connections, drivers: data.drivers, settings: data.config.settings, env: data.env })
+      setSnapshot({
+        connections: data.config.connections,
+        trash: data.config.trash,
+        drivers: data.drivers,
+        settings: data.config.settings,
+        env: data.env,
+      })
       setLoadError('')
     } catch (error) {
       setLoadError(errorText(error))
@@ -269,6 +279,7 @@ export function useDataSources(notify: Notify): DataSources {
   }, [snapshot, selectedId])
 
   const connections = snapshot?.connections ?? []
+  const trash = snapshot?.trash ?? []
   const selected = connections.find((connection) => connection.id === selectedId)
   const server = selected ? servers[selected.id] : undefined
 
@@ -784,6 +795,7 @@ export function useDataSources(notify: Notify): DataSources {
     servers,
     connectingId,
     connections,
+    trash,
     schemas,
     objects,
     expanded,

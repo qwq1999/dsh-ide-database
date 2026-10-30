@@ -31,7 +31,10 @@ export function apply(ctx: HostContext): void {
   const sql = new SqlService(paths, config, secrets, drivers, java, log)
   const redis = new RedisManager(config, secrets, log)
   const structure = new StructureStore(paths.structureFile, log)
-  structure.retain(config.snapshot().connections.map((entry) => entry.id))
+  // Trashed connections keep their cached structure so restoring one stays
+  // browsable offline; only a permanent delete drops the cache.
+  const initial = config.snapshot()
+  structure.retain([...initial.connections, ...initial.trash].map((entry) => entry.id))
 
   const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, sql, redis, structure, log })
 

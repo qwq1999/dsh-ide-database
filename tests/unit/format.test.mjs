@@ -5,6 +5,7 @@ import {
   formatBytes,
   formatCell,
   formatCount,
+  formatDateTime,
   formatTtl,
   formatMs,
   looksLikeDdl,
@@ -39,6 +40,13 @@ describe('format helpers', () => {
     expect(formatCell(null)).toBe('NULL')
     expect(formatCell(true)).toBe('true')
     expect(formatCell(42)).toBe('42')
+  })
+
+  it('formats recycle bin timestamps in local time', () => {
+    expect(formatDateTime(undefined)).toBe('—')
+    expect(formatDateTime('')).toBe('—')
+    expect(formatDateTime('not a date')).toBe('—')
+    expect(formatDateTime('2026-10-30T12:34:00')).toBe('2026-10-30 12:34')
   })
 
   it('detects write statements in client-side hints', () => {

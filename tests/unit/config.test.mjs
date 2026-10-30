@@ -120,4 +120,90 @@ describe('ConfigStore', () => {
     expect(reloaded.snapshot().drivers[0].name).toBe('H2')
     expect(reloaded.snapshot().settings.allowAgentWrites).toBe(true)
   })
+
+  it('trashes a connection but keeps its password and persists it', () => {
+    const { config, secrets, dir } = store()
+    const saved = config.saveConnection({
+      name: 'Soft delete', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', password: 'pw', database: 'app',
+    })
+
+    const trashed = config.trashConnection(saved.id)
+
+    expect(trashed.deletedAt).toBeTruthy()
+    expect(config.snapshot().connections).toHaveLength(0)
+    expect(config.snapshot().trash).toMatchObject([{ id: saved.id, name: 'Soft delete', hasPassword: true }])
+    expect(secrets.has(saved.secretName)).toBe(true)
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().connections).toHaveLength(0)
+    expect(reloaded.snapshot().trash[0]).toMatchObject({ id: saved.id, deletedAt: trashed.deletedAt })
+  })
+
+  it('restores a trashed connection with its password intact', () => {
+    const { config, secrets } = store()
+    const saved = config.saveConnection({
+      name: 'Restore me', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', password: 'pw', database: 'app',
+    })
+    config.trashConnection(saved.id)
+
+    const restored = config.restoreConnection(saved.id)
+
+    expect(restored.id).toBe(saved.id)
+    expect(config.snapshot().trash).toHaveLength(0)
+    expect(config.snapshot().connections).toMatchObject([{ id: saved.id, hasPassword: true }])
+    expect(secrets.has(saved.secretName)).toBe(true)
+    expect(() => config.restoreConnection('missing')).toThrow(/回收站中没有/)
+  })
+
+  it('purges a trashed connection and deletes its password', () => {
+    const { config, secrets } = store()
+    const saved = config.saveConnection({
+      name: 'Purge me', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', password: 'pw', database: 'app',
+    })
+    config.trashConnection(saved.id)
+
+    const purged = config.purgeConnection(saved.id)
+
+    expect(purged.id).toBe(saved.id)
+    expect(config.snapshot().connections).toHaveLength(0)
+    expect(config.snapshot().trash).toHaveLength(0)
+    expect(secrets.has(saved.secretName)).toBe(false)
+    expect(() => config.purgeConnection(saved.id)).toThrow(/不存在/)
+  })
+
+  it('empties the recycle bin and forgets every password', () => {
+    const { config, secrets } = store()
+    const first = config.saveConnection({
+      name: 'One', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', password: 'a', database: 'app',
+    })
+    const second = config.saveConnection({
+      name: 'Two', driver: 'postgres', host: '127.0.0.1', port: 5432, user: 'root', password: 'b', database: 'app',
+    })
+    config.trashConnection(first.id)
+    config.trashConnection(second.id)
+
+    expect(config.emptyTrash()).toBe(2)
+    expect(config.snapshot().trash).toEqual([])
+    expect(secrets.has(first.secretName)).toBe(false)
+    expect(secrets.has(second.secretName)).toBe(false)
+  })
+
+  it('still refuses to delete a driver used by a trashed connection', () => {
+    const { config } = store()
+    config.upsertDriver({
+      name: 'H2',
+      dialect: 'generic',
+      driverClass: 'org.h2.Driver',
+      urlTemplate: 'jdbc:h2:tcp://{{host}}:{{port}}/{{database}}',
+      jars: [{ group: 'com.h2database', artifact: 'h2', version: '2.2.224' }],
+    })
+    const driverId = config.snapshot().drivers[0].id
+    const saved = config.saveConnection({
+      name: 'Custom', driver: 'custom', customDriverId: driverId, host: '127.0.0.1', port: 1, user: 'u', database: 'app',
+    })
+    config.trashConnection(saved.id)
+
+    expect(() => config.deleteDriver(driverId)).toThrow(/仍被/)
+  })
 })

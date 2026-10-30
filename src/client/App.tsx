@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import { ROUTE_PREFIX } from '../shared/presets'
-import type { ClientConnection, DbSettings, DriverStatus } from '../shared/types'
+import type { ClientConnection, ClientTrashedConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
 import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
 import { setKeybindings } from './keymap'
 import { copyText } from './colmenu'
-import { EditIcon, PlusIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
+import { EditIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
+import { TrashModal, type TrashBusy } from './modals/TrashModal'
 import { DataView } from './views/DataView'
 import { openConsoleTab, openTableTab } from './tab-open'
 import { tableSelectSql } from './tablesql'
@@ -73,6 +74,9 @@ export function App(props: AppProps): ReactElement {
   const [savingSettings, setSavingSettings] = useState(false)
   const [downloading, setDownloading] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [trashBusy, setTrashBusy] = useState<TrashBusy | null>(null)
+  const [emptyingTrash, setEmptyingTrash] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -114,6 +118,7 @@ export function App(props: AppProps): ReactElement {
     servers,
     connectingId,
     connections,
+    trash,
     schemas,
     objects,
     expanded,
@@ -236,18 +241,61 @@ export function App(props: AppProps): ReactElement {
   }
 
   async function deleteConnection(connection: ClientConnection): Promise<void> {
-    const ok = await askConfirm(`删除连接「${connection.name}」？保存的密码也会一并删除。`)
+    const ok = await askConfirm(`删除连接「${connection.name}」？它会先移到回收站，可随时恢复。`)
     if (!ok) return
     setDeleting(true)
     try {
       await api.deleteConnection(connection.id)
       setConnModal({ open: false, editing: null })
-      notify('连接已删除', 'success')
+      notify('连接已移入回收站', 'success')
       await refresh()
     } catch (error) {
       notify(`删除失败：${errorText(error)}`, 'error')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function restoreConnection(item: ClientTrashedConnection): Promise<void> {
+    setTrashBusy({ id: item.id, action: 'restore' })
+    try {
+      await api.restoreConnection(item.id)
+      notify(`连接「${item.name}」已恢复`, 'success')
+      await refresh()
+    } catch (error) {
+      notify(`恢复失败：${errorText(error)}`, 'error')
+    } finally {
+      setTrashBusy(null)
+    }
+  }
+
+  async function purgeConnection(item: ClientTrashedConnection): Promise<void> {
+    const ok = await askConfirm(`彻底删除连接「${item.name}」？保存的密码与结构缓存也会删除，且无法恢复。`)
+    if (!ok) return
+    setTrashBusy({ id: item.id, action: 'purge' })
+    try {
+      await api.purgeConnection(item.id)
+      notify('连接已彻底删除', 'success')
+      await refresh()
+    } catch (error) {
+      notify(`删除失败：${errorText(error)}`, 'error')
+    } finally {
+      setTrashBusy(null)
+    }
+  }
+
+  async function emptyTrash(): Promise<void> {
+    const ok = await askConfirm(`清空回收站中的 ${String(trash.length)} 个连接？保存的密码与结构缓存也会删除，且无法恢复。`)
+    if (!ok) return
+    setEmptyingTrash(true)
+    try {
+      const result = await api.emptyTrash()
+      notify(`已清空回收站（${String(result.purged)} 个连接）`, 'success')
+      await refresh()
+    } catch (error) {
+      notify(`清空回收站失败：${errorText(error)}`, 'error')
+    } finally {
+      setEmptyingTrash(false)
     }
   }
 
@@ -307,6 +355,13 @@ export function App(props: AppProps): ReactElement {
           onClick={() => openConsoleTab({ connectionId: selected?.id })}
         >
           控制台
+        </ToolButton>
+        <ToolButton
+          title={trash.length > 0 ? `回收站（${String(trash.length)}）` : '回收站'}
+          icon={<RecycleIcon size={14} />}
+          onClick={() => setTrashOpen(true)}
+        >
+          回收站
         </ToolButton>
         <ToolButton title="设置" icon={<SettingsIcon size={14} />} onClick={() => setSettingsOpen(true)}>
           设置
@@ -460,6 +515,16 @@ export function App(props: AppProps): ReactElement {
         ) : null}
       </footer>
 
+      <TrashModal
+        open={trashOpen}
+        items={trash}
+        busy={trashBusy}
+        emptying={emptyingTrash}
+        onClose={() => setTrashOpen(false)}
+        onRestore={(item) => void restoreConnection(item)}
+        onPurge={(item) => void purgeConnection(item)}
+        onEmpty={() => void emptyTrash()}
+      />
       <ConnectionModal
         open={connModal.open}
         editing={connModal.editing}

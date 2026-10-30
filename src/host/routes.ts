@@ -261,11 +261,36 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
     }
     case '/connections/delete': {
       const id = typeof data.id === 'string' ? data.id : ''
+      // Soft delete: close the live session but keep password and cached
+      // structure so the recycle bin can restore the connection as it was.
       await deps.sql.disconnect(id)
       await deps.redis.disconnect(id)
-      deps.config.deleteConnection(id)
-      deps.structure.clear(id)
+      deps.config.trashConnection(id)
       sendJson(response, 200, { ok: true, data: { config: deps.config.snapshot() } })
+      return
+    }
+    case '/connections/restore': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      deps.config.restoreConnection(id)
+      const client = deps.config.snapshot().connections.find((entry) => entry.id === id) as ClientConnection
+      sendJson(response, 200, { ok: true, data: { connection: client, config: deps.config.snapshot() } })
+      return
+    }
+    case '/connections/purge': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const deleted = deps.config.purgeConnection(id)
+      deps.structure.clear(id)
+      sendJson(response, 200, {
+        ok: true,
+        data: { deleted: { id: deleted.id, name: deleted.name, dialect: deleted.dialect }, config: deps.config.snapshot() },
+      })
+      return
+    }
+    case '/connections/trash/empty': {
+      const ids = deps.config.snapshot().trash.map((entry) => entry.id)
+      const purged = deps.config.emptyTrash()
+      for (const id of ids) deps.structure.clear(id)
+      sendJson(response, 200, { ok: true, data: { purged, config: deps.config.snapshot() } })
       return
     }
     case '/connections/test': {

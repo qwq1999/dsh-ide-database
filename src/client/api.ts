@@ -79,6 +79,11 @@ export const api = {
   saveConnection: (draft: ConnectionDraft) =>
     post<{ connection: ClientConnection; config: ClientConfig }>('/connections/save', { ...draft }),
   deleteConnection: (id: string) => post<{ config: ClientConfig }>('/connections/delete', { id }),
+  restoreConnection: (id: string) =>
+    post<{ connection: ClientConnection; config: ClientConfig }>('/connections/restore', { id }),
+  purgeConnection: (id: string) =>
+    post<{ deleted: { id: string; name: string; dialect: string }; config: ClientConfig }>('/connections/purge', { id }),
+  emptyTrash: () => post<{ purged: number; config: ClientConfig }>('/connections/trash/empty'),
   testConnection: (draft: ConnectionDraft) => post<ConnectionTestResult>('/connections/test', { draft }),
   connect: (id: string) => post<ServerInfo>('/connections/connect', { id }),
   disconnect: (id: string) => post<{ disconnected: string }>('/connections/disconnect', { id }),

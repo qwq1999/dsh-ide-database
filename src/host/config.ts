@@ -7,6 +7,7 @@ import { lenientKeybindings, parseKeybindings } from '../shared/keymap.js'
 import type {
   ClientConfig,
   ClientConnection,
+  ClientTrashedConnection,
   ConnectionConfig,
   ConnectionDraft,
   DbConfigFile,
@@ -15,6 +16,7 @@ import type {
   DriverChoice,
   JarRef,
   SqlDialect,
+  TrashedConnection,
 } from '../shared/types.js'
 import { DbError, errorMessage } from './errors.js'
 import type { SecretStore } from './secrets.js'
@@ -128,7 +130,7 @@ function sanitizeJar(raw: unknown): JarRef {
 }
 
 export class ConfigStore {
-  private data: DbConfigFile = { version: 1, connections: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+  private data: DbConfigFile = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
 
   constructor(
     readonly file: string,
@@ -138,24 +140,30 @@ export class ConfigStore {
 
   load(): void {
     if (!existsSync(this.file)) {
-      this.data = { version: 1, connections: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+      this.data = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
       return
     }
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as unknown
       if (!isRecord(parsed)) throw new Error('config root is not an object')
       const connections = Array.isArray(parsed.connections) ? parsed.connections : []
+      const trash = Array.isArray(parsed.trash) ? parsed.trash : []
       const drivers = Array.isArray(parsed.drivers) ? parsed.drivers : []
       const settings = isRecord(parsed.settings) ? parsed.settings : {}
       const hydratedDrivers = drivers.flatMap((entry) => this.hydrateDriver(entry))
       this.data = {
         version: 1,
         connections: [],
+        trash: [],
         drivers: hydratedDrivers,
         settings: this.hydrateSettings(settings),
       }
       // Connections are resolved after their custom drivers exist on `this.data`.
       this.data.connections = connections.flatMap((entry) => this.hydrateConnection(entry))
+      const active = new Set(this.data.connections.map((entry) => entry.id))
+      this.data.trash = trash
+        .flatMap((entry) => this.hydrateTrash(entry))
+        .filter((entry) => !active.has(entry.id))
     } catch (error) {
       const backup = `${this.file}.corrupt-${Date.now()}`
       try {
@@ -164,7 +172,7 @@ export class ConfigStore {
         // keep the original if the backup cannot be written
       }
       this.log(`connections.json is corrupt (${errorMessage(error)}); moved to ${backup}`)
-      this.data = { version: 1, connections: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+      this.data = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
     }
   }
 
@@ -277,6 +285,12 @@ export class ConfigStore {
     }
   }
 
+  private hydrateTrash(raw: unknown): TrashedConnection[] {
+    const [connection] = this.hydrateConnection(raw)
+    if (connection === undefined || !isRecord(raw)) return []
+    return [{ ...connection, deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : nowIso() }]
+  }
+
   get(): DbConfigFile {
     return this.data
   }
@@ -285,8 +299,8 @@ export class ConfigStore {
     return this.data.settings
   }
 
-  snapshot(): ClientConfig {
-    const connections: ClientConnection[] = this.data.connections.map((conn) => ({
+  private toClient(conn: ConnectionConfig): ClientConnection {
+    return {
       id: conn.id,
       name: conn.name,
       driver: conn.driver,
@@ -302,9 +316,18 @@ export class ConfigStore {
       readOnly: conn.readOnly,
       createdAt: conn.createdAt,
       ...(conn.lastUsedAt === undefined ? {} : { lastUsedAt: conn.lastUsedAt }),
+    }
+  }
+
+  snapshot(): ClientConfig {
+    const connections: ClientConnection[] = this.data.connections.map((conn) => this.toClient(conn))
+    const trash: ClientTrashedConnection[] = this.data.trash.map((conn) => ({
+      ...this.toClient(conn),
+      deletedAt: conn.deletedAt,
     }))
     return {
       connections,
+      trash,
       drivers: this.data.drivers.map((driver) => ({ ...driver, jars: driver.jars.map((jar) => ({ ...jar })) })),
       settings: { ...this.data.settings },
     }
@@ -382,12 +405,53 @@ export class ConfigStore {
     return connection
   }
 
-  deleteConnection(id: string): void {
+  /** Connections currently in the recycle bin, newest first. */
+  trashed(id: string): TrashedConnection | undefined {
+    return this.data.trash.find((connection) => connection.id === id)
+  }
+
+  /** Soft delete: move the connection out of the list, keeping password and cache. */
+  trashConnection(id: string): TrashedConnection {
     const connection = this.connection(id)
     if (connection === undefined) throw new DbError('not-found', `连接不存在：${id}`)
     this.data.connections = this.data.connections.filter((entry) => entry.id !== id)
+    const trashed: TrashedConnection = { ...connection, deletedAt: nowIso() }
+    this.data.trash = [trashed, ...this.data.trash]
+    this.persist()
+    return trashed
+  }
+
+  /** Bring a trashed connection back into the list, unchanged. */
+  restoreConnection(id: string): ConnectionConfig {
+    const trashed = this.trashed(id)
+    if (trashed === undefined) throw new DbError('not-found', `回收站中没有该连接：${id}`)
+    this.data.trash = this.data.trash.filter((entry) => entry.id !== id)
+    const { deletedAt: _deletedAt, ...connection } = trashed
+    this.data.connections.push(connection)
+    this.persist()
+    return connection
+  }
+
+  /** Delete for good: works on active or trashed connections, drops the password. */
+  purgeConnection(id: string): ConnectionConfig {
+    const connection = this.connection(id) ?? this.trashed(id)
+    if (connection === undefined) throw new DbError('not-found', `连接不存在：${id}`)
+    this.data.connections = this.data.connections.filter((entry) => entry.id !== id)
+    this.data.trash = this.data.trash.filter((entry) => entry.id !== id)
     if (connection.secretName !== undefined) this.secrets.delete(connection.secretName)
     this.persist()
+    return connection
+  }
+
+  /** Purge every trashed connection; returns how many were removed. */
+  emptyTrash(): number {
+    const count = this.data.trash.length
+    for (const connection of this.data.trash) {
+      if (connection.secretName !== undefined) this.secrets.delete(connection.secretName)
+    }
+    this.data.trash = []
+    this.persist()
+    return count
   }
 
   touchConnection(id: string): void {
@@ -484,7 +548,7 @@ export class ConfigStore {
 
   deleteDriver(id: string): void {
     if (this.driver(id) === undefined) throw new DbError('not-found', `自定义驱动不存在：${id}`)
-    const used = this.data.connections.filter((connection) => connection.customDriverId === id)
+    const used = [...this.data.connections, ...this.data.trash].filter((connection) => connection.customDriverId === id)
     if (used.length > 0) throw new DbError('conflict', `该驱动仍被 ${used.length} 个连接使用：${used.map((c) => c.name).join('、')}`)
     this.data.drivers = this.data.drivers.filter((entry) => entry.id !== id)
     this.persist()

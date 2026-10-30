@@ -39,6 +39,15 @@ export function formatCell(value: CellValue): string {
   return String(value)
 }
 
+/** Local `YYYY-MM-DD HH:mm` for an ISO timestamp; `—` when missing or invalid. */
+export function formatDateTime(iso: string | undefined): string {
+  if (iso === undefined || iso === '') return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 const WRITE_STATEMENT =
   /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|analyze|optimize|vacuum|set\s+global)\b/i
 
