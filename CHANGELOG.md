@@ -4,8 +4,9 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（184）
+## 新功能（185）
 
+- `4520194` feat(connection): 新增回收站，删除默认移入回收站
 - `eaeee6b` feat(agent): 工具改名并修复写保护，发布 0.3.0
 - `9dc6928` feat(settings): 面板快捷键可在设置里重绑定
 - `51c94f5` feat(table): 标签页标题旁标出只读连接
@@ -191,8 +192,12 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（75）
+## 修复（79）
 
+- `6a192c1` fix(release): 老 tag 补发时把校验脚本还原到原位再执行
+- `3b08e0e` fix(release): 用 shallow fetch 取 main 上的版本校验脚本
+- `f838ae8` fix(release): 补发老 tag 时从 main 取版本校验脚本
+- `4aa8a99` fix(redis): 按需动态加载 ioredis，避免激活期 CJS 互操作失败
 - `00fe2c3` fix(console): Redis 连接上不再出现 SQL 专属按钮
 - `a087e81` fix(console): 键详情失败时重试的是那次读取
 - `c0037a4` fix(host): 空白 MATCH 模式按匹配全部处理
@@ -387,8 +392,9 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（12）
+## 杂项（13）
 
+- `c67dda6` chore(release): 发布 0.3.0
 - `37f6635` chore(plugin): 补全 contributes.tools 清单
 - `c29c18b` chore(release): 发布 0.2.0
 - `4f08953` chore(build): 同步 MariaDB 预设的构建产物
@@ -402,6 +408,13 @@
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 
-## 其它（1）
+## 其它（8）
 
+- `15606ad` Merge branch 'main' of github.com:qwq1999/dsh-ide-database
+- `b91b6a3` ci(release): 只在 tag 为最高版本时标记 latest (#3)
+- `44bc4c0` ci(release): 只在 tag 为最高版本时标记 latest，避免补发老 tag 顶掉新版本
+- `af32a4f` Merge pull request #2 from qwq1999/fix/release-version-check
+- `65ae5bf` Merge pull request #1 from qwq1999/ci/release-on-tag
+- `9ccd71b` ci(release): 打包前确保 dist 目录存在
+- `38017e3` ci(release): 推 tag 时自动构建并发布 Release
 - `e87808e` style(grid): 结果表格悬停整行高亮
