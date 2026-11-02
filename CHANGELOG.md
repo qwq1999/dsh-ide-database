@@ -4,8 +4,10 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（185）
+## 新功能（187）
 
+- `56dc572` feat(settings): 设置面板可折叠，提示可跳转到设置
+- `02424d7` feat(settings): 新增下载 Java 运行环境按钮
 - `4520194` feat(connection): 新增回收站，删除默认移入回收站
 - `eaeee6b` feat(agent): 工具改名并修复写保护，发布 0.3.0
 - `9dc6928` feat(settings): 面板快捷键可在设置里重绑定
@@ -192,8 +194,9 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（79）
+## 修复（80）
 
+- `e97674f` fix(java): 下载 Java 优先走清华镜像，失败再回退官方 API
 - `6a192c1` fix(release): 老 tag 补发时把校验脚本还原到原位再执行
 - `3b08e0e` fix(release): 用 shallow fetch 取 main 上的版本校验脚本
 - `f838ae8` fix(release): 补发老 tag 时从 main 取版本校验脚本
@@ -392,8 +395,11 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（13）
+## 杂项（16）
 
+- `9add839` chore: 忽略 .vscode 目录
+- `f59f3f3` chore: 补充仓库地址元信息
+- `e5d6057` chore(release): 发布 0.3.1
 - `c67dda6` chore(release): 发布 0.3.0
 - `37f6635` chore(plugin): 补全 contributes.tools 清单
 - `c29c18b` chore(release): 发布 0.2.0
@@ -408,8 +414,9 @@
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 
-## 其它（8）
+## 其它（9）
 
+- `5f91b56` ci(release): Release 附件补充无版本号副本
 - `15606ad` Merge branch 'main' of github.com:qwq1999/dsh-ide-database
 - `b91b6a3` ci(release): 只在 tag 为最高版本时标记 latest (#3)
 - `44bc4c0` ci(release): 只在 tag 为最高版本时标记 latest，避免补发老 tag 顶掉新版本
