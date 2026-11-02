@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -8,7 +9,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react'
 import { IconWarningOutlineRegular, Toast as PrimitiveToast } from '@deepseek-ai/dsh-client-ui-primitives'
-import { CheckIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
 
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger'
 export type BannerTone = 'info' | 'success' | 'warn' | 'error'
@@ -151,6 +152,8 @@ export function Panel({
   className = '',
   bodyClassName = '',
   scroll = false,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   title?: ReactNode
   actions?: ReactNode
@@ -158,18 +161,41 @@ export function Panel({
   className?: string
   bodyClassName?: string
   scroll?: boolean
+  /** Header title becomes a toggle; useful when the panel is mostly read rarely. */
+  collapsible?: boolean
+  /** Only meaningful with `collapsible`. */
+  defaultOpen?: boolean
 }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const expanded = !collapsible || open
   return (
     <section className={`dshdb-panel ${className}`.trim()}>
       {title ? (
         <header className="dshdb-panel-head">
-          <span className="dshdb-panel-head-title">{title}</span>
+          {collapsible ? (
+            <button
+              type="button"
+              className="dshdb-panel-toggle"
+              aria-expanded={expanded}
+              onClick={() => setOpen((previous) => !previous)}
+            >
+              {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+              <span>{title}</span>
+            </button>
+          ) : (
+            <span className="dshdb-panel-head-title">{title}</span>
+          )}
           {actions}
         </header>
       ) : null}
       <div
         className={`dshdb-panel-body ${bodyClassName}`.trim()}
-        style={scroll ? { overflow: 'auto' } : undefined}
+        hidden={!expanded}
+        style={{
+          ...(scroll ? { overflow: 'auto' } : null),
+          // The class sets `display: flex`, which would beat the `hidden` attribute.
+          ...(expanded ? null : { display: 'none' }),
+        }}
       >
         {children}
       </div>

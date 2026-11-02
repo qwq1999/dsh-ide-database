@@ -139,6 +139,29 @@ export const CSS = `
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
+.dshdb-panel-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  text-transform: none;
+  color: var(--dsw-alias-label-secondary);
+}
+.dshdb-panel-toggle:hover { color: var(--dsw-alias-label-primary); }
+.dshdb-panel-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dshdb-panel-body {
   display: flex;
   flex-direction: column;
@@ -966,6 +989,16 @@ export const CSS = `
 .dshdb-command-row { display: flex; align-items: center; gap: 6px; flex: none; }
 .dshdb-command-row .dshdb-input { flex: 1; font-family: var(--ds-font-family-code, ui-monospace, monospace); }
 .dshdb-muted { color: var(--dsw-alias-label-tertiary); }
+.dshdb-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: inherit;
+  color: var(--dsw-alias-brand-primary);
+}
+.dshdb-link:hover { text-decoration: underline; }
 .dshdb-danger { color: var(--dsw-alias-state-error-primary); }
 .dshdb-inline { display: inline-flex; align-items: center; gap: 4px; }
 .dshdb-grow { flex: 1; min-width: 0; }

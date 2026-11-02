@@ -25,7 +25,7 @@ import type {
   StructureSnapshot,
   TableDescription,
 } from '../../shared/types'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { objectKindLabel } from '../format'
 
 export interface Snapshot {
@@ -37,6 +37,19 @@ export interface Snapshot {
 }
 
 export type Notify = (text: string, tone?: 'info' | 'success' | 'error') => void
+
+/** A connect failure the user can only fix from the settings dialog. */
+export interface SetupError {
+  code: string
+  message: string
+}
+
+const SETUP_ERROR_CODES = new Set(['java-missing', 'jar-missing', 'bridge', 'driver-missing'])
+
+function setupErrorOf(error: unknown): SetupError | null {
+  if (!(error instanceof ApiError) || !SETUP_ERROR_CODES.has(error.code)) return null
+  return { code: error.code, message: error.message }
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -106,6 +119,9 @@ export interface DataSources {
   toggleAllRedisDbsVisible: (connectionId: string, all: boolean) => void
   updateDrivers: (drivers: DriverStatus[]) => void
   applySettings: (settings: DbSettings, env: EnvStatus) => void
+  /** Last connect failure caused by missing Java / bridge / driver jars. */
+  setupError: SetupError | null
+  dismissSetupError: () => void
 }
 
 const VISIBLE_SCHEMAS_KEY = 'dsh-ide-database:visible-schemas:'
@@ -147,6 +163,7 @@ function writeStoredDbs(key: string, value: number[] | null): void {
 export function useDataSources(notify: Notify): DataSources {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [setupError, setSetupError] = useState<SetupError | null>(null)
   const [selectedId, setSelectedId] = useState('')
   const [servers, setServers] = useState<Record<string, ServerInfo>>({})
   const [connectingId, setConnectingId] = useState('')
@@ -433,6 +450,7 @@ export function useDataSources(notify: Notify): DataSources {
       try {
         const connected = await api.connect(connectionId)
         setServers((previous) => ({ ...previous, [connectionId]: connected }))
+        setSetupError(null)
         notify('连接成功', 'success')
         if (connection.dialect === 'redis') {
           await loadRedisDatabases(connectionId)
@@ -446,6 +464,7 @@ export function useDataSources(notify: Notify): DataSources {
           await loadSchemas(connectionId)
         }
       } catch (error) {
+        setSetupError(setupErrorOf(error))
         notify(`连接失败：${errorText(error)}`, 'error')
       } finally {
         setConnectingId('')
@@ -785,6 +804,10 @@ export function useDataSources(notify: Notify): DataSources {
     setSnapshot((previous) => (previous ? { ...previous, settings, env } : previous))
   }, [])
 
+  const dismissSetupError = useCallback((): void => {
+    setSetupError(null)
+  }, [])
+
   return {
     snapshot,
     loadError,
@@ -840,5 +863,7 @@ export function useDataSources(notify: Notify): DataSources {
     toggleAllRedisDbsVisible,
     updateDrivers,
     applySettings,
+    setupError,
+    dismissSetupError,
   }
 }

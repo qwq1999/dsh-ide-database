@@ -199,25 +199,50 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     <div className="dshdb-scroll dshdb-scroll-thin" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <Panel
         title="运行环境"
+        collapsible
         actions={
-          // Downloading a JRE only helps when nothing usable was found; once a
-          // runtime exists (bundled, JAVA_HOME, PATH...) the button is noise.
-          props.env.java.available && props.env.java.source !== 'downloaded' ? null : (
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<DownloadIcon size={12} />}
-              loading={props.downloadingJava}
-              disabled={props.downloadingJava}
-              onClick={props.onDownloadJava}
-            >
-              {props.env.java.available ? '重新下载 Java' : '下载 Java'}
+          <div className="dshdb-inline">
+            <Button size="sm" variant="ghost" loading={props.saving} onClick={() => props.onSave(draft)}>
+              保存
             </Button>
-          )
+            {/* Downloading a JRE only helps when nothing usable was found; once a
+                runtime exists (bundled, JAVA_HOME, PATH...) the button is noise. */}
+            {props.env.java.available && props.env.java.source !== 'downloaded' ? null : (
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<DownloadIcon size={12} />}
+                loading={props.downloadingJava}
+                disabled={props.downloadingJava}
+                onClick={props.onDownloadJava}
+              >
+                {props.env.java.available ? '重新下载 Java' : '下载 Java'}
+              </Button>
+            )}
+          </div>
         }
         bodyClassName="dshdb-panel-body-pad"
       >
         <JavaBadge env={props.env} />
+        <div style={{ marginTop: 8 }}>
+          <Field
+            label="Java 可执行文件"
+            hint="留空时优先使用随包内置或已下载的 Java，再按 JAVA_HOME、PATH、常见 JDK 目录查找"
+          >
+            {javaOptions.length > 1 ? (
+              <Select
+                options={javaOptions}
+                value={draft.javaPath}
+                onValueChange={(value) => update('javaPath', value)}
+              />
+            ) : null}
+            <TextInput
+              value={draft.javaPath}
+              placeholder="例如 C:\\\\Program Files\\\\Java\\\\jdk-21\\\\bin\\\\java.exe"
+              onChange={(event) => update('javaPath', event.target.value)}
+            />
+          </Field>
+        </div>
         <div className="dshdb-muted" style={{ marginTop: 6, fontSize: 11 }}>
           下载的 Java 运行环境保存在数据目录的 jre 文件夹，随面板一起升级，不会影响系统已有的 JDK。
         </div>
@@ -237,6 +262,8 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
       <Panel
         title="查询与安全"
+        collapsible
+        defaultOpen={false}
         actions={
           <Button
             size="sm"
@@ -287,24 +314,6 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 onChange={(event) => updateNumber('redisScanCount', event.target.value)}
               />
             </Field>
-            <Field
-              label="Java 可执行文件"
-              hint="留空时优先使用随包内置或已下载的 Java，再按 JAVA_HOME、PATH、常见 JDK 目录查找"
-              span
-            >
-              {javaOptions.length > 1 ? (
-                <Select
-                  options={javaOptions}
-                  value={draft.javaPath}
-                  onValueChange={(value) => update('javaPath', value)}
-                />
-              ) : null}
-              <TextInput
-                value={draft.javaPath}
-                placeholder="例如 C:\\Program Files\\Java\\jdk-21\\bin\\java.exe"
-                onChange={(event) => update('javaPath', event.target.value)}
-              />
-            </Field>
             <Field label="Maven 镜像" hint="驱动 jar 下载源">
               <Select
                 options={[
@@ -333,6 +342,8 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
       <Panel
         title="快捷键"
+        collapsible
+        defaultOpen={false}
         actions={
           <div className="dshdb-inline">
             <Button size="sm" variant="ghost" onClick={() => update('keybindings', {})}>
@@ -372,6 +383,8 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
       <Panel
         title="预置驱动"
+        collapsible
+        defaultOpen={false}
         actions={
           <Button size="sm" variant="ghost" icon={<RefreshIcon size={12} />} onClick={props.onRefresh}>
             重新检测
@@ -425,6 +438,8 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
       <Panel
         title="自定义驱动"
+        collapsible
+        defaultOpen={false}
         actions={
           <Button size="sm" icon={<PlusIcon size={12} />} onClick={props.onAddCustomDriver}>
             新增

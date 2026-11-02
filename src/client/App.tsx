@@ -162,6 +162,8 @@ export function App(props: AppProps): ReactElement {
     toggleAllRedisDbsVisible,
     updateDrivers,
     applySettings,
+    setupError,
+    dismissSetupError,
   } = useDataSources(notify)
 
   // 快捷键处理函数在下面的各个组件里，绑定统一在这里发布一次，
@@ -414,6 +416,43 @@ export function App(props: AppProps): ReactElement {
 
         {snapshot ? (
           <div className="dshdb-view" style={{ padding: '8px 10px 12px', minHeight: 0 }}>
+            {setupError ? (
+              <Banner
+                tone="error"
+                onClose={dismissSetupError}
+                actions={
+                  <Button size="sm" variant="primary" onClick={() => setSettingsOpen(true)}>
+                    去设置
+                  </Button>
+                }
+              >
+                {setupError.message}
+              </Banner>
+            ) : null}
+            {setupError === null && !snapshot.env.java.available && snapshot.drivers.some((driver) => driver.needsJava) ? (
+              <Banner
+                tone="warn"
+                actions={
+                  <Button size="sm" onClick={() => setSettingsOpen(true)}>
+                    去设置
+                  </Button>
+                }
+              >
+                未检测到 Java，关系型数据库暂时无法连接。可在「运行环境」里下载 Java 或填写已有的 java 路径。
+              </Banner>
+            ) : null}
+            {setupError === null && !snapshot.env.bridgeBuilt ? (
+              <Banner
+                tone="warn"
+                actions={
+                  <Button size="sm" onClick={() => setSettingsOpen(true)}>
+                    去设置
+                  </Button>
+                }
+              >
+                JDBC 桥接器缺失，SQL 连接将不可用。可在插件目录运行 npm run build:bridge。
+              </Banner>
+            ) : null}
             <DataView
               connections={connections}
               selectedId={selectedId}
@@ -525,7 +564,20 @@ export function App(props: AppProps): ReactElement {
         <span className="dshdb-statusbar-spacer" />
         {snapshot ? (
           <span title={snapshot.env.configPath}>
-            Java {snapshot.env.java.available ? snapshot.env.java.version ?? '可用' : '未找到'} · v{snapshot.env.pluginVersion}
+            Java{' '}
+            {snapshot.env.java.available ? (
+              snapshot.env.java.version ?? '可用'
+            ) : (
+              <button
+                type="button"
+                className="dshdb-link"
+                title="打开设置 → 运行环境"
+                onClick={() => setSettingsOpen(true)}
+              >
+                未找到 · 去设置
+              </button>
+            )}{' '}
+            · v{snapshot.env.pluginVersion}
           </span>
         ) : null}
       </footer>

@@ -46,6 +46,8 @@ function setup(onSave = vi.fn()) {
       onDeleteCustomDriver={noop}
     />,
   )
+  // The 快捷键 panel is collapsed by default; open it like a user would.
+  fireEvent.click(screen.getByRole('button', { name: '快捷键' }))
   return { view, onSave }
 }
 
