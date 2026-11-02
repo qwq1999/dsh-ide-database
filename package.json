@@ -2,6 +2,14 @@
   "name": "dsh-ide-database",
   "version": "0.3.1",
   "description": "JetBrains Database-style data source tool window and agent tools for DeepSeek Harness.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qwq1999/dsh-ide-database.git"
+  },
+  "homepage": "https://github.com/qwq1999/dsh-ide-database#readme",
+  "bugs": {
+    "url": "https://github.com/qwq1999/dsh-ide-database/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
