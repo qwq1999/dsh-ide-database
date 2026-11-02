@@ -6,8 +6,13 @@ import { DbError } from './errors.js'
 import type { PluginPaths } from './paths.js'
 
 /**
- * Downloads a JRE from the Adoptium (Eclipse Temurin) binaries API and unpacks
- * it into `<data>/jre`, which `JavaLocator` probes as the `downloaded` source.
+ * Downloads an Eclipse Temurin JRE and unpacks it into `<data>/jre`, which
+ * `JavaLocator` probes as the `downloaded` source.
+ *
+ * Two sources: the TUNA mirror of the Adoptium binaries is tried first because
+ * `api.adoptium.net` redirects to GitHub release assets, which are unreachable
+ * on some networks (the download then fails with ECONNRESET); the official API
+ * stays as the fallback. Both serve the same Temurin builds.
  *
  * Data directory rather than the plugin install directory: an installed
  * profile lives under `node_modules/` (or an asar archive) and must stay
@@ -16,8 +21,11 @@ import type { PluginPaths } from './paths.js'
 
 export const JAVA_FEATURE_VERSION = 21
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000
+/** The mirror listing is a few KB; do not let a blocked mirror stall the install. */
+const LISTING_TIMEOUT_MS = 20 * 1000
 /** A real JRE archive is 40 MB+; anything smaller is an error page or truncation. */
 const MIN_ARCHIVE_BYTES = 10 * 1024 * 1024
+const TUNA_MIRROR = 'https://mirrors.tuna.tsinghua.edu.cn/Adoptium'
 
 const OS: Partial<Record<NodeJS.Platform, string>> = {
   win32: 'windows',
@@ -25,12 +33,52 @@ const OS: Partial<Record<NodeJS.Platform, string>> = {
   linux: 'linux',
 }
 
-export function adoptiumUrl(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
+function platformTarget(platform: NodeJS.Platform, arch: string): { os: string; cpu: string } {
   const os = OS[platform]
   if (os === undefined) throw new DbError('unsupported', `暂不支持为 ${platform} 自动下载 Java，请手动安装 JDK 8+`)
   const cpu = arch === 'arm64' ? 'aarch64' : arch === 'x64' ? 'x64' : undefined
   if (cpu === undefined) throw new DbError('unsupported', `暂不支持为 ${arch} 自动下载 Java，请手动安装 JDK 8+`)
+  return { os, cpu }
+}
+
+export function adoptiumUrl(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
+  const { os, cpu } = platformTarget(platform, arch)
   return `https://api.adoptium.net/v3/binary/latest/${String(JAVA_FEATURE_VERSION)}/ga/${os}/${cpu}/jre/hotspot/normal/eclipse`
+}
+
+/** Directory listing of `OpenJDK21U-jre_*` archives on the TUNA mirror. */
+export function tunaMirrorUrl(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
+  const { os, cpu } = platformTarget(platform, arch)
+  return `${TUNA_MIRROR}/${String(JAVA_FEATURE_VERSION)}/jre/${cpu}/${os}/`
+}
+
+const ARCHIVE_HREF = /href="([^"]+\.(?:zip|tar\.gz))"/g
+const ARCHIVE_VERSION = /hotspot_(\d+(?:\.\d+)*)_(\d+)\.(?:zip|tar\.gz)$/
+
+function versionScore(name: string): number[] {
+  const match = ARCHIVE_VERSION.exec(name)
+  if (match === null) return []
+  return [...match[1].split('.').map(Number), Number(match[2])]
+}
+
+function compareScore(left: number[], right: number[]): number {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
+}
+
+/** Newest archive of the wanted extension from a mirror directory listing. */
+export function pickMirrorArchive(html: string, extension: string): string | undefined {
+  let best: { name: string; score: number[] } | undefined
+  for (const match of html.matchAll(ARCHIVE_HREF)) {
+    const name = match[1]
+    if (!/[-_]jre_/.test(name) || !name.endsWith(extension)) continue
+    const score = versionScore(name)
+    if (best === undefined || compareScore(score, best.score) > 0) best = { name, score }
+  }
+  return best?.name
 }
 
 export function javaExecutablePath(directory: string, platform: NodeJS.Platform = process.platform): string {
@@ -68,6 +116,11 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function describe(error: unknown): string {
+  if (error instanceof DbError) return error.detail === undefined ? error.message : `${error.message}（${error.detail}）`
+  return messageOf(error)
+}
+
 export class JreManager {
   private inFlight: Promise<void> | undefined
 
@@ -93,11 +146,9 @@ export class JreManager {
   }
 
   private async performInstall(): Promise<void> {
-    const url = adoptiumUrl()
     const tempDir = mkdtempSync(join(this.paths.dataDir, '.jre-'))
     try {
-      this.log(`downloading Java ${String(JAVA_FEATURE_VERSION)} runtime: ${url}`)
-      const archive = await this.download(url)
+      const archive = await this.download()
       const unpacked = join(tempDir, 'unpacked')
       mkdirSync(unpacked, { recursive: true })
       let root: string | undefined
@@ -118,7 +169,47 @@ export class JreManager {
     }
   }
 
-  private async download(url: string): Promise<Buffer> {
+  /** Mirror first, official Adoptium API second; both failures are reported together. */
+  private async download(): Promise<Buffer> {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const failures: string[] = []
+    for (const source of ['mirror', 'adoptium'] as const) {
+      try {
+        const url = source === 'mirror' ? await this.mirrorArchiveUrl(extension) : adoptiumUrl()
+        this.log(`downloading Java ${String(JAVA_FEATURE_VERSION)} runtime: ${url}`)
+        return await this.fetchArchive(url)
+      } catch (error) {
+        if (error instanceof DbError && error.code === 'unsupported') throw error
+        failures.push(describe(error))
+      }
+    }
+    throw new DbError(
+      'download-failed',
+      '下载 Java 运行环境失败',
+      `${failures.join('；')}。如果网络访问不了 GitHub，请手动安装 JDK 8+ 或在设置里填写 java 路径。`,
+    )
+  }
+
+  private async mirrorArchiveUrl(extension: string): Promise<string> {
+    const listing = tunaMirrorUrl()
+    let response: Response
+    try {
+      response = await this.fetchImpl(listing, { signal: AbortSignal.timeout(LISTING_TIMEOUT_MS) })
+    } catch (error) {
+      throw new DbError('download-failed', `无法访问 Java 镜像 ${listing}`, messageOf(error))
+    }
+    if (!response.ok) {
+      throw new DbError('download-failed', `访问 Java 镜像失败（HTTP ${String(response.status)}）`, listing)
+    }
+    const html = await response.text()
+    const name = pickMirrorArchive(html, extension)
+    if (name === undefined) {
+      throw new DbError('download-failed', 'Java 镜像里没有找到可下载的运行环境', listing)
+    }
+    return new URL(name, listing).toString()
+  }
+
+  private async fetchArchive(url: string): Promise<Buffer> {
     let response: Response
     try {
       response = await this.fetchImpl(url, {
@@ -126,11 +217,7 @@ export class JreManager {
         signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       })
     } catch (error) {
-      throw new DbError(
-        'download-failed',
-        '下载 Java 运行环境失败',
-        `无法访问 ${url}：${messageOf(error)}。如果网络访问不了 GitHub，请手动安装 JDK 8+ 或在设置里填写 java 路径。`,
-      )
+      throw new DbError('download-failed', `无法访问 ${url}`, messageOf(error))
     }
     if (!response.ok) {
       throw new DbError('download-failed', `下载 Java 运行环境失败（HTTP ${String(response.status)}）`, url)

@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { extractArchive, extractTarGz, extractZip } from '../../lib/host/archive.js'
-import { adoptiumUrl, findRuntimeRoot, JreManager } from '../../lib/host/jre.js'
+import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
 
 const JAVA_BIN = process.platform === 'win32' ? 'java.exe' : 'java'
 const tempDirs = []
@@ -101,7 +101,12 @@ describe('archive extraction', () => {
 
   it('unpacks tar.gz entries and keeps bin/java executable on Unix', () => {
     const target = tempDir()
-    const archive = gzipSync(buildTar([[`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')]]))
+    const archive = gzipSync(
+      buildTar([
+        [`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')],
+        ['jdk-21/filler.bin', randomBytes(10.5 * 1024 * 1024)],
+      ]),
+    )
     extractTarGz(archive, target)
     const executable = join(target, 'jdk-21', 'bin', JAVA_BIN)
     expect(readFileSync(executable, 'utf8')).toBe('java-bytes')
@@ -155,7 +160,30 @@ describe('runtime root discovery', () => {
   })
 })
 
+describe('mirror listing', () => {
+  const listing = `
+    <a href="OpenJDK21U-jre_x64_windows_hotspot_21.0.12_1.zip">old</a>
+    <a href="OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip">new</a>
+    <a href="OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz">arm</a>
+    <a href="../">parent</a>
+  `
+
+  it('points at the TUNA mirror of the Adoptium builds', () => {
+    expect(tunaMirrorUrl('win32', 'x64')).toBe('https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jre/x64/windows/')
+    expect(tunaMirrorUrl('darwin', 'arm64')).toContain('/Adoptium/21/jre/aarch64/mac/')
+    expect(tunaMirrorUrl('linux', 'x64')).toContain('/Adoptium/21/jre/x64/linux/')
+  })
+
+  it('picks the newest archive of the requested extension', () => {
+    expect(pickMirrorArchive(listing, '.zip')).toBe('OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip')
+    expect(pickMirrorArchive(listing, '.tar.gz')).toBe('OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz')
+    expect(pickMirrorArchive('<html>no archives</html>', '.zip')).toBeUndefined()
+  })
+})
+
 describe('JreManager', () => {
+  const LISTING = '<a href="OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip">jre</a>'
+
   function manager(dataDir, fetchImpl) {
     const logs = []
     return {
@@ -164,14 +192,45 @@ describe('JreManager', () => {
     }
   }
 
+  /** Mirror listing is served locally; `respond` answers every archive URL. */
+  function fakeFetch(respond, { listingOk = true } = {}) {
+    const calls = []
+    const impl = async (url) => {
+      const href = String(url)
+      calls.push(href)
+      const isListing = !/\.(zip|tar\.gz)$/.test(href)
+      if (href.startsWith('https://mirrors.tuna.tsinghua.edu.cn/') && isListing) {
+        return listingOk ? new Response(LISTING) : new Response('nope', { status: 404 })
+      }
+      return respond(href)
+    }
+    return { impl, calls }
+  }
+
   it('reports HTTP failures as download-failed', async () => {
-    const { jre } = manager(tempDir(), async () => new Response('nope', { status: 404 }))
+    const { impl } = fakeFetch(() => new Response('nope', { status: 404 }))
+    const { jre } = manager(tempDir(), impl)
     await expect(jre.install()).rejects.toMatchObject({ code: 'download-failed' })
   })
 
   it('rejects a truncated archive', async () => {
-    const { jre } = manager(tempDir(), async () => new Response(Buffer.from('tiny')))
+    const { impl } = fakeFetch(() => new Response(Buffer.from('tiny')))
+    const { jre } = manager(tempDir(), impl)
     await expect(jre.install()).rejects.toMatchObject({ code: 'download-failed' })
+  })
+
+  it('falls back to the official API when the mirror listing is unavailable', async () => {
+    const archive = gzipSync(
+      buildTar([
+        [`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')],
+        ['jdk-21/filler.bin', randomBytes(10.5 * 1024 * 1024)],
+      ]),
+    )
+    const { impl, calls } = fakeFetch(() => new Response(archive), { listingOk: false })
+    const { jre } = manager(tempDir(), impl)
+    await jre.install()
+    expect(calls[1]).toContain('api.adoptium.net')
+    expect(jre.installed).toBe(true)
   })
 
   it(
@@ -184,19 +243,16 @@ describe('JreManager', () => {
           ['jdk-21/filler.bin', randomBytes(10.5 * 1024 * 1024)],
         ]),
       )
-      let fetches = 0
-      const { jre } = manager(dataDir, async () => {
-        fetches += 1
-        return new Response(archive)
-      })
+      const { impl, calls } = fakeFetch(() => new Response(archive))
+      const { jre } = manager(dataDir, impl)
 
       await Promise.all([jre.install(), jre.install()])
 
-      expect(fetches).toBe(1)
+      expect(calls).toHaveLength(2)
       expect(jre.installed).toBe(true)
       expect(readFileSync(join(dataDir, 'jre', 'bin', JAVA_BIN), 'utf8')).toBe('java-bytes')
       await jre.install()
-      expect(fetches).toBe(1)
+      expect(calls).toHaveLength(2)
     },
     30_000,
   )

@@ -234,7 +234,8 @@ export function App(props: AppProps): ReactElement {
     try {
       const env = await api.downloadJava()
       if (snapshot != null) applySettings(snapshot.settings, env)
-      notify(env.java.available ? 'Java 运行环境已就绪' : 'Java 已下载，但没有检测到可执行文件', env.java.available ? 'success' : 'error')
+      if (env.java.available) notify('Java 运行环境已就绪', 'success')
+      else notify('Java 已下载，但没有检测到可执行文件', 'error')
     } catch (error) {
       notify(`下载 Java 失败：${errorText(error)}`, 'error')
     } finally {
