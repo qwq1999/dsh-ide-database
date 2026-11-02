@@ -28,6 +28,7 @@ import type { ConfigStore } from './config.js'
 import type { DriverManager } from './drivers.js'
 import { DbError, toWireError } from './errors.js'
 import type { JavaLocator } from './java.js'
+import type { JreManager } from './jre.js'
 import type { PluginPaths } from './paths.js'
 import type { RedisManager } from './redis.js'
 import type { SecretStore } from './secrets.js'
@@ -45,6 +46,7 @@ export interface RouteDeps {
   secrets: SecretStore
   drivers: DriverManager
   java: JavaLocator
+  jre: JreManager
   sql: SqlService
   redis: RedisManager
   structure: StructureStore
@@ -463,6 +465,13 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const allowWrite = data.allowWrite === true && !connection.readOnly
       const result: RedisCommandResult = await deps.redis.command(id, db, command, allowWrite)
       sendJson(response, 200, { ok: true, data: result })
+      return
+    }
+    case '/java/download': {
+      await deps.jre.install()
+      // A freshly unpacked runtime has to win over the cached "missing" result.
+      deps.java.invalidate()
+      sendJson(response, 200, { ok: true, data: envStatus(deps) })
       return
     }
     case '/drivers/download': {

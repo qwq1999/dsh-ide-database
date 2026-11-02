@@ -2,6 +2,7 @@ import { ROUTE_PREFIX } from '../shared/presets.js'
 import { ConfigStore } from './config.js'
 import { DriverManager } from './drivers.js'
 import { JavaLocator } from './java.js'
+import { JreManager } from './jre.js'
 import { pluginPaths } from './paths.js'
 import { RedisManager } from './redis.js'
 import { createRouteHandler } from './routes.js'
@@ -26,7 +27,8 @@ export function apply(ctx: HostContext): void {
   const secrets = new SecretStore(paths.secretsFile, log)
   const config = new ConfigStore(paths.configFile, secrets, log)
   config.load()
-  const java = new JavaLocator()
+  const java = new JavaLocator(paths.jreDir)
+  const jre = new JreManager(paths, log)
   const drivers = new DriverManager(paths, config, log)
   const sql = new SqlService(paths, config, secrets, drivers, java, log)
   const redis = new RedisManager(config, secrets, log)
@@ -36,7 +38,7 @@ export function apply(ctx: HostContext): void {
   const initial = config.snapshot()
   structure.retain([...initial.connections, ...initial.trash].map((entry) => entry.id))
 
-  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, sql, redis, structure, log })
+  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, jre, sql, redis, structure, log })
 
   ctx.effect(() => {
     const dispose = ctx.webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler })

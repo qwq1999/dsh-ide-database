@@ -30,6 +30,8 @@ export interface PluginPaths {
   secretsFile: string
   structureFile: string
   driversDir: string
+  /** Downloaded Java runtime (`<data>/jre/bin/java`). */
+  jreDir: string
   bridgeJar: string
   version: string
 }
@@ -82,6 +84,7 @@ export function pluginPaths(): PluginPaths {
     secretsFile: join(dataDir, 'secrets.json'),
     structureFile: join(dataDir, 'structure.json'),
     driversDir: join(dataDir, 'drivers'),
+    jreDir: join(dataDir, 'jre'),
     bridgeJar: join(root, 'bridge', 'dsh-db-bridge.jar'),
     version,
   }

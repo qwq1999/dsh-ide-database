@@ -101,6 +101,7 @@ SQL 控制台工具条的「事务」通过 JDBC 关闭连接的 auto-commit 来
 
 - DeepSeek Harness `>= 0.1.6-alpha.2`（当前在 0.2.1 上开发验证）。
 - 关系型数据库需要本机可用的 Java（`JAVA_HOME`、`PATH` 或「设置 → Java 路径」显式指定），**Java 8+** 即可；驱动与桥接 jar 都按 Java 8 字节码编译。
+- 没装 Java 也不用自己折腾：「设置 → 运行环境」右上角有「下载 Java」按钮，会从 Adoptium 拉取 Temurin 21 JRE 解压到数据目录的 `jre/`（Windows 用 zip，macOS/Linux 用 tar.gz，纯 JS 解压，不额外依赖系统工具）。下载的运行时排在设置指定与随包内置之后、系统 Java 之前，面板里标注为「已下载」。
 - 也可以随包内置运行时：把 jlink 生成的 JRE 放到插件根目录的 `jre/`（即 `jre/bin/java`），启动时会优先使用它，其次才回退到系统 Java。`jre/` 已加入 npm 发布文件列表。
 - 首次使用某个预设驱动时需要联网下载 jar（可在设置中切换 Maven 中央仓库 / 阿里云镜像）。
 - Redis 走纯 JS 客户端，不需要 Java。

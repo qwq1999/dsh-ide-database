@@ -99,12 +99,24 @@ export interface SettingsViewProps {
   drivers: DriverStatus[]
   saving: boolean
   downloading: string
+  downloadingJava: boolean
   onSave: (settings: DbSettings) => void
   onRefresh: () => void
   onDownload: (driverId: string) => void
+  onDownloadJava: () => void
   onAddCustomDriver: () => void
   onEditCustomDriver: (driver: DriverStatus) => void
   onDeleteCustomDriver: (driver: DriverStatus) => void
+}
+
+const JAVA_SOURCE_LABEL: Record<string, string> = {
+  setting: '设置指定',
+  bundled: '随包内置',
+  downloaded: '已下载',
+  JAVA_HOME: 'JAVA_HOME',
+  PATH: 'PATH',
+  jdks: 'JDK 目录',
+  missing: '未找到',
 }
 
 function JavaBadge({ env }: { env: EnvStatus }): ReactElement {
@@ -117,7 +129,9 @@ function JavaBadge({ env }: { env: EnvStatus }): ReactElement {
         <span className="dshdb-mono">{java.version ?? java.message ?? '未检测到 Java'}</span>
       </span>
       <span className="dshdb-kv-key">来源</span>
-      <span className="dshdb-kv-val dshdb-mono">{java.source}</span>
+      <span className="dshdb-kv-val dshdb-mono" title={java.source}>
+        {JAVA_SOURCE_LABEL[java.source] ?? java.source}
+      </span>
       {java.path ? (
         <>
           <span className="dshdb-kv-key">路径</span>
@@ -170,9 +184,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     { value: '', label: '自动（按 JAVA_HOME、PATH、JDK 目录查找）' },
     ...javaCandidates.map((candidate, index) => ({
       value: candidate.path,
-      label: `Java ${candidate.major} · ${candidate.version}${candidate.source === 'bundled' ? '（内置）' : ''}${
-        index === 0 ? ' · 最新' : ''
-      }`,
+      label: `Java ${candidate.major} · ${candidate.version}${
+        candidate.source === 'bundled' ? '（内置）' : candidate.source === 'downloaded' ? '（已下载）' : ''
+      }${index === 0 ? ' · 最新' : ''}`,
     })),
     ...(customJavaPath !== undefined ? [{ value: customJavaPath, label: customJavaPath }] : []),
   ]
@@ -183,8 +197,30 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
 
   return (
     <div className="dshdb-scroll dshdb-scroll-thin" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <Panel title="运行环境" bodyClassName="dshdb-panel-body-pad">
+      <Panel
+        title="运行环境"
+        actions={
+          // Downloading a JRE only helps when nothing usable was found; once a
+          // runtime exists (bundled, JAVA_HOME, PATH...) the button is noise.
+          props.env.java.available && props.env.java.source !== 'downloaded' ? null : (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<DownloadIcon size={12} />}
+              loading={props.downloadingJava}
+              disabled={props.downloadingJava}
+              onClick={props.onDownloadJava}
+            >
+              {props.env.java.available ? '重新下载 Java' : '下载 Java'}
+            </Button>
+          )
+        }
+        bodyClassName="dshdb-panel-body-pad"
+      >
         <JavaBadge env={props.env} />
+        <div className="dshdb-muted" style={{ marginTop: 6, fontSize: 11 }}>
+          下载的 Java 运行环境保存在数据目录的 jre 文件夹，随面板一起升级，不会影响系统已有的 JDK。
+        </div>
         {!props.env.bridgeBuilt ? (
           <div style={{ marginTop: 6 }}>
             <Banner tone="warn">JDBC 桥接器缺失，SQL 连接将不可用。运行 `npm run build:bridge` 后重试。</Banner>
@@ -192,7 +228,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
         ) : null}
         {!props.env.java.available && presets.some((driver) => driver.needsJava) ? (
           <div style={{ marginTop: 6 }}>
-            <Banner tone="warn">未检测到 Java，关系型数据库驱动需要 Java 8 及以上运行环境。</Banner>
+            <Banner tone="warn">
+              未检测到 Java，关系型数据库驱动需要 Java 8 及以上运行环境。可点击右上角「下载 Java」自动安装。
+            </Banner>
           </div>
         ) : null}
       </Panel>
@@ -251,7 +289,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
             </Field>
             <Field
               label="Java 可执行文件"
-              hint="留空时优先使用随包内置的 Java，再按 JAVA_HOME、PATH、常见 JDK 目录查找"
+              hint="留空时优先使用随包内置或已下载的 Java，再按 JAVA_HOME、PATH、常见 JDK 目录查找"
               span
             >
               {javaOptions.length > 1 ? (

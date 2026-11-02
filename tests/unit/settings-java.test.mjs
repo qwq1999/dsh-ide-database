@@ -48,9 +48,11 @@ function render(overrides = {}) {
       drivers: [],
       saving: false,
       downloading: '',
+      downloadingJava: false,
       onSave: noop,
       onRefresh: noop,
       onDownload: noop,
+      onDownloadJava: noop,
       onAddCustomDriver: noop,
       onEditCustomDriver: noop,
       onDeleteCustomDriver: noop,
@@ -74,5 +76,45 @@ describe('settings Java runtime picker', () => {
     })
     expect(html).not.toContain('自动（按 JAVA_HOME')
     expect(html).toContain('Java 可执行文件')
+  })
+})
+
+describe('settings Java download button', () => {
+  const missing = { available: false, source: 'missing', message: '未找到 Java', candidates: [] }
+  const downloaded = {
+    available: true,
+    path: '/data/jre/bin/java',
+    version: '21.0.5',
+    major: 21,
+    source: 'downloaded',
+    candidates: [{ path: '/data/jre/bin/java', version: '21.0.5', major: 21, source: 'downloaded' }],
+  }
+
+  const mysql = {
+    id: 'mysql',
+    name: 'MySQL',
+    preset: 'mysql',
+    needsJava: true,
+    jars: [],
+    ready: false,
+    version: null,
+    path: null,
+    error: null,
+  }
+
+  it('offers to download a runtime only when Java is missing', () => {
+    const missingHtml = render({ env: env({ java: missing }), drivers: [mysql] })
+    expect(missingHtml).toContain('>下载 Java<')
+    expect(missingHtml).toContain('可点击右上角')
+
+    const foundHtml = render()
+    expect(foundHtml).not.toContain('下载 Java')
+  })
+
+  it('offers a re-download for the runtime it installed earlier', () => {
+    const html = render({ env: env({ java: downloaded }) })
+    expect(html).toContain('重新下载 Java')
+    expect(html).toContain('已下载')
+    expect(html).toContain('Java 21 · 21.0.5（已下载） · 最新')
   })
 })

@@ -118,6 +118,8 @@ export const api = {
     post<RedisCommandResult>('/redis/command', { id, command, allowWrite, ...(db === undefined ? {} : { db }) }),
 
   downloadDriver: (driverId: string) => post<DriverStatus>('/drivers/download', { driverId }),
+  /** Downloads and unpacks a JRE into the data directory; resolves with the refreshed env. */
+  downloadJava: () => post<EnvStatus>('/java/download'),
   saveCustomDriver: (driver: Partial<DriverConfig> & { jars?: unknown }) =>
     post<{ driver: DriverConfig; drivers: DriverStatus[] }>('/drivers/custom/save', { driver }),
   deleteCustomDriver: (id: string) => post<{ drivers: DriverStatus[] }>('/drivers/custom/delete', { id }),

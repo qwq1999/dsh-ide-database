@@ -73,6 +73,7 @@ export function App(props: AppProps): ReactElement {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [savingSettings, setSavingSettings] = useState(false)
   const [downloading, setDownloading] = useState('')
+  const [downloadingJava, setDownloadingJava] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [trashOpen, setTrashOpen] = useState(false)
   const [trashBusy, setTrashBusy] = useState<TrashBusy | null>(null)
@@ -225,6 +226,19 @@ export function App(props: AppProps): ReactElement {
       notify(`下载失败：${errorText(error)}`, 'error')
     } finally {
       setDownloading('')
+    }
+  }
+
+  async function downloadJava(): Promise<void> {
+    setDownloadingJava(true)
+    try {
+      const env = await api.downloadJava()
+      if (snapshot != null) applySettings(snapshot.settings, env)
+      notify(env.java.available ? 'Java 运行环境已就绪' : 'Java 已下载，但没有检测到可执行文件', env.java.available ? 'success' : 'error')
+    } catch (error) {
+      notify(`下载 Java 失败：${errorText(error)}`, 'error')
+    } finally {
+      setDownloadingJava(false)
     }
   }
 
@@ -549,10 +563,12 @@ export function App(props: AppProps): ReactElement {
           drivers={snapshot.drivers}
           saving={savingSettings}
           downloading={downloading}
+          downloadingJava={downloadingJava}
           onClose={() => setSettingsOpen(false)}
           onSave={(next) => void saveSettings(next)}
           onRefresh={() => void refresh()}
           onDownload={(driverId) => void downloadDriver(driverId)}
+          onDownloadJava={() => void downloadJava()}
           onAddCustomDriver={() => setDriverModal({ open: true, editing: null })}
           onEditCustomDriver={(driver) => setDriverModal({ open: true, editing: driver })}
           onDeleteCustomDriver={(driver) => void deleteCustomDriver(driver)}

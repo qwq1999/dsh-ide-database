@@ -10,10 +10,12 @@ export interface SettingsModalProps {
   drivers: DriverStatus[]
   saving: boolean
   downloading: string
+  downloadingJava: boolean
   onClose: () => void
   onSave: (settings: DbSettings) => void
   onRefresh: () => void
   onDownload: (driverId: string) => void
+  onDownloadJava: () => void
   onAddCustomDriver: () => void
   onEditCustomDriver: (driver: DriverStatus) => void
   onDeleteCustomDriver: (driver: DriverStatus) => void
@@ -29,9 +31,11 @@ export function SettingsModal(props: SettingsModalProps): ReactElement | null {
         drivers={props.drivers}
         saving={props.saving}
         downloading={props.downloading}
+        downloadingJava={props.downloadingJava}
         onSave={props.onSave}
         onRefresh={props.onRefresh}
         onDownload={props.onDownload}
+        onDownloadJava={props.onDownloadJava}
         onAddCustomDriver={props.onAddCustomDriver}
         onEditCustomDriver={props.onEditCustomDriver}
         onDeleteCustomDriver={props.onDeleteCustomDriver}

@@ -96,10 +96,15 @@ function bundledJavaPath(pluginRoot = join(dirname(fileURLToPath(import.meta.url
  * Java discovery is deliberately driver-agnostic: the bridge targets Java 8,
  * so any runtime >= 8 works and the newest installed JDK is preferred when
  * JAVA_HOME is unset.
+ *
+ * `downloadedDir` is the runtime installed by the panel's download button
+ * (`<data>/jre`); it ranks right after a runtime shipped inside the package.
  */
 export class JavaLocator {
   private lastKey: string | undefined
   private lastStatus: JavaStatus | undefined
+
+  constructor(private readonly downloadedDir?: string) {}
 
   locate(settingsPath: string): JavaStatus {
     const key = settingsPath
@@ -113,6 +118,7 @@ export class JavaLocator {
     }
     addCandidate(settingsPath, 'setting')
     addCandidate(bundledJavaPath() ?? '', 'bundled')
+    addCandidate(this.downloadedDir ?? '', 'downloaded')
     addCandidate(process.env.JAVA_HOME ?? '', 'JAVA_HOME')
     attempted.push({ candidate: 'java', source: 'PATH' })
     for (const candidate of jdkCandidates()) attempted.push({ candidate, source: 'jdks' })
@@ -157,7 +163,7 @@ export class JavaLocator {
             available: false,
             source: 'missing',
             candidates,
-            message: `未找到 Java（需要 8 及以上）。${failures.length > 0 ? failures.join('；') : '请安装 JDK 或在“设置”中填写 java 路径。'}`,
+            message: `未找到 Java（需要 8 及以上）。${failures.length > 0 ? failures.join('；') : '请安装 JDK 或在“设置”中填写 java 路径。'}也可以在“设置 → 运行环境”里下载 Java 运行环境。`,
           }
     this.lastKey = key
     this.lastStatus = status
