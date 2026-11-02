@@ -72,6 +72,9 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           npm pack --pack-destination dist
+          # awesome-dsh-plugin 的条目用 releases/latest/download/<固定文件名> 指向 tarball，
+          # 这个地址只按字面取附件名、不会做版本号匹配，所以额外留一份不带版本号的副本。
+          cp dist/dsh-ide-database-*.tgz dist/dsh-ide-database.tgz
 
       - name: 创建或补发 Release
         env:
