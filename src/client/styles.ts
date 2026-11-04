@@ -243,7 +243,10 @@ export const CSS = `
 }
 .dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
 
-/* Row-end affordances: connect text and the database/schema visibility picker. */
+/* Row-end affordances: connect text, copy/refresh icons and the clear (×) buttons.
+   The host app only sets font-family on <button>, so every button has to reset the
+   UA chrome itself; without this the filter-clear × renders as a bordered square
+   instead of the ghost control the rest of the panel uses. */
 .dshdb-row-action {
   display: inline-flex;
   align-items: center;
@@ -252,8 +255,11 @@ export const CSS = `
   height: 18px;
   min-width: 18px;
   padding: 0 4px;
+  border: 0;
   border-radius: var(--dsw-radius-xs);
+  background: transparent;
   color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -264,6 +270,10 @@ export const CSS = `
 .dshdb-row-action:hover {
   background: var(--dsw-alias-interactive-bg-active);
   color: var(--dsw-alias-label-primary);
+}
+.dshdb-row-action:focus-visible {
+  outline: 1px solid var(--dsw-alias-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
 }
 .dshdb-connect-action {
   color: var(--dsw-alias-state-business-primary);
