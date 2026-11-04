@@ -686,7 +686,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setMultiNote('')
     setHistory(pushHistory('sql', body))
     lastRun.current = null
-    await execute({ statement: body, page: 0, size: pageSize, allowWrite: isWrite })
+    // The splitter is what drops the trailing `;`: JDBC parses the text itself and
+    // Oracle answers a terminator with ORA-00933, so send the split statement, not
+    // the editor text. A single statement still goes through `execute` for paging.
+    await execute({ statement: parts[0] ?? body, page: 0, size: pageSize, allowWrite: isWrite })
     if (lastRun.current !== null) setHistory(annotateHistory('sql', body, lastRun.current))
   }
 
