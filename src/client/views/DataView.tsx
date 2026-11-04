@@ -284,6 +284,7 @@ export function DataView(props: DataViewProps): ReactElement {
       event.preventDefault()
       const items = [
         { label: '复制连接名', run: () => void copyText(connection.name) },
+        { label: '复制连接ID', run: () => void copyText(connection.id) },
         { label: '复制地址', run: () => void copyText(`${connection.host}:${connection.port}`) },
         ...(props.onOpenConsoleTab === undefined
           ? []

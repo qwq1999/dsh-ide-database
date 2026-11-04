@@ -87,11 +87,15 @@ describe('connection context menu', () => {
     cleanup()
   })
 
-  it('copies the name and the address', async () => {
+  it('copies the name, id and address', async () => {
     render(<DataView {...props()} />)
     fireEvent.contextMenu(connectionRow())
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制连接名' }))
     await waitFor(() => expect(copy).toHaveBeenCalledWith('演示 MySQL'))
+
+    fireEvent.contextMenu(connectionRow())
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制连接ID' }))
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('c1'))
 
     fireEvent.contextMenu(connectionRow())
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制地址' }))
