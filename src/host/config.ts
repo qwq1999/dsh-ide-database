@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto'
 import { isPresetId, isSqlDialect, PRESETS, presetOf } from '../shared/presets.js'
 import { lenientKeybindings, parseKeybindings } from '../shared/keymap.js'
 import { readConsoleActionOrder } from '../shared/consoleactions.js'
+import { readToolbarActionOrder } from '../shared/toolbaractions.js'
 import type {
   ClientConfig,
   ClientConnection,
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   keybindings: {},
   consoleActions: [],
   consoleAutoComplete: true,
+  toolbarActions: [],
 }
 
 const NAME_MAX = 80
@@ -60,6 +62,7 @@ export const SETTING_KEYS: (keyof DbSettings)[] = [
   'keybindings',
   'consoleActions',
   'consoleAutoComplete',
+  'toolbarActions',
 ]
 
 function nowIso(): string {
@@ -219,6 +222,9 @@ export class ConfigStore {
             break
           case 'consoleAutoComplete':
             settings.consoleAutoComplete = value !== false
+            break
+          case 'toolbarActions':
+            settings.toolbarActions = readToolbarActionOrder(value)
             break
         }
       } catch {
@@ -541,6 +547,10 @@ export class ConfigStore {
         case 'consoleAutoComplete':
           if (typeof value !== 'boolean') throw new DbError('invalid', 'consoleAutoComplete 必须是布尔值')
           next.consoleAutoComplete = value
+          break
+        case 'toolbarActions':
+          if (!Array.isArray(value)) throw new DbError('invalid', 'toolbarActions 必须是数组')
+          next.toolbarActions = readToolbarActionOrder(value)
           break
       }
     }

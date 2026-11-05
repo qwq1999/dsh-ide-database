@@ -35,6 +35,31 @@ export const CSS = `
   padding: 5px 8px;
   gap: 2px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  /* 放不下的按钮由「⋯」接管，不再换行。 */
+  flex-wrap: nowrap;
+}
+.dshdb-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dshdb-toolbar-slot {
+  display: inline-flex;
+  flex: none;
+}
+/* 隐藏的按钮留在原位测量宽度，但不参与布局；「⋯」菜单绝对定位在它下面，
+   所以这一层不能设 overflow: hidden。 */
+.dshdb-toolbar-slot-hidden {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dshdb-toolbar-more {
+  margin-left: auto;
 }
 .dshdb-toolbtn {
   display: inline-flex;

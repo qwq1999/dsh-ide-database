@@ -5,6 +5,7 @@
  */
 
 import type { ConsoleActionId } from './consoleactions.js'
+import type { ToolbarActionId } from './toolbaractions.js'
 
 export type Dialect =
   | 'mysql'
@@ -124,6 +125,11 @@ export interface DbSettings {
    * enabled, matching the host defaults.
    */
   consoleAutoComplete?: boolean
+  /**
+   * Data-source toolbar order chosen in settings. Empty keeps the default
+   * order; orderToolbarActions() appends actions it does not mention.
+   */
+  toolbarActions?: ToolbarActionId[]
 }
 
 export interface ConnectionConfig {

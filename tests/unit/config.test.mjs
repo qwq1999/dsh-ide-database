@@ -266,4 +266,17 @@ describe('ConfigStore', () => {
 
     expect(reordered.connections.map((connection) => connection.id)).toEqual([second.id, first.id])
   })
+
+  it('stores the data-source toolbar order and rejects malformed values', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().settings.toolbarActions).toEqual([])
+    expect(() => config.updateSettings({ toolbarActions: 'settings' })).toThrow(/toolbarActions/)
+
+    config.updateSettings({ toolbarActions: ['settings', 'add', 'ghost', 'settings'] })
+
+    expect(config.snapshot().settings.toolbarActions).toEqual(['settings', 'add'])
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().settings.toolbarActions).toEqual(['settings', 'add'])
+  })
 })

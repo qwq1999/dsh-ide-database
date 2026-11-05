@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactElement } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react'
 import { ROUTE_PREFIX } from '../shared/presets'
 import type { ClientConnection, ClientTrashedConnection, DbSettings, DriverStatus } from '../shared/types'
 import { api } from './api'
@@ -7,8 +15,16 @@ import { useDataSources } from './hooks/useDataSources'
 import { setKeybindings } from './keymap'
 import { setConsoleActionOrder } from './consoleactions'
 import { setConsoleAutoComplete } from './consoleprefs'
+import {
+  setToolbarActionOrder,
+  toolbarActionIcon,
+  useToolbarActionOrder,
+} from './toolbaractions'
+import { fitActionCount } from './toolbaroverflow'
+import { usePopoverDismiss } from './popover'
+import type { ToolbarActionId } from '../shared/toolbaractions'
 import { copyText } from './colmenu'
-import { EditIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
+import { MoreIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
 import { DriverModal } from './modals/DriverModal'
 import { SettingsModal } from './modals/SettingsModal'
@@ -185,6 +201,48 @@ export function App(props: AppProps): ReactElement {
     setConsoleAutoComplete(snapshot?.settings.consoleAutoComplete !== false)
   }, [snapshot?.settings.consoleAutoComplete])
 
+  // 数据源工具栏的顺序也存在设置里：本组件既发布它，也按它渲染按钮。
+  useEffect(() => {
+    setToolbarActionOrder(snapshot?.settings.toolbarActions)
+  }, [snapshot?.settings.toolbarActions])
+
+  const toolbarOrder = useToolbarActionOrder()
+  const [visibleToolbarActions, setVisibleToolbarActions] = useState(toolbarOrder.length)
+  const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false)
+  const toolbarActionsRef = useRef<HTMLSpanElement | null>(null)
+  const toolbarOverflowRef = useRef<HTMLSpanElement | null>(null)
+
+  const closeToolbarOverflow = useCallback(() => setToolbarOverflowOpen(false), [])
+  usePopoverDismiss(toolbarOverflowOpen, closeToolbarOverflow, toolbarOverflowRef)
+
+  /** 放不下的按钮只隐藏不移除，宽度仍可测量，所以先按完整顺序排版再决定切点。 */
+  const measureToolbar = useCallback((): void => {
+    const container = toolbarActionsRef.current
+    if (container === null) return
+    const slots = Array.from(container.querySelectorAll<HTMLElement>('[data-toolbar-action]'))
+    if (slots.length === 0) return
+    const widths = slots.map((slot) => slot.getBoundingClientRect().width || slot.offsetWidth)
+    const overflow = container.querySelector<HTMLElement>('[data-toolbar-overflow]')
+    const overflowWidth = overflow === null ? 0 : overflow.getBoundingClientRect().width || overflow.offsetWidth
+    // .dshdb-toolbar-top 的按钮间距是 2px，和样式里的 gap 保持一致。
+    const next = fitActionCount(widths, container.clientWidth, overflowWidth, 2)
+    setVisibleToolbarActions(next)
+    if (next === toolbarOrder.length) setToolbarOverflowOpen(false)
+  }, [toolbarOrder.length])
+
+  useLayoutEffect(() => {
+    measureToolbar()
+  })
+
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const container = toolbarActionsRef.current
+    if (container === null) return undefined
+    const observer = new ResizeObserver(() => measureToolbar())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [measureToolbar])
+
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
       setConfirm({
@@ -329,6 +387,75 @@ export function App(props: AppProps): ReactElement {
     }
   }
 
+  const toolbarActions: {
+    id: ToolbarActionId
+    label: string
+    title: string
+    disabled?: boolean
+    onClick: () => void
+  }[] = [
+    {
+      id: 'add',
+      label: '新增',
+      title: '新增数据源',
+      onClick: () => setConnModal({ open: true, editing: null }),
+    },
+    {
+      id: 'edit',
+      label: '编辑',
+      title: '编辑选中的数据源',
+      disabled: !selected || deleting,
+      onClick: () => {
+        if (selected) setConnModal({ open: true, editing: selected })
+      },
+    },
+    {
+      id: 'refresh',
+      label: '刷新',
+      title: '刷新选中的数据源',
+      disabled: connectingId !== '' || refreshing,
+      onClick: () => {
+        if (refreshing) return
+        setRefreshing(true)
+        void refreshSelected().finally(() => setRefreshing(false))
+      },
+    },
+    {
+      id: 'delete',
+      label: '删除',
+      title: '删除选中的数据源',
+      disabled: !selected || deleting,
+      onClick: () => {
+        if (selected) void deleteConnection(selected)
+      },
+    },
+    {
+      id: 'console',
+      label: '控制台',
+      title: '查询控制台',
+      onClick: () => openConsoleTab({ connectionId: selected?.id }),
+    },
+    {
+      id: 'trash',
+      label: '回收站',
+      title: trash.length > 0 ? `回收站（${String(trash.length)}）` : '回收站',
+      onClick: () => setTrashOpen(true),
+    },
+    {
+      id: 'settings',
+      label: '设置',
+      title: '设置',
+      onClick: () => setSettingsOpen(true),
+    },
+  ]
+  const toolbarActionById = new Map(toolbarActions.map((action) => [action.id, action]))
+  const orderedToolbarActions = toolbarOrder.flatMap((id) => {
+    const action = toolbarActionById.get(id)
+    return action === undefined ? [] : [action]
+  })
+  const visibleToolbarCount = Math.min(visibleToolbarActions, orderedToolbarActions.length)
+  const hiddenToolbarActions = orderedToolbarActions.slice(visibleToolbarCount)
+
   const rootStyle: CSSProperties = {
     display: hidden ? 'none' : 'flex',
     flexDirection: 'column',
@@ -340,63 +467,62 @@ export function App(props: AppProps): ReactElement {
     <div className="dshdb-root" style={rootStyle} data-plugin-route={ROUTE_PREFIX}>
       {/* IDEA 风格工具窗口：工具栏左对齐，下面是数据源列表 */}
       <div className="dshdb-toolbar dshdb-toolbar-top" role="toolbar" aria-label="数据库工具栏">
-        <ToolButton
-          title="新增数据源"
-          icon={<PlusIcon size={14} />}
-          onClick={() => setConnModal({ open: true, editing: null })}
-        >
-          新增
-        </ToolButton>
-        <ToolButton
-          title="编辑选中的数据源"
-          icon={<EditIcon size={14} />}
-          onClick={() => {
-            if (selected) setConnModal({ open: true, editing: selected })
-          }}
-          disabled={!selected || deleting}
-        >
-          编辑
-        </ToolButton>
-        <ToolButton
-          title="刷新选中的数据源"
-          icon={<RefreshIcon size={14} />}
-          onClick={() => {
-            if (refreshing) return
-            setRefreshing(true)
-            void refreshSelected().finally(() => setRefreshing(false))
-          }}
-          disabled={connectingId !== '' || refreshing}
-        >
-          刷新
-        </ToolButton>
-        <ToolButton
-          title="删除选中的数据源"
-          icon={<TrashIcon size={14} />}
-          onClick={() => {
-            if (selected) void deleteConnection(selected)
-          }}
-          disabled={!selected || deleting}
-        >
-          删除
-        </ToolButton>
-        <ToolButton
-          title="查询控制台"
-          icon={<TerminalIcon size={14} />}
-          onClick={() => openConsoleTab({ connectionId: selected?.id })}
-        >
-          控制台
-        </ToolButton>
-        <ToolButton
-          title={trash.length > 0 ? `回收站（${String(trash.length)}）` : '回收站'}
-          icon={<RecycleIcon size={14} />}
-          onClick={() => setTrashOpen(true)}
-        >
-          回收站
-        </ToolButton>
-        <ToolButton title="设置" icon={<SettingsIcon size={14} />} onClick={() => setSettingsOpen(true)}>
-          设置
-        </ToolButton>
-        <span className="dshdb-toolbar-spacer" />
+        <span className="dshdb-toolbar-actions" ref={toolbarActionsRef}>
+          {orderedToolbarActions.map((action, index) => (
+            <span
+              key={action.id}
+              className={'dshdb-toolbar-slot' + (index >= visibleToolbarCount ? ' dshdb-toolbar-slot-hidden' : '')}
+              data-toolbar-action={action.id}
+            >
+              <ToolButton
+                title={action.title}
+                icon={toolbarActionIcon(action.id)}
+                onClick={action.onClick}
+                disabled={action.disabled}
+              >
+                {action.label}
+              </ToolButton>
+            </span>
+          ))}
+          <span
+            className={
+              'dshdb-menu-wrap dshdb-toolbar-slot dshdb-toolbar-more' +
+              (hiddenToolbarActions.length === 0 ? ' dshdb-toolbar-slot-hidden' : '')
+            }
+            data-toolbar-overflow="true"
+            ref={toolbarOverflowRef}
+          >
+            <button
+              type="button"
+              className="dshdb-toolbtn"
+              aria-label="更多操作"
+              title="更多操作"
+              aria-expanded={toolbarOverflowOpen}
+              onClick={() => setToolbarOverflowOpen((open) => !open)}
+            >
+              <MoreIcon size={14} />
+            </button>
+            {toolbarOverflowOpen && hiddenToolbarActions.length > 0 ? (
+              <span className="dshdb-menu" role="menu">
+                {hiddenToolbarActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    role="menuitem"
+                    disabled={action.disabled === true}
+                    onClick={() => {
+                      setToolbarOverflowOpen(false)
+                      action.onClick()
+                    }}
+                  >
+                    <span className="dshdb-menu-icon">{toolbarActionIcon(action.id, 13)}</span>
+                    {action.label}
+                  </button>
+                ))}
+              </span>
+            ) : null}
+          </span>
+        </span>
       </div>
 
       <main className="dshdb-main">
