@@ -458,3 +458,10 @@ describe('constraint type words', () => {
     ])
   })
 })
+
+
+describe('assignment words', () => {
+  it('offers SET after an UPDATE table', () => {
+    expect(names(keywordCompletions('assignment', 'generic'))).toEqual(['SET'])
+  })
+})

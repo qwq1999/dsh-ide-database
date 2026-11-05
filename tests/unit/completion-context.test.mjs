@@ -1379,3 +1379,40 @@ describe('analyze hints, locks and load/partition tails', () => {
     expect(caretAtEnd('DROP TABLE IF EXISTS `').expectation).toBe('tableName')
   })
 })
+
+
+describe('analyze column options and admin tails', () => {
+  it('takes a literal after a column DEFAULT', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT NOT NULL DEFAULT ').expectation).toBe('value')
+  })
+
+  it('takes a comment name and finishes AUTO_INCREMENT', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT COMMENT ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TABLE t (id INT AUTO_INCREMENT ').expectation).toBe('number')
+  })
+
+  it('stays quiet for triggers and users', () => {
+    expect(caretAtEnd('DROP TRIGGER trg ').expectation).toBe('name')
+    expect(caretAtEnd("DROP USER 'u'@'h' ").expectation).toBe('name')
+    expect(caretAtEnd('ALTER USER ').expectation).toBe('name')
+    expect(caretAtEnd("ALTER USER 'u'@'h' IDENTIFIED BY ").expectation).toBe('number')
+  })
+
+  it('stays quiet for EXECUTE and DEALLOCATE', () => {
+    expect(caretAtEnd('EXECUTE stmt USING @x ').expectation).toBe('number')
+    expect(caretAtEnd('DEALLOCATE PREPARE stmt ').expectation).toBe('number')
+  })
+
+  it('reads GRANT role TO as a grantee', () => {
+    expect(caretAtEnd('GRANT role1 TO ').expectation).toBe('name')
+  })
+
+  it('continues UPDATE with SET', () => {
+    expect(caretAtEnd('UPDATE orders ').expectation).toBe('assignment')
+    expect(caretAtEnd('UPDATE orders o ').expectation).toBe('assignment')
+  })
+
+  it('reads a user variable as a finished select item', () => {
+    expect(caretAtEnd('SELECT @x ').expectation).toBe('expressionTail')
+  })
+})

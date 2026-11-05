@@ -2128,3 +2128,39 @@ describe('complete hint, lock and load tails', () => {
     expect((await complete(req)).items).toEqual([])
   })
 })
+
+
+describe('complete column options and admin tails', () => {
+  it('offers literals after a column DEFAULT', async () => {
+    const req = request('CREATE TABLE t (id INT NOT NULL DEFAULT ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('NULL')
+    expect(req.catalog.calls.tables).toEqual([])
+  })
+
+  it('stays quiet for column comments, triggers and users', async () => {
+    const comment = request('CREATE TABLE t (id INT COMMENT ')
+    const commentResult = await complete(comment)
+    expect(commentResult.items).toEqual([])
+    expect(comment.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    expect((await complete(request('DROP TRIGGER trg '))).items).toEqual([])
+    expect((await complete(request("ALTER USER 'u'@'h' IDENTIFIED BY "))).items).toEqual([])
+  })
+
+  it('offers only SET after an UPDATE table', async () => {
+    const result = await complete(request('UPDATE orders '))
+    expect(result.analysis.expectation).toBe('assignment')
+    expect(names(result)).toEqual(['SET'])
+  })
+
+  it('finishes a SELECT item after a user variable', async () => {
+    const result = await complete(request('SELECT @x '))
+    expect(result.analysis.expectation).toBe('expressionTail')
+    expect(names(result).slice(0, 2)).toEqual(['AS', 'FROM'])
+  })
+
+  it('does not treat GRANT role TO as a privilege list', async () => {
+    expect((await complete(request('GRANT role1 TO '))).items).toEqual([])
+  })
+})

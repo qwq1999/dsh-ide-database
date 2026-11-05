@@ -527,6 +527,8 @@ const EVENT_TAIL_WORDS = ['STARTS', 'ENDS', 'DO'] as const
 const INTO_TARGET_WORDS = ['OUTFILE', 'DUMPFILE'] as const
 
 /** `ADD CONSTRAINT name ` takes the constraint kind. */
+const ASSIGNMENT_WORDS = ['SET'] as const
+
 const CONSTRAINT_TYPE_WORDS = ['FOREIGN', 'PRIMARY', 'UNIQUE', 'CHECK'] as const
 
 /** `START TRANSACTION ` takes an access mode or a snapshot clause. */
@@ -682,6 +684,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return INTO_TARGET_WORDS
     case 'constraintType':
       return CONSTRAINT_TYPE_WORDS
+    case 'assignment':
+      return ASSIGNMENT_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

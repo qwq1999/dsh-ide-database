@@ -417,6 +417,8 @@ function privilegePosition(tokens: readonly Token[]): boolean {
   const head = first.text.toLowerCase()
   if (head !== 'grant' && head !== 'revoke') return false
   if (tokens.some((token) => token.kind === 'keyword' && token.lower === 'on')) return false
+  // `GRANT role1 TO ` names a grantee; `GRANT SELECT ` still lists privileges.
+  if (tokens.some((token) => token.text.toLowerCase() === 'to')) return false
   if (tokens.length === 1) return true
   const last = tokens[tokens.length - 1] as Token
   return (last.kind === 'punct' && last.text === ',') || last.kind === 'keyword'
@@ -587,6 +589,7 @@ function literalTail(tokens: readonly Token[]): boolean {
   const tail = last.text.toLowerCase()
   if (start === 'select' && (tail === 'outfile' || tail === 'dumpfile')) return true
   if (start === 'prepare' && last.kind === 'keyword' && last.lower === 'from') return true
+  if (start === 'execute' || start === 'deallocate') return true
   return start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables'
 }
 
@@ -1500,6 +1503,34 @@ function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTai
   return undefined
 }
 
+/** Inside a `CREATE TABLE` body: a column option takes a literal or a name. */
+function createColumnOption(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('create') || !words.includes('table')) return undefined
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  let depth = 0
+  let opened = false
+  for (const token of tokens) {
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      opened = true
+    } else if (token.text === ')') {
+      depth -= 1
+    }
+  }
+  if (!opened || depth <= 0) return undefined
+  const tail = last.text.toLowerCase()
+  if (last.kind === 'keyword' && last.lower === 'default') return 'value'
+  if (last.kind === 'keyword' && last.lower === 'comment') return 'name'
+  // `PRIMARY KEY ` / `AUTO_INCREMENT ` finish a definition; nothing catalog-bound follows.
+  if (tail === 'key' || tail === 'auto_increment') return 'number'
+  return undefined
+}
+
 /** Inside a `CREATE TABLE` body: the start of a column definition, or its type. */
 function createColumnStage(
   tokens: readonly Token[],
@@ -2160,6 +2191,49 @@ function partitionParen(tokens: readonly Token[]): boolean {
   return tokens.some((token) => token.text.toLowerCase() === 'partition')
 }
 
+/** `DROP TRIGGER|USER|… ` names an object that is not a catalog table. */
+function dropObjectTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]?.text.toLowerCase()
+  if (first !== 'drop') return false
+  const object = tokens[1]?.text.toLowerCase()
+  return (
+    object === 'trigger' ||
+    object === 'procedure' ||
+    object === 'function' ||
+    object === 'event' ||
+    object === 'user' ||
+    object === 'role' ||
+    object === 'server' ||
+    object === 'sequence'
+  )
+}
+
+/** `ALTER USER|ROLE … ` never takes a table or a column here. */
+function alterUserTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'alter') return undefined
+  const object = tokens[1]?.text.toLowerCase()
+  if (object !== 'user' && object !== 'role') return undefined
+  return tokens.length === 2 ? 'name' : 'number'
+}
+
+/** `UPDATE orders ` (or `UPDATE orders o `) continues with SET. */
+function updateTail(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.text.toLowerCase() !== 'update') return false
+  if (tokens.length < 2) return false
+  if (tokens.some((token) => token.text.toLowerCase() === 'set')) return false
+  const last = tokens[tokens.length - 1] as Token
+  if (last.kind === 'punct' && last.text === ',') return false
+  return last.text.toLowerCase() !== 'join' && last.text.toLowerCase() !== 'using'
+}
+
+/** A user variable ends a SELECT list item: an alias or FROM comes next. */
+function variableTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'select') return undefined
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  return last.text.startsWith('@') ? 'expressionTail' : undefined
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
@@ -2171,6 +2245,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (partitionParen(tokens)) return 'number'
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
+  const columnOption = createColumnOption(tokens)
+  if (columnOption !== undefined) return columnOption
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
   if (referencesTail(tokens)) return 'tableName'
@@ -2225,11 +2301,14 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (useDatabase(tokens)) return 'database'
   // `USE shop ` already named the database; nothing catalog-bound follows.
   if (tokens.length > 1 && tokens[0]?.text.toLowerCase() === 'use') return 'number'
+  const alterUser = alterUserTail(tokens)
+  if (alterUser !== undefined) return alterUser
   const transaction = transactionTail(tokens)
   if (transaction !== undefined) return transaction
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  if (dropObjectTail(tokens)) return 'name'
   const load = loadDataTail(tokens)
   if (load !== undefined) return load
   const deleteSource = deleteUsing(tokens)
@@ -2241,6 +2320,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // `LOCK TABLES orders ` takes an access mode, not a table.
   const lockTable = lockTableTail(tokens)
   if (lockTable !== undefined) return lockTable
+  if (updateTail(tokens)) return 'assignment'
   if (functionArgumentFrom(tokens)) return 'column'
   if (insertTargetTail(tokens)) return 'insertSource'
   if (relationKeywordTail(tokens)) return 'relation'
@@ -2297,6 +2377,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (scalarTail(tokens)) return 'expressionTail'
   const subquery = subqueryClose(tokens)
   if (subquery !== undefined) return subquery
+  const variable = variableTail(tokens)
+  if (variable !== undefined) return variable
   const last = tokens[tokens.length - 1]
   const before = tokens[tokens.length - 2]
   if (
