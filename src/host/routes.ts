@@ -30,6 +30,7 @@ import { DbError, toWireError } from './errors.js'
 import type { JavaLocator } from './java.js'
 import type { JreManager } from './jre.js'
 import type { PluginPaths } from './paths.js'
+import type { DescriptionPrefetcher } from './prefetch.js'
 import type { RedisManager } from './redis.js'
 import type { SecretStore } from './secrets.js'
 import { optionalService, type HostContext } from './services.js'
@@ -50,6 +51,8 @@ export interface RouteDeps {
   sql: SqlService
   redis: RedisManager
   structure: StructureStore
+  /** Fills table/view descriptions in the background after connecting. */
+  prefetch?: Pick<DescriptionPrefetcher, 'schedule' | 'cancel'>
   log: (message: string) => void
 }
 
@@ -185,6 +188,9 @@ async function readObjects(deps: RouteDeps, id: string, schema: string): Promise
   try {
     const objects: SchemaObject[] = await deps.sql.objects(id, schema)
     deps.structure.putObjects(id, schema, objects)
+    // Newly listed relations have no description yet: let the background
+    // prefetcher read them while the user keeps browsing.
+    if (objects.length > 0) deps.prefetch?.schedule(id)
     return { objects, cached: false, fetchedAt: new Date().toISOString() }
   } catch (error) {
     const cached = deps.structure.get(id)
@@ -252,6 +258,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
           previous.readOnly !== saved.readOnly ||
           JSON.stringify(previous.params) !== JSON.stringify(saved.params)
         if (credentialsChanged || targetChanged) {
+          deps.prefetch?.cancel(saved.id)
           await deps.sql.disconnect(saved.id)
           await deps.redis.disconnect(saved.id)
           deps.structure.clear(saved.id)
@@ -265,6 +272,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const id = typeof data.id === 'string' ? data.id : ''
       // Soft delete: close the live session but keep password and cached
       // structure so the recycle bin can restore the connection as it was.
+      deps.prefetch?.cancel(id)
       await deps.sql.disconnect(id)
       await deps.redis.disconnect(id)
       deps.config.trashConnection(id)
@@ -281,6 +289,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
     case '/connections/purge': {
       const id = typeof data.id === 'string' ? data.id : ''
       const deleted = deps.config.purgeConnection(id)
+      deps.prefetch?.cancel(id)
       deps.structure.clear(id)
       sendJson(response, 200, {
         ok: true,
@@ -291,7 +300,10 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
     case '/connections/trash/empty': {
       const ids = deps.config.snapshot().trash.map((entry) => entry.id)
       const purged = deps.config.emptyTrash()
-      for (const id of ids) deps.structure.clear(id)
+      for (const id of ids) {
+        deps.prefetch?.cancel(id)
+        deps.structure.clear(id)
+      }
       sendJson(response, 200, { ok: true, data: { purged, config: deps.config.snapshot() } })
       return
     }
@@ -314,11 +326,15 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const connection = sqlConnection(deps, id)
       const server: ServerInfo =
         connection.dialect === 'redis' ? await deps.redis.connect(id) : await deps.sql.connect(id)
+      // Kick off the background description walk only after the connection is
+      // usable; it never delays the response.
+      if (connection.dialect !== 'redis') deps.prefetch?.schedule(id)
       sendJson(response, 200, { ok: true, data: server })
       return
     }
     case '/connections/disconnect': {
       const id = typeof data.id === 'string' ? data.id : ''
+      deps.prefetch?.cancel(id)
       await deps.sql.disconnect(id)
       await deps.redis.disconnect(id)
       sendJson(response, 200, { ok: true, data: { disconnected: id } })

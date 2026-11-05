@@ -120,6 +120,7 @@ function normalizeDescriptions(value: unknown): Record<string, TableDescription>
       kind: normalizeKind(record.kind),
       columns: normalizeColumns(record.columns),
       indexes: normalizeIndexes(record.indexes),
+      ...(typeof record.describedAt === 'string' ? { describedAt: record.describedAt } : {}),
     }
   }
   return out
@@ -245,11 +246,17 @@ export class StructureStore {
       const kept = previous?.objects[schema.name]
       if (kept !== undefined) objects[schema.name] = kept
     }
+    // Descriptions of schemas the server no longer reports would otherwise stay
+    // in the cache forever: prune them together with the schema list.
+    const descriptions: Record<string, TableDescription> = {}
+    for (const [key, description] of Object.entries(previous?.descriptions ?? {})) {
+      if (objects[description.schema] !== undefined) descriptions[key] = description
+    }
     this.data[connectionId] = {
       fetchedAt: new Date().toISOString(),
       schemas,
       objects,
-      descriptions: previous?.descriptions ?? {},
+      descriptions,
       ...(previous?.redis === undefined ? {} : { redis: previous.redis }),
     }
     this.schedule()
@@ -261,6 +268,14 @@ export class StructureStore {
       schemas: [],
       objects: {},
       descriptions: {},
+    }
+    // Drop descriptions of relations that disappeared from the refreshed list,
+    // so renames/drops do not leave unreachable entries behind.
+    const relations = new Set(
+      objects.filter((object) => object.kind === 'table' || object.kind === 'view').map((object) => `${schema}.${object.name}`),
+    )
+    for (const [key, description] of Object.entries(previous.descriptions)) {
+      if (description.schema === schema && !relations.has(key)) delete previous.descriptions[key]
     }
     previous.objects[schema] = objects
     previous.fetchedAt = new Date().toISOString()
@@ -276,7 +291,9 @@ export class StructureStore {
       objects: {},
       descriptions: {},
     }
-    entry.descriptions[`${schema}.${table}`] = description
+    // The timestamp makes the background prefetcher incremental: a fresh entry
+    // is skipped, a stale one is refreshed on the next connection.
+    entry.descriptions[`${schema}.${table}`] = { ...description, describedAt: new Date().toISOString() }
     entry.fetchedAt = new Date().toISOString()
     this.data[connectionId] = entry
     this.schedule()

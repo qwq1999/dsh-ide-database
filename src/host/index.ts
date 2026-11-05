@@ -4,6 +4,7 @@ import { DriverManager } from './drivers.js'
 import { JavaLocator } from './java.js'
 import { JreManager } from './jre.js'
 import { pluginPaths } from './paths.js'
+import { DescriptionPrefetcher } from './prefetch.js'
 import { RedisManager } from './redis.js'
 import { createRouteHandler } from './routes.js'
 import { makeLogger, type HostContext } from './services.js'
@@ -37,8 +38,9 @@ export function apply(ctx: HostContext): void {
   // browsable offline; only a permanent delete drops the cache.
   const initial = config.snapshot()
   structure.retain([...initial.connections, ...initial.trash].map((entry) => entry.id))
+  const prefetch = new DescriptionPrefetcher({ sql, structure, log })
 
-  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, jre, sql, redis, structure, log })
+  const handler = createRouteHandler({ ctx, paths, config, secrets, drivers, java, jre, sql, redis, structure, prefetch, log })
 
   ctx.effect(() => {
     const dispose = ctx.webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler })

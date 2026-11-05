@@ -5,7 +5,7 @@ import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
 
 const servers = []
-const calls = { test: [], sqlConnect: [], redisConnect: [], sqlDisconnect: [], redisDisconnect: [], reorder: [] }
+const calls = { test: [], sqlConnect: [], redisConnect: [], sqlDisconnect: [], redisDisconnect: [], reorder: [], prefetch: [], prefetchCancel: [] }
 
 const mysql = {
   id: 'm1',
@@ -84,6 +84,10 @@ function deps() {
       },
     },
     structure: { snapshotJson: () => '{}' },
+    prefetch: {
+      schedule: (id) => calls.prefetch.push(id),
+      cancel: (id) => calls.prefetchCancel.push(id),
+    },
     log: () => undefined,
   }
 }
@@ -150,6 +154,8 @@ describe('POST /connections/connect over HTTP', () => {
     expect(result.body).toMatchObject({ ok: true, data: { version: '7.2.4' } })
     expect(calls.redisConnect).toEqual(['r1'])
     expect(calls.sqlConnect).toHaveLength(0)
+    // Redis has no table descriptions, so no background walk is started.
+    expect(calls.prefetch).toHaveLength(0)
   })
 
   it('uses SQL for everything else', async () => {
@@ -159,6 +165,7 @@ describe('POST /connections/connect over HTTP', () => {
 
     expect(result.body).toMatchObject({ ok: true, data: { version: '8.0.35' } })
     expect(calls.sqlConnect).toEqual(['m1'])
+    expect(calls.prefetch).toEqual(['m1'])
   })
 })
 
@@ -170,6 +177,7 @@ describe('POST /connections/disconnect over HTTP', () => {
 
     expect(calls.sqlDisconnect).toEqual(['m1'])
     expect(calls.redisDisconnect).toEqual(['m1'])
+    expect(calls.prefetchCancel).toEqual(['m1'])
   })
 })
 

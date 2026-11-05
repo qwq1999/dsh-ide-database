@@ -407,6 +407,12 @@ export interface TableDescription {
   ddl?: string
   ddlSource?: 'server' | 'generated'
   ddlWarnings?: string[]
+  /**
+   * When the columns/indexes were last read from the server. Set by the
+   * structure cache only; the background prefetcher uses it to refresh stale
+   * entries instead of re-reading everything on each connection.
+   */
+  describedAt?: string
 }
 
 export interface ServerInfo {

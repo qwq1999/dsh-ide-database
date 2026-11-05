@@ -514,16 +514,25 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
         required: ['connection', 'schema', 'table'],
       },
       execute: async (args) => {
+        const schema = text(args, 'schema')
+        const table = text(args, 'table')
+        const kind = (text(args, 'kind', false) || 'table') as ObjectKind
+        let connection: ConnectionConfig
         try {
-          const connection = resolveConnection(deps.config, text(args, 'connection'))
-          if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接不支持表结构')
-          const schema = text(args, 'schema')
-          const table = text(args, 'table')
-          const kind = (text(args, 'kind', false) || 'table') as ObjectKind
+          connection = resolveConnection(deps.config, text(args, 'connection'))
+        } catch (error) {
+          return fail(error)
+        }
+        if (connection.dialect === 'redis') return fail(new DbError('unsupported', 'Redis 连接不支持表结构'))
+        try {
           const sql = await ensureSql(deps, connection)
           const description = await sql.describe(connection.id, schema, table, kind)
           return { connection: { id: connection.id, name: connection.name }, ...description }
         } catch (error) {
+          // Fall back to the cached description so the tool still works with the
+          // data source offline (the background prefetcher keeps it warm).
+          const cached = deps.structure.getDescription(connection.id, schema, table)
+          if (cached !== undefined) return { connection: { id: connection.id, name: connection.name }, ...cached, cached: true }
           return fail(error)
         }
       },

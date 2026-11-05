@@ -76,4 +76,46 @@ describe('StructureStore accessors', () => {
     expect(reloaded.redisDatabases('c1')).toBe(16)
     expect(reloaded.get('c1')?.schemas).toEqual([{ name: 'app' }])
   })
+
+  it('stamps a description with when it was read and reloads it', () => {
+    const { file, instance } = store()
+    instance.putSchemas('c1', [{ name: 'app' }])
+    instance.putObjects('c1', 'app', [{ name: 'orders', kind: 'table' }])
+    instance.putDescription('c1', 'app', 'orders', { schema: 'app', table: 'orders', kind: 'table', columns: [], indexes: [] })
+
+    const stored = instance.getDescription('c1', 'app', 'orders')
+    expect(typeof stored.describedAt).toBe('string')
+
+    instance.flush()
+    const reloaded = new StructureStore(file, () => {})
+    expect(reloaded.getDescription('c1', 'app', 'orders')?.describedAt).toBe(stored.describedAt)
+  })
+
+  it('drops descriptions of relations that disappeared from the object list', () => {
+    const { instance } = store()
+    instance.putSchemas('c1', [{ name: 'app' }])
+    instance.putObjects('c1', 'app', [{ name: 'a', kind: 'table' }, { name: 'b', kind: 'view' }])
+    for (const table of ['a', 'b']) {
+      instance.putDescription('c1', 'app', table, { schema: 'app', table, kind: 'table', columns: [], indexes: [] })
+    }
+
+    instance.putObjects('c1', 'app', [{ name: 'b', kind: 'view' }])
+
+    expect(instance.getDescription('c1', 'app', 'a')).toBeUndefined()
+    expect(instance.getDescription('c1', 'app', 'b')).toBeDefined()
+  })
+
+  it('drops descriptions of schemas the server no longer lists', () => {
+    const { instance } = store()
+    instance.putSchemas('c1', [{ name: 'app' }, { name: 'crm' }])
+    instance.putObjects('c1', 'app', [{ name: 'a', kind: 'table' }])
+    instance.putObjects('c1', 'crm', [{ name: 'b', kind: 'table' }])
+    instance.putDescription('c1', 'app', 'a', { schema: 'app', table: 'a', kind: 'table', columns: [], indexes: [] })
+    instance.putDescription('c1', 'crm', 'b', { schema: 'crm', table: 'b', kind: 'table', columns: [], indexes: [] })
+
+    instance.putSchemas('c1', [{ name: 'app' }])
+
+    expect(instance.getDescription('c1', 'app', 'a')).toBeDefined()
+    expect(instance.getDescription('c1', 'crm', 'b')).toBeUndefined()
+  })
 })
