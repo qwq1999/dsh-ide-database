@@ -456,10 +456,9 @@ export function App(props: AppProps): ReactElement {
   const visibleToolbarCount = Math.min(visibleToolbarActions, orderedToolbarActions.length)
   const hiddenToolbarActions = orderedToolbarActions.slice(visibleToolbarCount)
 
-  // Aggregate the host's background description walks for the footer counter.
-  const prefetchEntries = snapshot?.prefetch ?? []
-  const prefetchDone = prefetchEntries.reduce((sum, entry) => sum + entry.done, 0)
-  const prefetchTotal = prefetchEntries.reduce((sum, entry) => sum + entry.total, 0)
+  // Show the background walk only for the data source being looked at; other
+  // connections keep caching quietly without stealing the status bar.
+  const prefetchEntry = (snapshot?.prefetch ?? []).find((entry) => entry.connectionId === selectedId)
 
   const rootStyle: CSSProperties = {
     display: hidden ? 'none' : 'flex',
@@ -711,15 +710,15 @@ export function App(props: AppProps): ReactElement {
           <span>尚未选择数据源</span>
         )}
         <span className="dshdb-statusbar-spacer" />
-        {prefetchEntries.length > 0 ? (
+        {prefetchEntry !== undefined ? (
           <span
             className="dshdb-statusbar-prefetch"
-            title={`后台正在缓存 ${String(prefetchEntries.length)} 个连接的表结构描述`}
+            title={`后台正在缓存 ${selected?.name ?? '该数据源'} 的表结构描述`}
           >
             <Spinner size={11} />
             <span className="dshdb-muted">
-              {prefetchTotal > 0
-                ? `缓存结构 ${prefetchDone.toLocaleString()}/${prefetchTotal.toLocaleString()}`
+              {prefetchEntry.total > 0
+                ? `缓存结构 ${prefetchEntry.done.toLocaleString()}/${prefetchEntry.total.toLocaleString()}`
                 : '正在缓存结构…'}
             </span>
           </span>

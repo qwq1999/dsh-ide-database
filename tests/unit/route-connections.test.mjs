@@ -85,7 +85,7 @@ function deps() {
     },
     structure: { snapshotJson: () => '{}' },
     prefetch: {
-      schedule: (id) => calls.prefetch.push(id),
+      schedule: (id, options) => calls.prefetch.push({ id, options }),
       cancel: (id) => calls.prefetchCancel.push(id),
       progress: () => [{ connectionId: 'm1', total: 3, done: 1 }],
     },
@@ -166,7 +166,27 @@ describe('POST /connections/connect over HTTP', () => {
 
     expect(result.body).toMatchObject({ ok: true, data: { version: '8.0.35' } })
     expect(calls.sqlConnect).toEqual(['m1'])
-    expect(calls.prefetch).toEqual(['m1'])
+    // The client asks for descriptions once it knows which schemas are visible.
+    expect(calls.prefetch).toHaveLength(0)
+  })
+})
+
+describe('POST /connections/prefetch over HTTP', () => {
+  it('passes the visible schemas and the refresh flag to the prefetcher', async () => {
+    const url = await start('/connections/prefetch')
+
+    const result = await post(url, { id: 'm1', schemas: ['shop', 7], refresh: true })
+
+    expect(result.body).toMatchObject({ ok: true, data: { id: 'm1' } })
+    expect(calls.prefetch).toEqual([{ id: 'm1', options: { refreshAll: true, schemas: ['shop'] } }])
+  })
+
+  it('skips the walk for Redis connections', async () => {
+    const url = await start('/connections/prefetch')
+
+    await post(url, { id: 'r1', schemas: ['shop'] })
+
+    expect(calls.prefetch).toHaveLength(0)
   })
 })
 

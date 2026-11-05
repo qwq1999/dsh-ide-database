@@ -188,9 +188,10 @@ async function readObjects(deps: RouteDeps, id: string, schema: string): Promise
   try {
     const objects: SchemaObject[] = await deps.sql.objects(id, schema)
     deps.structure.putObjects(id, schema, objects)
-    // Newly listed relations have no description yet: let the background
-    // prefetcher read them while the user keeps browsing.
-    if (objects.length > 0) deps.prefetch?.schedule(id)
+    // Only the schema the user is browsing is visible right now, so let the
+    // background prefetcher read just that one; other schemas follow when they
+    // are made visible.
+    if (objects.length > 0) deps.prefetch?.schedule(id, { schemas: [schema] })
     return { objects, cached: false, fetchedAt: new Date().toISOString() }
   } catch (error) {
     const cached = deps.structure.get(id)
@@ -327,10 +328,21 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const connection = sqlConnection(deps, id)
       const server: ServerInfo =
         connection.dialect === 'redis' ? await deps.redis.connect(id) : await deps.sql.connect(id)
-      // Kick off the background description walk only after the connection is
-      // usable; it never delays the response.
-      if (connection.dialect !== 'redis') deps.prefetch?.schedule(id)
       sendJson(response, 200, { ok: true, data: server })
+      return
+    }
+    // The client asks for descriptions after it knows which schemas are visible
+    // (and with `refresh` when the user explicitly refreshes the data source).
+    case '/connections/prefetch': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const connection = sqlConnection(deps, id)
+      if (connection.dialect !== 'redis') {
+        const schemas = Array.isArray(data.schemas)
+          ? data.schemas.filter((name): name is string => typeof name === 'string')
+          : undefined
+        deps.prefetch?.schedule(id, { refreshAll: data.refresh === true, schemas })
+      }
+      sendJson(response, 200, { ok: true, data: { id } })
       return
     }
     case '/connections/disconnect': {

@@ -90,6 +90,8 @@ export const api = {
   reorderConnections: (ids: string[]) => post<{ config: ClientConfig }>('/connections/reorder', { ids }),
   testConnection: (draft: ConnectionDraft) => post<ConnectionTestResult>('/connections/test', { draft }),
   connect: (id: string) => post<ServerInfo>('/connections/connect', { id }),
+  prefetchConnection: (id: string, options: { refresh?: boolean; schemas?: string[] } = {}) =>
+    post<{ id: string }>('/connections/prefetch', { id, ...options }),
   disconnect: (id: string) => post<{ disconnected: string }>('/connections/disconnect', { id }),
 
   structure: () => post<{ structures: StructureSnapshot }>('/structure'),

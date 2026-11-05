@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { DbError } from '../../lib/host/errors.js'
-import { DESCRIPTION_CONCURRENCY, DescriptionPrefetcher, needsDescription } from '../../lib/host/prefetch.js'
-
-const now = Date.parse('2026-11-05T12:00:00.000Z')
+import { DESCRIPTION_CONCURRENCY, DescriptionPrefetcher } from '../../lib/host/prefetch.js'
 
 function description(overrides = {}) {
   return { schema: 'app', table: 'x', kind: 'table', columns: [], indexes: [], ...overrides }
@@ -15,7 +13,12 @@ function fakeStructure({ objects = {}, descriptions = {} } = {}) {
   return {
     state,
     structure: {
-      get: () => ({ fetchedAt: '2026-11-05T11:00:00.000Z', schemas: [{ name: 'app' }], objects, descriptions: state.descriptions }),
+      get: () => ({
+        fetchedAt: '2026-11-05T11:00:00.000Z',
+        schemas: [{ name: 'app' }],
+        objects,
+        descriptions: state.descriptions,
+      }),
       putDescription: (id, schema, table, value) => {
         state.puts.push(`${schema}.${table}`)
         state.descriptions[`${schema}.${table}`] = { ...value, describedAt: new Date().toISOString() }
@@ -24,19 +27,8 @@ function fakeStructure({ objects = {}, descriptions = {} } = {}) {
   }
 }
 
-describe('needsDescription', () => {
-  it('treats missing and unreadable entries as stale, fresh ones as current', () => {
-    expect(needsDescription(undefined, now)).toBe(true)
-    expect(needsDescription(description(), now)).toBe(true)
-    expect(needsDescription(description({ describedAt: 'not-a-date' }), now)).toBe(true)
-    expect(needsDescription(description({ describedAt: new Date(now - 60_000).toISOString() }), now)).toBe(false)
-    expect(needsDescription(description({ describedAt: new Date(now - 25 * 60 * 60 * 1000).toISOString() }), now)).toBe(true)
-  })
-})
-
 describe('DescriptionPrefetcher', () => {
-  it('reads only missing tables and views, never routines', async () => {
-    const fresh = new Date().toISOString()
+  it('fills only relations that have no cached description yet', async () => {
     const { structure, state } = fakeStructure({
       objects: {
         app: [
@@ -45,7 +37,7 @@ describe('DescriptionPrefetcher', () => {
           { name: 'fn_total', kind: 'function' },
         ],
       },
-      descriptions: { 'app.order_view': description({ table: 'order_view', kind: 'view', describedAt: fresh }) },
+      descriptions: { 'app.order_view': description({ table: 'order_view', kind: 'view' }) },
     })
     const calls = []
     const prefetch = new DescriptionPrefetcher({
@@ -90,10 +82,13 @@ describe('DescriptionPrefetcher', () => {
     expect(calls.sort()).toEqual(['items', 'orders'])
   })
 
-  it('refreshes entries older than the staleness window', async () => {
+  it('re-reads every relation when a refresh is requested', async () => {
     const { structure, state } = fakeStructure({
-      objects: { app: [{ name: 'orders', kind: 'table' }] },
-      descriptions: { 'app.orders': description({ table: 'orders', describedAt: '2020-01-01T00:00:00.000Z' }) },
+      objects: { app: [{ name: 'orders', kind: 'table' }, { name: 'items', kind: 'table' }] },
+      descriptions: {
+        'app.orders': description({ table: 'orders', describedAt: '2020-01-01T00:00:00.000Z' }),
+        'app.items': description({ table: 'items', describedAt: new Date().toISOString() }),
+      },
     })
     const calls = []
     const prefetch = new DescriptionPrefetcher({
@@ -107,10 +102,34 @@ describe('DescriptionPrefetcher', () => {
       log: () => undefined,
     })
 
-    prefetch.schedule('c1')
+    prefetch.schedule('c1', { refreshAll: true })
 
-    await vi.waitFor(() => expect(calls).toEqual(['orders']))
-    expect(state.puts).toEqual(['app.orders'])
+    await vi.waitFor(() => expect(calls.sort()).toEqual(['items', 'orders']))
+    expect(state.puts.sort()).toEqual(['app.items', 'app.orders'])
+  })
+
+  it('walks only the schemas the user made visible', async () => {
+    const { structure } = fakeStructure({
+      objects: {
+        app: [{ name: 'orders', kind: 'table' }],
+        audit: [{ name: 'events', kind: 'table' }],
+      },
+    })
+    const calls = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table, kind) => {
+          calls.push(`${schema}.${table}`)
+          return description({ schema, table, kind })
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1', { schemas: ['app'] })
+
+    await vi.waitFor(() => expect(calls).toEqual(['app.orders']))
   })
 
   it('stops quietly when the connection closes and logs other failures', async () => {

@@ -99,4 +99,35 @@ describe('App status bar', () => {
     const indicator = document.querySelector('.dshdb-statusbar-prefetch')
     expect(indicator?.querySelector('.dshdb-spinner')).not.toBeNull()
   })
+
+  it('picks the selected data source out of several running walks', async () => {
+    mocks.status.mockResolvedValue({
+      config: { connections: [connection], trash: [], drivers: [], settings },
+      drivers: [],
+      env,
+      prefetch: [
+        { connectionId: 'conn-other', total: 80, done: 20 },
+        { connectionId: connection.id, total: 120, done: 45 },
+      ],
+    })
+
+    render(<App />)
+
+    await screen.findByText('缓存结构 45/120')
+    expect(screen.queryByText('缓存结构 20/80')).toBeNull()
+  })
+
+  it('hides the counter when only another data source is caching', async () => {
+    mocks.status.mockResolvedValue({
+      config: { connections: [connection], trash: [], drivers: [], settings },
+      drivers: [],
+      env,
+      prefetch: [{ connectionId: 'conn-other', total: 80, done: 20 }],
+    })
+
+    render(<App />)
+
+    await screen.findByText('conn-36a8d2bec9')
+    expect(document.querySelector('.dshdb-statusbar-prefetch')).toBeNull()
+  })
 })

@@ -1,36 +1,28 @@
 import { DbError } from './errors.js'
 import type { SqlService } from './sql.js'
 import type { StructureStore } from './structure.js'
-import type { ObjectKind, PrefetchProgress, TableDescription } from '../shared/types.js'
-
-/**
- * How long a cached description counts as fresh. The prefetcher fills missing
- * entries after a connection opens and refreshes older ones then, so a long
- * lived cache converges on the server's current structure without re-reading
- * thousands of tables on every connect.
- */
-export const DESCRIPTION_STALE_MS = 24 * 60 * 60 * 1000
+import type { ObjectKind, PrefetchProgress } from '../shared/types.js'
 
 /** Keep the background walk gentle: metadata reads share the JDBC bridge. */
 export const DESCRIPTION_CONCURRENCY = 2
-
-/** A description needs a (re)read when it is missing or older than `staleMs`. */
-export function needsDescription(
-  description: TableDescription | undefined,
-  now = Date.now(),
-  staleMs = DESCRIPTION_STALE_MS,
-): boolean {
-  if (description === undefined) return true
-  if (description.describedAt === undefined) return true
-  const stamp = Date.parse(description.describedAt)
-  if (Number.isNaN(stamp)) return true
-  return now - stamp >= staleMs
-}
 
 interface PrefetchTarget {
   schema: string
   table: string
   kind: ObjectKind
+}
+
+export interface PrefetchOptions {
+  /** Re-read every relation instead of only the ones with no description yet. */
+  refreshAll?: boolean
+  /** Restrict the walk to these schemas (the ones the user made visible). */
+  schemas?: readonly string[]
+}
+
+interface PrefetchSession extends PrefetchProgress {
+  refreshAll: boolean
+  /** `undefined` walks every cached schema. */
+  schemas?: Set<string>
 }
 
 interface PrefetchDeps {
@@ -40,20 +32,34 @@ interface PrefetchDeps {
 }
 
 /**
- * Walks a connection's cached object list and fills in missing or stale table
- * and view descriptions in the background. `schedule` never blocks connecting:
- * it returns immediately, and cancelling a connection stops the walk at the
- * next item.
+ * Walks a connection's cached object list in the background. Opening a
+ * connection only fills the relations that have never been read, while an
+ * explicit refresh re-reads everything the user can see. `schedule` never
+ * blocks connecting: it returns immediately, and cancelling a connection stops
+ * the walk at the next item.
  */
 export class DescriptionPrefetcher {
-  private readonly active = new Map<string, PrefetchProgress>()
+  private readonly active = new Map<string, PrefetchSession>()
 
   constructor(private readonly deps: PrefetchDeps) {}
 
-  /** Start (or keep) a background pass for one connection. */
-  schedule(connectionId: string): void {
-    if (this.active.has(connectionId)) return
-    this.active.set(connectionId, { connectionId, total: 0, done: 0 })
+  /** Start (or upgrade) a background pass for one connection. */
+  schedule(connectionId: string, options: PrefetchOptions = {}): void {
+    const refreshAll = options.refreshAll === true
+    const running = this.active.get(connectionId)
+    if (running !== undefined) {
+      // A refresh upgrades a "fill the gaps" pass so an explicit refresh really
+      // re-reads everything; any other repeat request is already covered.
+      if (!refreshAll || running.refreshAll) return
+      this.active.delete(connectionId)
+    }
+    this.active.set(connectionId, {
+      connectionId,
+      total: 0,
+      done: 0,
+      refreshAll,
+      schemas: options.schemas === undefined ? undefined : new Set(options.schemas),
+    })
     void this.run(connectionId)
   }
 
@@ -64,18 +70,18 @@ export class DescriptionPrefetcher {
 
   /** Snapshot of the walks currently running, for the status bar. */
   progress(): PrefetchProgress[] {
-    return [...this.active.values()].map((entry) => ({ ...entry }))
+    return [...this.active.values()].map(({ connectionId, total, done }) => ({ connectionId, total, done }))
   }
 
-  private targets(connectionId: string): PrefetchTarget[] {
+  private targets(connectionId: string, session: PrefetchSession): PrefetchTarget[] {
     const entry = this.deps.structure.get(connectionId)
     if (entry === undefined) return []
-    const now = Date.now()
     const targets: PrefetchTarget[] = []
     for (const [schema, objects] of Object.entries(entry.objects)) {
+      if (session.schemas !== undefined && !session.schemas.has(schema)) continue
       for (const object of objects) {
         if (object.kind !== 'table' && object.kind !== 'view') continue
-        if (!needsDescription(entry.descriptions[`${schema}.${object.name}`], now)) continue
+        if (!session.refreshAll && entry.descriptions?.[`${schema}.${object.name}`] !== undefined) continue
         targets.push({ schema, table: object.name, kind: object.kind })
       }
     }
@@ -84,9 +90,9 @@ export class DescriptionPrefetcher {
 
   private async run(connectionId: string): Promise<void> {
     try {
-      const targets = this.targets(connectionId)
       const session = this.active.get(connectionId)
       if (session === undefined) return
+      const targets = this.targets(connectionId, session)
       session.total = targets.length
       let next = 0
       const worker = async (): Promise<void> => {

@@ -166,6 +166,25 @@ function writeStoredDbs(key: string, value: number[] | null): void {
   writeStoredList(key, value === null ? null : value.map(String))
 }
 
+/**
+ * A new data source starts with only its default schema visible: the connection
+ * database when the server has it, else the login user (Oracle's schema name).
+ * Returning `null` keeps every schema visible when neither name exists, so a
+ * mis-detected default can never hide the whole tree.
+ */
+function defaultVisibleSchemas(
+  connection: ClientConnection,
+  schemas: readonly SchemaInfo[],
+): string[] | null {
+  if (schemas.length === 0) return null
+  for (const name of [connection.database, connection.user]) {
+    if (name === '') continue
+    const match = schemas.find((schema) => schema.name.toLowerCase() === name.toLowerCase())
+    if (match !== undefined) return [match.name]
+  }
+  return null
+}
+
 export function useDataSources(notify: Notify): DataSources {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -320,6 +339,34 @@ export function useDataSources(notify: Notify): DataSources {
   const selected = connections.find((connection) => connection.id === selectedId)
   const server = selected ? servers[selected.id] : undefined
 
+  // Read by callbacks whose identity must not change when the snapshot or the
+  // visible-schema map changes (connect, refresh and the prefetch trigger).
+  const connectionsRef = useRef(connections)
+  connectionsRef.current = connections
+  const schemasRef = useRef(schemas)
+  schemasRef.current = schemas
+  const visibleSchemasRef = useRef(visibleSchemas)
+  visibleSchemasRef.current = visibleSchemas
+
+  /**
+   * Ask the host to keep table descriptions warm for the schemas that are
+   * visible. Connecting fills only uncached relations; an explicit refresh
+   * re-reads all of them.
+   */
+  const schedulePrefetch = useCallback(
+    (connectionId: string, refreshAll: boolean, selection?: string[] | null): void => {
+      const connection = connectionsRef.current.find((item) => item.id === connectionId)
+      if (connection === undefined || connection.dialect === 'redis') return
+      const visible = selection === undefined ? visibleSchemasRef.current[connectionId] : selection
+      const names = schemasRef.current[connectionId]?.map((schema) => schema.name) ?? []
+      const schemas = visible === null || visible === undefined ? (names.length > 0 ? names : undefined) : visible
+      void api
+        .prefetchConnection(connectionId, { refresh: refreshAll, schemas })
+        .catch(() => undefined)
+    },
+    [],
+  )
+
   // Restore which logical databases each Redis connection shows. The persisted
   // choice wins; otherwise fall back to the databases found in the cache, then
   // to the connection's own default database.
@@ -338,16 +385,34 @@ export function useDataSources(notify: Notify): DataSources {
     if (Object.keys(missing).length > 0) setRedisDbs((previous) => ({ ...missing, ...previous }))
   }, [snapshot, redisDbs, redisKeys])
 
-  // Same for the SQL schema selection.
+  // Same for the SQL schema selection. An absent key means the data source was
+  // never opened, so its default schema is picked once the list is known.
   useEffect(() => {
     if (!snapshot) return
     const missing: Record<string, string[] | null> = {}
     for (const connection of snapshot.connections) {
       if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
-      missing[connection.id] = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`)
+      const stored = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`)
+      if (stored !== null) missing[connection.id] = stored
     }
     if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
   }, [snapshot, visibleSchemas])
+
+  // Cached structures populate the tree before the first connect; give a new
+  // data source its default schema then too, so picker and cache agree.
+  useEffect(() => {
+    if (!snapshot) return
+    const missing: Record<string, string[] | null> = {}
+    for (const connection of snapshot.connections) {
+      if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
+      const cached = schemas[connection.id]
+      if (cached === undefined || cached.length === 0) continue
+      const chosen = defaultVisibleSchemas(connection, cached)
+      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`, chosen)
+      missing[connection.id] = chosen
+    }
+    if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
+  }, [snapshot, visibleSchemas, schemas])
 
   /**
    * Selecting another data source drops the detail of the previous one. This
@@ -376,6 +441,17 @@ export function useDataSources(notify: Notify): DataSources {
           const stamp = result.fetchedAt
           setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
         }
+        // First open of a data source: only its default schema starts visible.
+        // Persisting the choice keeps the picker and the background cache aligned.
+        const stored = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`)
+        const connection = connectionsRef.current.find((item) => item.id === connectionId)
+        let selection = stored ?? visibleSchemasRef.current[connectionId]
+        if (selection === undefined && connection !== undefined) {
+          selection = defaultVisibleSchemas(connection, result.schemas)
+          writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, selection)
+          setVisibleSchemas((previous) => ({ ...previous, [connectionId]: selection ?? null }))
+        }
+        schedulePrefetch(connectionId, false, selection)
         setObjects((previous) => {
           const next = { ...previous }
           for (const key of Object.keys(next)) {
@@ -403,7 +479,7 @@ export function useDataSources(notify: Notify): DataSources {
         setLoadingSchemas((previous) => ({ ...previous, [connectionId]: false }))
       }
     },
-    [notify],
+    [notify, schedulePrefetch],
   )
 
   /** Read the server's logical-database count; the cached value is enough offline. */
@@ -747,24 +823,30 @@ export function useDataSources(notify: Notify): DataSources {
   const toggleSchemaVisible = useCallback(
     (connectionId: string, schema: string): void => {
       const all = (schemas[connectionId] ?? []).map((item) => item.name)
-      setVisibleSchemas((previous) => {
-        const current = previous[connectionId] ?? all
-        const list = current.includes(schema) ? current.filter((name) => name !== schema) : [...current, schema]
-        const normalized = all.length > 0 && list.length === all.length ? null : list
-        writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, normalized)
-        return { ...previous, [connectionId]: normalized }
-      })
+      const current = visibleSchemas[connectionId] ?? all
+      const enabling = !current.includes(schema)
+      const list = enabling ? [...current, schema] : current.filter((name) => name !== schema)
+      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, list)
+      setVisibleSchemas((previous) => ({ ...previous, [connectionId]: list }))
+      if (!enabling) return
+      // A newly visible schema starts caching right away: read its object list
+      // (the host prefetcher needs it) and warm that schema's descriptions.
+      void loadObjects(connectionId, schema)
+      if (servers[connectionId] !== undefined) {
+        void api.prefetchConnection(connectionId, { schemas: [schema] }).catch(() => undefined)
+      }
     },
-    [schemas],
+    [schemas, visibleSchemas, servers, loadObjects],
   )
 
   const toggleAllSchemasVisible = useCallback(
     (connectionId: string, all: boolean): void => {
-      const value = all ? null : []
-      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, value)
-      setVisibleSchemas((previous) => ({ ...previous, [connectionId]: value }))
+      const list = all ? (schemas[connectionId] ?? []).map((item) => item.name) : []
+      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, list)
+      setVisibleSchemas((previous) => ({ ...previous, [connectionId]: list }))
+      if (all) schedulePrefetch(connectionId, false, list)
     },
-    [],
+    [schemas, schedulePrefetch],
   )
 
   const toggleRedisDbVisible = useCallback(
@@ -827,9 +909,11 @@ export function useDataSources(notify: Notify): DataSources {
       return
     }
     await loadSchemas(selected.id)
+    // Refresh means "re-read every cached description", not just fill the gaps.
+    schedulePrefetch(selected.id, true)
     await refresh()
     notify('已刷新数据源', 'success')
-  }, [selected, servers, redisDbs, refresh, connect, loadSchemas, loadRedisDatabases, loadRedisKeys, notify])
+  }, [selected, servers, redisDbs, refresh, connect, loadSchemas, loadRedisDatabases, loadRedisKeys, notify, schedulePrefetch])
 
   const updateDrivers = useCallback((drivers: DriverStatus[]): void => {
     setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))
