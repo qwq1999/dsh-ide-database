@@ -1466,6 +1466,151 @@ function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTai
   return undefined
 }
 
+/** Inside a `CREATE TABLE` body: the start of a column definition, or its type. */
+function createColumnStage(tokens: readonly Token[]): 'name' | 'columnType' | undefined {
+  let created = false
+  let table = -1
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'keyword') continue
+    if (token.lower === 'create') {
+      created = true
+      continue
+    }
+    if (token.lower === 'as' || token.lower === 'like') return undefined
+    if (token.lower === 'table') {
+      table = index
+      break
+    }
+  }
+  if (!created || table < 0) return undefined
+  let open = -1
+  for (let index = table + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct' && token.text === '(') {
+      open = index
+      break
+    }
+  }
+  if (open < 0) return undefined
+  let depth = 0
+  let segment = open + 1
+  for (let index = open + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') {
+      if (depth === 0) return undefined
+      depth -= 1
+    } else if (token.text === ',' && depth === 0) segment = index + 1
+  }
+  const rest = tokens.slice(segment)
+  if (rest.length === 0) return 'name'
+  const first = rest[0] as Token
+  if (rest.length === 1 && first.kind === 'ident') return 'columnType'
+  return undefined
+}
+
+/** `ALTER TABLE ... ADD/MODIFY/CHANGE [COLUMN] name ` takes a column type next. */
+function alterColumnStage(tokens: readonly Token[]): 'name' | 'columnType' | undefined {
+  const start = alterTableStart(tokens)
+  if (start < 0) return undefined
+  const action = tokens[start]
+  if (action === undefined || action.kind !== 'keyword') return undefined
+  const verb = action.lower
+  if (verb !== 'add' && verb !== 'modify' && verb !== 'change') return undefined
+  let index = start + 1
+  const column = tokens[index]
+  if (column !== undefined && column.kind === 'keyword' && column.lower === 'column') index += 1
+  const name = tokens[index]
+  if (name === undefined || name.kind !== 'ident') return undefined
+  const rest = tokens.slice(index + 1)
+  if (verb === 'add' || verb === 'modify') return rest.length === 0 ? 'columnType' : undefined
+  // CHANGE old new <type>: the new name comes first, then the type.
+  if (rest.length === 0) return 'name'
+  if (rest.length === 1) return 'columnType'
+  return undefined
+}
+
+/** A scalar ends an expression: `SELECT 1 ` / `SELECT 'x' ` take AS/FROM. */
+function scalarTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  const scalar =
+    last.kind === 'number' ||
+    last.kind === 'string' ||
+    (last.kind === 'keyword' &&
+      (last.lower === 'null' || last.lower === 'true' || last.lower === 'false'))
+  if (!scalar) return false
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(') depth -= 1
+      continue
+    }
+    if (depth !== 0) continue
+    if (token.kind !== 'keyword') continue
+    if (token.lower === 'select') return true
+    if (
+      token.lower === 'where' ||
+      token.lower === 'having' ||
+      token.lower === 'on' ||
+      CONDITION_BREAKS.has(token.lower)
+    ) {
+      return false
+    }
+  }
+  return false
+}
+
+/** A closed subquery: `SELECT (SELECT ...) ` takes AS/FROM, `WHERE id IN (SELECT ...) ` AND/OR. */
+function subqueryClose(tokens: readonly Token[]): 'expressionTail' | 'boolean' | undefined {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== ')') return undefined
+  let depth = 0
+  let open = -1
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      depth -= 1
+      if (depth === 0) {
+        open = index
+        break
+      }
+    }
+  }
+  if (open < 0) return undefined
+  const first = tokens[open + 1]
+  if (
+    first === undefined ||
+    first.kind !== 'keyword' ||
+    (first.lower !== 'select' && first.lower !== 'with')
+  ) {
+    return undefined
+  }
+  let nest = 0
+  for (let index = open - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') nest += 1
+      else if (token.text === '(') nest -= 1
+      continue
+    }
+    if (nest !== 0) continue
+    if (token.kind !== 'keyword') continue
+    if (token.lower === 'select') return 'expressionTail'
+    if (token.lower === 'where' || token.lower === 'having' || token.lower === 'on') {
+      return 'boolean'
+    }
+    if (CONDITION_BREAKS.has(token.lower)) return undefined
+  }
+  return undefined
+}
+
 /** `WHERE total ` needs a comparison; `WHERE id = 1 ` needs a connector. */
 function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' | undefined {
   if (!endsOperand(tokens[tokens.length - 1])) return undefined
@@ -1690,6 +1835,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
   if (alterIndexColumns(tokens)) return 'column'
+  const columnStage = createColumnStage(tokens)
+  if (columnStage !== undefined) return columnStage
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -1699,6 +1846,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (createObjectName(tokens)) return 'name'
   if (createTableOptionsTail(tokens)) return 'tableOptions'
   if (indexUsingTail(tokens)) return 'indexMethod'
+  const alterColumn = alterColumnStage(tokens)
+  if (alterColumn !== undefined) return alterColumn
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const alterEngine = alterTableEngine(tokens)
@@ -1788,6 +1937,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (interval !== undefined) return interval
   const expression = expressionTail(tokens)
   if (expression !== undefined) return expression
+  if (scalarTail(tokens)) return 'expressionTail'
+  const subquery = subqueryClose(tokens)
+  if (subquery !== undefined) return subquery
   const last = tokens[tokens.length - 1]
   const before = tokens[tokens.length - 2]
   if (
@@ -2204,6 +2356,29 @@ function relationKey(relation: CompletionRelation): string {
 }
 
 /** Relations mentioned by the token prefix before the caret. */
+/** The table an `INSERT INTO ... SELECT` fills; its columns are not visible in the select list. */
+function insertSelectTarget(tokens: readonly Token[]): CompletionRelation | undefined {
+  const first = tokens[0]
+  if (first === undefined) return undefined
+  const head = first.text.toLowerCase()
+  if (head !== 'insert' && head !== 'replace') return undefined
+  let into = -1
+  for (let index = 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'keyword' && token.lower === 'into') {
+      into = index
+      break
+    }
+  }
+  if (into < 0) return undefined
+  const parsed = parseRelationRef(tokens, into + 1)
+  if (parsed === null) return undefined
+  const hasSelect = tokens
+    .slice(parsed.next)
+    .some((token) => token.kind === 'keyword' && token.lower === 'select')
+  return hasSelect ? parsed.relation : undefined
+}
+
 function collectRelations(
   tokens: readonly Token[],
   ctes: readonly CteDefinition[] = [],
@@ -2333,6 +2508,13 @@ export function analyze(text: string, caret: number): Analysis {
   // the qualifier, whatever clause it appears in.
   if (qualifier.length > 0 && expectation !== 'schema') expectation = 'column'
   const relations = collectRelations(statementTokens, withClause.ctes)
+  const insertTarget = insertSelectTarget(statementTokens)
+  const insertTargetKey = insertTarget === undefined ? undefined : relationKey(insertTarget)
+  if (insertTargetKey !== undefined) {
+    const kept = relations.filter((relation) => relationKey(relation) !== insertTargetKey)
+    relations.length = 0
+    relations.push(...kept)
+  }
   // Two cases need the rest of the statement: a dotted qualifier whose alias is
   // only written in a later FROM (`SELECT o. FROM orders o`), and a select list
   // typed before its FROM (`SELECT id | FROM orders`). Spell the statement out
@@ -2344,7 +2526,7 @@ export function analyze(text: string, caret: number): Analysis {
     const seen = new Set(relations.map(relationKey))
     for (const relation of collectRelations(remainder, withClause.ctes)) {
       const key = relationKey(relation)
-      if (seen.has(key)) continue
+      if (key === insertTargetKey || seen.has(key)) continue
       seen.add(key)
       relations.push(relation)
     }

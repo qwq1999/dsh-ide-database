@@ -536,8 +536,8 @@ describe('complete values and column definitions', () => {
   it('offers DDL words instead of relations inside a CREATE TABLE body', async () => {
     const catalog = createCatalog()
     const result = await complete({
-      statement: 'CREATE TABLE new_table (',
-      caret: 24,
+      statement: 'CREATE TABLE new_table (id INT NOT ',
+      caret: 35,
       dialect: 'mysql',
       schema: 'shop',
       catalog,
@@ -1500,7 +1500,7 @@ describe('complete CREATE names and ALTER column tails', () => {
     expect(constraint.analysis.expectation).toBe('name')
     expect(constraint.items).toEqual([])
 
-    const change = await complete(request('ALTER TABLE orders CHANGE COLUMN id new_id '))
+    const change = await complete(request('ALTER TABLE orders CHANGE COLUMN id new_id INT NOT '))
     expect(change.analysis.expectation).toBe('definition')
     expect(names(change)).toContain('NOT')
 
@@ -1821,5 +1821,62 @@ describe('complete isolation level values', () => {
     const result = await complete(request('SET TRANSACTION ISOLATION LEVEL READ '))
     expect(result.analysis.expectation).toBe('isolationRead')
     expect(names(result)).toEqual(['COMMITTED', 'UNCOMMITTED'])
+  })
+})
+
+describe('complete insert targets, column types and expression tails', () => {
+  it('offers the SELECT source columns instead of the INSERT target', async () => {
+    const req = request('INSERT INTO orders SELECT * FROM customers WHERE ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('name')
+    expect(names(result)).not.toContain('user_id')
+    expect(req.catalog.calls.columns).toEqual(['shop.customers'])
+  })
+
+  it('offers column types inside a CREATE TABLE body', async () => {
+    const result = await complete(request('CREATE TABLE t (id '))
+
+    expect(result.analysis.expectation).toBe('columnType')
+    expect(names(result)).toContain('VARCHAR')
+    expect(names(result)).toContain('INT')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('keeps the next column name quiet', async () => {
+    const result = await complete(request('CREATE TABLE t (id INT, '))
+
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+  })
+
+  it('offers column types after ALTER COLUMN names', async () => {
+    const add = await complete(request('ALTER TABLE orders ADD COLUMN amount '))
+    expect(add.analysis.expectation).toBe('columnType')
+    expect(names(add)).toContain('DECIMAL')
+
+    const change = await complete(request('ALTER TABLE orders CHANGE COLUMN total amount '))
+    expect(change.analysis.expectation).toBe('columnType')
+    expect(names(change)).toContain('VARCHAR')
+  })
+
+  it('ends scalar and subquery expressions', async () => {
+    const scalar = await complete(request('SELECT total + 1 '))
+    expect(scalar.analysis.expectation).toBe('expressionTail')
+    expect(names(scalar).slice(0, 2)).toEqual(['AS', 'FROM'])
+
+    const closed = await complete(request('SELECT (SELECT MAX(total) FROM orders) '))
+    expect(closed.analysis.expectation).toBe('expressionTail')
+    expect(names(closed).slice(0, 2)).toEqual(['AS', 'FROM'])
+  })
+
+  it('offers connectors after a closed subquery predicate', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders WHERE id IN (SELECT id FROM customers) '),
+    )
+
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
   })
 })

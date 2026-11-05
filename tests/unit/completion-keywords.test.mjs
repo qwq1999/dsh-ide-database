@@ -402,3 +402,13 @@ describe('isolation level value words', () => {
     ])
   })
 })
+
+describe('column type words', () => {
+  it('offers DDL column types', () => {
+    const words = names(keywordCompletions('columnType', 'generic'))
+    expect(words.slice(0, 6)).toEqual(['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'])
+    expect(words).toContain('VARCHAR')
+    expect(words).toContain('JSON')
+    expect(words).toContain('DATETIME')
+  })
+})

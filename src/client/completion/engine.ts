@@ -576,6 +576,10 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('type', dialect)]
         break
       }
+      case 'columnType': {
+        candidates = [...keywordCompletions('columnType', dialect)]
+        break
+      }
       case 'charset': {
         candidates = CHARSET_NAMES.map((name) => ({ name, kind: 'keyword' as const }))
         break

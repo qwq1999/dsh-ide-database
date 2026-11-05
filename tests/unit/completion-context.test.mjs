@@ -107,9 +107,11 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('INSERT INTO orders VALUES ').expectation).toBe('value')
   })
 
-  it('expects a column definition inside CREATE TABLE', () => {
-    expect(caretAtEnd('CREATE TABLE new_table (').expectation).toBe('definition')
-    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS new_table (id INT, ').expectation).toBe('definition')
+  it('names the stage of a column definition inside CREATE TABLE', () => {
+    expect(caretAtEnd('CREATE TABLE new_table (').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TABLE new_table (id ').expectation).toBe('columnType')
+    expect(caretAtEnd('CREATE TABLE new_table (id INT NOT ').expectation).toBe('definition')
+    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS new_table (id INT, ').expectation).toBe('name')
   })
 
   it('does not expect a definition outside the CREATE TABLE body', () => {
@@ -902,8 +904,9 @@ describe('analyze CREATE names and ALTER column tails', () => {
   it('follows ALTER TABLE column renames and changes', () => {
     expect(caretAtEnd('ALTER TABLE orders RENAME COLUMN id TO ').expectation).toBe('name')
     expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('name')
-    expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN id new_id ').expectation).toBe('definition')
-    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN id new_id ').expectation).toBe('columnType')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id ').expectation).toBe('columnType')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id INT NOT ').expectation).toBe('definition')
     expect(caretAtEnd('ALTER TABLE orders DROP PRIMARY KEY, ').expectation).toBe('alter')
   })
 })
@@ -1121,5 +1124,47 @@ describe('analyze isolation level values', () => {
   it('takes COMMITTED or UNCOMMITTED after READ', () => {
     expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL READ ').expectation).toBe('isolationRead')
     expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL REPEATABLE ').expectation).toBe('number')
+  })
+})
+
+describe('analyze insert targets, column types and expression tails', () => {
+  it('hides the INSERT target from the select list', () => {
+    expect(analyze('INSERT INTO orders SELECT ', 26).relations).toEqual([])
+    expect(analyze('INSERT INTO orders SELECT * FROM customers WHERE ', 48).relations).toEqual([
+      { table: 'customers' },
+    ])
+    expect(analyze('INSERT INTO orders VALUES (', 28).relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('names the stage of a column definition', () => {
+    expect(analyze('CREATE TABLE t (', 16).expectation).toBe('name')
+    expect(analyze('CREATE TABLE t (id ', 19).expectation).toBe('columnType')
+    expect(analyze('CREATE TABLE t (id INT, ', 23).expectation).toBe('name')
+    expect(analyze('CREATE TABLE t (id INT NOT NULL ', 29).expectation).toBe('definition')
+  })
+
+  it('takes a column type after ALTER column names', () => {
+    const add = 'ALTER TABLE orders ADD COLUMN amount '
+    const modify = 'ALTER TABLE orders MODIFY total '
+    const change = 'ALTER TABLE orders CHANGE COLUMN total amount '
+    expect(analyze(add, add.length).expectation).toBe('columnType')
+    expect(analyze(modify, modify.length).expectation).toBe('columnType')
+    expect(analyze(change, change.length).expectation).toBe('columnType')
+  })
+
+  it('finishes scalar expressions in a select list', () => {
+    expect(analyze('SELECT 1 ', 9).expectation).toBe('expressionTail')
+    expect(analyze('SELECT total + 1 ', 17).expectation).toBe('expressionTail')
+    expect(analyze('SELECT * FROM orders WHERE id = 1 ', 37).expectation).toBe('boolean')
+    expect(analyze('SELECT * FROM orders ORDER BY 1 ', 35).expectation).toBe('direction')
+  })
+
+  it('classifies closed subqueries by the clause they finish', () => {
+    expect(analyze('SELECT (SELECT MAX(total) FROM orders) ', 40).expectation).toBe(
+      'expressionTail',
+    )
+    expect(analyze('SELECT * FROM orders WHERE id IN (SELECT id FROM customers) ', 63).expectation).toBe(
+      'boolean',
+    )
   })
 })

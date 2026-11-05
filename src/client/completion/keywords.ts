@@ -360,6 +360,46 @@ const CAST_TYPE_WORDS = [
   'BLOB',
 ] as const
 
+/** Types a column definition in `CREATE TABLE (` / `ALTER TABLE ... COLUMN` can name. */
+const COLUMN_TYPE_WORDS = [
+  'INT',
+  'INTEGER',
+  'BIGINT',
+  'SMALLINT',
+  'TINYINT',
+  'MEDIUMINT',
+  'BIT',
+  'BOOLEAN',
+  'BOOL',
+  'VARCHAR',
+  'CHAR',
+  'TEXT',
+  'TINYTEXT',
+  'MEDIUMTEXT',
+  'LONGTEXT',
+  'BLOB',
+  'TINYBLOB',
+  'MEDIUMBLOB',
+  'LONGBLOB',
+  'BINARY',
+  'VARBINARY',
+  'DECIMAL',
+  'NUMERIC',
+  'FLOAT',
+  'DOUBLE',
+  'REAL',
+  'DATE',
+  'DATETIME',
+  'TIMESTAMP',
+  'TIME',
+  'YEAR',
+  'JSON',
+  'ENUM',
+  'SET',
+  'UUID',
+  'GEOMETRY',
+] as const
+
 /**
  * Character sets offered after `SET NAMES` or `DEFAULT CHARSET`. Kept in the
  * spelling MySQL documents; names are case insensitive.
@@ -583,6 +623,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return SET_WORDS
     case 'type':
       return CAST_TYPE_WORDS
+    case 'columnType':
+      return COLUMN_TYPE_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

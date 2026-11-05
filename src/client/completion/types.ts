@@ -100,6 +100,7 @@ export type CompletionExpectation =
   | 'setTransaction'
   | 'isolationLevel'
   | 'isolationRead'
+  | 'columnType'
   | 'database'
   | 'keyword'
   | 'any'
