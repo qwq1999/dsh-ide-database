@@ -516,7 +516,8 @@ function tableNameTail(tokens: readonly Token[]): boolean {
   const second = tokens[1]
   if (first === undefined || second === undefined) return false
   const start = first.text.toLowerCase()
-  if ((start !== 'drop' && start !== 'truncate') || second.text.toLowerCase() !== 'table') {
+  const object = second.text.toLowerCase()
+  if ((start !== 'drop' && start !== 'truncate') || (object !== 'table' && object !== 'view')) {
     return false
   }
   return tokens.length >= 3
@@ -540,6 +541,47 @@ function relationKeywordTail(tokens: readonly Token[]): boolean {
   const second = tokens[1]
   if (start !== 'drop' || second === undefined) return false
   return second.text.toLowerCase() === 'view'
+}
+
+/**
+ * Statements whose next word is an existing table name: `ANALYZE TABLE `,
+ * `TRUNCATE TABLE `, `DROP TABLE orders, ` and friends. The clause keywords a
+ * `relation` position offers (`WHERE`, `JOIN`, ...) would be noise there.
+ */
+function ddlTableName(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first === undefined || second === undefined) return false
+  const start = first.text.toLowerCase()
+  const object = second.text.toLowerCase()
+  const last = tokens[tokens.length - 1]
+  const commaTail = last?.kind === 'punct' && last.text === ','
+  const bare = tokens.length === 2 || commaTail
+  if (start === 'truncate' || start === 'rename') return object === 'table' && bare
+  if (start === 'analyze' || start === 'optimize' || start === 'check' || start === 'repair') {
+    return object === 'table' && bare
+  }
+  if (start === 'drop') return (object === 'table' || object === 'view') && bare
+  if (start === 'alter' || start === 'lock') {
+    return (object === 'table' || object === 'tables') && tokens.length === 2
+  }
+  return false
+}
+
+/**
+ * `SELECT ... INTO OUTFILE '/path'`, `PREPARE stmt FROM ...` and `UNLOCK TABLES`
+ * take text only the user knows; nothing from the catalog belongs there.
+ */
+function literalTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const start = first.text.toLowerCase()
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  const tail = last.text.toLowerCase()
+  if (start === 'select' && (tail === 'outfile' || tail === 'dumpfile')) return true
+  if (start === 'prepare' && last.kind === 'keyword' && last.lower === 'from') return true
+  return start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables'
 }
 
 /** `CALL ` names a procedure; its arguments are literals, not catalog names. */
@@ -943,7 +985,7 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (second === 'create') {
     const object = words[2]
     if (object === 'database' || object === 'schema') return 'database'
-    if (object === 'table' || object === 'view') return words.length > 3 ? 'name' : 'relation'
+    if (object === 'table' || object === 'view') return words.length > 3 ? 'name' : 'tableName'
     return undefined
   }
   const from = words.indexOf('from')
@@ -1390,12 +1432,12 @@ function orderByPosition(tokens: readonly Token[]): 'direction' | 'orderTail' | 
 }
 
 /** `GROUP BY status ` takes HAVING/ORDER/LIMIT; `GROUP BY status, ` takes a column. */
-function groupByPosition(tokens: readonly Token[]): boolean {
+function groupByPosition(tokens: readonly Token[]): 'groupTail' | 'rollupTail' | undefined {
   const last = tokens[tokens.length - 1]
-  const finished =
-    last !== undefined &&
-    ((last.kind === 'keyword' && last.lower === 'rollup') || endsOperand(last))
-  if (!finished) return false
+  if (last === undefined) return undefined
+  // `WITH ROLLUP` closes the grouping clause, a second WITH is redundant.
+  if (last.text.toLowerCase() === 'rollup') return 'rollupTail'
+  if (!endsOperand(last)) return undefined
   let depth = 0
   for (let index = tokens.length - 2; index >= 0; index -= 1) {
     const token = tokens[index] as Token
@@ -1410,7 +1452,7 @@ function groupByPosition(tokens: readonly Token[]): boolean {
     if (token.kind !== 'keyword' || depth > 0) continue
     const previous = tokens[index - 1]
     if (token.lower === 'by' && previous?.kind === 'keyword' && previous.lower === 'group') {
-      return true
+      return 'groupTail'
     }
     // Another clause since GROUP BY means this operand belongs to it.
     if (
@@ -1419,11 +1461,11 @@ function groupByPosition(tokens: readonly Token[]): boolean {
       token.lower === 'on' ||
       token.lower === 'select'
     ) {
-      return false
+      return undefined
     }
-    if (CONDITION_BREAKS.has(token.lower) || token.lower === 'by') return false
+    if (CONDITION_BREAKS.has(token.lower) || token.lower === 'by') return undefined
   }
-  return false
+  return undefined
 }
 
 /** `FOR UPDATE ` / `FOR SHARE ` / `LOCK IN SHARE MODE ` end the statement. */
@@ -1468,7 +1510,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (tableTail !== undefined) return tableTail
   if (createTableAs(tokens)) return 'statement'
   if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
-  if (createTableLike(tokens)) return 'relation'
+  if (createTableLike(tokens)) return 'tableName'
   if (createObjectName(tokens)) return 'name'
   if (createTableOptionsTail(tokens)) return 'tableOptions'
   if (indexUsingTail(tokens)) return 'indexMethod'
@@ -1477,7 +1519,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const indexOn = createIndexOn(tokens)
   if (indexOn >= 0) {
     const target = parseRelationRef(tokens, indexOn + 1)
-    if (target === null) return 'relation'
+    if (target === null) return 'tableName'
     // `... ON orders (` takes index columns; once that list closes there is
     // nothing left for the catalog to offer.
     let depth = 0
@@ -1495,14 +1537,16 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
     return sawParen && depth === 0 ? 'number' : 'column'
   }
   if (startsSubquery(tokens)) return 'keyword'
-  if (trailingIfExists(tokens)) return 'relation'
+  if (trailingIfExists(tokens)) return 'tableName'
   if (useDatabase(tokens)) return 'database'
   const call = callStart(tokens)
   if (call !== undefined) return call
+  if (ddlTableName(tokens)) return 'tableName'
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
+  if (literalTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet
   if (insertColumnListComplete(tokens)) return 'insertSource'
@@ -1568,7 +1612,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (window !== undefined) return window
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
-  if (groupByPosition(tokens)) return 'groupTail'
+  const group = groupByPosition(tokens)
+  if (group !== undefined) return group
   const operator = conditionOperator(tokens)
   if (operator !== undefined) return operator
   let sawOpenParen = false

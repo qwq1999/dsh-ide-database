@@ -141,9 +141,9 @@ describe('analyze expectation', () => {
 
   it('expects a table after CREATE INDEX ON', () => {
     const analysis = caretAtEnd('CREATE INDEX idx ON ')
-    expect(analysis.expectation).toBe('relation')
+    expect(analysis.expectation).toBe('tableName')
     expect(analysis.relations).toEqual([])
-    expect(caretAtEnd('CREATE UNIQUE INDEX idx ON ').expectation).toBe('relation')
+    expect(caretAtEnd('CREATE UNIQUE INDEX idx ON ').expectation).toBe('tableName')
   })
 
   it('expects columns after the CREATE INDEX table', () => {
@@ -187,10 +187,10 @@ describe('analyze expectation', () => {
   })
 
   it('expects a table after IF EXISTS', () => {
-    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('tableName')
     expect(caretAtEnd('DROP TABLE IF EXISTS ').relations).toEqual([])
     expect(caretAtEnd('DROP TABLE IF EXISTS orders ').relations).toEqual([{ table: 'orders' }])
-    expect(caretAtEnd('DROP VIEW IF EXISTS ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP VIEW IF EXISTS ').expectation).toBe('tableName')
   })
 
   it('expects table options after a CREATE TABLE body', () => {
@@ -514,8 +514,8 @@ describe('analyze statement continuation tails', () => {
 
   it('points SHOW tails at their targets', () => {
     expect(caretAtEnd('SHOW CREATE DATABASE ').expectation).toBe('database')
-    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
-    expect(caretAtEnd('SHOW CREATE VIEW ').expectation).toBe('relation')
+    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('tableName')
+    expect(caretAtEnd('SHOW CREATE VIEW ').expectation).toBe('tableName')
     expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('database')
     expect(caretAtEnd('SHOW TABLES ').expectation).toBe('number')
     expect(caretAtEnd('SHOW COLUMNS FROM orders ').expectation).toBe('name')
@@ -556,7 +556,7 @@ describe('analyze DDL and tail leftovers', () => {
   it('expects a statement after a CTE or CREATE VIEW header', () => {
     expect(caretAtEnd('WITH x AS (SELECT 1) ').expectation).toBe('statement')
     expect(caretAtEnd('CREATE VIEW v AS ').expectation).toBe('statement')
-    expect(caretAtEnd('CREATE TABLE t LIKE ').expectation).toBe('relation')
+    expect(caretAtEnd('CREATE TABLE t LIKE ').expectation).toBe('tableName')
   })
 
   it('handles EXPLAIN format and names-only DDL', () => {
@@ -654,7 +654,7 @@ describe('analyze grouping, insert and table tails', () => {
   it('expects the GROUP BY tail after a grouped column', () => {
     expect(caretAtEnd('SELECT * FROM orders GROUP BY status ').expectation).toBe('groupTail')
     expect(caretAtEnd('SELECT * FROM orders GROUP BY status WITH ROLLUP ').expectation).toBe(
-      'groupTail',
+      'rollupTail',
     )
     expect(caretAtEnd('SELECT * FROM orders GROUP BY status, ').expectation).toBe('column')
     expect(caretAtEnd('SELECT * FROM orders ORDER BY total ').expectation).toBe('direction')
@@ -677,7 +677,7 @@ describe('analyze grouping, insert and table tails', () => {
   it('names the SHOW database and quiets completed SHOW tails', () => {
     expect(caretAtEnd('SHOW TABLES IN ').expectation).toBe('database')
     expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('database')
-    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('tableName')
     expect(caretAtEnd('SHOW CREATE TABLE orders ').expectation).toBe('name')
   })
 
@@ -685,14 +685,14 @@ describe('analyze grouping, insert and table tails', () => {
     expect(caretAtEnd('DROP TABLE orders ').expectation).toBe('number')
     expect(caretAtEnd('TRUNCATE TABLE orders ').expectation).toBe('number')
     expect(caretAtEnd('RENAME TABLE orders TO ').expectation).toBe('name')
-    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('relation')
-    expect(caretAtEnd('DROP TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('tableName')
+    expect(caretAtEnd('DROP TABLE ').expectation).toBe('tableName')
   })
 
   it('quiets a CREATE INDEX column list once it closes', () => {
     expect(caretAtEnd('CREATE INDEX idx ON orders (id) ').expectation).toBe('number')
     expect(caretAtEnd('CREATE INDEX idx ON orders (').expectation).toBe('column')
-    expect(caretAtEnd('CREATE INDEX idx ON ').expectation).toBe('relation')
+    expect(caretAtEnd('CREATE INDEX idx ON ').expectation).toBe('tableName')
   })
 })
 
@@ -894,9 +894,9 @@ describe('analyze CREATE names and ALTER column tails', () => {
   })
 
   it('treats DROP VIEW and bare TRUNCATE like DROP TABLE', () => {
-    expect(caretAtEnd('DROP VIEW ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP VIEW ').expectation).toBe('tableName')
     expect(caretAtEnd('TRUNCATE ').expectation).toBe('relation')
-    expect(caretAtEnd('TRUNCATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('TRUNCATE TABLE ').expectation).toBe('tableName')
   })
 
   it('follows ALTER TABLE column renames and changes', () => {
@@ -985,5 +985,44 @@ describe('analyze VALUES tuples, index tails and window names', () => {
   it('stays quiet after a SHOW LIKE pattern', () => {
     expect(caretAtEnd('SHOW VARIABLES LIKE ').expectation).toBe('name')
     expect(caretAtEnd("SHOW VARIABLES LIKE 'max%' ").expectation).toBe('number')
+  })
+})
+
+describe('analyze relation name and literal tails', () => {
+  it('names an existing table without clause keywords', () => {
+    for (const statement of [
+      'ANALYZE TABLE ',
+      'OPTIMIZE TABLE ',
+      'CHECK TABLE ',
+      'REPAIR TABLE ',
+      'TRUNCATE TABLE ',
+      'DROP TABLE ',
+      'DROP VIEW ',
+      'RENAME TABLE ',
+      'LOCK TABLES ',
+      'SHOW CREATE TABLE ',
+      'SHOW CREATE VIEW ',
+    ]) {
+      expect(caretAtEnd(statement).expectation).toBe('tableName')
+    }
+    expect(caretAtEnd('DROP TABLE orders, ').expectation).toBe('tableName')
+    expect(caretAtEnd('DROP TABLE orders ').expectation).toBe('number')
+  })
+
+  it('quiets positions that take only user text', () => {
+    expect(caretAtEnd('SELECT * FROM orders INTO OUTFILE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders INTO DUMPFILE ').expectation).toBe('number')
+    expect(caretAtEnd('PREPARE stmt FROM ').expectation).toBe('number')
+    expect(caretAtEnd('UNLOCK TABLES ').expectation).toBe('number')
+  })
+
+  it('quietly continues after WITH ROLLUP', () => {
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status WITH ROLLUP ').expectation).toBe(
+      'rollupTail',
+    )
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status ').expectation).toBe('groupTail')
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status WITH ROLLUP HAVING ').expectation).toBe(
+      'column',
+    )
   })
 })

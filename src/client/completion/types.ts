@@ -50,6 +50,7 @@ export interface CompletionRelation {
 /** Which kind of name the caret position expects. */
 export type CompletionExpectation =
   | 'relation'
+  | 'tableName'
   | 'column'
   | 'schema'
   | 'alias'
@@ -72,6 +73,7 @@ export type CompletionExpectation =
   | 'orderTail'
   | 'expressionTail'
   | 'groupTail'
+  | 'rollupTail'
   | 'insertTail'
   | 'insertSource'
   | 'joinTail'

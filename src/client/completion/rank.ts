@@ -107,6 +107,8 @@ const KEYWORD_PRIORITY: Record<CompletionKind, number> = {
 const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> = {
   any: ANY_PRIORITY,
   relation: RELATION_PRIORITY,
+  // A DDL statement takes an existing table, so only catalog rows are listed.
+  tableName: RELATION_PRIORITY,
   column: COLUMN_PRIORITY,
   schema: SCHEMA_PRIORITY,
   alias: ALIAS_PRIORITY,
@@ -132,6 +134,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   orderTail: KEYWORD_PRIORITY,
   expressionTail: KEYWORD_PRIORITY,
   groupTail: KEYWORD_PRIORITY,
+  rollupTail: KEYWORD_PRIORITY,
   insertTail: KEYWORD_PRIORITY,
   insertSource: KEYWORD_PRIORITY,
   joinTail: KEYWORD_PRIORITY,

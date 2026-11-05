@@ -322,3 +322,9 @@ describe('index method words', () => {
     expect(names(keywordCompletions('indexMethod', 'generic'))).toEqual(['BTREE', 'HASH'])
   })
 })
+
+describe('rollup tail words', () => {
+  it('drops WITH after an explicit ROLLUP', () => {
+    expect(names(keywordCompletions('rollupTail', 'generic'))).toEqual(['HAVING', 'ORDER', 'LIMIT'])
+  })
+})

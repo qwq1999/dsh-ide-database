@@ -475,6 +475,16 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
     candidates = await qualifiedCandidates(request, qualifier, relations, analysis.cteRelations ?? [])
   } else {
     switch (expectation) {
+      case 'tableName': {
+        // A DDL statement names an existing table; clause keywords make no
+        // sense in that position.
+        const [tables, schemas] = await Promise.all([
+          tableCandidatesOf(request, request.schema),
+          schemaNamesOf(request),
+        ])
+        candidates = [...tables, ...schemas]
+        break
+      }
       case 'relation': {
         const [tables, schemas] = await Promise.all([
           tableCandidatesOf(request, request.schema),
@@ -601,6 +611,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'orderTail':
       case 'expressionTail':
       case 'groupTail':
+      case 'rollupTail':
       case 'insertTail':
       case 'insertSource':
       case 'joinTail': {

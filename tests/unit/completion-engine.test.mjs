@@ -747,7 +747,7 @@ describe('complete DDL tails', () => {
       schema: 'shop',
       catalog,
     })
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(result.analysis.relations).toEqual([])
     expect(names(result)[0]).toBe('orders')
     expect(catalog.calls.tables).toContain('shop')
@@ -794,7 +794,7 @@ describe('complete CREATE INDEX', () => {
       schema: 'shop',
       catalog,
     })
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)).toContain('orders')
     expect(result.items.some((item) => item.kind === 'table')).toBe(true)
   })
@@ -1010,7 +1010,7 @@ describe('complete statement continuation positions', () => {
   it('offers tables for SHOW CREATE TABLE', async () => {
     const catalog = createCatalog()
     const result = await complete({ ...request('SHOW CREATE TABLE '), catalog })
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)).toContain('orders')
     expect(catalog.calls.tables.length).toBeGreaterThan(0)
   })
@@ -1061,7 +1061,7 @@ describe('complete DDL and tail leftovers', () => {
   it('offers source tables for CREATE TABLE ... LIKE', async () => {
     const catalog = createCatalog()
     const result = await complete({ ...request('CREATE TABLE t LIKE '), catalog })
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)).toContain('orders')
     expect(catalog.calls.tables.length).toBeGreaterThan(0)
   })
@@ -1486,7 +1486,7 @@ describe('complete CREATE names and ALTER column tails', () => {
   it('keeps DROP VIEW a relation list', async () => {
     const req = request('DROP VIEW ')
     const result = await complete(req)
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)[0]).toBe('orders')
     expect(req.catalog.calls.tables).toContain('shop')
   })
@@ -1597,5 +1597,62 @@ describe('complete VALUES, index and window-name tails', () => {
     expect(result.analysis.expectation).toBe('number')
     expect(result.items).toEqual([])
     expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
+
+describe('complete relation name and literal tails', () => {
+  it('offers only catalog rows for a DDL table name', async () => {
+    for (const statement of [
+      'ANALYZE TABLE ',
+      'TRUNCATE TABLE ',
+      'DROP TABLE ',
+      'SHOW CREATE TABLE ',
+    ]) {
+      const catalog = createCatalog()
+      const result = await complete({
+        statement,
+        caret: statement.length,
+        dialect: 'mysql',
+        schema: 'shop',
+        catalog,
+      })
+      expect(result.analysis.expectation).toBe('tableName')
+      expect(names(result)).toContain('orders')
+      expect(names(result)).not.toContain('WHERE')
+      expect(result.items.some((item) => item.kind === 'keyword')).toBe(false)
+    }
+  })
+
+  it('stays quiet where only user text fits', async () => {
+    const catalog = createCatalog()
+    for (const statement of [
+      'SELECT * FROM orders INTO OUTFILE ',
+      'PREPARE stmt FROM ',
+      'UNLOCK TABLES ',
+    ]) {
+      const result = await complete({
+        statement,
+        caret: statement.length,
+        dialect: 'mysql',
+        schema: 'shop',
+        catalog,
+      })
+      expect(result.analysis.expectation).toBe('number')
+      expect(result.items).toEqual([])
+    }
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers the clauses left after WITH ROLLUP', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'SELECT * FROM orders GROUP BY status WITH ROLLUP ',
+      caret: 50,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('rollupTail')
+    expect(names(result)).toEqual(['HAVING', 'ORDER', 'LIMIT'])
   })
 })
