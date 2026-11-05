@@ -1527,3 +1527,26 @@ describe('analyze function lengths and statement tails', () => {
     expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN total INT COMMENT ').expectation).toBe('name')
   })
 })
+
+
+describe('analyze JSON_TABLE columns and multi-table UPDATE', () => {
+  it('stages the JSON_TABLE column definitions', () => {
+    expect(caretAtEnd("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (").expectation).toBe('name')
+    expect(caretAtEnd("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id ").expectation).toBe('columnType')
+    expect(caretAtEnd("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id, ").expectation).toBe('name')
+    expect(caretAtEnd("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id INT ").expectation).toBe('number')
+    expect(caretAtEnd("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id INT) ").expectation).toBe('number')
+  })
+
+  it('stays quiet after a dropped column name', () => {
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN total ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN total, ').expectation).toBe('number')
+  })
+
+  it('collects both tables of a comma UPDATE', () => {
+    const analysis = caretAtEnd('UPDATE orders o, customers c SET ')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations.map((relation) => relation.alias)).toEqual(['o', 'c'])
+  })
+})

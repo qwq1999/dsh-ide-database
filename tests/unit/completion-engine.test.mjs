@@ -2294,3 +2294,28 @@ describe('complete function lengths and statement tails', () => {
     expect(names(result)).toContain('DEFAULT')
   })
 })
+
+
+describe('complete JSON_TABLE and multi-table update positions', () => {
+  it('stages JSON_TABLE columns', async () => {
+    const quiet = request("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (")
+    expect((await complete(quiet)).items).toEqual([])
+    expect(quiet.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    const typed = request("SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id ")
+    const result = await complete(typed)
+    expect(result.analysis.expectation).toBe('columnType')
+    expect(names(result)).toContain('INT')
+    expect(typed.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet after a dropped column name', async () => {
+    expect((await complete(request('ALTER TABLE orders DROP COLUMN total '))).items).toEqual([])
+  })
+
+  it('offers columns of every table in a comma UPDATE', async () => {
+    const req = request('UPDATE orders o, customers c SET ')
+    const result = await complete(req)
+    expect(names(result)).toContain('name')
+    expect(req.catalog.calls.columns).toContain('shop.customers')
+  })
+})

@@ -1563,6 +1563,52 @@ function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTai
   return undefined
 }
 
+/** `ALTER TABLE … DROP COLUMN name ` already named the column. */
+function alterDropColumnTail(tokens: readonly Token[]): boolean {
+  const start = alterTableStart(tokens)
+  if (start < 0) return false
+  if (tokens[start]?.text.toLowerCase() !== 'drop') return false
+  if (tokens[start + 1]?.text.toLowerCase() !== 'column') return false
+  return tokens.length > start + 2
+}
+
+/** `JSON_TABLE(… COLUMNS (` defines columns like a CREATE TABLE body. */
+function jsonTableColumnStage(
+  tokens: readonly Token[],
+): 'name' | 'columnType' | 'number' | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('json_table')) return undefined
+  const columnsIndex = words.lastIndexOf('columns')
+  if (columnsIndex < 0) return undefined
+  let open = -1
+  let depth = 0
+  for (let index = columnsIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      if (open < 0) open = index
+    } else if (token.text === ')') {
+      depth -= 1
+      if (depth === 0) return 'number'
+    }
+  }
+  if (open < 0) return undefined
+  depth = 1
+  let segment = open + 1
+  for (let index = open + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+    else if (token.text === ',' && depth === 1) segment = index + 1
+  }
+  const rest = tokens.slice(segment)
+  if (rest.length === 0) return 'name'
+  if (rest.length === 1 && rest[0]?.kind === 'ident') return 'columnType'
+  return 'number'
+}
+
 /** Inside a `CREATE TABLE` body: a column option takes a literal or a name. */
 function createColumnOption(
   tokens: readonly Token[],
@@ -2464,6 +2510,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
   if (columnLength(tokens)) return 'number'
+  if (alterDropColumnTail(tokens)) return 'number'
+  const jsonColumn = jsonTableColumnStage(tokens)
+  if (jsonColumn !== undefined) return jsonColumn
   const columnOption = createColumnOption(tokens)
   if (columnOption !== undefined) return columnOption
   const alterColumnSetting = alterColumnOption(tokens)
@@ -3109,8 +3158,9 @@ function collectRelations(
     if (parsed !== null) {
       push(parsed.relation)
       cursor = parsed.next
-      // A FROM clause may list several relations separated by commas.
-      if (token.lower === 'from') {
+      // A FROM clause or a multi-table UPDATE may list several relations
+      // separated by commas.
+      if (token.lower === 'from' || token.lower === 'update') {
         for (;;) {
           const comma = tokens[cursor]
           if (comma === undefined || comma.kind !== 'punct' || comma.text !== ',') break
