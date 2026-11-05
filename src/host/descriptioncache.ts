@@ -91,7 +91,11 @@ export class DescriptionCache {
     this.append(connectionId, JSON.stringify({ s: schema, t: table, [ENTRY_PREFIX]: entry }))
   }
 
-  /** Bulk import from the old single-file cache; writes a compact log at once. */
+  /**
+   * Bulk import from the old single-file cache; writes a compact log at once.
+   *
+   * TODO(0.5.0): 只服务于旧版缓存迁移，发布 0.5.0 时随 StructureStore.migrateDescriptions 一起删除。
+   */
   import(connectionId: string, descriptions: Record<string, TableDescription>): void {
     const map = this.ensure(connectionId)
     for (const [key, description] of Object.entries(descriptions)) {
