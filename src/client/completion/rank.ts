@@ -129,6 +129,8 @@ export interface RankOptions {
   recent?: readonly string[]
   /** Pick counts keyed by lower-cased name; often-used names float up. */
   frequency?: Readonly<Record<string, number>>
+  /** Per-kind maxima, so one crowded kind cannot fill the whole popup. */
+  limits?: Partial<Record<CompletionKind, number>>
 }
 
 const MATCH_WEIGHT = 10_000
@@ -175,7 +177,20 @@ export function rankCandidates(
     scored.push({ item, score, order })
   })
   scored.sort((left, right) => left.score - right.score || left.order - right.order)
-  return scored.slice(0, limit).map((entry) => ({ ...entry.item, score: entry.score }))
+  const limits = options.limits
+  const picked: typeof scored = []
+  const counts = new Map<CompletionKind, number>()
+  for (const entry of scored) {
+    if (limits !== undefined) {
+      const max = limits[entry.item.kind]
+      const used = counts.get(entry.item.kind) ?? 0
+      if (max !== undefined && used >= max) continue
+      counts.set(entry.item.kind, used + 1)
+    }
+    picked.push(entry)
+    if (picked.length >= limit) break
+  }
+  return picked.map((entry) => ({ ...entry.item, score: entry.score }))
 }
 
 /** Convenience wrapper: ranked candidates without their scores. */

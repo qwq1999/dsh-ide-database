@@ -14,6 +14,16 @@ describe('keywordCompletions', () => {
     expect(new Set(SQL_KEYWORDS).size).toBe(SQL_KEYWORDS.length)
   })
 
+  it('leads the generic popup with the words every statement needs', () => {
+    expect(SQL_KEYWORDS.slice(0, 2)).toEqual(['SELECT', 'FROM'])
+  })
+
+  it('offers FROM where a select list ends', () => {
+    for (const dialect of ['generic', 'mysql']) {
+      expect(names(keywordCompletions('column', dialect)), dialect).toContain('FROM')
+    }
+  })
+
   it('adds the MySQL-only words on MySQL connections', () => {
     const words = names(keywordCompletions('any', 'mysql'))
     expect(words).toContain('STRAIGHT_JOIN')

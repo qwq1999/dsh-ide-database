@@ -59,8 +59,13 @@ const RELATION_WORDS = [
   'AS',
 ] as const
 
-/** Keywords that continue an expression (SELECT list, WHERE, ON, ...). */
+/**
+ * Keywords that continue an expression (SELECT list, WHERE, ON, ...). `FROM`
+ * leads: a select list ends by offering it, and the popup caps its rows, so a
+ * word inserted late in this list may never be displayed.
+ */
 const EXPRESSION_WORDS = [
+  'FROM',
   'AND',
   'OR',
   'NOT',
@@ -161,15 +166,23 @@ export function isKeyword(word: string): boolean {
   return RESERVED.has(word.toLowerCase())
 }
 
-/** Extra words the generic popup offers although no clause pins them. */
-const LOOSE_WORDS = ['FROM'] as const
+/**
+ * Clause words the generic popup leads with: they are the most common next
+ * steps and must survive the popup's item cap on large schemas.
+ */
+const CLAUSE_WORDS = ['SELECT', 'FROM', 'WHERE'] as const
 
 /**
  * Every keyword the popup can offer when the caret position does not pin a
- * clause: statement starters, words that follow a relation, words that
- * continue an expression, plus a few connector words.
+ * clause: the leading clause words, statement starters, words that follow a
+ * relation, and words that continue an expression.
  */
-const ANY_WORDS = [...STATEMENT_WORDS, ...RELATION_WORDS, ...EXPRESSION_WORDS, ...LOOSE_WORDS] as const
+const ANY_WORDS = [
+  ...CLAUSE_WORDS,
+  ...STATEMENT_WORDS,
+  ...RELATION_WORDS,
+  ...EXPRESSION_WORDS,
+] as const
 
 function uniqueWords(words: readonly string[]): string[] {
   const seen = new Set<string>()

@@ -314,4 +314,60 @@ describe('console completion integration', () => {
     expect(names().slice(0, 3)).toEqual(['id', 'name', 'email'])
     expect(details().slice(0, 3)).toEqual(['INT', 'VARCHAR', 'VARCHAR'])
   })
+
+  it('keeps keywords reachable when the schema has hundreds of tables', async () => {
+    mocks.objects.mockResolvedValue({
+      objects: Array.from({ length: 200 }, (_, index) => ({ name: `业务表_${index}`, kind: 'table' })),
+    })
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, '')
+    completeAt(area)
+
+    await screen.findByRole('listbox', { name: '补全候选' })
+    // A big table list must not eat every row of the capped popup: the words
+    // that start the next clause have to stay reachable.
+    expect(names()).toContain('FROM')
+    expect(kinds()).toContain('关键字')
+  })
+
+  it('offers FROM at the end of a select list', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, 'SELECT * ')
+    completeAt(area)
+
+    await screen.findByRole('listbox', { name: '补全候选' })
+    expect(names()).toContain('FROM')
+  })
+
+  it('recomputes the popup when the caret reaches a new clause', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, 'SELECT * ')
+    completeAt(area)
+    await screen.findByRole('listbox', { name: '补全候选' })
+
+    // Type `from` and press space one character at a time while the popup from
+    // the empty context is still open: the paused list must be replaced with
+    // the tables the new clause can hold.
+    for (const text of ['SELECT * f', 'SELECT * fr', 'SELECT * fro', 'SELECT * from', 'SELECT * from ']) {
+      typeSql(area, text)
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 140))
+      })
+    }
+
+    await waitFor(() => expect(names()).toContain('orders'), { timeout: 2000 })
+    expect(kinds().slice(0, 2)).toEqual(['表', '表'])
+  })
 })

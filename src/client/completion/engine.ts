@@ -26,6 +26,8 @@ import { quotedIdentifier } from './edit'
 import type {
   Analysis,
   Completion,
+  CompletionExpectation,
+  CompletionKind,
   CompletionRelation,
   CompletionRequest,
   CompletionResult,
@@ -39,6 +41,18 @@ const MAX_JOIN_OWNERS = 3
 
 /** Max JOIN suggestions; they go before the plain table candidates. */
 const MAX_JOIN_SUGGESTIONS = 3
+
+/**
+ * Caps per kind: on a big schema the table, column or function list alone would
+ * fill the popup and hide every keyword, so each provider leaves room for the
+ * others. The overall popup limit stays 60.
+ */
+const KIND_LIMITS: Partial<Record<CompletionExpectation, Partial<Record<CompletionKind, number>>>> = {
+  any: { table: 30 },
+  relation: { table: 45 },
+  alias: { table: 45 },
+  column: { function: 25 },
+}
 
 /** Keywords that open a relation position. */
 const RELATION_VERBS: ReadonlySet<string> = new Set(['from', 'join', 'update', 'into', 'table'])
@@ -508,10 +522,12 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   }
 
   if (request.signal?.aborted) throw abortError()
+  const limits = KIND_LIMITS[expectation]
   const items = rank(candidates, analysis.word.prefix, 60, {
     priorities,
     recent: request.recent,
     frequency: request.frequency,
+    ...(limits === undefined ? {} : { limits }),
   })
   return { items, analysis }
 }

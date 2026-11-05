@@ -113,4 +113,14 @@ describe('rank', () => {
     expect(ranked[0]).toEqual({ name: 'orders', kind: 'table', score: 100 })
     expect(rank([candidate('orders', 'table')], 'ord')).toEqual([{ name: 'orders', kind: 'table' }])
   })
+
+  it('caps a crowded kind so the other kinds stay reachable', () => {
+    const items = [
+      ...Array.from({ length: 40 }, (_, index) => candidate(`t${index}`, 'table')),
+      candidate('FROM', 'keyword'),
+    ]
+    const ranked = rankCandidates(items, '', 10, { limits: { table: 3 } })
+    expect(ranked.filter((item) => item.kind === 'table')).toHaveLength(3)
+    expect(ranked.map((item) => item.name)).toEqual(['t0', 't1', 't2', 'FROM'])
+  })
 })

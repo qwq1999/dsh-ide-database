@@ -493,13 +493,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const autoComplete = useConsoleAutoComplete()
   /** Set by the editor when the last change typed exactly one character. */
   const autoCompletePending = useRef(false)
+  /** Statement/caret the open popup was fetched for. */
+  const suggestionSnapshot = useRef<{ statement: string; caret: number } | null>(null)
   const closeSuggestions = useCallback(() => setSuggestions(null), [])
   usePopoverDismiss(suggestions !== null, closeSuggestions, completionAnchor)
 
   const suggestionPrefix = wordAtCaret(statement, caretPos).prefix
-  // The engine already ranked the list for the prefix it was asked about; while
-  // the popup stays open we only narrow it locally, so typing never fires a
-  // metadata read per keystroke.
+  // The engine ranked the list for the prefix it was asked about; typing narrows
+  // it locally for an instant response, and the debounced refresh below replaces
+  // it with a list fetched for the caret's new clause once the user pauses.
   const suggestionItems =
     suggestions === null
       ? []
@@ -557,6 +559,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         result.analysis.word.prefix,
       )
       setSuggestionIndex(0)
+      suggestionSnapshot.current = { statement, caret: caretPos }
       setSuggestions(result.items)
     } catch (error) {
       if (request !== completionRequest.current || controller.signal.aborted) return
@@ -591,12 +594,19 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 
   // Typing opens the popup once the user pauses briefly; another keystroke
   // restarts the timer so the fetched list matches the text that triggered it.
+  // While the popup is open the same pause re-runs the request when the text or
+  // caret moved on, so a new clause (FROM, comma, space) gets its own names.
   useEffect(() => {
-    if (!autoComplete || !autoCompletePending.current) return
     if (suggestions !== null) {
       autoCompletePending.current = false
-      return
+      const fetched = suggestionSnapshot.current
+      if (fetched !== null && fetched.statement === statement && fetched.caret === caretPos) return
+      const refresh = window.setTimeout(() => {
+        void openSuggestions()
+      }, 120)
+      return () => window.clearTimeout(refresh)
     }
+    if (!autoComplete || !autoCompletePending.current) return
     const timer = window.setTimeout(() => {
       autoCompletePending.current = false
       void openSuggestions()
