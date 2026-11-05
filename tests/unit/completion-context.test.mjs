@@ -1819,3 +1819,54 @@ describe('analyze ALTER clause lists, partitions and CTE columns', () => {
     expect(caretAtEnd('WITH cte (a, ').expectation).toBe('name')
   })
 })
+
+describe('analyze materialized views, samples and conflicts', () => {
+  it('takes NOTHING or UPDATE after ON CONFLICT DO', () => {
+    expect(
+      caretAtEnd('INSERT INTO orders (id) VALUES (1) ON CONFLICT (id) DO ').expectation,
+    ).toBe('conflictAction')
+  })
+
+  it('walks the CREATE MATERIALIZED VIEW stages', () => {
+    expect(caretAtEnd('CREATE MATERIALIZED VIEW ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE MATERIALIZED VIEW mv ').expectation).toBe('viewTail')
+    expect(caretAtEnd('CREATE MATERIALIZED VIEW mv AS ').expectation).toBe('statement')
+    expect(
+      caretAtEnd('CREATE MATERIALIZED VIEW IF NOT EXISTS mv ').expectation,
+    ).toBe('viewTail')
+  })
+
+  it('names refreshed and dropped materialized views', () => {
+    expect(caretAtEnd('REFRESH MATERIALIZED VIEW ').expectation).toBe('tableName')
+    expect(caretAtEnd('REFRESH MATERIALIZED VIEW mv ').expectation).toBe('number')
+    expect(caretAtEnd('DROP MATERIALIZED VIEW ').expectation).toBe('tableName')
+    expect(caretAtEnd('DROP MATERIALIZED VIEW mv ').expectation).toBe('number')
+  })
+
+  it('takes a TABLESAMPLE method, then a literal', () => {
+    expect(caretAtEnd('SELECT * FROM orders TABLESAMPLE ').expectation).toBe('sampleMethod')
+    expect(caretAtEnd('SELECT * FROM orders TABLESAMPLE SYSTEM (').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders TABLESAMPLE ').relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('stays quiet for COMMENT ON values', () => {
+    expect(caretAtEnd('COMMENT ON COLUMN orders.id IS ').expectation).toBe('number')
+    expect(caretAtEnd('COMMENT ON TABLE orders IS ').expectation).toBe('number')
+    expect(caretAtEnd('COMMENT ON COLUMN ').expectation).toBe('tableName')
+  })
+
+  it('offers columns inside PIVOT', () => {
+    expect(caretAtEnd('SELECT * FROM orders PIVOT (').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders PIVOT (').relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('expects a statement after EXPLAIN option runs', () => {
+    expect(caretAtEnd('EXPLAIN ANALYZE VERBOSE ').expectation).toBe('statement')
+    expect(caretAtEnd('EXPLAIN (FORMAT JSON) ').expectation).toBe('statement')
+    expect(caretAtEnd('EXPLAIN ANALYZE SELECT * FROM orders ').expectation).not.toBe('statement')
+  })
+
+  it('treats LIMIT ALL as complete', () => {
+    expect(caretAtEnd('SELECT * FROM orders LIMIT ALL ').expectation).toBe('number')
+  })
+})

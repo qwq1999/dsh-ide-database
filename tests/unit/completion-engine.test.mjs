@@ -2675,3 +2675,74 @@ describe('complete ALTER lists, partitions and CTE columns', () => {
     expect(req.catalog.calls.schemas).toBe(0)
   })
 })
+
+describe('complete materialized views, samples and conflicts', () => {
+  it('offers NOTHING and UPDATE after ON CONFLICT DO', async () => {
+    const req = request('INSERT INTO orders (id) VALUES (1) ON CONFLICT (id) DO ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('conflictAction')
+    expect(names(result)).toEqual(['NOTHING', 'UPDATE'])
+    expect(req.catalog.calls.schemas).toBe(0)
+  })
+
+  it('walks the CREATE MATERIALIZED VIEW stages', async () => {
+    const named = request('CREATE MATERIALIZED VIEW ')
+    const first = await complete(named)
+    expect(first.analysis.expectation).toBe('name')
+    expect(first.items).toEqual([])
+    expect(named.catalog.calls.schemas).toBe(0)
+    const tail = await complete(request('CREATE MATERIALIZED VIEW mv '))
+    expect(tail.analysis.expectation).toBe('viewTail')
+    expect(names(tail)).toEqual(['AS'])
+    const body = await complete(request('CREATE MATERIALIZED VIEW mv AS '))
+    expect(body.analysis.expectation).toBe('statement')
+    expect(names(body)).toContain('SELECT')
+  })
+
+  it('names refreshed materialized views and then stays quiet', async () => {
+    const req = request('REFRESH MATERIALIZED VIEW ')
+    const listed = await complete(req)
+    expect(listed.analysis.expectation).toBe('tableName')
+    expect(names(listed)).toContain('orders')
+    const done = request('REFRESH MATERIALIZED VIEW mv ')
+    const result = await complete(done)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(done.catalog.calls.schemas).toBe(0)
+  })
+
+  it('offers sampling methods after TABLESAMPLE', async () => {
+    const result = await complete(request('SELECT * FROM orders TABLESAMPLE '))
+    expect(result.analysis.expectation).toBe('sampleMethod')
+    expect(names(result)).toEqual(['SYSTEM', 'BERNOULLI', 'RESERVOIR', 'ROW', 'PERCENT'])
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('stays quiet inside comment statements', async () => {
+    const req = request('COMMENT ON COLUMN orders.id IS ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.schemas).toBe(0)
+  })
+
+  it('offers PIVOT columns', async () => {
+    const result = await complete(request('SELECT * FROM orders PIVOT ('))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toEqual(expect.arrayContaining(['id', 'total', 'created_at']))
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('expects a statement after EXPLAIN options', async () => {
+    const result = await complete(request('EXPLAIN ANALYZE VERBOSE '))
+    expect(result.analysis.expectation).toBe('statement')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+
+  it('treats LIMIT ALL as complete', async () => {
+    const result = await complete(request('SELECT * FROM orders LIMIT ALL '))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})

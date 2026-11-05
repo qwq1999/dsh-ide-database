@@ -654,6 +654,95 @@ function ddlTableName(tokens: readonly Token[]): boolean {
   return false
 }
 
+/**
+ * `CREATE MATERIALIZED VIEW [IF NOT EXISTS] ` follows the same stages as a
+ * plain view: object name, then AS.
+ */
+function materializedViewTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create' || words[1] !== 'materialized' || words[2] !== 'view') {
+    return undefined
+  }
+  const rest = tokens.slice(3)
+  if (rest.length === 0) return 'name'
+  if (
+    rest.length === 3 &&
+    rest[0]?.text.toLowerCase() === 'if' &&
+    rest[1]?.text.toLowerCase() === 'not' &&
+    rest[2]?.text.toLowerCase() === 'exists'
+  ) {
+    return 'name'
+  }
+  if (words.indexOf('as', 3) >= 0) return undefined
+  return 'viewTail'
+}
+
+/** `REFRESH MATERIALIZED VIEW ` takes a view name, then nothing. */
+function materializedViewDone(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] === 'refresh' && words[1] === 'materialized' && words[2] === 'view') {
+    return words.length > 3
+  }
+  if (words[0] === 'drop' && words[1] === 'materialized' && words[2] === 'view') {
+    const rest = words.slice(3)
+    if (rest.length === 0) return false
+    if (rest.length === 2 && rest[0] === 'if' && rest[1] === 'exists') return false
+    return true
+  }
+  return false
+}
+
+/** `REFRESH MATERIALIZED VIEW ` still needs the view name. */
+function materializedViewOpen(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] === 'refresh' && words[1] === 'materialized' && words[2] === 'view') {
+    return words.length === 3
+  }
+  if (words[0] === 'drop' && words[1] === 'materialized' && words[2] === 'view') {
+    return words.length === 3 || (words.length === 5 && words[3] === 'if' && words[4] === 'exists')
+  }
+  return false
+}
+
+/** `COMMENT ON ... IS ` takes user text, not catalog names. */
+function commentOn(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'comment' || words[1] !== 'on') return undefined
+  if (words[words.length - 1] === 'is') return 'number'
+  if (words.length === 3) return 'tableName'
+  return 'number'
+}
+
+/** `TABLESAMPLE ` takes a sampling method, then a literal percentage. */
+function sampleTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('tablesample')) return undefined
+  return words[words.length - 1] === 'tablesample' ? 'sampleMethod' : 'number'
+}
+
+/** `INSERT … ON CONFLICT … DO ` takes NOTHING or UPDATE. */
+function conflictTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('on') || !words.includes('conflict') || !words.includes('do')) {
+    return undefined
+  }
+  return words[words.length - 1] === 'do' ? 'conflictAction' : undefined
+}
+
+/** `PIVOT (` opens an aggregate list, not a statement. */
+function pivotParen(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== '(') return false
+  return tokens[tokens.length - 2]?.text.toLowerCase() === 'pivot'
+}
+
+/** `LIMIT ALL ` is a complete limit. */
+function limitAll(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[words.length - 1] !== 'all') return false
+  return words.includes('limit') || words.includes('offset')
+}
+
 /** `CHECKSUM TABLE orders ` is done; nothing catalog-related comes next. */
 function checksumDone(tokens: readonly Token[]): boolean {
   return (
@@ -1131,22 +1220,52 @@ function explainStart(tokens: readonly Token[]): boolean {
   const first = tokens[0]
   if (first === undefined || first.text.toLowerCase() !== 'explain') return false
   if (tokens.length === 1) return true
-  const second = tokens[1] as Token
-  const secondText = second.text.toLowerCase()
-  if (tokens.length === 2 && secondText === 'analyze') return true
-  // `EXPLAIN FORMAT=TREE ` / `EXPLAIN FORMAT JSON ` still precede the statement,
-  // unless the explained statement has already started.
-  if (secondText !== 'format') return false
-  return !tokens.some(
-    (token) =>
-      token.kind === 'keyword' &&
-      (token.lower === 'select' ||
-        token.lower === 'insert' ||
-        token.lower === 'update' ||
-        token.lower === 'delete' ||
-        token.lower === 'with' ||
-        token.lower === 'table'),
-  )
+  const statementKeywords = new Set(['select', 'insert', 'update', 'delete', 'with', 'table'])
+  const optionWords = new Set([
+    'analyze',
+    'verbose',
+    'buffers',
+    'costs',
+    'settings',
+    'timing',
+    'summary',
+    'format',
+    'wal',
+    'generic_plan',
+  ])
+  let index = 1
+  while (index < tokens.length) {
+    const token = tokens[index] as Token
+    if (token.kind === 'keyword' && statementKeywords.has(token.lower ?? '')) return false
+    if (token.kind === 'keyword' && optionWords.has(token.lower ?? '')) {
+      index += 1
+      continue
+    }
+    if (token.kind === 'punct' && token.text === '(') {
+      let depth = 0
+      while (index < tokens.length) {
+        const inner = tokens[index] as Token
+        if (inner.kind === 'punct' && inner.text === '(') depth += 1
+        else if (inner.kind === 'punct' && inner.text === ')') {
+          depth -= 1
+          if (depth === 0) break
+        }
+        index += 1
+      }
+      index += 1
+      continue
+    }
+    if (token.kind === 'punct' && token.text === '=') {
+      index += 1
+      continue
+    }
+    if (token.kind === 'ident' || token.kind === 'number') {
+      index += 1
+      continue
+    }
+    return false
+  }
+  return true
 }
 
 /** `UNION ` / `UNION ALL ` start another SELECT, not a table list. */
@@ -1178,6 +1297,7 @@ function createViewAs(tokens: readonly Token[]): boolean {
   const words = tokens.map((token) => token.text.toLowerCase())
   if (words[0] !== 'create' || words[words.length - 1] !== 'as') return false
   const object = words[1] === 'or' ? words[3] : words[1]
+  if (object === 'materialized') return words[2] === 'view'
   return object === 'view' || object === 'trigger' || object === 'event'
 }
 
@@ -3013,6 +3133,17 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // CHARACTER SET helper above cannot see it.
   if (convertUsing(tokens)) return 'charset'
   if (alterDatabaseDone(tokens)) return 'number'
+  const comment = commentOn(tokens)
+  if (comment !== undefined) return comment
+  const materialized = materializedViewTail(tokens)
+  if (materialized !== undefined) return materialized
+  if (materializedViewOpen(tokens)) return 'tableName'
+  if (materializedViewDone(tokens)) return 'number'
+  if (pivotParen(tokens)) return 'column'
+  const sample = sampleTail(tokens)
+  if (sample !== undefined) return sample
+  const conflict = conflictTail(tokens)
+  if (conflict !== undefined) return conflict
   // Partition definitions carry literals, and index names are not catalog
   // objects this engine can list.
   if (partitionCount(tokens)) return 'number'
@@ -3175,6 +3306,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const admin = adminTail(tokens)
   if (admin !== undefined) return admin
   if (limitCount(tokens)) return 'number'
+  if (limitAll(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
   const fetch = fetchTail(tokens)
   if (fetch !== undefined) return fetch
@@ -3281,6 +3413,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
  * never name a table alias.
  */
 const ALIAS_STOPWORDS = new Set([
+  'tablesample',
+  'pivot',
   'convert',
   'algorithm',
   'engine',

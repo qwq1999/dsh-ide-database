@@ -587,3 +587,22 @@ describe('insert on words', () => {
     expect(names(keywordCompletions('insertOn', 'mysql'))).toEqual(['DUPLICATE'])
   })
 })
+
+describe('conflict and sample words', () => {
+  it('offers ON CONFLICT actions', () => {
+    expect(names(keywordCompletions('conflictAction', 'generic'))).toEqual([
+      'NOTHING',
+      'UPDATE',
+    ])
+  })
+
+  it('offers TABLESAMPLE methods', () => {
+    expect(names(keywordCompletions('sampleMethod', 'generic'))).toEqual([
+      'SYSTEM',
+      'BERNOULLI',
+      'RESERVOIR',
+      'ROW',
+      'PERCENT',
+    ])
+  })
+})

@@ -84,6 +84,8 @@ export type CompletionExpectation =
   | 'insertTail'
   | 'insertSource'
   | 'insertOn'
+  | 'conflictAction'
+  | 'sampleMethod'
   | 'joinTail'
   | 'using'
   | 'over'

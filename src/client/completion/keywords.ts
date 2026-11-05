@@ -610,6 +610,12 @@ const ISOLATION_READ_WORDS = ['COMMITTED', 'UNCOMMITTED'] as const
 /** `ON ` after a complete INSERT ... SELECT names the duplicate-key clause. */
 const INSERT_ON_WORDS = ['DUPLICATE'] as const
 
+/** `ON CONFLICT ... DO ` takes NOTHING or UPDATE. */
+const CONFLICT_ACTION_WORDS = ['NOTHING', 'UPDATE'] as const
+
+/** `TABLESAMPLE ` takes a sampling method. */
+const SAMPLE_METHOD_WORDS = ['SYSTEM', 'BERNOULLI', 'RESERVOIR', 'ROW', 'PERCENT'] as const
+
 /** `ORDER BY ... NULLS ` direction. */
 const NULLS_WORDS = ['FIRST', 'LAST'] as const
 
@@ -793,6 +799,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return INSERT_SOURCE_WORDS
     case 'insertOn':
       return INSERT_ON_WORDS
+    case 'conflictAction':
+      return CONFLICT_ACTION_WORDS
+    case 'sampleMethod':
+      return SAMPLE_METHOD_WORDS
     case 'joinTail':
       return JOIN_TAIL_WORDS
     case 'privilege':
