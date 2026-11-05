@@ -50,6 +50,7 @@ import { applyCompletion, wordAtCaret, type Completion } from './complete'
 import { complete as completeRequest } from './completion/engine'
 import { matchScore } from './completion/rank'
 import { ConsoleCompletionCatalog } from './completion/catalog'
+import { logCompletionMetrics, recentCompletions, rememberCompletion } from './completionhistory'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -537,6 +538,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     const controller = new AbortController()
     completionAbort.current = controller
     const request = ++completionRequest.current
+    const started = performance.now()
     try {
       const result = await completeRequest({
         statement,
@@ -544,9 +546,15 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         dialect: connection.dialect,
         schema: target,
         catalog,
+        recent: recentCompletions(),
         signal: controller.signal,
       })
       if (request !== completionRequest.current) return
+      logCompletionMetrics(
+        Math.round(performance.now() - started),
+        result.items.length,
+        result.analysis.word.prefix,
+      )
       setSuggestionIndex(0)
       setSuggestions(result.items)
     } catch (error) {
@@ -567,6 +575,8 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setSelectedRun(false)
       setStatement(next.statement)
       setSuggestions(null)
+      // Expanded `*` and template snippets are not identifiers worth ranking.
+      if (picked.kind !== 'snippet' && picked.name !== '*') rememberCompletion(picked.name)
       setCaretPos(next.caret)
       setTimeout(() => {
         const area = inputRef.current

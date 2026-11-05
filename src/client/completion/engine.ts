@@ -22,6 +22,7 @@ import {
 } from './providers'
 import { prioritiesFor, rank } from './rank'
 import { tokenize } from './tokenizer'
+import { quotedIdentifier } from './edit'
 import type {
   Analysis,
   Completion,
@@ -265,14 +266,24 @@ async function joinCandidates(
   }
 }
 
-/** Columns of every relation mentioned before the caret, in statement order. */
-async function referencedColumns(
+/** Columns of one relation, kept together so `*` can expand them later. */
+interface RelationColumns {
+  relation: CompletionRelation
+  columns: readonly CatalogColumn[]
+}
+
+/**
+ * Columns of every relation mentioned before the caret, in statement order.
+ *
+ * Derived relations already carry their columns; only concrete tables need a
+ * catalog round-trip, and at most {@link MAX_COLUMN_RELATIONS} of them so a
+ * long FROM list cannot stall the popup.
+ */
+async function relationColumnLists(
   request: CompletionRequest,
   relations: readonly CompletionRelation[],
   currentSchema: string,
-): Promise<Completion[]> {
-  // Derived relations (CTEs, subqueries) already carry their columns; only the
-  // concrete tables without them need a catalog round-trip.
+): Promise<RelationColumns[]> {
   const targets: CompletionRelation[] = []
   for (const relation of relations) {
     if (relation.table === '' || relation.columns !== undefined) continue
@@ -281,33 +292,65 @@ async function referencedColumns(
   }
   const lists = await Promise.all(
     targets.map((relation) =>
-      columnCandidatesOf(request, relation.schema ?? currentSchema, relation.table),
+      load(
+        () => request.catalog.columns(relation.schema ?? currentSchema, relation.table),
+        request.signal,
+        [],
+      ),
     ),
   )
-  const fetched = new Map<CompletionRelation, Completion[]>()
+  const fetched = new Map<CompletionRelation, readonly CatalogColumn[]>()
   targets.forEach((relation, index) => {
     fetched.set(relation, lists[index] ?? [])
   })
+  return relations.map((relation) => {
+    if (relation.columns !== undefined) {
+      return { relation, columns: relation.columns.map((name) => ({ name })) }
+    }
+    if (relation.table === '') return { relation, columns: [] }
+    return { relation, columns: fetched.get(relation) ?? [] }
+  })
+}
 
+/** Deduplicated columns of every relation, in statement order. */
+function referencedColumns(lists: readonly RelationColumns[]): Completion[] {
   const seen = new Set<string>()
   const items: Completion[] = []
-  const push = (list: readonly Completion[]): void => {
-    for (const item of list) {
+  for (const { columns } of lists) {
+    for (const item of columnCandidates(columns)) {
       const key = item.name.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
       items.push(item)
     }
   }
-  for (const relation of relations) {
-    if (relation.columns !== undefined) {
-      push(columnCandidates(relation.columns.map((column) => ({ name: column }))))
-      continue
-    }
-    if (relation.table === '') continue
-    push(fetched.get(relation) ?? [])
-  }
   return items
+}
+
+/**
+ * `insert` text for the `*` candidate: the columns of every referenced
+ * relation, qualified with the alias (or table name) as soon as more than one
+ * relation is in play. Returns `undefined` when a relation's columns are
+ * unknown, so the popup keeps the plain `*` instead of inventing a list.
+ */
+function starExpansion(
+  lists: readonly RelationColumns[],
+  dialect: CompletionRequest['dialect'],
+): { insert: string; count: number } | undefined {
+  if (lists.length === 0) return undefined
+  const parts: string[] = []
+  for (const { relation, columns } of lists) {
+    if (columns.length === 0) return undefined
+    const alias = relation.alias !== undefined && relation.alias !== '' ? relation.alias : undefined
+    const bare = alias === undefined && lists.length === 1
+    const ref = alias ?? relation.table
+    if (!bare && ref === '') return undefined
+    for (const column of columns) {
+      const name = quotedIdentifier(column.name, dialect)
+      parts.push(bare ? name : `${quotedIdentifier(ref, dialect)}.${name}`)
+    }
+  }
+  return { insert: parts.join(', '), count: parts.length }
 }
 
 /** Find the relation a qualifier refers to, first by alias and then by name. */
@@ -405,13 +448,18 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         break
       }
       case 'column': {
-        const columns = await referencedColumns(request, relations, request.schema)
+        const lists = await relationColumnLists(request, relations, request.schema)
+        const expansion = starExpansion(lists, dialect)
         candidates = [
-          ...columns,
+          ...referencedColumns(lists),
           ...(relations.some(
             (relation) => relation.table !== '' || relation.columns !== undefined,
           )
-            ? [starCandidate()]
+            ? [
+                expansion === undefined
+                  ? starCandidate()
+                  : starCandidate(expansion.insert, expansion.count),
+              ]
             : []),
           ...functionCompletions(dialect),
           ...keywordCompletions('column', dialect),
@@ -460,6 +508,9 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   }
 
   if (request.signal?.aborted) throw abortError()
-  const items = rank(candidates, analysis.word.prefix, 60, { priorities })
+  const items = rank(candidates, analysis.word.prefix, 60, {
+    priorities,
+    recent: request.recent,
+  })
   return { items, analysis }
 }

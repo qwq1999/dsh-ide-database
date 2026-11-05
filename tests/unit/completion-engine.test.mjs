@@ -400,3 +400,50 @@ describe('complete JOIN suggestions', () => {
     expect(names(result)).toContain('orders')
   })
 })
+
+describe('complete * expansion', () => {
+  const star = (result) => result.items.find((item) => item.name === '*')
+
+  it('expands * to the columns of a single referenced table', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE '))
+    expect(star(result)).toMatchObject({
+      name: '*',
+      kind: 'column',
+      detail: '展开 3 列',
+      insert: 'id, total, created_at',
+    })
+  })
+
+  it('qualifies the expansion with the alias', async () => {
+    const result = await complete(request('SELECT * FROM orders o WHERE '))
+    expect(star(result)?.insert).toBe('o.id, o.total, o.created_at')
+  })
+
+  it('expands every joined relation with its own qualifier', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders o JOIN order_items i ON i.order_id = o.id WHERE '),
+    )
+    expect(star(result)?.insert).toBe(
+      'o.id, o.total, o.created_at, i.order_id, i.product_id',
+    )
+  })
+
+  it('keeps the plain * when a relation cannot be resolved', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders o JOIN missing m ON m.id = o.id WHERE '),
+    )
+    expect(star(result)).toEqual({ name: '*', kind: 'column', detail: '所有列' })
+  })
+})
+
+describe('complete ranking', () => {
+  it('floats a recently picked name above an equally good match', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE ', { recent: ['total'] }))
+    expect(result.items[0]?.name).toBe('total')
+  })
+
+  it('keeps catalog order when nothing was picked before', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE '))
+    expect(result.items[0]?.name).toBe('id')
+  })
+})

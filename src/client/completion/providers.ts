@@ -64,9 +64,16 @@ export function columnCandidates(columns: readonly CatalogColumn[]): Completion[
   return items
 }
 
-/** The `*` shorthand, offered after a relation has been established. */
-export function starCandidate(): Completion {
-  return { name: '*', kind: 'column', detail: '所有列' }
+/**
+ * The `*` shorthand, offered after a relation has been established.
+ *
+ * When the engine could resolve every referenced relation's columns it passes
+ * the expansion so picking `*` writes the column list, like an IDE does; the
+ * plain star stays the fallback for unknown metadata.
+ */
+export function starCandidate(insert?: string, count = 0): Completion {
+  if (insert === undefined) return { name: '*', kind: 'column', detail: '所有列' }
+  return { name: '*', kind: 'column', detail: `展开 ${count} 列`, insert }
 }
 
 /** Ready-to-use statement templates, only useful at the start of a statement. */

@@ -83,6 +83,15 @@ describe('catalog derived candidates', () => {
     expect(starCandidate()).toEqual({ name: '*', kind: 'column', detail: '所有列' })
   })
 
+  it('builds an expanding star candidate', () => {
+    expect(starCandidate('id, total', 2)).toEqual({
+      name: '*',
+      kind: 'column',
+      detail: '展开 2 列',
+      insert: 'id, total',
+    })
+  })
+
   it('labels CTE names as tables with a CTE hint', () => {
     expect(cteCandidates(['x', 'x', ''])).toEqual([
       { name: 'x', kind: 'table', detail: 'CTE' },

@@ -16,6 +16,11 @@ export type { WordAtCaret } from './types'
 const WORD = /[\p{L}\p{N}_$]/u
 const PLAIN = /^[A-Za-z_][A-Za-z0-9_]*$/u
 
+/** Quote `name` only when it is not a plain identifier for the dialect. */
+export function quotedIdentifier(name: string, dialect: ClientConnection['dialect']): string {
+  return PLAIN.test(name) ? name : quoteIdent(dialect, name)
+}
+
 function isWord(text: string | undefined): boolean {
   return text !== undefined && WORD.test(text)
 }

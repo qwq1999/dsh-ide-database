@@ -102,6 +102,8 @@ export interface CompletionRequest {
   /** Schema the console runs in; used for unqualified relations. */
   schema: string
   catalog: CompletionCatalog
+  /** Names picked recently, most recent first; used to break ranking ties. */
+  recent?: readonly string[]
   /** Cancels the request; `complete` then rejects with an `AbortError`. */
   signal?: AbortSignal
 }
