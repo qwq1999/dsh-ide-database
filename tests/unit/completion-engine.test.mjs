@@ -629,6 +629,62 @@ describe('complete ALTER TABLE objects', () => {
   })
 })
 
+describe('complete statement targets', () => {
+  it('offers tables after GRANT ... ON', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'GRANT SELECT ON ',
+      caret: 16,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)[0]).toBe('orders')
+    expect(catalog.calls.tables).toContain('shop')
+  })
+
+  it('offers tables after DESC', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'DESC ',
+      caret: 5,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('orders')
+  })
+
+  it('offers tables after DROP INDEX ... ON', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'DROP INDEX idx ON ',
+      caret: 18,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)[0]).toBe('orders')
+  })
+
+  it('offers the columns of the indexed table in ALTER TABLE ADD INDEX', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders ADD INDEX idx (',
+      caret: 34,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+    expect(catalog.calls.columns).toContain('shop.orders')
+  })
+})
+
 describe('complete CTE qualifiers', () => {
   it('offers the columns of a SELECT * CTE used as a qualifier', async () => {
     const catalog = createCatalog()

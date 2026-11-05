@@ -210,6 +210,63 @@ function createIndexOn(tokens: readonly Token[]): number {
   return -1
 }
 
+/** True when the caret follows the `ON` of a `GRANT`/`REVOKE` statement. */
+function grantTarget(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'keyword' || last.lower !== 'on') return false
+  const first = tokens[0]
+  if (first === undefined) return false
+  const start = first.text.toLowerCase()
+  return start === 'grant' || start === 'revoke'
+}
+
+/** `DESCRIBE ` / `DESC ` name a table, not a column. */
+function describesTable(tokens: readonly Token[]): boolean {
+  if (tokens.length !== 1) return false
+  const only = tokens[0] as Token
+  const lower = only.text.toLowerCase()
+  return lower === 'describe' || lower === 'desc'
+}
+
+/** `DROP INDEX idx ON ` names the table that owns the index. */
+function dropIndexOn(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'keyword' || last.lower !== 'on') return false
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'drop') return false
+  return tokens.some((token) => token.text.toLowerCase() === 'index')
+}
+
+/**
+ * True inside the parenthesis of `ALTER TABLE ... ADD INDEX/KEY name (...)`;
+ * that list holds columns, not column definitions.
+ */
+function alterIndexColumns(tokens: readonly Token[]): boolean {
+  const start = alterTableStart(tokens)
+  if (start < 0) return false
+  const action = tokens[start]
+  if (action === undefined || action.lower !== 'add') return false
+  const markers = new Set(['index', 'key', 'primary', 'unique', 'constraint', 'foreign', 'check'])
+  let marked = false
+  let index = start + 1
+  while (index < tokens.length) {
+    const token = tokens[index] as Token
+    const lower = token.text.toLowerCase()
+    if (markers.has(lower)) marked = true
+    if (token.kind === 'punct' && token.text === '(') break
+    index += 1
+  }
+  if (index >= tokens.length || !marked) return false
+  let depth = 0
+  for (let cursor = index; cursor < tokens.length; cursor += 1) {
+    const token = tokens[cursor] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+  }
+  return depth > 0
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -340,6 +397,7 @@ function createTableBodyTail(tokens: readonly Token[]): CompletionExpectation | 
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
+  if (alterIndexColumns(tokens)) return 'column'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -351,6 +409,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   }
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'relation'
+  if (grantTarget(tokens)) return 'relation'
+  if (describesTable(tokens)) return 'relation'
+  if (dropIndexOn(tokens)) return 'relation'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token

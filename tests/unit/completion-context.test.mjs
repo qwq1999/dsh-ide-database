@@ -155,6 +155,30 @@ describe('analyze expectation', () => {
     ])
   })
 
+  it('expects a table after GRANT or REVOKE ... ON', () => {
+    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('relation')
+    expect(caretAtEnd('GRANT ALL PRIVILEGES ON ').expectation).toBe('relation')
+    expect(caretAtEnd('REVOKE SELECT ON ').expectation).toBe('relation')
+    expect(caretAtEnd('SELECT * FROM orders JOIN customers ON ').expectation).toBe('column')
+  })
+
+  it('expects a table after DESCRIBE or DESC', () => {
+    expect(caretAtEnd('DESCRIBE ').expectation).toBe('relation')
+    expect(caretAtEnd('DESC ').expectation).toBe('relation')
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY id DESC ').expectation).toBe('column')
+  })
+
+  it('expects a table after DROP INDEX ... ON', () => {
+    expect(caretAtEnd('DROP INDEX idx ON ').expectation).toBe('relation')
+  })
+
+  it('expects columns in an ALTER TABLE index definition', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD INDEX idx (').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD UNIQUE KEY idx (id, ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD PRIMARY KEY (').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('definition')
+  })
+
   it('starts a statement inside subquery parentheses', () => {
     expect(caretAtEnd('WITH x AS (').expectation).toBe('keyword')
     expect(caretAtEnd('CREATE VIEW v AS (').expectation).toBe('keyword')
