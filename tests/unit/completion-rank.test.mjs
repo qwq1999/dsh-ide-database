@@ -94,6 +94,20 @@ describe('rank', () => {
     ])
   })
 
+  it('promotes frequently picked names', () => {
+    const items = [candidate('orders', 'table'), candidate('order_items', 'table')]
+    expect(
+      rank(items, 'order', 10, { frequency: { order_items: 3 } }).map((item) => item.name),
+    ).toEqual(['order_items', 'orders'])
+  })
+
+  it('never lets frequency outrank the kind priority', () => {
+    const items = [candidate('orders', 'keyword'), candidate('order_items', 'table')]
+    expect(
+      rank(items, 'order', 10, { frequency: { orders: 50 } }).map((item) => item.kind),
+    ).toEqual(['table', 'keyword'])
+  })
+
   it('keeps the score on ranked candidates only', () => {
     const ranked = rankCandidates([candidate('orders', 'table')], 'ord')
     expect(ranked[0]).toEqual({ name: 'orders', kind: 'table', score: 100 })

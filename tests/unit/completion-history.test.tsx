@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   completionDebugEnabled,
+  completionFrequency,
   logCompletionMetrics,
   recentCompletions,
   rememberCompletion,
 } from '../../src/client/completionhistory'
 
 const HISTORY_KEY = 'dsh-ide-database:completion-history'
+const FREQUENCY_KEY = 'dsh-ide-database:completion-frequency'
 const DEBUG_KEY = 'dsh-ide-database:completion-debug'
 
 describe('completion history', () => {
@@ -50,6 +52,36 @@ describe('completion history', () => {
     expect(names).toHaveLength(100)
     expect(names[0]).toBe('name-119')
     expect(names).not.toContain('*')
+  })
+
+  it('counts picks per name, case-insensitively', () => {
+    expect(completionFrequency()).toEqual({})
+    rememberCompletion('Orders')
+    rememberCompletion('orders')
+    rememberCompletion('total')
+
+    expect(completionFrequency()).toEqual({ orders: 2, total: 1 })
+  })
+
+  it('ignores corrupt frequency entries', () => {
+    localStorage.setItem(FREQUENCY_KEY, '[1, 2]')
+    expect(completionFrequency()).toEqual({})
+
+    localStorage.setItem(
+      FREQUENCY_KEY,
+      JSON.stringify({ orders: 'many', total: -2, id: 3, '': 1 }),
+    )
+    expect(completionFrequency()).toEqual({ id: 3 })
+  })
+
+  it('keeps the most picked names when the frequency map is full', () => {
+    for (let index = 0; index < 220; index += 1) rememberCompletion(`name-${index}`)
+    rememberCompletion('hot')
+    rememberCompletion('hot')
+
+    const counts = completionFrequency()
+    expect(Object.keys(counts).length).toBeLessThanOrEqual(200)
+    expect(counts.hot).toBe(2)
   })
 
   it('starts with the debug log off', () => {

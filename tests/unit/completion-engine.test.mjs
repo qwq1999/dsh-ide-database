@@ -442,6 +442,11 @@ describe('complete ranking', () => {
     expect(result.items[0]?.name).toBe('total')
   })
 
+  it('floats a frequently picked name above an equally good match', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE ', { frequency: { total: 2 } }))
+    expect(result.items[0]?.name).toBe('total')
+  })
+
   it('keeps catalog order when nothing was picked before', async () => {
     const result = await complete(request('SELECT * FROM orders WHERE '))
     expect(result.items[0]?.name).toBe('id')

@@ -50,7 +50,7 @@ import { applyCompletion, wordAtCaret, type Completion } from './complete'
 import { complete as completeRequest } from './completion/engine'
 import { matchScore } from './completion/rank'
 import { ConsoleCompletionCatalog } from './completion/catalog'
-import { logCompletionMetrics, recentCompletions, rememberCompletion } from './completionhistory'
+import { logCompletionMetrics, recentCompletions, completionFrequency, rememberCompletion } from './completionhistory'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -547,6 +547,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         schema: target,
         catalog,
         recent: recentCompletions(),
+        frequency: completionFrequency(),
         signal: controller.signal,
       })
       if (request !== completionRequest.current) return

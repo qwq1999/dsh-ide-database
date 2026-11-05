@@ -8,9 +8,14 @@
  */
 
 const STORAGE_KEY = 'dsh-ide-database:completion-history'
+const FREQUENCY_KEY = 'dsh-ide-database:completion-frequency'
 const DEBUG_KEY = 'dsh-ide-database:completion-debug'
 /** Enough for the usual handful of tables without turning into a log. */
 const MAX_ENTRIES = 100
+/** Pick counts for the names actually used, capped so the map stays small. */
+const MAX_FREQUENCY_ENTRIES = 200
+/** Guard against a corrupt or hand-edited map growing without bound. */
+const MAX_FREQUENCY_PARSED = 1000
 
 function storage(): Storage | undefined {
   try {
@@ -61,6 +66,74 @@ export function rememberCompletion(name: string): void {
     // A full quota must not break the editor: forget the history instead.
     try {
       store.removeItem(STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+  }
+  rememberPicks(store, name)
+}
+
+/**
+ * Read every stored pick count. The update path must see the full map: reading
+ * the top-N view would drop a freshly picked name that only has count 1 before
+ * it could ever be picked again, so a full map could never learn new names.
+ */
+function readPicks(store: Storage): Map<string, number> {
+  const picks = new Map<string, number>()
+  try {
+    const raw = store.getItem(FREQUENCY_KEY)
+    if (raw === null) return picks
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return picks
+    for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (picks.size >= MAX_FREQUENCY_PARSED) break
+      if (name === '' || typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+      picks.set(name.toLowerCase(), Math.floor(value))
+    }
+  } catch {
+    return picks
+  }
+  return picks
+}
+
+/**
+ * Pick counts keyed by lower-cased name, highest count first. The ranking uses
+ * them after match quality and kind priority, so a name that is picked often
+ * floats above equally good candidates.
+ */
+export function completionFrequency(): Record<string, number> {
+  const store = storage()
+  if (store === undefined) return {}
+  const entries = [...readPicks(store)].sort((left, right) => right[1] - left[1])
+  const counts: Record<string, number> = {}
+  for (const [name, count] of entries.slice(0, MAX_FREQUENCY_ENTRIES)) counts[name] = count
+  return counts
+}
+
+function rememberPicks(store: Storage, name: string): void {
+  const picks = readPicks(store)
+  const key = name.toLowerCase()
+  picks.set(key, (picks.get(key) ?? 0) + 1)
+  // Keep the map bounded by dropping the least used name, never the one just
+  // picked: when the counts tie, the oldest entry loses.
+  while (picks.size > MAX_FREQUENCY_ENTRIES) {
+    let evict: string | undefined
+    let lowest = Number.POSITIVE_INFINITY
+    for (const [candidate, count] of picks) {
+      if (candidate === key) continue
+      if (count < lowest) {
+        lowest = count
+        evict = candidate
+      }
+    }
+    if (evict === undefined) break
+    picks.delete(evict)
+  }
+  try {
+    store.setItem(FREQUENCY_KEY, JSON.stringify(Object.fromEntries(picks)))
+  } catch {
+    try {
+      store.removeItem(FREQUENCY_KEY)
     } catch {
       /* ignore */
     }

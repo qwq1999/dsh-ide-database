@@ -127,12 +127,17 @@ export interface RankOptions {
   priorities?: Partial<Record<CompletionKind, number>>
   /** Recently used names, most recent first; reserved for P1 recall. */
   recent?: readonly string[]
+  /** Pick counts keyed by lower-cased name; often-used names float up. */
+  frequency?: Readonly<Record<string, number>>
 }
 
 const MATCH_WEIGHT = 10_000
 const KIND_WEIGHT = 100
 const RECENT_WEIGHT = 1
 const RECENT_MAX = 9
+/** One pick above the next one; capped so kind order always wins. */
+const FREQUENCY_WEIGHT = 10
+const FREQUENCY_MAX = 3
 
 /**
  * Score, dedupe (same kind + name) and cap `candidates` for `prefix`.
@@ -146,6 +151,7 @@ export function rankCandidates(
 ): RankedCandidate[] {
   const priorities = options.priorities ?? ANY_PRIORITY
   const recent = options.recent ?? []
+  const frequency = options.frequency ?? {}
   const recentScore = new Map<string, number>()
   recent.forEach((name, index) => {
     if (recentScore.has(name)) return
@@ -163,7 +169,9 @@ export function rankCandidates(
     seen.add(key)
     const kind = priorities[item.kind] ?? ANY_PRIORITY[item.kind] ?? 0
     const recentPenalty = recentScore.get(item.name) ?? 0
-    const score = match * MATCH_WEIGHT + kind * KIND_WEIGHT - recentPenalty
+    const frequencyPenalty =
+      Math.min(FREQUENCY_MAX, frequency[item.name.toLowerCase()] ?? 0) * FREQUENCY_WEIGHT
+    const score = match * MATCH_WEIGHT + kind * KIND_WEIGHT - frequencyPenalty - recentPenalty
     scored.push({ item, score, order })
   })
   scored.sort((left, right) => left.score - right.score || left.order - right.order)

@@ -511,6 +511,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   const items = rank(candidates, analysis.word.prefix, 60, {
     priorities,
     recent: request.recent,
+    frequency: request.frequency,
   })
   return { items, analysis }
 }

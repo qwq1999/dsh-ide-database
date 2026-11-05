@@ -104,6 +104,8 @@ export interface CompletionRequest {
   catalog: CompletionCatalog
   /** Names picked recently, most recent first; used to break ranking ties. */
   recent?: readonly string[]
+  /** Pick counts keyed by lower-cased name; used after recent for ranking. */
+  frequency?: Readonly<Record<string, number>>
   /** Cancels the request; `complete` then rejects with an `AbortError`. */
   signal?: AbortSignal
 }
