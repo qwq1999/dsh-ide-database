@@ -210,11 +210,14 @@ function createIndexOn(tokens: readonly Token[]): number {
   return -1
 }
 
+const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
+
 /**
- * True when the caret sits right after the table named by `ALTER TABLE`, the
- * position where the alter action (`ADD`, `DROP`, `MODIFY`, ...) belongs.
+ * Index right after the table named by `ALTER TABLE`, the position where the
+ * alter action (`ADD`, `DROP`, `MODIFY`, ...) belongs; -1 when the caret sits
+ * somewhere else.
  */
-function alterTableAt(tokens: readonly Token[]): boolean {
+function alterTableStart(tokens: readonly Token[]): number {
   const alter = tokens[0]
   const table = tokens[1]
   if (
@@ -225,26 +228,58 @@ function alterTableAt(tokens: readonly Token[]): boolean {
     table.kind !== 'keyword' ||
     table.lower !== 'table'
   ) {
-    return false
+    return -1
   }
   let index = 2
   const first = tokens[index]
-  if (first === undefined) return false
+  if (first === undefined) return -1
   // `ALTER TABLE IF EXISTS name`; the tolerant tokenizer may see them as names.
   if (first.text.toLowerCase() === 'if') {
     const exists = tokens[index + 1]
-    if (exists === undefined || exists.text.toLowerCase() !== 'exists') return false
+    if (exists === undefined || exists.text.toLowerCase() !== 'exists') return -1
     index += 2
   }
   const name = tokens[index]
-  if (name === undefined || name.kind !== 'ident') return false
+  if (name === undefined || name.kind !== 'ident') return -1
   index += 1
   const dot = tokens[index]
   const second = tokens[index + 1]
   if (dot !== undefined && dot.kind === 'punct' && dot.text === '.' && second !== undefined && second.kind === 'ident') {
     index += 2
   }
-  return index >= tokens.length
+  return index
+}
+
+/**
+ * What an `ALTER TABLE <name>` position expects: the action itself, the object
+ * the action targets, or the column that a column action names next.
+ */
+function alterExpectation(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const start = alterTableStart(tokens)
+  if (start < 0) return undefined
+  const action = tokens[start]
+  if (action === undefined) return 'alter'
+  if (action.kind !== 'keyword' || !ALTER_ACTIONS.has(action.lower)) return undefined
+  const object = tokens[start + 1]
+  if (object === undefined) {
+    // `MODIFY`/`CHANGE` name an existing column first; the others name an object.
+    return action.lower === 'modify' || action.lower === 'change' ? 'column' : 'alterObject'
+  }
+  if (object.kind !== 'keyword' || tokens[start + 2] !== undefined) return undefined
+  switch (action.lower) {
+    case 'add':
+      return object.lower === 'column' ? 'definition' : undefined
+    case 'drop':
+      return object.lower === 'column' ? 'column' : undefined
+    case 'modify':
+    case 'change':
+      return object.lower === 'column' ? 'column' : undefined
+    case 'rename':
+      if (object.lower === 'column') return 'column'
+      return object.lower === 'to' ? 'relation' : undefined
+    default:
+      return undefined
+  }
 }
 
 /**
@@ -253,7 +288,8 @@ function alterTableAt(tokens: readonly Token[]): boolean {
  */
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insideCreateTableParen(tokens)) return 'definition'
-  if (alterTableAt(tokens)) return 'alter'
+  const alter = alterExpectation(tokens)
+  if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
   if (indexOn >= 0) {
     return parseRelationRef(tokens, indexOn + 1) === null ? 'relation' : 'column'

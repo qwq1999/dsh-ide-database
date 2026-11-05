@@ -110,6 +110,20 @@ const SCHEMA_WORDS = [
 /** Actions that follow `ALTER TABLE <name>`. */
 const ALTER_WORDS = ['ADD', 'DROP', 'MODIFY', 'CHANGE', 'RENAME', 'ALTER'] as const
 
+/** Objects an `ALTER TABLE` action can target. */
+const ALTER_OBJECT_WORDS = [
+  'COLUMN',
+  'CONSTRAINT',
+  'INDEX',
+  'KEY',
+  'PRIMARY',
+  'FOREIGN',
+  'UNIQUE',
+  'CHECK',
+  'DEFAULT',
+  'TO',
+] as const
+
 /** Keywords in alias position (only `AS` can really start one). */
 const ALIAS_WORDS = ['AS'] as const
 
@@ -126,6 +140,7 @@ const RESERVED_WORDS = [
   ...SCHEMA_WORDS,
   'FROM',
   'INTO',
+  'TO',
   'BY',
   'ALL',
   'ANY',
@@ -136,6 +151,7 @@ const RESERVED_WORDS = [
   'COLUMN',
   'ADD',
   'MODIFY',
+  'CHANGE',
   'RENAME',
   'CASCADE',
   'RESTRICT',
@@ -290,6 +306,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return DEFINITION_WORDS
     case 'alter':
       return ALTER_WORDS
+    case 'alterObject':
+      return ALTER_OBJECT_WORDS
     case 'keyword':
       return ANY_WORDS
     case 'any':

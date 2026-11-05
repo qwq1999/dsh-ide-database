@@ -123,8 +123,20 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('ALTER TABLE IF EXISTS orders ').expectation).toBe('alter')
   })
 
-  it('lets the typed ALTER action take over', () => {
+  it('expects an ALTER object after the action', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD ').expectation).toBe('alterObject')
+    expect(caretAtEnd('ALTER TABLE orders DROP ').expectation).toBe('alterObject')
+    expect(caretAtEnd('ALTER TABLE orders RENAME ').expectation).toBe('alterObject')
     expect(caretAtEnd('ALTER TABLE orders ADD ').expectation).not.toBe('alter')
+  })
+
+  it('follows ALTER TABLE actions into the column they name', () => {
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('relation')
   })
 
   it('expects a table after CREATE INDEX ON', () => {

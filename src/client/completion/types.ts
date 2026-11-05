@@ -56,6 +56,7 @@ export type CompletionExpectation =
   | 'value'
   | 'definition'
   | 'alter'
+  | 'alterObject'
   | 'keyword'
   | 'any'
 

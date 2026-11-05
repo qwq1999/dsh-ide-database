@@ -46,6 +46,21 @@ describe('keywordCompletions', () => {
     ])
   })
 
+  it('offers ALTER objects after an action', () => {
+    expect(names(keywordCompletions('alterObject', 'mysql'))).toEqual([
+      'COLUMN',
+      'CONSTRAINT',
+      'INDEX',
+      'KEY',
+      'PRIMARY',
+      'FOREIGN',
+      'UNIQUE',
+      'CHECK',
+      'DEFAULT',
+      'TO',
+    ])
+  })
+
   it('adds the MySQL-only words on MySQL connections', () => {
     const words = names(keywordCompletions('any', 'mysql'))
     expect(words).toContain('STRAIGHT_JOIN')

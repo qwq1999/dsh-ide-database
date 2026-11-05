@@ -569,6 +569,66 @@ describe('complete values and column definitions', () => {
   })
 })
 
+describe('complete ALTER TABLE objects', () => {
+  it('offers object words instead of schema names after DROP', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders DROP ',
+      caret: 24,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('alterObject')
+    expect(names(result)).toContain('COLUMN')
+    expect(names(result)).toContain('INDEX')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers columns to drop', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders DROP COLUMN ',
+      caret: 31,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+    expect(catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('offers a definition for an added column', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders ADD COLUMN ',
+      caret: 30,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('definition')
+    expect(names(result)).toContain('NOT')
+    expect(names(result)).toContain('DEFAULT')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('offers columns to modify or change', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders MODIFY COLUMN ',
+      caret: 33,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+  })
+})
+
 describe('complete CREATE INDEX', () => {
   it('offers tables after ON', async () => {
     const catalog = createCatalog()

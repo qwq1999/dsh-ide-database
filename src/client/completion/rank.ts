@@ -116,6 +116,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   value: KEYWORD_PRIORITY,
   definition: KEYWORD_PRIORITY,
   alter: KEYWORD_PRIORITY,
+  alterObject: KEYWORD_PRIORITY,
 }
 
 /**
