@@ -2553,3 +2553,58 @@ describe('complete derived aliases, insert tails and operators', () => {
     expect(result.analysis.relations).toEqual([{ table: 'orders' }])
   })
 })
+
+describe('complete JSON_TABLE nesting, column options and range bounds', () => {
+  it('offers the next JSON_TABLE column name', async () => {
+    const result = await complete(
+      request(
+        "SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id INT PATH '$', nested PATH '$.x' COLUMNS (v INT PATH '$'), ",
+      ),
+    )
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(result.analysis.relations).toEqual([])
+  })
+
+  it('stays quiet once a foreign key definition is complete', async () => {
+    const req = request(
+      'ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY (user_id) REFERENCES customers (id) ',
+    )
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.columns).not.toContain('shop.orders')
+  })
+
+  it('takes a literal bound after BETWEEN ... AND', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id BETWEEN 1 AND '))
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result).slice(0, 4)).toEqual(['DEFAULT', 'NULL', 'TRUE', 'FALSE'])
+  })
+
+  it('takes a precision number for CAST types', async () => {
+    const result = await complete(request('SELECT CAST(id AS DECIMAL(10, '))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+
+  it('stays quiet after an ALTER column definition', async () => {
+    const result = await complete(request("ALTER TABLE orders MODIFY COLUMN total INT COMMENT 'x' "))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+
+  it('takes a literal after a routine DECLARE DEFAULT', async () => {
+    const result = await complete(
+      request('CREATE PROCEDURE p(IN x INT) BEGIN DECLARE y INT DEFAULT '),
+    )
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('DEFAULT')
+  })
+
+  it('does not collect FOR UPDATE as a relation', async () => {
+    const result = await complete(request('SELECT * FROM orders FOR UPDATE SKIP LOCKED '))
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+    expect(result.items).toEqual([])
+  })
+})

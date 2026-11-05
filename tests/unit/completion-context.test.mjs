@@ -1727,3 +1727,46 @@ describe('analyze derived aliases, insert tails and operators', () => {
     expect(analysis.relations).toEqual([{ table: 'orders' }])
   })
 })
+
+describe('analyze JSON_TABLE nesting, column options and range bounds', () => {
+  it('walks nested JSON_TABLE COLUMNS lists', () => {
+    const analysis = caretAtEnd(
+      "SELECT * FROM JSON_TABLE(data, '$' COLUMNS (id INT PATH '$', nested PATH '$.x' COLUMNS (v INT PATH '$'), ",
+    )
+    expect(analysis.expectation).toBe('name')
+    expect(analysis.relations).toEqual([])
+  })
+
+  it('stays quiet once a foreign key definition is complete', () => {
+    expect(
+      caretAtEnd("ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY (user_id) REFERENCES customers (id) ")
+        .expectation,
+    ).toBe('number')
+  })
+
+  it('takes the right bound of BETWEEN', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id BETWEEN 1 AND ').expectation).toBe('value')
+  })
+
+  it('takes a precision number after a type length comma', () => {
+    expect(caretAtEnd('SELECT CAST(id AS DECIMAL(10, ').expectation).toBe('number')
+  })
+
+  it('stays quiet after an ALTER column definition', () => {
+    expect(
+      caretAtEnd("ALTER TABLE orders MODIFY COLUMN total INT COMMENT 'x' ").expectation,
+    ).toBe('number')
+  })
+
+  it('takes a literal after a routine DECLARE DEFAULT', () => {
+    expect(
+      caretAtEnd('CREATE PROCEDURE p(IN x INT) BEGIN DECLARE y INT DEFAULT ').expectation,
+    ).toBe('value')
+  })
+
+  it('does not collect FOR UPDATE as a relation', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE SKIP LOCKED ').relations).toEqual([
+      { table: 'orders' },
+    ])
+  })
+})

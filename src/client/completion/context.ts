@@ -516,6 +516,29 @@ const LENGTH_TYPES = new Set([
   'year',
 ])
 
+/** `DECIMAL(10, ` / `VARCHAR(20, ` continue with the precision number. */
+function typePrecisionTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== ',') return false
+  let depth = 0
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') {
+      depth += 1
+      continue
+    }
+    if (token.text !== '(') continue
+    if (depth > 0) {
+      depth -= 1
+      continue
+    }
+    const owner = tokens[index - 1]
+    return owner !== undefined && LENGTH_TYPES.has(owner.text.toLowerCase())
+  }
+  return false
+}
+
 /** A type's length/precision takes a number, not a name. */
 function columnLength(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -1644,7 +1667,8 @@ function fkReferenceColumns(tokens: readonly Token[]): boolean {
 /** After `REFERENCES orders (id) ` a foreign-key definition is complete. */
 function fkReferenceTail(tokens: readonly Token[]): boolean {
   const words = tokens.map((token) => token.text.toLowerCase())
-  if (!words.includes('create') || !words.includes('references')) return false
+  if (!words.includes('references')) return false
+  if (!words.includes('create') && !words.includes('alter')) return false
   const last = tokens[tokens.length - 1]
   if (last?.kind !== 'punct' || last.text !== ')') return false
   const references = words.lastIndexOf('references')
@@ -1664,32 +1688,50 @@ function alterDropColumnTail(tokens: readonly Token[]): boolean {
 function jsonTableColumnStage(
   tokens: readonly Token[],
 ): 'name' | 'columnType' | 'number' | undefined {
-  const words = tokens.map((token) => token.text.toLowerCase())
-  if (!words.includes('json_table')) return undefined
-  const columnsIndex = words.lastIndexOf('columns')
-  if (columnsIndex < 0) return undefined
-  let open = -1
-  let depth = 0
-  for (let index = columnsIndex + 1; index < tokens.length; index += 1) {
+  const table = tokens.findIndex((token) => token.text.toLowerCase() === 'json_table')
+  if (table < 0) return undefined
+  // The table call's own parenthesis, then the top-level COLUMNS list inside it
+  // (nested COLUMNS lists keep their own depth).
+  let callOpen = -1
+  for (let index = table + 1; index < tokens.length; index += 1) {
     const token = tokens[index] as Token
-    if (token.kind !== 'punct') continue
-    if (token.text === '(') {
-      depth += 1
-      if (open < 0) open = index
-    } else if (token.text === ')') {
-      depth -= 1
-      if (depth === 0) return 'number'
+    if (token.kind === 'punct' && token.text === '(') {
+      callOpen = index
+      break
     }
   }
-  if (open < 0) return undefined
+  if (callOpen < 0) return undefined
+  let depth = 0
+  let columns = -1
+  for (let index = callOpen; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') depth -= 1
+      continue
+    }
+    if (depth === 1 && token.text.toLowerCase() === 'columns') columns = index
+  }
+  if (columns < 0) return undefined
+  let listOpen = -1
+  for (let index = columns + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct' && token.text === '(') {
+      listOpen = index
+      break
+    }
+  }
+  if (listOpen < 0) return 'name'
   depth = 1
-  let segment = open + 1
-  for (let index = open + 1; index < tokens.length; index += 1) {
+  let segment = listOpen + 1
+  for (let index = listOpen + 1; index < tokens.length; index += 1) {
     const token = tokens[index] as Token
     if (token.kind !== 'punct') continue
     if (token.text === '(') depth += 1
-    else if (token.text === ')') depth -= 1
-    else if (token.text === ',' && depth === 1) segment = index + 1
+    else if (token.text === ')') {
+      depth -= 1
+      if (depth === 0) return 'number'
+    } else if (token.text === ',' && depth === 1) segment = index + 1
   }
   const rest = tokens.slice(segment)
   if (rest.length === 0) return 'name'
@@ -1723,6 +1765,22 @@ function createColumnOption(
   // `PRIMARY KEY ` / `AUTO_INCREMENT ` finish a definition; nothing catalog-bound follows.
   if (tail === 'key' || tail === 'auto_increment') return 'number'
   return undefined
+}
+
+/** `ALTER TABLE … MODIFY COLUMN total INT COMMENT 'x' ` finished the column. */
+function alterColumnDone(tokens: readonly Token[]): boolean {
+  if (alterTableStart(tokens) < 0) return false
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (
+    !words.some((word) => word === 'column' || word === 'modify' || word === 'change' || word === 'add')
+  ) {
+    return false
+  }
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const word = (tokens[index] as Token).text.toLowerCase()
+    if (word === 'comment' || word === 'default') return true
+  }
+  return false
 }
 
 /** `ALTER TABLE … MODIFY/CHANGE/ADD [COLUMN] … DEFAULT ` and friends. */
@@ -2186,6 +2244,8 @@ function routineStatementTail(
   }
   if (tail === 'fetch' || tail === 'signal' || tail === 'resignal') return 'number'
   if (tail === 'diagnostics' || tail === 'message_text' || tail === '=') return 'number'
+  if (tail === 'default') return 'value'
+  if (tokens[0]?.text.toLowerCase() === 'declare') return declareTail(tokens) ?? undefined
   return undefined
 }
 
@@ -2734,6 +2794,34 @@ function nullSafeTail(tokens: readonly Token[]): CompletionExpectation | undefin
   return 'value'
 }
 
+/** `BETWEEN 1 AND ` takes the range's right bound, not a column. */
+function betweenValueTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'keyword' || last.lower !== 'and') return false
+  // A window frame (`RANGE BETWEEN 1 PRECEDING AND `) is not a range predicate.
+  if (tokens.some((token) => token.text.toLowerCase() === 'over')) return false
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(') depth -= 1
+      continue
+    }
+    if (depth > 0) continue
+    if (token.kind === 'keyword' && token.lower === 'between') return true
+    if (
+      token.kind === 'keyword' &&
+      ['where', 'having', 'on', 'select', 'from', 'group', 'order', 'limit', 'union', 'set', 'values'].includes(
+        token.lower,
+      )
+    ) {
+      return false
+    }
+  }
+  return false
+}
+
 /** `REGEXP `/`RLIKE ` and `AGAINST (` take a pattern literal, not a column list. */
 function patternTail(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -2855,6 +2943,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (partition !== undefined) return partition
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
+  if (typePrecisionTail(tokens)) return 'number'
   if (columnLength(tokens)) return 'number'
   if (fkReferenceColumns(tokens)) return 'column'
   if (alterDropColumnTail(tokens)) return 'number'
@@ -2862,6 +2951,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (jsonColumn !== undefined) return jsonColumn
   const columnOption = createColumnOption(tokens)
   if (columnOption !== undefined) return columnOption
+  if (alterColumnDone(tokens)) return 'number'
   const alterColumnSetting = alterColumnOption(tokens)
   if (alterColumnSetting !== undefined) return alterColumnSetting
   if (tableExpressionParen(tokens)) return 'column'
@@ -3046,6 +3136,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const nullSafe = nullSafeTail(tokens)
   if (nullSafe !== undefined) return nullSafe
   if (patternTail(tokens)) return 'number'
+  if (betweenValueTail(tokens)) return 'value'
   // `IS NOT ` only takes NULL/TRUE/FALSE.
   if (
     last?.kind === 'keyword' &&
@@ -3454,6 +3545,19 @@ function parseRelationRef(
     relation = { schema: token.text, table: after.text }
     cursor = index + 3
   } else {
+    // `FROM JSON_TABLE(...)` / table-valued functions are not catalog tables,
+    // but `INSERT INTO orders (` and `ON orders (` are ordinary relations.
+    const call = tokens[index + 1]
+    const previous = tokens[index - 1]
+    if (
+      call !== undefined &&
+      call.kind === 'punct' &&
+      call.text === '(' &&
+      previous !== undefined &&
+      ['from', 'join', 'using'].includes(previous.text.toLowerCase())
+    ) {
+      return null
+    }
     relation = { table: token.text }
     cursor = index + 1
   }
@@ -3564,13 +3668,17 @@ function collectRelations(
   }
   // `INSERT ... ON DUPLICATE KEY UPDATE` mentions UPDATE as an action, not a
   // second target table.
-  if (
-    token.kind === 'keyword' &&
-    token.lower === 'update' &&
-    (statementStart === 'insert' || statementStart === 'replace')
-  ) {
-    index += 1
-    continue
+  if (token.kind === 'keyword' && token.lower === 'update') {
+    const previous = tokens[index - 1]
+    // `FOR UPDATE [SKIP LOCKED]` is a row lock, not a relation list.
+    if (previous !== undefined && previous.text.toLowerCase() === 'for') {
+      index += 1
+      continue
+    }
+    if (statementStart === 'insert' || statementStart === 'replace') {
+      index += 1
+      continue
+    }
   }
   if (token.kind !== 'keyword' || !RELATION_STARTERS.has(token.lower)) {
     index += 1
