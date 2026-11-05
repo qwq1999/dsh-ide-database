@@ -180,6 +180,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   assignment: KEYWORD_PRIORITY,
   flush: KEYWORD_PRIORITY,
   reset: KEYWORD_PRIORITY,
+  algorithm: KEYWORD_PRIORITY,
+  lockOption: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

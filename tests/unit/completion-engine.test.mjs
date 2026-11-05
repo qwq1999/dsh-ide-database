@@ -2123,9 +2123,11 @@ describe('complete hint, lock and load tails', () => {
     expect(names(result)).toContain('SELECT')
   })
 
-  it('stays quiet in partition definitions', async () => {
-    const req = request('CREATE TABLE t (id INT) PARTITION BY RANGE (')
-    expect((await complete(req)).items).toEqual([])
+  it('takes columns in partition method lists and stays quiet in definitions', async () => {
+    const list = await complete(request('CREATE TABLE t (id INT) PARTITION BY RANGE ('))
+    expect(list.analysis.expectation).toBe('column')
+    expect(names(list)).toContain('COUNT')
+    expect((await complete(request('ALTER TABLE orders ADD PARTITION ('))).items).toEqual([])
   })
 })
 
@@ -2204,5 +2206,55 @@ describe('complete routine statements, JSON and admin positions', () => {
     const result = await complete(request('FLUSH TABLES '))
     expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)).toContain('orders')
+  })
+})
+
+
+describe('complete alter constraints, options and partition positions', () => {
+  it('stays quiet for dropped constraint names', async () => {
+    const req = request('ALTER TABLE orders DROP FOREIGN KEY ')
+    expect((await complete(req)).items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    expect((await complete(request('ALTER TABLE orders DROP CHECK '))).items).toEqual([])
+  })
+
+  it('offers ALTER algorithm and lock option words', async () => {
+    expect(names(await complete(request('ALTER TABLE orders ALGORITHM=')))).toEqual([
+      'DEFAULT',
+      'INPLACE',
+      'COPY',
+      'INSTANT',
+    ])
+    expect(names(await complete(request('ALTER TABLE orders LOCK=')))).toEqual([
+      'DEFAULT',
+      'NONE',
+      'SHARED',
+      'EXCLUSIVE',
+    ])
+  })
+
+  it('stays quiet after SEPARATOR and an INTO variable list', async () => {
+    expect((await complete(request('SELECT GROUP_CONCAT(name SEPARATOR '))).items).toEqual([])
+    expect((await complete(request('SELECT id INTO @x, '))).items).toEqual([])
+  })
+
+  it('offers charsets after CONVERT USING', async () => {
+    const req = request('SELECT CONVERT(id USING ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('charset')
+    expect(names(result)).toContain('utf8mb4')
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('takes columns of the altered table in key lists', async () => {
+    const result = await complete(request('ALTER TABLE orders ADD PRIMARY KEY ('))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('id')
+  })
+
+  it('takes columns in partition method lists', async () => {
+    const result = await complete(request('CREATE TABLE t (id INT) PARTITION BY LIST ('))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('COUNT')
   })
 })

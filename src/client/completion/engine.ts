@@ -686,6 +686,8 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'assignment':
       case 'flush':
       case 'reset':
+      case 'algorithm':
+      case 'lockOption':
       case 'constraintType':
       case 'intoTarget': {
         candidates = [...keywordCompletions(expectation, dialect)]

@@ -496,3 +496,24 @@ describe('flush and reset words', () => {
     ])
   })
 })
+
+
+describe('alter algorithm and lock words', () => {
+  it('offers ALTER algorithm words', () => {
+    expect(names(keywordCompletions('algorithm', 'generic'))).toEqual([
+      'DEFAULT',
+      'INPLACE',
+      'COPY',
+      'INSTANT',
+    ])
+  })
+
+  it('offers ALTER lock words', () => {
+    expect(names(keywordCompletions('lockOption', 'generic'))).toEqual([
+      'DEFAULT',
+      'NONE',
+      'SHARED',
+      'EXCLUSIVE',
+    ])
+  })
+})

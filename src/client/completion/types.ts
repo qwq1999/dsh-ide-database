@@ -118,6 +118,8 @@ export type CompletionExpectation =
   | 'assignment'
   | 'flush'
   | 'reset'
+  | 'algorithm'
+  | 'lockOption'
   | 'database'
   | 'keyword'
   | 'any'

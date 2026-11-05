@@ -1370,9 +1370,9 @@ describe('analyze hints, locks and load/partition tails', () => {
     expect(caretAtEnd("LOAD DATA INFILE 'x' INTO TABLE orders ").expectation).toBe('number')
   })
 
-  it('stays quiet in partition definitions', () => {
+  it('distinguishes partition definitions from method lists', () => {
     expect(caretAtEnd('ALTER TABLE orders ADD PARTITION (').expectation).toBe('number')
-    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY RANGE (').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY RANGE (').expectation).toBe('column')
   })
 
   it('keeps a quoted table name after IF EXISTS', () => {
@@ -1455,5 +1455,43 @@ describe('analyze routine statements, JSON and admin tails', () => {
     expect(caretAtEnd('RESET ').expectation).toBe('reset')
     expect(caretAtEnd('DO ').expectation).toBe('column')
     expect(caretAtEnd('HELP ').expectation).toBe('name')
+  })
+})
+
+
+describe('analyze alter constraints, options and partition lists', () => {
+  it('names constraints dropped from a table', () => {
+    expect(caretAtEnd('ALTER TABLE orders DROP FOREIGN KEY ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders DROP CONSTRAINT ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders DROP CHECK ').expectation).toBe('name')
+  })
+
+  it('offers ALTER algorithm and lock options', () => {
+    expect(caretAtEnd('ALTER TABLE orders ALGORITHM=').expectation).toBe('algorithm')
+    expect(caretAtEnd('ALTER TABLE orders LOCK=').expectation).toBe('lockOption')
+  })
+
+  it('takes a separator literal', () => {
+    expect(caretAtEnd('SELECT GROUP_CONCAT(name SEPARATOR ').expectation).toBe('number')
+  })
+
+  it('takes a charset after CONVERT USING', () => {
+    expect(caretAtEnd('SELECT CONVERT(id USING ').expectation).toBe('charset')
+  })
+
+  it('stays quiet while typing the INTO variable list', () => {
+    expect(caretAtEnd('SELECT id INTO @x, ').expectation).toBe('number')
+  })
+
+  it('stays quiet on the deprecated PROCEDURE tail', () => {
+    expect(caretAtEnd('SELECT * FROM orders PROCEDURE ').expectation).toBe('number')
+  })
+
+  it('takes columns in partition method lists', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY LIST (').expectation).toBe('column')
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY RANGE (').expectation).toBe('column')
+    expect(
+      caretAtEnd('CREATE TABLE t (id INT) PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (').expectation,
+    ).toBe('number')
   })
 })

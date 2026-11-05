@@ -545,6 +545,10 @@ const FLUSH_WORDS = [
 
 const RESET_WORDS = ['MASTER', 'SLAVE', 'REPLICA', 'QUERY', 'CACHE'] as const
 
+const ALGORITHM_WORDS = ['DEFAULT', 'INPLACE', 'COPY', 'INSTANT'] as const
+
+const LOCK_OPTION_WORDS = ['DEFAULT', 'NONE', 'SHARED', 'EXCLUSIVE'] as const
+
 const ASSIGNMENT_WORDS = ['SET'] as const
 
 const CONSTRAINT_TYPE_WORDS = ['FOREIGN', 'PRIMARY', 'UNIQUE', 'CHECK'] as const
@@ -708,6 +712,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return FLUSH_WORDS
     case 'reset':
       return RESET_WORDS
+    case 'algorithm':
+      return ALGORITHM_WORDS
+    case 'lockOption':
+      return LOCK_OPTION_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

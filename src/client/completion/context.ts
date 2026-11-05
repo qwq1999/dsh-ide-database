@@ -2245,11 +2245,83 @@ function loadDataTail(tokens: readonly Token[]): CompletionExpectation | undefin
   return table === words.length - 1 ? 'tableName' : 'number'
 }
 
-/** `PARTITION BY RANGE (` and `ADD PARTITION (` take values, not definitions. */
-function partitionParen(tokens: readonly Token[]): boolean {
+/** Partition method lists take columns; partition definitions take literals. */
+function partitionParen(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
   const last = tokens[tokens.length - 1]
-  if (last?.kind !== 'punct' || last.text !== '(') return false
-  return tokens.some((token) => token.text.toLowerCase() === 'partition')
+  if (last?.kind !== 'punct' || last.text !== '(') return undefined
+  if (!tokens.some((token) => token.text.toLowerCase() === 'partition')) return undefined
+  const owner = tokens[tokens.length - 2]?.text.toLowerCase()
+  if (owner === 'range' || owner === 'list' || owner === 'hash' || owner === 'key') {
+    return 'column'
+  }
+  return 'number'
+}
+
+/** `ALTER TABLE … DROP FOREIGN KEY|CONSTRAINT|CHECK ` names a constraint. */
+function alterDropConstraint(tokens: readonly Token[]): boolean {
+  const start = alterTableStart(tokens)
+  if (start < 0) return false
+  if (tokens[start]?.text.toLowerCase() !== 'drop') return false
+  const object = tokens[start + 1]?.text.toLowerCase()
+  return object === 'foreign' || object === 'constraint' || object === 'check'
+}
+
+/** `GROUP_CONCAT(… SEPARATOR ` takes a literal separator. */
+function separatorTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last !== undefined && last.text.toLowerCase() === 'separator'
+}
+
+/** `CONVERT(expr USING ` takes a charset name. */
+function convertUsing(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'keyword' || last.lower !== 'using') return false
+  let depth = 0
+  for (let at = tokens.length - 1; at >= 0; at -= 1) {
+    const token = tokens[at] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') {
+      depth += 1
+    } else if (token.text === '(') {
+      if (depth > 0) {
+        depth -= 1
+        continue
+      }
+      const owner = tokens[at - 1]
+      return owner !== undefined && owner.kind === 'ident' && owner.lower === 'convert'
+    }
+  }
+  return false
+}
+
+/** `SELECT … INTO @a, ` still types the variable list. */
+function selectIntoVariableTail(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.text.toLowerCase() !== 'select') return false
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'into')) return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'punct' && last.text === ','
+}
+
+/** Deprecated `SELECT … PROCEDURE ANALYSE` tail. */
+function procedureQuietTail(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.text.toLowerCase() !== 'select') return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'procedure'
+}
+
+/** `ALTER TABLE … ALGORITHM= ` / `LOCK= ` take a fixed option word. */
+function alterOptionAssignment(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== '=') return undefined
+  if (alterTableStart(tokens) < 0) return undefined
+  const option = tokens[tokens.length - 2]?.text.toLowerCase()
+  if (option === 'algorithm') return 'algorithm'
+  if (option === 'lock') return 'lockOption'
+  return undefined
 }
 
 /** `DROP TRIGGER|USER|… ` names an object that is not a catalog table. */
@@ -2301,9 +2373,13 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // CHARACTER SET names a charset wherever it appears, including column
   // definitions inside CREATE TABLE / routines.
   if (charsetValue(tokens)) return 'charset'
+  // `CONVERT(expr USING <charset>)` names a charset even though the shared
+  // CHARACTER SET helper above cannot see it.
+  if (convertUsing(tokens)) return 'charset'
   // Partition definitions carry literals, and index names are not catalog
   // objects this engine can list.
-  if (partitionParen(tokens)) return 'number'
+  const partition = partitionParen(tokens)
+  if (partition !== undefined) return partition
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
   const columnOption = createColumnOption(tokens)
@@ -2334,6 +2410,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (indexUsingTail(tokens)) return 'indexMethod'
   const alterColumn = alterColumnStage(tokens)
   if (alterColumn !== undefined) return alterColumn
+  if (alterDropConstraint(tokens)) return 'name'
+  const alterOption = alterOptionAssignment(tokens)
+  if (alterOption !== undefined) return alterOption
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const alterEngine = alterTableEngine(tokens)
@@ -2388,6 +2467,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
   if (selectInto(tokens)) return 'intoTarget'
+  if (selectIntoVariableTail(tokens)) return 'number'
   if (literalTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet
@@ -2411,6 +2491,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (show !== undefined) return show
   if (showStart(tokens)) return 'show'
   if (showPatternTail(tokens)) return 'number'
+  if (procedureQuietTail(tokens)) return 'number'
+  if (separatorTail(tokens)) return 'number'
   const admin = adminTail(tokens)
   if (admin !== undefined) return admin
   if (limitCount(tokens)) return 'number'
