@@ -186,6 +186,58 @@ function uniqueWords(words: readonly string[]): string[] {
 /** Flat list of every keyword suggestion, in popup order. */
 export const SQL_KEYWORDS: readonly string[] = uniqueWords(ANY_WORDS)
 
+/**
+ * Words only some servers understand. They are merged into the shared list for
+ * their dialect; `contexts` keeps them out of clauses where they make no sense
+ * (for example `PIVOT` is not offered while the caret is in an alias list).
+ */
+interface DialectWordGroup {
+  readonly words: readonly string[]
+  readonly contexts: readonly ('relation' | 'column')[]
+}
+
+const MYSQL_KEYWORDS: DialectWordGroup = {
+  words: [
+    'STRAIGHT_JOIN',
+    'REGEXP',
+    'RLIKE',
+    'IGNORE',
+    'DUPLICATE',
+    'BINARY',
+    'FORCE',
+    'SQL_CALC_FOUND_ROWS',
+    'SEPARATOR',
+    'SQL_NO_CACHE',
+  ],
+  contexts: ['relation', 'column'],
+}
+
+const ORACLE_KEYWORDS: DialectWordGroup = {
+  words: ['CONNECT', 'START', 'PRIOR', 'SIBLINGS', 'PIVOT', 'UNPIVOT', 'ROWNUM', 'MODEL', 'KEEP', 'SAMPLE', 'FLASHBACK'],
+  contexts: ['relation', 'column'],
+}
+
+const POSTGRES_KEYWORDS: DialectWordGroup = {
+  words: ['CONFLICT', 'DO', 'NOTHING', 'SIMILAR', 'OVERLAPS', 'WITHIN'],
+  contexts: ['column'],
+}
+
+function dialectWordGroup(dialect: ClientConnection['dialect']): DialectWordGroup | undefined {
+  switch (dialect) {
+    case 'mysql':
+      return MYSQL_KEYWORDS
+    case 'oracle':
+    case 'oceanbase-oracle':
+    case 'dameng':
+      return ORACLE_KEYWORDS
+    case 'postgres':
+      return POSTGRES_KEYWORDS
+    default:
+      return undefined
+  }
+}
+
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -205,16 +257,22 @@ function contextWords(context: CompletionExpectation): readonly string[] {
 }
 
 /**
- * Keyword suggestions for the given context. `dialect` is accepted for
- * symmetry with {@link functionCompletions}; the words themselves are shared
- * by every dialect.
+ * Keyword suggestions for the given context. Words every server shares come
+ * first; the dialect's own words are appended when the caret's clause can use
+ * them (or when the popup is not pinned to a clause at all).
  */
 export function keywordCompletions(
   context: CompletionExpectation = 'any',
   dialect: ClientConnection['dialect'] = 'generic',
 ): Completion[] {
-  void dialect
-  const words = contextWords(context)
+  const words = [...contextWords(context)]
+  const group = dialectWordGroup(dialect)
+  if (group !== undefined) {
+    const pinned = context === 'keyword' || context === 'any'
+    if (pinned || group.contexts.includes(context as 'relation' | 'column')) {
+      words.push(...group.words)
+    }
+  }
   return uniqueWords(words).map((name) => ({ name, kind: 'keyword' as const }))
 }
 
@@ -250,6 +308,18 @@ const MYSQL_FUNCTIONS = [
   'JSON_EXTRACT',
   'JSON_UNQUOTE',
   'IF',
+  'DATE_ADD',
+  'DATE_SUB',
+  'DATEDIFF',
+  'TIMESTAMPDIFF',
+  'JSON_ARRAY',
+  'JSON_OBJECT',
+  'JSON_ARRAYAGG',
+  'SUBSTRING_INDEX',
+  'LOCATE',
+  'RAND',
+  'UUID',
+  'LAST_INSERT_ID',
 ] as const
 
 const ORACLE_FUNCTIONS = [
@@ -262,6 +332,17 @@ const ORACLE_FUNCTIONS = [
   'DECODE',
   'TRUNC',
   'INSTR',
+  'LISTAGG',
+  'REGEXP_REPLACE',
+  'REGEXP_SUBSTR',
+  'REGEXP_LIKE',
+  'ADD_MONTHS',
+  'MONTHS_BETWEEN',
+  'LAST_DAY',
+  'NEXT_DAY',
+  'GREATEST',
+  'LEAST',
+  'RATIO_TO_REPORT',
 ] as const
 
 const POSTGRES_FUNCTIONS = [
@@ -275,6 +356,18 @@ const POSTGRES_FUNCTIONS = [
   'EXTRACT',
   'MAKE_INTERVAL',
   'JSON_BUILD_OBJECT',
+  'CONCAT_WS',
+  'SPLIT_PART',
+  'DATE_PART',
+  'AGE',
+  'ARRAY_LENGTH',
+  'STRING_TO_ARRAY',
+  'TO_JSON',
+  'TO_JSONB',
+  'JSONB_BUILD_OBJECT',
+  'GEN_RANDOM_UUID',
+  'LEFT',
+  'RIGHT',
 ] as const
 
 function dialectFunctions(dialect: ClientConnection['dialect']): readonly string[] {

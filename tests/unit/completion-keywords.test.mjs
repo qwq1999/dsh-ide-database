@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'vitest'
+import {
+  SQL_KEYWORDS,
+  functionCompletions,
+  isKeyword,
+  keywordCompletions,
+} from '../../src/client/completion/keywords'
+
+const names = (items) => items.map((item) => item.name)
+
+describe('keywordCompletions', () => {
+  it('keeps the shared list unchanged for the generic dialect', () => {
+    expect(names(keywordCompletions('any', 'generic'))).toEqual([...SQL_KEYWORDS])
+    expect(new Set(SQL_KEYWORDS).size).toBe(SQL_KEYWORDS.length)
+  })
+
+  it('adds the MySQL-only words on MySQL connections', () => {
+    const words = names(keywordCompletions('any', 'mysql'))
+    expect(words).toContain('STRAIGHT_JOIN')
+    expect(words).toContain('SQL_CALC_FOUND_ROWS')
+    expect(words).toContain('REGEXP')
+  })
+
+  it('adds the Oracle-only words on Oracle-family connections', () => {
+    for (const dialect of ['oracle', 'oceanbase-oracle', 'dameng']) {
+      const words = names(keywordCompletions('any', dialect))
+      expect(words, dialect).toContain('CONNECT')
+      expect(words, dialect).toContain('PIVOT')
+      expect(words, dialect).toContain('ROWNUM')
+    }
+  })
+
+  it('adds the PostgreSQL-only words on PostgreSQL connections', () => {
+    const words = names(keywordCompletions('any', 'postgres'))
+    expect(words).toContain('CONFLICT')
+    expect(words).toContain('WITHIN')
+  })
+
+  it('does not leak dialect words into the generic popup', () => {
+    const words = names(keywordCompletions('any', 'generic'))
+    for (const word of ['STRAIGHT_JOIN', 'CONNECT', 'PIVOT', 'CONFLICT', 'WITHIN']) {
+      expect(words, word).not.toContain(word)
+    }
+  })
+
+  it('only offers dialect words in clauses that can use them', () => {
+    const postgresRelation = names(keywordCompletions('relation', 'postgres'))
+    expect(postgresRelation).not.toContain('CONFLICT')
+    const postgresColumn = names(keywordCompletions('column', 'postgres'))
+    expect(postgresColumn).toContain('CONFLICT')
+
+    const oracleRelation = names(keywordCompletions('relation', 'oracle'))
+    expect(oracleRelation).toContain('PIVOT')
+    const oracleAlias = names(keywordCompletions('alias', 'oracle'))
+    expect(oracleAlias).toEqual(['AS'])
+  })
+
+  it('never returns functions from the keyword provider', () => {
+    for (const dialect of ['generic', 'mysql', 'oracle', 'postgres']) {
+      for (const item of keywordCompletions('column', dialect)) {
+        expect(item.kind).toBe('keyword')
+      }
+    }
+  })
+
+  it('keeps dialect words out of the tolerant lexer reserved set', () => {
+    expect(isKeyword('SELECT')).toBe(true)
+    expect(isKeyword('regexp')).toBe(false)
+    expect(isKeyword('pivot')).toBe(false)
+  })
+})
+
+describe('functionCompletions', () => {
+  const dialectFunctions = {
+    mysql: 'DATE_ADD',
+    oracle: 'LISTAGG',
+    dameng: 'LISTAGG',
+    postgres: 'TO_JSONB',
+    generic: 'COUNT',
+  }
+
+  it('offers the dialect-specific functions', () => {
+    for (const [dialect, expected] of Object.entries(dialectFunctions)) {
+      const items = functionCompletions(dialect)
+      expect(names(items), dialect).toContain(expected)
+    }
+  })
+
+  it('only offers MySQL-only functions on MySQL', () => {
+    expect(names(functionCompletions('oracle'))).not.toContain('DATE_ADD')
+    expect(names(functionCompletions('generic'))).not.toContain('DATE_ADD')
+    expect(names(functionCompletions('mysql'))).not.toContain('LISTAGG')
+  })
+
+  it('returns unique upper-case names whose insert opens the call', () => {
+    for (const dialect of ['generic', 'mysql', 'oracle', 'dameng', 'postgres']) {
+      const items = functionCompletions(dialect)
+      const seen = new Set()
+      for (const item of items) {
+        expect(item.name, item.name).toBe(item.name.toUpperCase())
+        expect(item.insert, item.name).toBe(`${item.name}(`)
+        expect(seen.has(item.name), item.name).toBe(false)
+        seen.add(item.name)
+      }
+    }
+  })
+})
