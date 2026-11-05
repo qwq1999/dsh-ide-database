@@ -414,7 +414,7 @@ describe('analyze statement tails', () => {
   })
 
   it('returns to the generic list once the count is typed', () => {
-    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('any')
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('number')
   })
 
   it('expects a storage engine after ENGINE', () => {
@@ -509,7 +509,7 @@ describe('analyze statement continuation tails', () => {
   it('expects a number after the LIMIT offset comma', () => {
     expect(caretAtEnd('SELECT * FROM orders LIMIT ').expectation).toBe('number')
     expect(caretAtEnd('SELECT * FROM orders LIMIT 10, ').expectation).toBe('number')
-    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('any')
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('number')
   })
 
   it('points SHOW tails at their targets', () => {
@@ -530,5 +530,41 @@ describe('analyze statement continuation tails', () => {
   it('stays quiet after a completed ALTER TABLE rename', () => {
     expect(caretAtEnd('ALTER TABLE orders RENAME TO new_orders ').expectation).toBe('number')
     expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('name')
+  })
+})
+
+describe('analyze DDL and tail leftovers', () => {
+  it('expects user text after COMMENT and DEFAULT', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) COMMENT ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TABLE t (id INT) COMMENT = ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT ').expectation).toBe('value')
+    expect(caretAtEnd('CREATE TABLE t (id INT) COLLATE ').expectation).toBe('number')
+  })
+
+  it('keeps the CREATE TABLE body positions intact', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) ').expectation).toBe('tableOptions')
+    expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT CHARSET ').expectation).toBe('charset')
+    expect(caretAtEnd('CREATE TABLE t (id INT) ENGINE = ').expectation).toBe('engine')
+  })
+
+  it('stays quiet after DESCRIBE targets', () => {
+    expect(caretAtEnd('DESCRIBE ').expectation).toBe('relation')
+    expect(caretAtEnd('DESCRIBE orders ').expectation).toBe('name')
+    expect(caretAtEnd('DESC orders ').expectation).toBe('name')
+  })
+
+  it('expects a statement after a CTE or CREATE VIEW header', () => {
+    expect(caretAtEnd('WITH x AS (SELECT 1) ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE VIEW v AS ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE TABLE t LIKE ').expectation).toBe('relation')
+  })
+
+  it('handles EXPLAIN format and names-only DDL', () => {
+    expect(caretAtEnd('EXPLAIN FORMAT=TREE ').expectation).toBe('statement')
+    expect(caretAtEnd('EXPLAIN FORMAT = JSON ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE USER ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE ROLE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE SEQUENCE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TRIGGER ').expectation).toBe('name')
   })
 })

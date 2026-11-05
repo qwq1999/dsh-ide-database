@@ -228,6 +228,14 @@ function describesTable(tokens: readonly Token[]): boolean {
   return lower === 'describe' || lower === 'desc'
 }
 
+/** After `DESCRIBE orders ` only an optional column name remains. */
+function describeTableTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const start = first.text.toLowerCase()
+  return (start === 'describe' || start === 'desc') && tokens.length >= 2
+}
+
 /** `DROP INDEX idx ON ` names the table that owns the index. */
 function dropIndexOn(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -293,6 +301,20 @@ function limitCount(tokens: readonly Token[]): boolean {
   return (
     numbers > 0 && keyword !== undefined && keyword.kind === 'keyword' && keyword.lower === 'limit'
   )
+}
+
+/** A finished `LIMIT 10 [`/`OFFSET 5 ` tail takes no catalog names. */
+function limitTail(tokens: readonly Token[]): boolean {
+  let cursor = tokens.length - 1
+  while (cursor >= 0) {
+    const token = tokens[cursor] as Token
+    if (token.kind === 'number' || (token.kind === 'punct' && token.text === ',')) {
+      cursor -= 1
+      continue
+    }
+    return token.kind === 'keyword' && (token.lower === 'limit' || token.lower === 'offset')
+  }
+  return false
 }
 
 /** `CREATE TABLE ... ENGINE = ` names a storage engine. */
@@ -366,6 +388,27 @@ function charsetValue(tokens: readonly Token[]): boolean {
   )
 }
 
+/**
+ * `CREATE TABLE … COMMENT `/`DEFAULT `/`COLLATE ` tails take user text
+ * (a comment, a default expression, a collation name), not catalog names.
+ */
+function tableOptionValue(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'create') return undefined
+  if (!tokens.some((token) => token.text.toLowerCase() === 'table')) return undefined
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last === undefined) return undefined
+  const lower = last.text.toLowerCase()
+  if (lower === 'comment') return 'name'
+  if (lower === 'collate') return 'number'
+  if (lower === 'default') return 'value'
+  if (last.kind === 'punct' && last.text === '=') {
+    return previous?.text.toLowerCase() === 'comment' ? 'name' : undefined
+  }
+  return undefined
+}
+
 /** After `ENGINE = InnoDB `/`DEFAULT CHARSET utf8mb4 ` more table options follow. */
 function afterTableOptionValue(tokens: readonly Token[]): boolean {
   const first = tokens[0]
@@ -390,7 +433,9 @@ function objectName(tokens: readonly Token[]): boolean {
   const start = first.text.toLowerCase()
   const next = second.text.toLowerCase()
   if (start === 'drop' && next === 'index') return true
-  return start === 'create' && (next === 'database' || next === 'schema')
+  if (start !== 'create') return false
+  return next === 'database' || next === 'schema' || next === 'user' || next === 'role'
+    || next === 'sequence' || next === 'trigger'
 }
 
 /** `GRANT ... TO ` / `REVOKE ... FROM ` name a user, not a relation. */
@@ -409,7 +454,10 @@ function explainStart(tokens: readonly Token[]): boolean {
   if (first === undefined || first.text.toLowerCase() !== 'explain') return false
   if (tokens.length === 1) return true
   const second = tokens[1] as Token
-  return tokens.length === 2 && second.text.toLowerCase() === 'analyze'
+  const secondText = second.text.toLowerCase()
+  if (tokens.length === 2 && secondText === 'analyze') return true
+  // `EXPLAIN FORMAT=TREE ` / `EXPLAIN FORMAT JSON ` still precede the statement.
+  return tokens.length >= 3 && secondText === 'format'
 }
 
 /** `UNION ` / `UNION ALL ` start another SELECT, not a table list. */
@@ -428,6 +476,34 @@ function createTableAs(tokens: readonly Token[]): boolean {
   const tableAt = words[1] === 'table' ? 1 : words[1] === 'temporary' && words[2] === 'table' ? 2 : -1
   if (tableAt < 0) return false
   return words[words.length - 1] === 'as' && !words.includes('(')
+}
+
+/** `CREATE VIEW v AS ` and friends continue with a statement, like a table. */
+function createViewAs(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create' || words[words.length - 1] !== 'as') return false
+  const object = words[1] === 'or' ? words[3] : words[1]
+  return object === 'view' || object === 'trigger' || object === 'event'
+}
+
+/** `CREATE TABLE t LIKE ` copies another table. */
+function createTableLike(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const tableAt = words[1] === 'table' ? 1 : words[1] === 'temporary' && words[2] === 'table' ? 2 : -1
+  return tableAt >= 0 && words[words.length - 1] === 'like'
+}
+
+/** `WITH x AS (…select…) ` is followed by the main statement. */
+function afterCteDefinition(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const last = tokens[tokens.length - 1]
+  return (
+    first !== undefined &&
+    first.text.toLowerCase() === 'with' &&
+    last !== undefined &&
+    last.kind === 'punct' &&
+    last.text === ')'
+  )
 }
 
 /** `SHOW ` tails that name a catalog object or have nothing left to offer. */
@@ -631,6 +707,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
   if (createTableAs(tokens)) return 'statement'
+  if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
+  if (createTableLike(tokens)) return 'relation'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
@@ -641,6 +719,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (trailingIfExists(tokens)) return 'relation'
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
+  if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
   if (objectName(tokens)) return 'name'
   if (grantee(tokens)) return 'name'
@@ -650,8 +729,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (show !== undefined) return show
   if (showStart(tokens)) return 'show'
   if (limitCount(tokens)) return 'number'
+  if (limitTail(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'
   if (charsetValue(tokens)) return 'charset'
+  const optionValue = tableOptionValue(tokens)
+  if (optionValue !== undefined) return optionValue
   if (afterTableOptionValue(tokens)) return 'tableOptions'
   const set = setStatement(tokens)
   if (set !== undefined) return set
@@ -1145,8 +1227,11 @@ export function analyze(text: string, caret: number): Analysis {
   // A leading WITH defines names that only the main statement can use; the CTE
   // bodies themselves are not part of the caret's clause.
   const withClause = parseWith(before)
-  const statementTokens =
+  const mainStatement =
     withClause.mainStart > 0 ? before.slice(withClause.mainStart) : before
+  // Only CTE bodies typed so far: the caret still sits on the WITH header, so
+  // the header itself is what tells us a statement comes next.
+  const statementTokens = mainStatement.length > 0 ? mainStatement : before
   const ctes = withClause.ctes.map((definition) => definition.name)
   const cteRelations = withClause.ctes.map((definition) => {
     const relation: CompletionRelation = { table: '', alias: definition.name }

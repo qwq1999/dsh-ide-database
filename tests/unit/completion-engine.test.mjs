@@ -1023,3 +1023,47 @@ describe('complete statement continuation positions', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete DDL and tail leftovers', () => {
+  it('offers table option values only where they apply', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('CREATE TABLE t (id INT) DEFAULT '), catalog })
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('NULL')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet after COMMENT and DESCRIBE targets', async () => {
+    for (const statement of [
+      'CREATE TABLE t (id INT) COMMENT ',
+      'CREATE TABLE t (id INT) COLLATE ',
+      'DESCRIBE orders ',
+      'CREATE USER ',
+      'SELECT * FROM orders LIMIT 10 ',
+    ]) {
+      const catalog = createCatalog()
+      const result = await complete({ ...request(statement), catalog })
+      expect(result.items).toEqual([])
+      expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+  })
+
+  it('offers statements after a CTE or CREATE VIEW header', async () => {
+    for (const statement of ['WITH x AS (SELECT 1) ', 'CREATE VIEW v AS ', 'EXPLAIN FORMAT=TREE ']) {
+      const catalog = createCatalog()
+      const result = await complete({ ...request(statement), catalog })
+      expect(result.analysis.expectation).toBe('statement')
+      expect(names(result)).toContain('SELECT')
+      expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+  })
+
+  it('offers source tables for CREATE TABLE ... LIKE', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('CREATE TABLE t LIKE '), catalog })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('orders')
+    expect(catalog.calls.tables.length).toBeGreaterThan(0)
+  })
+})
