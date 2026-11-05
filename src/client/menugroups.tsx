@@ -11,7 +11,7 @@
  * edge is in the way (the trigger sits near the right side of a narrow panel)
  * the flyout flips to the left instead of being clipped.
  */
-import { useRef, useState, type ReactElement } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactElement } from 'react'
 
 export interface MenuLeaf {
   /** Stable id, also the React key. */
@@ -45,16 +45,29 @@ const VIEWPORT_MARGIN = 8
 export function MenuGroupList({ groups, extra, onClose }: MenuGroupListProps): ReactElement {
   const [open, setOpen] = useState<OpenFlyout | null>(null)
   const flyouts = useRef(new Map<string, HTMLSpanElement>())
+  const anchors = useRef(new Map<string, HTMLButtonElement>())
 
-  const openGroup = (id: string, anchor: HTMLElement): void => {
-    const flyout = flyouts.current.get(id)
-    // In environments without layout (jsdom) the flyout has no width yet; the
-    // default direction is used and nothing is flipped.
-    const width = flyout?.getBoundingClientRect().width ?? 0
-    const rect = anchor.getBoundingClientRect()
-    const flip = width > 0 && rect.right + width + VIEWPORT_MARGIN > window.innerWidth
-    setOpen((current) => (current !== null && current.id === id && current.flip === flip ? current : { id, flip }))
+  const openGroup = (id: string, anchor: HTMLButtonElement): void => {
+    anchors.current.set(id, anchor)
+    setOpen((current) => (current !== null && current.id === id ? current : { id, flip: false }))
   }
+
+  // A closed flyout is display:none and has no width, so the space check can
+  // only run after it is visible. Layout effects fire before paint, so flipping
+  // here never shows a clipped frame first. Left stays the default; the flyout
+  // only flips when the right side lacks room and the left side has it.
+  useLayoutEffect(() => {
+    if (open === null || open.flip) return
+    const flyout = flyouts.current.get(open.id)
+    const anchor = anchors.current.get(open.id)
+    if (flyout === undefined || anchor === undefined) return
+    const width = flyout.getBoundingClientRect().width
+    if (width <= 0) return
+    const rect = anchor.getBoundingClientRect()
+    if (rect.right + width + VIEWPORT_MARGIN <= window.innerWidth) return
+    if (rect.left - width - VIEWPORT_MARGIN < 0) return
+    setOpen((current) => (current === null || current.id !== open.id ? current : { id: open.id, flip: true }))
+  }, [open])
 
   return (
     <span className="dshdb-menu dshdb-menu-groups" role="menu" onClick={onClose}>

@@ -40,6 +40,23 @@ describe('grouped menu flyouts', () => {
     expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-flip')).toBe('true')
   })
 
+  it('measures the flyout after it is visible, not while it is closed', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('dshdb-submenu')) {
+        // display:none (data-open missing) reports no width at all.
+        const width = this.getAttribute('data-open') === 'true' ? 320 : 0
+        return { width, left: 0, right: width, top: 0, bottom: 0, height: 0, x: 0, y: 0 } as DOMRect
+      }
+      return { width: 168, left: 900, right: 1068, top: 0, bottom: 28, height: 28, x: 900, y: 0 } as DOMRect
+    })
+    render(<MenuGroupList groups={groups} onClose={() => undefined} />)
+    const trigger = screen.getByRole('menuitem', { name: '导出当前页' })
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.pointerEnter(trigger)
+    expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-flip')).toBe('true')
+  })
+
   it('lays flyouts out to the right unless flipped', () => {
     expect(CSS).toMatch(/\.dshdb-menu \.dshdb-submenu \{[^}]*left:\s*calc\(100% \+ 2px\)/)
     expect(CSS).toMatch(/\.dshdb-menu \.dshdb-submenu \{[^}]*right:\s*auto/)
