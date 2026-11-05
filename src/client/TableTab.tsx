@@ -146,6 +146,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [exporting, setExporting] = useState(false)
   const exportingRef = useRef(false)
   const [exportNote, setExportNote] = useState('')
+  /** Checked rows of the current page (indices into shownRows). */
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(() => new Set())
+  const selectionAnchor = useRef<number | null>(null)
   /** Copy and export notes clear themselves so the footer does not stale. */
   useEffect(() => {
     if (exportNote === '') return undefined
@@ -202,6 +205,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   const hiddenCount = displayColumns.length - shownColumns.length
+
+  // A reload, page change or filter shows different rows; old checkboxes would point nowhere.
+  useEffect(() => {
+    setSelectedRows(new Set())
+    selectionAnchor.current = null
+  }, [rows, page])
 
   const load = useCallback(
     async (found: ClientConnection, target: { page: number; size: number; where: string; orderBy: string; recount: boolean }): Promise<void> => {
@@ -686,6 +695,49 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     }
   }
 
+  /** Toggle one checkbox; shift-click extends from the last clicked row. */
+  const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    setSelectedRows((current) => {
+      const next = new Set(current)
+      if (extend && selectionAnchor.current !== null) {
+        const from = Math.min(selectionAnchor.current, rowIndex)
+        const to = Math.max(selectionAnchor.current, rowIndex)
+        const select = !next.has(rowIndex)
+        for (let index = from; index <= to; index += 1) {
+          if (select) next.add(index)
+          else next.delete(index)
+        }
+        return next
+      }
+      if (next.has(rowIndex)) next.delete(rowIndex)
+      else next.add(rowIndex)
+      return next
+    })
+    selectionAnchor.current = rowIndex
+  }, [])
+  const toggleAllRows = useCallback((): void => {
+    setSelectedRows((current) =>
+      current.size === shownRows.length ? new Set() : new Set(shownRows.map((_, index) => index)),
+    )
+  }, [shownRows])
+  /** Save only the checked rows of the current page. */
+  const exportSelected = (format: ExportFormat): void => {
+    setExportOpen(false)
+    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    if (picked.length === 0) return
+    const payload = renderExport(format, {
+      dialect: connection?.dialect ?? 'mysql',
+      schema: params.schema,
+      table: params.table,
+      columns: shownColumns,
+      rows: picked,
+    })
+    downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
+    setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
+    setTimeout(() => setExportNote(''), 5000)
+    setSelectedRows(new Set())
+  }
+
   /** The whole table as a runnable script: CREATE plus one INSERT per row. */
   const exportDump = async (): Promise<void> => {
     if (connection === null) return
@@ -809,6 +861,22 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               <button type="button" role="menuitem" onClick={() => void exportRows('md', 'page')}>
                 当前页 Markdown（{formatCount(rows.length)} 行）
               </button>
+              {selectedRows.size > 0 ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => exportSelected('csv')}>
+                    已选 CSV（{selectedRows.size} 行）
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => exportSelected('json')}>
+                    已选 JSON（{selectedRows.size} 行）
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => exportSelected('sql')}>
+                    已选 SQL（{selectedRows.size} 行）
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => exportSelected('md')}>
+                    已选 Markdown（{selectedRows.size} 行）
+                  </button>
+                </>
+              ) : null}
               <button type="button" role="menuitem" onClick={() => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown'))}>
                 复制当前页 Markdown
               </button>
@@ -1069,6 +1137,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           headerMenu={columnMenu}
           onSort={sortTable}
           onReorderColumns={gridReorder}
+          selectedRows={selectedRows}
+          onToggleRow={selectRow}
+          onToggleAllRows={toggleAllRows}
           headerExtra={filtersOpen ? (
               <tr
                 className="dshdb-filter-row"
@@ -1079,6 +1150,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   setFiltersOpen(false)
                 }}
               >
+                <th className="dshdb-select-cell" />
                 <th className="dshdb-num">
                   {activeFilterCount > 0 ? (
                     <button type="button" className="dshdb-row-action" title="清除所有列筛选" aria-label="清除列筛选" onClick={clearColumnFilters}>

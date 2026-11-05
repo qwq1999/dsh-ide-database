@@ -72,6 +72,12 @@ export interface DataGridProps {
   emptyText?: string
   /** Names the table for screen readers, e.g. "查询结果". */
   label?: string
+  /** Checked row indices (into `rows`); a checkbox column appears when onToggleRow is set. */
+  selectedRows?: ReadonlySet<number>
+  /** Toggle one row; `extend` is true when the user shift-clicked to select a range. */
+  onToggleRow?: (rowIndex: number, extend: boolean) => void
+  /** Check or clear every visible row from the header checkbox. */
+  onToggleAllRows?: () => void
 }
 
 const MIN_COLUMN_WIDTH = 48
@@ -160,7 +166,13 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     onReorderColumns,
     emptyText,
     label,
+    selectedRows,
+    onToggleRow,
+    onToggleAllRows,
   } = props
+  const selectable = onToggleRow !== undefined
+  const selectedCount = selectedRows?.size ?? 0
+  const colSpan = columns.length + (selectable ? 2 : 1)
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const dragIndex = useRef<number | null>(null)
@@ -268,6 +280,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       >
         {widths === null ? null : (
           <colgroup>
+            {selectable ? <col style={{ width: 30 }} /> : null}
             <col style={{ width: 34 }} />
             {widths.map((width, index) => (
               <col key={`col-${index}`} style={{ width }} />
@@ -276,6 +289,20 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         )}
         <thead>
           <tr>
+            {selectable ? (
+              <th className="dshdb-select-cell" scope="col">
+                <input
+                  type="checkbox"
+                  aria-label={selectedCount === rows.length && rows.length > 0 ? '取消全选行' : '全选行'}
+                  checked={rows.length > 0 && selectedCount === rows.length}
+                  ref={(input) => {
+                    if (input !== null) input.indeterminate = selectedCount > 0 && selectedCount < rows.length
+                  }}
+                  title="选中 / 取消选中当前页所有行"
+                  onChange={() => onToggleAllRows?.()}
+                />
+              </th>
+            ) : null}
             <th className="dshdb-num" scope="col">
               <span aria-hidden="true">#</span>
               <span className="dshdb-sr-only">行号</span>
@@ -384,19 +411,31 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         <tbody>
           {rows.length === 0 && emptyText !== undefined ? (
             <tr className="dshdb-empty-row">
-              <td colSpan={columns.length + 1}>{emptyText}</td>
+              <td colSpan={colSpan}>{emptyText}</td>
             </tr>
           ) : null}
           {range.paddingTop > 0 ? (
             <tr className="dshdb-vpad" aria-hidden="true">
-              <td colSpan={columns.length + 1} style={{ height: range.paddingTop }} />
+              <td colSpan={colSpan} style={{ height: range.paddingTop }} />
             </tr>
           ) : null}
           {visible.map((row, index) => {
             const rowIndex = range.start + index
+            const rowNo = rowNumbers?.[rowIndex] ?? offset + rowIndex + 1
+            const checked = selectedRows?.has(rowIndex) === true
             return (
-              <tr key={rowIndex}>
-                <td className="dshdb-num">{rowNumbers?.[rowIndex] ?? offset + rowIndex + 1}</td>
+              <tr key={rowIndex} data-selected={selectable && checked ? 'true' : undefined}>
+                {selectable ? (
+                  <td className="dshdb-select-cell">
+                    <input
+                      type="checkbox"
+                      aria-label={`选择第 ${rowNo} 行`}
+                      checked={checked}
+                      onChange={(event) => onToggleRow?.(rowIndex, (event.nativeEvent as MouseEvent).shiftKey === true)}
+                    />
+                  </td>
+                ) : null}
+                <td className="dshdb-num">{rowNo}</td>
                 {columns.map((column, columnIndex) => {
                   const value: CellValue = row[columnIndex] ?? null
                   // One format per cell: the same text feeds the tooltip and the body.
@@ -431,7 +470,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
           })}
           {range.paddingBottom > 0 ? (
             <tr className="dshdb-vpad" aria-hidden="true">
-              <td colSpan={columns.length + 1} style={{ height: range.paddingBottom }} />
+              <td colSpan={colSpan} style={{ height: range.paddingBottom }} />
             </tr>
           ) : null}
         </tbody>

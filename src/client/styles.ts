@@ -590,6 +590,20 @@ export const CSS = `
   user-select: none;
   width: 1%;
 }
+.dshdb-grid .dshdb-select-cell {
+  width: 1%;
+  padding: 0 2px;
+  text-align: center;
+  user-select: none;
+}
+.dshdb-select-cell input {
+  margin: 0;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.dshdb-grid tr[data-selected="true"] td {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent);
+}
 .dshdb-null { color: var(--dsw-alias-label-dimmed); font-style: italic; }
 .dshdb-cell-filterable { cursor: pointer; }
 .dshdb-filter-row th {

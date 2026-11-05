@@ -192,6 +192,36 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [base, setBase] = useState('')
   const [sourceSql, setSourceSql] = useState('')
   const [rowSort, setRowSort] = useState<RowSort | null>(null)
+  /** Checked rows of the current page (indices into shownRows). */
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(() => new Set())
+  /** Anchor for shift-click range selection. */
+  const selectionAnchor = useRef<number | null>(null)
+  /** Rows currently painted; a ref keeps the selection callbacks stable for the memoized grid. */
+  const shownRowsRef = useRef<Row[]>([])
+  /** Toggle one checkbox; shift-click extends from the last clicked row. */
+  const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    setSelectedRows((current) => {
+      const next = new Set(current)
+      if (extend && selectionAnchor.current !== null) {
+        const from = Math.min(selectionAnchor.current, rowIndex)
+        const to = Math.max(selectionAnchor.current, rowIndex)
+        const select = !next.has(rowIndex)
+        for (let index = from; index <= to; index += 1) {
+          if (select) next.add(index)
+          else next.delete(index)
+        }
+        return next
+      }
+      if (next.has(rowIndex)) next.delete(rowIndex)
+      else next.add(rowIndex)
+      return next
+    })
+    selectionAnchor.current = rowIndex
+  }, [])
+  const toggleAllRows = useCallback((): void => {
+    const rows = shownRowsRef.current
+    setSelectedRows((current) => (current.size === rows.length ? new Set() : new Set(rows.map((_, index) => index))))
+  }, [])
   const [columnOrder, setColumnOrder] = useState<number[] | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden('console:sql'))
   const [cellView, setCellView] = useState<CellValueView | null>(null)
@@ -1258,6 +1288,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
+  shownRowsRef.current = shownRows
+
+  // A new page/filter/sort shows different rows, so old checkboxes no longer point at them.
+  useEffect(() => {
+    setSelectedRows(new Set())
+    selectionAnchor.current = null
+  }, [result, page, pageSize, rowFilter, rowSort])
   const hiddenCount = displayColumns.length - shownColumns.length
   const signature = columnSignature(columns)
   useEffect(() => {
@@ -1458,6 +1495,28 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
+  /** Save only the checked rows of the current page. */
+  const exportSelected = (format: ExportFormat): void => {
+    setExportOpen(false)
+    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    if (picked.length === 0) return
+    const target = format === 'sql' ? tableTarget() : null
+    if (format === 'sql' && target === null) {
+      noTableNote()
+      return
+    }
+    const payload = renderExport(format, {
+      dialect: connection?.dialect ?? 'mysql',
+      schema: target?.schema ?? '',
+      table: target?.table ?? 'console',
+      columns: shownColumns,
+      rows: picked,
+    })
+    downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
+    setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
+    setTimeout(() => setExportNote(''), 5000)
+    setSelectedRows(new Set())
+  }
   /** Export every row of the paged statement, not just the current page. */
   const exportAll = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
@@ -1656,6 +1715,22 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       <button type="button" role="menuitem" onClick={() => exportPage('md')} disabled={filteredRows.length === 0}>
         当前页 Markdown（{filteredRows.length} 行）
       </button>
+      {selectedRows.size > 0 ? (
+        <>
+          <button type="button" role="menuitem" onClick={() => exportSelected('csv')}>
+            已选 CSV（{selectedRows.size} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => exportSelected('json')}>
+            已选 JSON（{selectedRows.size} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => exportSelected('sql')}>
+            已选 SQL（{selectedRows.size} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => exportSelected('md')}>
+            已选 Markdown（{selectedRows.size} 行）
+          </button>
+        </>
+      ) : null}
       <button
         type="button"
         role="menuitem"
@@ -2361,6 +2436,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               </select>
             ) : null}
             <span className="dshdb-qbar-spacer" />
+            {selectedRows.size > 0 ? <Tag tone="business">已选 {selectedRows.size} 行</Tag> : null}
             {exportNote !== '' ? <Tag tone="business" role="status">{exportNote}</Tag> : null}
             {exporting ? (
               <button
@@ -2460,6 +2536,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 headerMenu={columnMenu}
                 cellMenu={gridCellMenu}
                 onCellOpen={gridCellOpen}
+                selectedRows={selectedRows}
+                onToggleRow={selectRow}
+                onToggleAllRows={toggleAllRows}
                 emptyText={
                   rowFilter.trim() !== "" && visibleRows.length > 0 && filteredRows.length === 0
                     ? "当前页没有匹配筛选条件的行"
