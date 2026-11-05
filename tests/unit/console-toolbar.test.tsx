@@ -177,6 +177,9 @@ describe('console toolbar', () => {
       expect(items).toHaveLength(13)
       expect(items[0]?.textContent).toContain('取消')
       expect(screen.getByLabelText('更多操作').getAttribute('aria-expanded')).toBe('true')
+      // Right-aligned to the trigger, otherwise the menu would run past the
+      // panel edge when the "…" button sits near the right side.
+      expect(screen.getByRole('menu').className).not.toContain('dshdb-menu-start')
     } finally {
       if (original === undefined) delete (Element.prototype as { clientWidth?: unknown }).clientWidth
       else Object.defineProperty(Element.prototype, 'clientWidth', original)
@@ -190,5 +193,7 @@ describe('console toolbar', () => {
     expect(actions).not.toMatch(/overflow\s*:\s*hidden/)
     const menu = /\.dshdb-menu\s*\{([^}]*)\}/.exec(CSS)?.[1] ?? ''
     expect(menu).toMatch(/position\s*:\s*absolute/)
+    expect(menu).toMatch(/right\s*:\s*0/)
+    expect(menu).not.toMatch(/left\s*:\s*0/)
   })
 })

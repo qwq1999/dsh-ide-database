@@ -651,7 +651,6 @@ export const CSS = `
   cursor: pointer;
 }
 .dshdb-menu button:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.dshdb-menu-start { left: 0; right: auto; }
 .dshdb-menu-icon {
   display: inline-flex;
   align-items: center;

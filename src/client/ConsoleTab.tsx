@@ -2269,7 +2269,10 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                   }}
                 />
                 {overflowOpen && hiddenActions.length > 0 ? (
-                  <span className="dshdb-menu dshdb-menu-start" role="menu">
+                  // Right-aligned to the "…" button: the button sits near the
+                  // right edge of the toolbar, so a left-aligned menu would run
+                  // past the panel and get clipped.
+                  <span className="dshdb-menu" role="menu">
                     {hiddenActions.map((action) => (
                       <button
                         key={action.id}
