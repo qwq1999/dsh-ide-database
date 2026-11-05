@@ -361,6 +361,25 @@ interface CteDefinition {
 }
 
 /**
+ * A CTE whose body is `SELECT * FROM earlier_cte` borrows that CTE's known
+ * shape: its columns, or the catalog relation it expands from. Only earlier
+ * definitions are visible, which also keeps recursive references safe.
+ */
+function resolveCteSource(
+  definition: CteDefinition,
+  known: readonly CteDefinition[],
+): void {
+  const source = definition.source
+  if (source === undefined || source.schema !== undefined) return
+  const lower = source.table.toLowerCase()
+  const target = known.find((cte) => cte.name.toLowerCase() === lower)
+  if (target === undefined) return
+  delete definition.source
+  if (target.columns !== undefined) definition.columns = target.columns
+  else if (target.source !== undefined) definition.source = target.source
+}
+
+/**
  * Parse a leading `WITH [RECURSIVE] name [(cols)] AS (SELECT ...), ...` clause.
  * Incomplete or unrecognised syntax yields no CTEs, so the parser falls back to
  * treating the whole token list as the statement.
@@ -437,6 +456,7 @@ function parseWith(tokens: readonly Token[]): { ctes: CteDefinition[]; mainStart
       const source = starSource(body)
       if (source !== undefined) cte.source = source
     }
+    resolveCteSource(cte, ctes)
     ctes.push(cte)
     index = close + 1
 
@@ -516,8 +536,20 @@ function attachCteColumns(
   relation: CompletionRelation,
   ctes: readonly CteDefinition[],
 ): CompletionRelation {
-  if (relation.table === '' || ctes.length === 0) return relation
-  const lower = relation.table.toLowerCase()
+  if (ctes.length === 0) return relation
+  if (relation.table !== '') {
+    const lower = relation.table.toLowerCase()
+    const cte = ctes.find((definition) => definition.name.toLowerCase() === lower)
+    if (cte === undefined) return relation
+    if (cte.columns !== undefined) relation.columns = cte.columns
+    else if (cte.source !== undefined) relation.source = cte.source
+    return relation
+  }
+  // A derived table whose inner `SELECT *` reads from a CTE inherits the same
+  // shape, so `(SELECT * FROM recent) d` can offer `recent`'s columns.
+  const source = relation.source
+  if (source === undefined || source.schema !== undefined) return relation
+  const lower = source.table.toLowerCase()
   const cte = ctes.find((definition) => definition.name.toLowerCase() === lower)
   if (cte === undefined) return relation
   if (cte.columns !== undefined) relation.columns = cte.columns

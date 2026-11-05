@@ -260,6 +260,30 @@ describe('analyze CTEs and derived tables', () => {
     expect(analysis.relations).toEqual([{ table: 'x' }])
   })
 
+  it('follows a chained CTE through SELECT *', () => {
+    const analysis = caretAtEnd(
+      'WITH a AS (SELECT * FROM orders), b AS (SELECT * FROM a) SELECT * FROM b WHERE ',
+    )
+    expect(analysis.ctes).toEqual(['a', 'b'])
+    expect(analysis.relations).toEqual([{ table: 'b', source: { table: 'orders' } }])
+  })
+
+  it('carries explicit CTE columns through a chain', () => {
+    const analysis = caretAtEnd(
+      'WITH a AS (SELECT id, total FROM orders), b AS (SELECT * FROM a) SELECT * FROM b WHERE ',
+    )
+    expect(analysis.relations).toEqual([{ table: 'b', columns: ['id', 'total'] }])
+  })
+
+  it('inherits CTE columns in a derived table', () => {
+    const analysis = caretAtEnd(
+      'WITH a AS (SELECT * FROM orders) SELECT * FROM (SELECT * FROM a) d WHERE ',
+    )
+    expect(analysis.relations).toEqual([
+      { table: '', alias: 'd', source: { table: 'orders' } },
+    ])
+  })
+
   it('gives no CTE list outside a WITH statement', () => {
     const analysis = caretAtEnd('for (part of items) ')
     expect(analysis.ctes).toBeUndefined()

@@ -286,6 +286,23 @@ describe('complete CTEs and derived tables', () => {
     expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
     expect(req.catalog.calls.columns).toContain('shop.orders')
   })
+
+  it('follows a chained CTE through SELECT *', async () => {
+    const req = request(
+      'WITH a AS (SELECT * FROM orders), b AS (SELECT * FROM a) SELECT * FROM b WHERE b.',
+    )
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('inherits CTE columns inside a derived table', async () => {
+    const req = request(
+      'WITH recent AS (SELECT * FROM orders) SELECT * FROM (SELECT * FROM recent) d WHERE d.',
+    )
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+  })
 })
 
 describe('complete snippets', () => {
