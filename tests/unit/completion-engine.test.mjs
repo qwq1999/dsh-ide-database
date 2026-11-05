@@ -2095,3 +2095,36 @@ describe('complete USE, constraint and routine tails', () => {
     expect(names(result)).toEqual(['HAVING', 'ORDER', 'LIMIT', 'WITH'])
   })
 })
+
+describe('complete hint, lock and load tails', () => {
+  it('stays quiet inside index hints', async () => {
+    const req = request('SELECT * FROM orders FORCE INDEX (')
+    expect((await complete(req)).items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers tables after FOR UPDATE OF', async () => {
+    const req = request('SELECT * FROM orders FOR UPDATE OF ')
+    const result = await complete(req)
+    expect(names(result)[0]).toBe('orders')
+    expect(req.catalog.calls.tables).toContain('shop')
+  })
+
+  it('offers the LOAD DATA target table', async () => {
+    const req = request("LOAD DATA INFILE 'x' INTO TABLE ")
+    const result = await complete(req)
+    expect(names(result)[0]).toBe('orders')
+    expect(result.items.every((item) => item.kind === 'table' || item.kind === 'schema')).toBe(true)
+  })
+
+  it('continues with a statement after INTERSECT', async () => {
+    const result = await complete(request('SELECT id FROM orders INTERSECT '))
+    expect(result.analysis.expectation).toBe('statement')
+    expect(names(result)).toContain('SELECT')
+  })
+
+  it('stays quiet in partition definitions', async () => {
+    const req = request('CREATE TABLE t (id INT) PARTITION BY RANGE (')
+    expect((await complete(req)).items).toEqual([])
+  })
+})

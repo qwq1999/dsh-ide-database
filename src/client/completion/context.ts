@@ -1017,9 +1017,15 @@ function unionStatement(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined) return false
   const lower = last.text.toLowerCase()
-  if (lower === 'union') return true
+  if (lower === 'union' || lower === 'intersect' || lower === 'except') return true
   const previous = tokens[tokens.length - 2]
-  return lower === 'all' && previous !== undefined && previous.text.toLowerCase() === 'union'
+  return (
+    lower === 'all' &&
+    previous !== undefined &&
+    (previous.text.toLowerCase() === 'union' ||
+      previous.text.toLowerCase() === 'intersect' ||
+      previous.text.toLowerCase() === 'except')
+  )
 }
 
 /** Bare `CREATE TABLE t AS ` (no body yet) continues with a statement. */
@@ -2083,12 +2089,87 @@ function insertTargetTail(tokens: readonly Token[]): boolean {
   return target !== null && target.next === tokens.length
 }
 
+/** `FORCE INDEX (`, `USE INDEX (` and `IGNORE INDEX (` list index names. */
+function indexHint(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  let hint = -1
+  for (let index = 0; index < words.length - 1; index += 1) {
+    if (
+      (words[index] === 'force' || words[index] === 'use' || words[index] === 'ignore') &&
+      (words[index + 1] === 'index' || words[index + 1] === 'key')
+    ) {
+      hint = index
+    }
+  }
+  if (hint < 0) return false
+  let depth = 0
+  let opened = false
+  for (let index = hint + 2; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      opened = true
+    } else if (token.text === ')') {
+      depth -= 1
+    }
+  }
+  return opened && depth > 0
+}
+
+/** `FOR UPDATE`/`FOR SHARE` tails: OF names tables, then nothing catalog-bound. */
+function forLockTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('for')) return undefined
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  const tail = last.text.toLowerCase()
+  if (tail === 'update' || tail === 'share') return 'number'
+  if (tail === 'of') return 'tableName'
+  if (words[words.length - 2] === 'of') return 'number'
+  return undefined
+}
+
+/** `FETCH FIRST ` and `OFFSET n ROWS ` take numbers only. */
+function fetchTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  // FETCH [FIRST|NEXT] [n] [ROW|ROWS] and OFFSET n ROWS carry numbers only.
+  if (words.includes('fetch')) return 'number'
+  const tail = words[words.length - 1]
+  if ((tail === 'rows' || tail === 'row') && words.includes('offset')) return 'number'
+  return undefined
+}
+
+/** `LOAD DATA ... INTO TABLE orders ` is followed by field/line clauses. */
+function loadDataTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first?.text.toLowerCase() !== 'load' || second?.text.toLowerCase() !== 'data') {
+    return undefined
+  }
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const table = words.indexOf('table')
+  if (table < 0) return 'number'
+  return table === words.length - 1 ? 'tableName' : 'number'
+}
+
+/** `PARTITION BY RANGE (` and `ADD PARTITION (` take values, not definitions. */
+function partitionParen(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== '(') return false
+  return tokens.some((token) => token.text.toLowerCase() === 'partition')
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
   // CHARACTER SET names a charset wherever it appears, including column
   // definitions inside CREATE TABLE / routines.
   if (charsetValue(tokens)) return 'charset'
+  // Partition definitions carry literals, and index names are not catalog
+  // objects this engine can list.
+  if (partitionParen(tokens)) return 'number'
+  if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
@@ -2149,6 +2230,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  const load = loadDataTail(tokens)
+  if (load !== undefined) return load
   const deleteSource = deleteUsing(tokens)
   if (deleteSource !== undefined) return deleteSource
   if (tableNameTail(tokens)) return 'number'
@@ -2188,6 +2271,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (showPatternTail(tokens)) return 'number'
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
+  const fetch = fetchTail(tokens)
+  if (fetch !== undefined) return fetch
   if (createTableEngine(tokens)) return 'engine'
   if (partitionBy(tokens)) return 'partition'
   if (charsetValue(tokens)) return 'charset'
@@ -2233,6 +2318,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (last !== undefined && last.text.toLowerCase() === 'return') return 'column'
   if (escapeTail(tokens)) return 'number'
   if (lockStart(tokens)) return 'lock'
+  const forLock = forLockTail(tokens)
+  if (forLock !== undefined) return forLock
   // `OVER w ` and a closed `WINDOW w AS (...)` end the window expression.
   if (namedWindowTail(tokens)) return 'expressionTail'
   // `OVER (...)`/`WINDOW ... AS (...)`: the spec's own PARTITION BY / ORDER BY
@@ -2760,7 +2847,8 @@ export function analyze(text: string, caret: number): Analysis {
   const caretRelative = at - bounds.start
   const wordStartRelative = word.start - bounds.start
   const before = tokens.filter(
-    (token) => token.end <= wordStartRelative && token.start < caretRelative,
+    (token) =>
+      token.text !== '' && token.end <= wordStartRelative && token.start < caretRelative,
   )
 
   // A leading WITH defines names that only the main statement can use; the CTE

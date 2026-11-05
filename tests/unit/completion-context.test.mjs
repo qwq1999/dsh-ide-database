@@ -1339,3 +1339,43 @@ describe('analyze USE, constraints and routine tails', () => {
     expect(caretAtEnd('SELECT * FROM orders GROUP BY id + 1 ').expectation).toBe('groupTail')
   })
 })
+
+describe('analyze hints, locks and load/partition tails', () => {
+  it('stays quiet inside index hints', () => {
+    expect(caretAtEnd('SELECT * FROM orders FORCE INDEX (').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders USE INDEX (').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders IGNORE INDEX (').expectation).toBe('number')
+  })
+
+  it('follows FOR UPDATE/SHARE tails', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders FOR SHARE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE OF ').expectation).toBe('tableName')
+    expect(caretAtEnd('SELECT * FROM orders FOR SHARE OF ').expectation).toBe('tableName')
+  })
+
+  it('takes numbers in FETCH and OFFSET tails', () => {
+    expect(caretAtEnd('SELECT * FROM orders FETCH FIRST ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders OFFSET 10 ROWS ').expectation).toBe('number')
+  })
+
+  it('continues with a statement after INTERSECT/EXCEPT', () => {
+    expect(caretAtEnd('SELECT id FROM orders INTERSECT ').expectation).toBe('statement')
+    expect(caretAtEnd('SELECT id FROM orders EXCEPT ').expectation).toBe('statement')
+    expect(caretAtEnd('SELECT id FROM orders INTERSECT ALL ').expectation).toBe('statement')
+  })
+
+  it('names the LOAD DATA table then stays quiet', () => {
+    expect(caretAtEnd("LOAD DATA INFILE 'x' INTO TABLE ").expectation).toBe('tableName')
+    expect(caretAtEnd("LOAD DATA INFILE 'x' INTO TABLE orders ").expectation).toBe('number')
+  })
+
+  it('stays quiet in partition definitions', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD PARTITION (').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY RANGE (').expectation).toBe('number')
+  })
+
+  it('keeps a quoted table name after IF EXISTS', () => {
+    expect(caretAtEnd('DROP TABLE IF EXISTS `').expectation).toBe('tableName')
+  })
+})
