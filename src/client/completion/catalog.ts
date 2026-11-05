@@ -70,6 +70,10 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
         this.tableCache.set(schema, items)
         return items
       } catch {
+        // Negative cache: a relation list that failed once (for example a schema
+        // that does not exist on this server) should not be retried for every
+        // popup of the same console. DDL and the refresh button clear the cache.
+        this.tableCache.set(schema, [])
         return []
       }
     })
@@ -90,6 +94,9 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
         this.columnCache.set(key, items)
         return items
       } catch {
+        // See tables(): remember the miss so qualifier fallbacks do not repeat a
+        // metadata read that cannot succeed on this connection.
+        this.columnCache.set(key, [])
         return []
       }
     })
