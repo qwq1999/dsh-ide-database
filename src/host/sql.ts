@@ -289,6 +289,16 @@ function objectKindName(kind: ObjectKind): string {
 }
 
 /**
+ * Server DDL is displayed verbatim in a <pre> and is also returned by the
+ * agent tools. Oracle's DBMS_METADATA (and some SHOW CREATE results) wrap the
+ * statement in blank lines, which render as an empty first line in the tree
+ * detail panel; drop only those blank edges and keep the statement itself.
+ */
+function trimDdlText(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, '').replace(/\s+$/, '')
+}
+
+/**
  * Best-effort CREATE TABLE for dialects whose metadata cannot return DDL.
  * Only columns, the primary key and unique indexes are reconstructed; the
  * answer is marked generated so callers can tell it apart from the real thing.
@@ -616,7 +626,7 @@ export class SqlService {
         // position differs per object type (and MariaDB version), so take the
         // longest string cell instead of a fixed index.
         const cells = Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === 'string') : []
-        const ddl = cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), '')
+        const ddl = trimDdlText(cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), ''))
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('服务器没有返回 DDL 文本')
       } else if (dialect === 'sqlite' && (kind === 'table' || kind === 'view' || kind === 'trigger')) {
@@ -682,10 +692,14 @@ export class SqlService {
     return { schema, table, kind, ddl: generateDdl(dialect, description), source: 'generated', warnings }
   }
 
-  /** Runs a one-row query and returns the first cell when it is a string. */
+  /**
+   * Runs a one-row query and returns the first cell when it is a string.
+   * Server DDL is shown verbatim, so blank lines around it are dropped here.
+   */
   private async firstCell(connId: string, statement: string): Promise<string> {
     const result = await this.query(connId, statement, { maxRows: 1 })
-    return typeof result.rows[0]?.[0] === 'string' ? result.rows[0][0] : ''
+    const cell = result.rows[0]?.[0]
+    return typeof cell === 'string' ? trimDdlText(cell) : ''
   }
 
   /** Fetch the execution plan (EXPLAIN) of a statement without running it. */
