@@ -116,6 +116,8 @@ export type CompletionExpectation =
   | 'intoTarget'
   | 'constraintType'
   | 'assignment'
+  | 'flush'
+  | 'reset'
   | 'database'
   | 'keyword'
   | 'any'

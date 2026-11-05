@@ -527,6 +527,24 @@ const EVENT_TAIL_WORDS = ['STARTS', 'ENDS', 'DO'] as const
 const INTO_TARGET_WORDS = ['OUTFILE', 'DUMPFILE'] as const
 
 /** `ADD CONSTRAINT name ` takes the constraint kind. */
+const FLUSH_WORDS = [
+  'PRIVILEGES',
+  'TABLES',
+  'LOGS',
+  'BINARY',
+  'ENGINE',
+  'ERROR',
+  'GENERAL',
+  'RELAY',
+  'SLOW',
+  'HOSTS',
+  'STATUS',
+  'USER_RESOURCES',
+  'OPTIMIZER_COSTS',
+] as const
+
+const RESET_WORDS = ['MASTER', 'SLAVE', 'REPLICA', 'QUERY', 'CACHE'] as const
+
 const ASSIGNMENT_WORDS = ['SET'] as const
 
 const CONSTRAINT_TYPE_WORDS = ['FOREIGN', 'PRIMARY', 'UNIQUE', 'CHECK'] as const
@@ -686,6 +704,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return CONSTRAINT_TYPE_WORDS
     case 'assignment':
       return ASSIGNMENT_WORDS
+    case 'flush':
+      return FLUSH_WORDS
+    case 'reset':
+      return RESET_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

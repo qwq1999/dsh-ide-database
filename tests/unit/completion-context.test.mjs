@@ -1416,3 +1416,44 @@ describe('analyze column options and admin tails', () => {
     expect(caretAtEnd('SELECT @x ').expectation).toBe('expressionTail')
   })
 })
+
+
+describe('analyze routine statements, JSON and admin tails', () => {
+  it('stays quiet for routine labels and cursors', () => {
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN LEAVE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN OPEN ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN FETCH ').expectation).toBe('number')
+  })
+
+  it('stays quiet around SIGNAL and diagnostics', () => {
+    expect(
+      caretAtEnd("CREATE PROCEDURE p() BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = ").expectation,
+    ).toBe('number')
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN GET DIAGNOSTICS ').expectation).toBe('number')
+  })
+
+  it('keeps a routine body statement suggestion', () => {
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN IF x > 0 THEN ').expectation).toBe('statement')
+  })
+
+  it('expects a quoted path after JSON arrows', () => {
+    expect(caretAtEnd('SELECT data->').expectation).toBe('number')
+    expect(caretAtEnd('SELECT data->>').expectation).toBe('number')
+    expect(caretAtEnd("SELECT data->'$.a' ").expectation).toBe('expressionTail')
+  })
+
+  it('takes expressions inside CHECK and generated columns', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT, CHECK (').expectation).toBe('column')
+    expect(caretAtEnd('CREATE TABLE t (id INT, CONSTRAINT c CHECK (').expectation).toBe('column')
+    expect(caretAtEnd('CREATE TABLE t (id INT GENERATED ALWAYS AS (').expectation).toBe('column')
+  })
+
+  it('handles admin statements', () => {
+    expect(caretAtEnd('KILL ').expectation).toBe('number')
+    expect(caretAtEnd('FLUSH ').expectation).toBe('flush')
+    expect(caretAtEnd('FLUSH TABLES ').expectation).toBe('tableName')
+    expect(caretAtEnd('RESET ').expectation).toBe('reset')
+    expect(caretAtEnd('DO ').expectation).toBe('column')
+    expect(caretAtEnd('HELP ').expectation).toBe('name')
+  })
+})

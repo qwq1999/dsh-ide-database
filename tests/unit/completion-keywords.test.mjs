@@ -465,3 +465,34 @@ describe('assignment words', () => {
     expect(names(keywordCompletions('assignment', 'generic'))).toEqual(['SET'])
   })
 })
+
+
+describe('flush and reset words', () => {
+  it('offers FLUSH options', () => {
+    expect(names(keywordCompletions('flush', 'generic'))).toEqual([
+      'PRIVILEGES',
+      'TABLES',
+      'LOGS',
+      'BINARY',
+      'ENGINE',
+      'ERROR',
+      'GENERAL',
+      'RELAY',
+      'SLOW',
+      'HOSTS',
+      'STATUS',
+      'USER_RESOURCES',
+      'OPTIMIZER_COSTS',
+    ])
+  })
+
+  it('offers RESET options', () => {
+    expect(names(keywordCompletions('reset', 'generic'))).toEqual([
+      'MASTER',
+      'SLAVE',
+      'REPLICA',
+      'QUERY',
+      'CACHE',
+    ])
+  })
+})

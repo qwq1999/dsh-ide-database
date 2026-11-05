@@ -178,6 +178,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   intoTarget: KEYWORD_PRIORITY,
   constraintType: KEYWORD_PRIORITY,
   assignment: KEYWORD_PRIORITY,
+  flush: KEYWORD_PRIORITY,
+  reset: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

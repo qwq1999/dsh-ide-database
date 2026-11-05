@@ -2164,3 +2164,45 @@ describe('complete column options and admin tails', () => {
     expect((await complete(request('GRANT role1 TO '))).items).toEqual([])
   })
 })
+
+
+describe('complete routine statements, JSON and admin positions', () => {
+  it('stays quiet for routine labels and cursors', async () => {
+    const leave = request('CREATE PROCEDURE p() BEGIN LEAVE ')
+    expect((await complete(leave)).items).toEqual([])
+    expect(leave.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    expect((await complete(request('CREATE PROCEDURE p() BEGIN OPEN '))).items).toEqual([])
+  })
+
+  it('stays quiet after a JSON arrow', async () => {
+    const req = request('SELECT data->')
+    expect((await complete(req)).items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('takes expressions inside CHECK parentheses', async () => {
+    const result = await complete(request('CREATE TABLE t (id INT, CHECK ('))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('COUNT')
+  })
+
+  it('offers admin option words', async () => {
+    expect(names(await complete(request('FLUSH ')))).toContain('LOGS')
+    expect(names(await complete(request('RESET ')))).toEqual([
+      'MASTER',
+      'SLAVE',
+      'REPLICA',
+      'QUERY',
+      'CACHE',
+    ])
+    expect((await complete(request('KILL '))).items).toEqual([])
+    expect((await complete(request('HELP '))).items).toEqual([])
+    expect(names(await complete(request('DO ')))).toContain('COUNT')
+  })
+
+  it('offers tables after FLUSH TABLES', async () => {
+    const result = await complete(request('FLUSH TABLES '))
+    expect(result.analysis.expectation).toBe('tableName')
+    expect(names(result)).toContain('orders')
+  })
+})

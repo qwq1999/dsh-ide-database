@@ -1948,6 +1948,64 @@ function declareTail(tokens: readonly Token[]): CompletionExpectation | undefine
 }
 
 /** `CREATE [OR REPLACE] PROCEDURE|FUNCTION name (...)`: walks the definition. */
+/** Inside a routine BEGIN body: labels and cursor names are not catalog objects. */
+function routineStatementTail(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  const tail = last.text.toLowerCase()
+  if (tail === 'leave' || tail === 'iterate' || tail === 'open' || tail === 'close') {
+    return 'name'
+  }
+  if (tail === 'fetch' || tail === 'signal' || tail === 'resignal') return 'number'
+  if (tail === 'diagnostics' || tail === 'message_text' || tail === '=') return 'number'
+  return undefined
+}
+
+/** `data->` / `data->>` must be followed by a quoted JSON path. */
+function jsonArrowTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== '>') return false
+  let index = tokens.length - 1
+  while (index > 0) {
+    const previous = tokens[index - 1] as Token
+    if (previous.kind === 'punct' && previous.text === '>') {
+      index -= 1
+      continue
+    }
+    return previous.kind === 'punct' && previous.text === '-'
+  }
+  return false
+}
+
+/** Inside a table body, `CHECK (` and `GENERATED … AS (` take expressions. */
+function tableExpressionParen(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
+  const previous = tokens[tokens.length - 2]
+  const owner = previous?.text.toLowerCase()
+  if (owner !== 'check' && owner !== 'as') return false
+  const words = tokens.map((token) => token.text.toLowerCase())
+  return (words.includes('create') || words.includes('alter')) && words.includes('table')
+}
+
+/** MySQL session statements: quiet ids, option words or expressions only. */
+function adminTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]?.text.toLowerCase()
+  if (first === undefined) return undefined
+  if (first === 'kill') return 'number'
+  if (first === 'flush') {
+    if (tokens.length === 1) return 'flush'
+    const last = tokens[tokens.length - 1] as Token
+    return last.text.toLowerCase() === 'tables' ? 'tableName' : 'number'
+  }
+  if (first === 'reset') return tokens.length === 1 ? 'reset' : 'number'
+  if (first === 'do') return 'column'
+  if (first === 'help') return 'name'
+  return undefined
+}
+
 function routineTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (tokens.length < 2) return undefined
   if (tokens[0]?.text.toLowerCase() !== 'create') return undefined
@@ -2007,7 +2065,10 @@ function routineTail(tokens: readonly Token[]): CompletionExpectation | undefine
     if (after[after.length - 1] === 'return') return 'column'
     return 'number'
   }
-  if (after[0] === 'begin') return 'statement'
+  if (after[0] === 'begin') {
+    const body = tokens.slice(close + 2)
+    return routineStatementTail(body) ?? 'statement'
+  }
   if (after[0] === 'return') return 'column'
   return 'number'
 }
@@ -2247,6 +2308,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterIndexColumns(tokens)) return 'column'
   const columnOption = createColumnOption(tokens)
   if (columnOption !== undefined) return columnOption
+  if (tableExpressionParen(tokens)) return 'column'
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
   if (referencesTail(tokens)) return 'tableName'
@@ -2349,6 +2411,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (show !== undefined) return show
   if (showStart(tokens)) return 'show'
   if (showPatternTail(tokens)) return 'number'
+  const admin = adminTail(tokens)
+  if (admin !== undefined) return admin
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
   const fetch = fetchTail(tokens)
@@ -2377,6 +2441,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (scalarTail(tokens)) return 'expressionTail'
   const subquery = subqueryClose(tokens)
   if (subquery !== undefined) return subquery
+  if (jsonArrowTail(tokens)) return 'number'
   const variable = variableTail(tokens)
   if (variable !== undefined) return variable
   const last = tokens[tokens.length - 1]
