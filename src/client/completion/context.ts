@@ -639,7 +639,21 @@ function literalTail(tokens: readonly Token[]): boolean {
   if (start === 'select' && (tail === 'outfile' || tail === 'dumpfile')) return true
   if (start === 'prepare' && last.kind === 'keyword' && last.lower === 'from') return true
   if (start === 'execute' || start === 'deallocate') return true
-  return start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables'
+  if (start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables') return true
+  // `SELECT … INTO OUTFILE 'x' FIELDS TERMINATED BY ` and friends take text.
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('outfile') && !words.includes('dumpfile')) return false
+  return [
+    'by',
+    'terminated',
+    'enclosed',
+    'escaped',
+    'starting',
+    'lines',
+    'fields',
+    'columns',
+    'optionally',
+  ].includes(tail)
 }
 
 /**
@@ -1561,6 +1575,61 @@ function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTai
     if (CONDITION_BREAKS.has(token.lower)) return undefined
   }
   return undefined
+}
+
+/** `GROUP BY status WITH ` has a single continuation: `ROLLUP`. */
+function groupWithRollup(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.text.toLowerCase() !== 'with') return false
+  return tokens.some((token) => token.kind === 'keyword' && token.lower === 'group')
+}
+
+/** `ALTER DATABASE name ` takes database options. */
+function alterDatabaseTail(tokens: readonly Token[]): boolean {
+  if (tokens.length !== 3) return false
+  if (tokens[0]?.text.toLowerCase() !== 'alter') return false
+  const object = tokens[1]?.text.toLowerCase()
+  return object === 'database' || object === 'schema'
+}
+
+/** After `ALTER DATABASE name <option> <value> ` nothing catalog-bound follows. */
+function alterDatabaseDone(tokens: readonly Token[]): boolean {
+  if (tokens.length <= 3) return false
+  if (tokens[0]?.text.toLowerCase() !== 'alter') return false
+  const object = tokens[1]?.text.toLowerCase()
+  return object === 'database' || object === 'schema'
+}
+
+/** `RENAME USER ` takes user accounts, not catalog names. */
+function renameUserTail(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'rename') return undefined
+  if (tokens[1]?.text.toLowerCase() !== 'user') return undefined
+  if (tokens.length === 2) return 'name'
+  const last = tokens[tokens.length - 1]
+  if (last?.kind === 'keyword' && last.lower === 'to') return 'name'
+  return 'number'
+}
+
+/** `FOREIGN KEY (a) REFERENCES orders (` lists the referenced table's columns. */
+function fkReferenceColumns(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('create') || !words.includes('references')) return false
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== '(') return false
+  const references = words.lastIndexOf('references')
+  return references >= 0 && references < tokens.length - 1
+}
+
+/** After `REFERENCES orders (id) ` a foreign-key definition is complete. */
+function fkReferenceTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('create') || !words.includes('references')) return false
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== ')') return false
+  const references = words.lastIndexOf('references')
+  return references >= 0 && references < tokens.length - 1
 }
 
 /** `ALTER TABLE … DROP COLUMN name ` already named the column. */
@@ -2503,6 +2572,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // `CONVERT(expr USING <charset>)` names a charset even though the shared
   // CHARACTER SET helper above cannot see it.
   if (convertUsing(tokens)) return 'charset'
+  if (alterDatabaseDone(tokens)) return 'number'
   // Partition definitions carry literals, and index names are not catalog
   // objects this engine can list.
   const partition = partitionParen(tokens)
@@ -2510,6 +2580,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
   if (columnLength(tokens)) return 'number'
+  if (fkReferenceColumns(tokens)) return 'column'
   if (alterDropColumnTail(tokens)) return 'number'
   const jsonColumn = jsonTableColumnStage(tokens)
   if (jsonColumn !== undefined) return jsonColumn
@@ -2521,6 +2592,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
   if (referencesTail(tokens)) return 'tableName'
+  if (fkReferenceTail(tokens)) return 'number'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -2583,6 +2655,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
   if (dropObjectTail(tokens)) return 'name'
+  const renamedUser = renameUserTail(tokens)
+  if (renamedUser !== undefined) return renamedUser
+  if (alterDatabaseTail(tokens)) return 'alterDatabase'
   const load = loadDataTail(tokens)
   if (load !== undefined) return load
   const deleteSource = deleteUsing(tokens)
@@ -2693,6 +2768,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (nulls !== undefined) return nulls
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
+  if (groupWithRollup(tokens)) return 'withRollup'
   const group = groupByPosition(tokens)
   if (group !== undefined) return group
   const operator = conditionOperator(tokens)
@@ -3130,10 +3206,18 @@ function collectRelations(
   let index = 0
   while (index < tokens.length) {
     const token = tokens[index] as Token
-    if (token.kind !== 'keyword' || !RELATION_STARTERS.has(token.lower)) {
-      index += 1
+    if (token.kind === 'keyword' && token.lower === 'references') {
+    const referenced = parseRelationRef(tokens, index + 1)
+    if (referenced !== null) {
+      push(referenced.relation)
+      index = referenced.next
       continue
     }
+  }
+  if (token.kind !== 'keyword' || !RELATION_STARTERS.has(token.lower)) {
+    index += 1
+    continue
+  }
     let cursor = index + 1
     // CREATE TABLE IF NOT EXISTS orders
     if (token.lower === 'table') {

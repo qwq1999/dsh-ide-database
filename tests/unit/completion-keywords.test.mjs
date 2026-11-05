@@ -517,3 +517,18 @@ describe('alter algorithm and lock words', () => {
     ])
   })
 })
+
+describe('WITH ROLLUP and ALTER DATABASE words', () => {
+  it('offers ROLLUP after WITH', () => {
+    expect(names(keywordCompletions('withRollup', 'generic'))).toEqual(['ROLLUP'])
+  })
+
+  it('offers ALTER DATABASE options', () => {
+    expect(names(keywordCompletions('alterDatabase', 'generic'))).toEqual([
+      'CHARACTER',
+      'COLLATE',
+      'ENCRYPTION',
+      'READ',
+    ])
+  })
+})

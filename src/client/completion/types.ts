@@ -74,6 +74,8 @@ export type CompletionExpectation =
   | 'expressionTail'
   | 'groupTail'
   | 'rollupTail'
+  | 'withRollup'
+  | 'alterDatabase'
   | 'insertTail'
   | 'insertSource'
   | 'joinTail'

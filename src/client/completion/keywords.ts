@@ -478,6 +478,12 @@ const GROUP_TAIL_WORDS = ['HAVING', 'ORDER', 'LIMIT', 'WITH'] as const
 /** What may follow `WITH ROLLUP`: a second `WITH` would be redundant. */
 const ROLLUP_TAIL_WORDS = ['HAVING', 'ORDER', 'LIMIT'] as const
 
+/** `GROUP BY … WITH ` has exactly one continuation. */
+const WITH_ROLLUP_WORDS = ['ROLLUP'] as const
+
+/** `ALTER DATABASE name ` takes options, not catalog names. */
+const ALTER_DATABASE_WORDS = ['CHARACTER', 'COLLATE', 'ENCRYPTION', 'READ'] as const
+
 /** The only clause left after an INSERT values tuple list. */
 const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
 
@@ -737,6 +743,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return GROUP_TAIL_WORDS
     case 'rollupTail':
       return ROLLUP_TAIL_WORDS
+    case 'withRollup':
+      return WITH_ROLLUP_WORDS
+    case 'alterDatabase':
+      return ALTER_DATABASE_WORDS
     case 'insertTail':
       return INSERT_TAIL_WORDS
     case 'insertSource':

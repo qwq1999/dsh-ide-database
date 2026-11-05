@@ -616,6 +616,8 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'expressionTail':
       case 'groupTail':
       case 'rollupTail':
+      case 'withRollup':
+      case 'alterDatabase':
       case 'insertTail':
       case 'insertSource':
       case 'joinTail': {

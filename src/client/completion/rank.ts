@@ -135,6 +135,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   expressionTail: KEYWORD_PRIORITY,
   groupTail: KEYWORD_PRIORITY,
   rollupTail: KEYWORD_PRIORITY,
+  withRollup: KEYWORD_PRIORITY,
+  alterDatabase: KEYWORD_PRIORITY,
   insertTail: KEYWORD_PRIORITY,
   insertSource: KEYWORD_PRIORITY,
   joinTail: KEYWORD_PRIORITY,

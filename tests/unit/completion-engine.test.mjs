@@ -2319,3 +2319,45 @@ describe('complete JSON_TABLE and multi-table update positions', () => {
     expect(req.catalog.calls.columns).toContain('shop.customers')
   })
 })
+
+describe('complete WITH ROLLUP, database, user and foreign-key positions', () => {
+  it('offers ROLLUP quietly', async () => {
+    const req = request('SELECT status FROM orders GROUP BY status WITH ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('withRollup')
+    expect(names(result)).toEqual(['ROLLUP'])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers ALTER DATABASE options without catalog noise', async () => {
+    const req = request('ALTER DATABASE shop ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('alterDatabase')
+    expect(names(result)).toContain('CHARACTER')
+    expect(names(result)).toContain('COLLATE')
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet for a RENAME USER account', async () => {
+    const req = request('RENAME USER ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers the referenced table columns inside a foreign key', async () => {
+    const req = request('CREATE TABLE t (id INT, FOREIGN KEY (user_id) REFERENCES orders (')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('created_at')
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('stays quiet after an OUTFILE clause keyword', async () => {
+    const req = request("SELECT * FROM orders INTO OUTFILE 'x' FIELDS TERMINATED BY ")
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})

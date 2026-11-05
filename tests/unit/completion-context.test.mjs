@@ -1550,3 +1550,41 @@ describe('analyze JSON_TABLE columns and multi-table UPDATE', () => {
     expect(analysis.relations.map((relation) => relation.alias)).toEqual(['o', 'c'])
   })
 })
+
+describe('analyze WITH ROLLUP, database, user and foreign-key tails', () => {
+  it('offers ROLLUP after GROUP BY ... WITH', () => {
+    expect(caretAtEnd('SELECT status FROM orders GROUP BY status WITH ').expectation).toBe(
+      'withRollup',
+    )
+  })
+
+  it('offers ALTER DATABASE options and stays quiet after a value', () => {
+    expect(caretAtEnd('ALTER DATABASE shop ').expectation).toBe('alterDatabase')
+    expect(caretAtEnd('ALTER DATABASE shop CHARACTER SET ').expectation).toBe('charset')
+    expect(caretAtEnd('ALTER DATABASE shop CHARACTER SET utf8mb4 ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER DATABASE shop COLLATE ').expectation).toBe('collation')
+    expect(caretAtEnd('ALTER DATABASE shop COLLATE utf8mb4_bin ').expectation).toBe('number')
+  })
+
+  it('stays quiet around RENAME USER accounts', () => {
+    expect(caretAtEnd('RENAME USER ').expectation).toBe('name')
+    expect(caretAtEnd("RENAME USER 'a'@'h' TO ").expectation).toBe('name')
+    expect(caretAtEnd("RENAME USER 'a'@'h' TO 'b'@'h' ").expectation).toBe('number')
+  })
+
+  it('offers referenced columns after a foreign key REFERENCES', () => {
+    const analysis = caretAtEnd('CREATE TABLE t (id INT, FOREIGN KEY (user_id) REFERENCES orders (')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations.map((relation) => relation.table)).toContain('orders')
+    expect(
+      caretAtEnd('CREATE TABLE t (id INT, FOREIGN KEY (user_id) REFERENCES orders (id) ')
+        .expectation,
+    ).toBe('number')
+  })
+
+  it('stays quiet after an OUTFILE clause keyword', () => {
+    expect(
+      caretAtEnd("SELECT * FROM orders INTO OUTFILE 'x' FIELDS TERMINATED BY ").expectation,
+    ).toBe('number')
+  })
+})
