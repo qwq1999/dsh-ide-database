@@ -629,6 +629,53 @@ describe('complete ALTER TABLE objects', () => {
   })
 })
 
+describe('complete DDL tails', () => {
+  it('offers tables after IF EXISTS', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'DROP TABLE IF EXISTS ',
+      caret: 21,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.relations).toEqual([])
+    expect(names(result)[0]).toBe('orders')
+    expect(catalog.calls.tables).toContain('shop')
+  })
+
+  it('offers table options after a CREATE TABLE body', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE TABLE t (id INT) ',
+      caret: 24,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('tableOptions')
+    expect(names(result)).toContain('ENGINE')
+    expect(names(result)).toContain('COMMENT')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers a statement keyword after CREATE TABLE ... AS', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE TABLE t (id INT) AS ',
+      caret: 27,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+})
+
 describe('complete CREATE INDEX', () => {
   it('offers tables after ON', async () => {
     const catalog = createCatalog()

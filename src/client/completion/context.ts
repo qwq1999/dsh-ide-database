@@ -283,11 +283,66 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
 }
 
 /**
+ * True when the caret sits right after `IF EXISTS`: the guarded object name is
+ * still a relation, and `EXISTS` must not be read as a boolean operator.
+ */
+function trailingIfExists(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const ifToken = tokens[tokens.length - 2]
+  const object = tokens[tokens.length - 3]
+  return (
+    last !== undefined &&
+    last.kind === 'keyword' &&
+    last.lower === 'exists' &&
+    ifToken !== undefined &&
+    ifToken.kind === 'ident' &&
+    ifToken.lower === 'if' &&
+    object !== undefined &&
+    object.kind === 'keyword' &&
+    (object.lower === 'table' || object.lower === 'view')
+  )
+}
+
+/**
+ * What follows the closing parenthesis of a `CREATE TABLE` body: table options,
+ * or a keyword position when the tail starts with `AS` (`CREATE TABLE ... AS
+ * SELECT ...`); undefined for every other position.
+ */
+function createTableBodyTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  const asTail = last !== undefined && last.kind === 'keyword' && last.lower === 'as'
+  const close = last !== undefined && last.kind === 'punct' && last.text === ')'
+  if (!close && !asTail) return undefined
+  if (asTail && !(previous !== undefined && previous.kind === 'punct' && previous.text === ')')) {
+    return undefined
+  }
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first?.kind !== 'keyword' || first.lower !== 'create') return undefined
+  if (second === undefined || (second.lower !== 'table' && second.lower !== 'temporary')) {
+    return undefined
+  }
+  if (second.lower === 'temporary' && tokens[2]?.lower !== 'table') return undefined
+  let depth = 0
+  for (const token of tokens) {
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+    if (depth < 0) return undefined
+  }
+  if (depth !== 0) return undefined
+  return asTail ? 'keyword' : 'tableOptions'
+}
+
+/**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insideCreateTableParen(tokens)) return 'definition'
+  const tableTail = createTableBodyTail(tokens)
+  if (tableTail !== undefined) return tableTail
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
@@ -295,6 +350,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
     return parseRelationRef(tokens, indexOn + 1) === null ? 'relation' : 'column'
   }
   if (startsSubquery(tokens)) return 'keyword'
+  if (trailingIfExists(tokens)) return 'relation'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
@@ -708,17 +764,20 @@ function collectRelations(
     // CREATE TABLE IF NOT EXISTS orders
     if (token.lower === 'table') {
       const ifToken = tokens[cursor]
-      const notToken = tokens[cursor + 1]
-      const existsToken = tokens[cursor + 2]
-      if (
-        ifToken?.kind === 'ident' &&
-        ifToken.lower === 'if' &&
-        notToken?.kind === 'keyword' &&
-        notToken.lower === 'not' &&
-        existsToken?.kind === 'keyword' &&
-        existsToken.lower === 'exists'
-      ) {
-        cursor += 3
+      const nextToken = tokens[cursor + 1]
+      const thirdToken = tokens[cursor + 2]
+      if (ifToken?.kind === 'ident' && ifToken.lower === 'if') {
+        // `CREATE TABLE IF NOT EXISTS t` and `DROP TABLE IF EXISTS t`.
+        if (
+          nextToken?.kind === 'keyword' &&
+          nextToken.lower === 'not' &&
+          thirdToken?.kind === 'keyword' &&
+          thirdToken.lower === 'exists'
+        ) {
+          cursor += 3
+        } else if (nextToken?.kind === 'keyword' && nextToken.lower === 'exists') {
+          cursor += 2
+        }
       }
     }
     const parsed = parseRelationRef(tokens, cursor)

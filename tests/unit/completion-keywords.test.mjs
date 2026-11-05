@@ -61,6 +61,22 @@ describe('keywordCompletions', () => {
     ])
   })
 
+  it('offers table options after a CREATE TABLE body', () => {
+    expect(names(keywordCompletions('tableOptions', 'mysql'))).toEqual([
+      'AS',
+      'ENGINE',
+      'DEFAULT',
+      'CHARSET',
+      'CHARACTER',
+      'COLLATE',
+      'COMMENT',
+      'AUTO_INCREMENT',
+      'PARTITION',
+      'ROW_FORMAT',
+      'TABLESPACE',
+    ])
+  })
+
   it('adds the MySQL-only words on MySQL connections', () => {
     const words = names(keywordCompletions('any', 'mysql'))
     expect(words).toContain('STRAIGHT_JOIN')

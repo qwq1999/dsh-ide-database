@@ -290,6 +290,21 @@ const DEFINITION_WORDS = [
   'UNSIGNED',
 ] as const
 
+/** Table options that may follow the closing parenthesis of `CREATE TABLE`. */
+const TABLE_OPTION_WORDS = [
+  'AS',
+  'ENGINE',
+  'DEFAULT',
+  'CHARSET',
+  'CHARACTER',
+  'COLLATE',
+  'COMMENT',
+  'AUTO_INCREMENT',
+  'PARTITION',
+  'ROW_FORMAT',
+  'TABLESPACE',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -304,6 +319,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return VALUE_WORDS
     case 'definition':
       return DEFINITION_WORDS
+    case 'tableOptions':
+      return TABLE_OPTION_WORDS
     case 'alter':
       return ALTER_WORDS
     case 'alterObject':

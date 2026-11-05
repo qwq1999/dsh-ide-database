@@ -161,6 +161,20 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('SELECT * FROM (').expectation).toBe('keyword')
     expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('column')
   })
+
+  it('expects a table after IF EXISTS', () => {
+    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP TABLE IF EXISTS ').relations).toEqual([])
+    expect(caretAtEnd('DROP TABLE IF EXISTS orders ').relations).toEqual([{ table: 'orders' }])
+    expect(caretAtEnd('DROP VIEW IF EXISTS ').expectation).toBe('relation')
+  })
+
+  it('expects table options after a CREATE TABLE body', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) ').expectation).toBe('tableOptions')
+    expect(caretAtEnd('CREATE TEMPORARY TABLE t (id INT) ').expectation).toBe('tableOptions')
+    expect(caretAtEnd('CREATE TABLE t (id INT) AS ').expectation).toBe('keyword')
+    expect(caretAtEnd('CREATE TABLE t AS SELECT * FROM ').expectation).toBe('relation')
+  })
 })
 
 describe('analyze statement bounds', () => {
