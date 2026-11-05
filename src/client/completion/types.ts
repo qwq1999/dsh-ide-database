@@ -75,6 +75,9 @@ export type CompletionExpectation =
   | 'insertTail'
   | 'insertSource'
   | 'joinTail'
+  | 'using'
+  | 'over'
+  | 'privilege'
   | 'keyword'
   | 'any'
 

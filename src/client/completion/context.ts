@@ -258,6 +258,69 @@ function createIndexOn(tokens: readonly Token[]): number {
 }
 
 /** True when the caret follows the `ON` of a `GRANT`/`REVOKE` statement. */
+/** The caret is inside the parenthesis of `USING (...)`. */
+function usingParenOpen(tokens: readonly Token[]): boolean {
+  let depth = 0
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        const owner = tokens[index - 1] as Token | undefined
+        return owner?.text.toLowerCase() === 'using'
+      }
+      depth -= 1
+    }
+  }
+  return false
+}
+
+/** The caret is inside the parenthesis of `OVER (...)`. */
+function overParenOpen(tokens: readonly Token[]): boolean {
+  let depth = 0
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        const owner = tokens[index - 1] as Token | undefined
+        return owner?.text.toLowerCase() === 'over'
+      }
+      depth -= 1
+    }
+  }
+  return false
+}
+
+/** `GRANT `, `GRANT SELECT, `: privileges come before the ON clause. */
+function privilegePosition(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.kind !== 'keyword') return false
+  const head = first.text.toLowerCase()
+  if (head !== 'grant' && head !== 'revoke') return false
+  if (tokens.some((token) => token.kind === 'keyword' && token.lower === 'on')) return false
+  if (tokens.length === 1) return true
+  const last = tokens[tokens.length - 1] as Token
+  return (last.kind === 'punct' && last.text === ',') || last.kind === 'keyword'
+}
+
+/** A grantee was already typed after TO/FROM; only a WITH clause remains. */
+function granteeTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.kind !== 'keyword') return false
+  const head = first.text.toLowerCase()
+  if (head !== 'grant' && head !== 'revoke') return false
+  return tokens.some(
+    (token, index) =>
+      token.kind === 'keyword' &&
+      (token.lower === 'to' || token.lower === 'from') &&
+      tokens[index + 1] !== undefined &&
+      tokens[index + 1]?.kind !== 'keyword',
+  )
+}
+
 function grantTarget(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'keyword' || last.lower !== 'on') return false
@@ -867,15 +930,28 @@ function completedExpression(tokens: readonly Token[]): boolean {
 /** `SELECT COUNT(*) ` takes AS/FROM; `WHERE CASE WHEN ... END ` takes an operator. */
 function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTail' | undefined {
   if (!completedExpression(tokens)) return undefined
-  let depth = 0
-  for (let index = tokens.length - 2; index >= 0; index -= 1) {
-    const token = tokens[index] as Token
-    if (token.kind === 'punct') {
+  const last = tokens[tokens.length - 1] as Token
+  let start = tokens.length - 2
+  if (last.kind === 'punct' && last.text === ')') {
+    // Skip the finished parenthesis (function arguments, window body): its
+    // contents decide nothing about the clause the expression sits in.
+    let depth = 0
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      const token = tokens[index] as Token
+      if (token.kind !== 'punct') continue
       if (token.text === ')') depth += 1
-      else if (token.text === '(' && depth > 0) depth -= 1
-      continue
+      else if (token.text === '(') {
+        depth -= 1
+        if (depth === 0) {
+          start = index - 2
+          break
+        }
+      }
     }
-    if (token.kind !== 'keyword' || depth > 0) continue
+  }
+  for (let index = start; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'keyword') continue
     if (token.lower === 'where' || token.lower === 'having' || token.lower === 'on') {
       return 'comparison'
     }
@@ -1102,12 +1178,15 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (insertSet !== undefined) return insertSet
   if (insertColumnListComplete(tokens)) return 'insertSource'
   if (usingTail(tokens)) return 'joinTail'
+  if (usingParenOpen(tokens)) return 'using'
+  if (privilegePosition(tokens)) return 'privilege'
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
   if (objectName(tokens)) return 'name'
   if (grantee(tokens)) return 'name'
+  if (granteeTail(tokens)) return 'number'
   if (unionStatement(tokens)) return 'statement'
   if (explainStart(tokens)) return 'statement'
   const show = showTail(tokens)
@@ -1141,8 +1220,13 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   // `IS ` takes a literal predicate, and a bare `NOT ` takes an operator.
   if (last?.kind === 'keyword' && last.lower === 'is') return 'value'
   if (last?.kind === 'keyword' && last.lower === 'not') return 'comparison'
+  // LIKE takes a pattern literal, so no column list belongs here.
+  if (last?.kind === 'keyword' && last.lower === 'like') return 'number'
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
+  // `OVER (` and `OVER (PARTITION BY x ` take the window keywords; once the
+  // window has its own ORDER BY, the normal ordering rules apply.
+  if (overParenOpen(tokens)) return 'over'
   if (groupByPosition(tokens)) return 'groupTail'
   const operator = conditionOperator(tokens)
   if (operator !== undefined) return operator

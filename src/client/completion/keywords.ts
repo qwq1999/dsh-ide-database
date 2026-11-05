@@ -442,6 +442,27 @@ const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
 const INSERT_SOURCE_WORDS = ['VALUES', 'SELECT', 'SET'] as const
 
 /** Clauses that may follow a completed `JOIN ... USING (...)`. */
+const PRIVILEGE_WORDS = [
+  'SELECT',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'CREATE',
+  'DROP',
+  'ALTER',
+  'EXECUTE',
+  'ALL',
+  'USAGE',
+  'REFERENCES',
+  'TRIGGER',
+  'INDEX',
+  'PROCESS',
+  'RELOAD',
+  'SHOW',
+] as const
+
+const OVER_WORDS = ['PARTITION', 'ORDER', 'RANGE', 'ROWS', 'GROUPS'] as const
+
 const JOIN_TAIL_WORDS = [
   'JOIN',
   'LEFT',
@@ -508,6 +529,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return INSERT_SOURCE_WORDS
     case 'joinTail':
       return JOIN_TAIL_WORDS
+    case 'privilege':
+      return PRIVILEGE_WORDS
+    case 'over':
+      return OVER_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

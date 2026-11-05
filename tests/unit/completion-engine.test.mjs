@@ -1358,3 +1358,49 @@ describe('complete alias names, window tails and early select lists', () => {
     expect(names(result)).not.toContain('id')
   })
 })
+
+describe('complete USING, OVER and GRANT positions', () => {
+  it('offers only the columns both sides share in USING', async () => {
+    const req = request('SELECT * FROM orders o JOIN customers c USING (')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('using')
+    expect(names(result)).toEqual(['id'])
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]).toMatchObject({ name: 'id', kind: 'column', detail: 'INT' })
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+    expect(req.catalog.calls.columns).toContain('shop.customers')
+  })
+
+  it('offers window keywords inside OVER', async () => {
+    const req = request('SELECT ROW_NUMBER() OVER (')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('over')
+    expect(names(result)).toEqual(['PARTITION', 'ORDER', 'RANGE', 'ROWS', 'GROUPS'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('offers privileges for GRANT and REVOKE', async () => {
+    const grant = await complete(request('GRANT '))
+    expect(grant.analysis.expectation).toBe('privilege')
+    expect(names(grant)).toContain('SELECT')
+    expect(names(grant)).toContain('ALL')
+    expect(grant.items.every((item) => item.kind === 'keyword')).toBe(true)
+
+    const revoke = await complete(request('REVOKE '))
+    expect(names(revoke)).toContain('DELETE')
+    expect(revoke.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('stays quiet after LIKE and after a typed grantee', async () => {
+    const like = request('SELECT * FROM orders WHERE name LIKE ')
+    const likeResult = await complete(like)
+    expect(likeResult.analysis.expectation).toBe('number')
+    expect(likeResult.items).toEqual([])
+    expect(like.catalog.calls.columns).toEqual([])
+
+    const grantee = await complete(request('GRANT SELECT ON orders TO alice '))
+    expect(grantee.analysis.expectation).toBe('number')
+    expect(grantee.items).toEqual([])
+  })
+})

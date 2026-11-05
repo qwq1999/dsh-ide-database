@@ -589,6 +589,26 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions(expectation, dialect)]
         break
       }
+      case 'using': {
+        // Only the columns both sides share are valid in a USING list.
+        const lists = await relationColumnLists(request, relations, request.schema)
+        const [first, ...others] = lists
+        const shared = (first?.columns ?? []).filter((column) =>
+          others.every((list) =>
+            list.columns.some((other) => other.name.toLowerCase() === column.name.toLowerCase()),
+          ),
+        )
+        candidates = columnCandidates(shared)
+        break
+      }
+      case 'over': {
+        candidates = [...keywordCompletions('over', dialect)]
+        break
+      }
+      case 'privilege': {
+        candidates = [...keywordCompletions('privilege', dialect)]
+        break
+      }
       case 'keyword': {
         const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [...snippets, ...keywordCompletions('keyword', dialect)]

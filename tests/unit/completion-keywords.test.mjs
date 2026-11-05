@@ -241,3 +241,36 @@ describe('keywordCompletions sources and join tails', () => {
     ])
   })
 })
+
+describe('privilege and window words', () => {
+  it('offers the privilege list before GRANT ... ON', () => {
+    expect(names(keywordCompletions('privilege', 'generic'))).toEqual([
+      'SELECT',
+      'INSERT',
+      'UPDATE',
+      'DELETE',
+      'CREATE',
+      'DROP',
+      'ALTER',
+      'EXECUTE',
+      'ALL',
+      'USAGE',
+      'REFERENCES',
+      'TRIGGER',
+      'INDEX',
+      'PROCESS',
+      'RELOAD',
+      'SHOW',
+    ])
+  })
+
+  it('offers the window keywords inside OVER', () => {
+    expect(names(keywordCompletions('over', 'generic'))).toEqual([
+      'PARTITION',
+      'ORDER',
+      'RANGE',
+      'ROWS',
+      'GROUPS',
+    ])
+  })
+})

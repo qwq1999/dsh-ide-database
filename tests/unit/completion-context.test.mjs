@@ -769,9 +769,7 @@ describe('analyze boolean, insert and join tails', () => {
     expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (id) ').expectation).toBe(
       'joinTail',
     )
-    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (').expectation).toBe(
-      'column',
-    )
+    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (').expectation).toBe('using')
   })
 
   it('starts a statement inside an IN parenthesis', () => {
@@ -802,5 +800,38 @@ describe('analyze alias names, windows and later FROM', () => {
       relations: [{ table: 'orders' }],
     })
     expect(analyze('SELECT id ', 10).relations).toEqual([])
+  })
+})
+
+describe('analyze USING columns, LIKE patterns and GRANT privileges', () => {
+  it('expects the shared columns inside USING parentheses', () => {
+    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (').expectation).toBe('using')
+    expect(
+      caretAtEnd('SELECT * FROM orders o JOIN customers c USING (id) ').expectation,
+    ).toBe('joinTail')
+  })
+
+  it('expects a pattern literal after LIKE', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE name LIKE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders WHERE name NOT LIKE ').expectation).toBe('number')
+  })
+
+  it('offers privileges before the ON clause of GRANT and REVOKE', () => {
+    expect(caretAtEnd('GRANT ').expectation).toBe('privilege')
+    expect(caretAtEnd('REVOKE ').expectation).toBe('privilege')
+    expect(caretAtEnd('GRANT SELECT ').expectation).toBe('privilege')
+    expect(caretAtEnd('GRANT SELECT, ').expectation).toBe('privilege')
+    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('relation')
+    expect(caretAtEnd('GRANT SELECT ON orders TO ').expectation).toBe('name')
+    expect(caretAtEnd('GRANT SELECT ON orders TO alice ').expectation).toBe('number')
+  })
+
+  it('offers window keywords inside OVER and yields to ORDER BY', () => {
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (').expectation).toBe('over')
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (PARTITION BY user_id ').expectation).toBe('over')
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id ').expectation).toBe('direction')
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id) ').expectation).toBe(
+      'expressionTail',
+    )
   })
 })
