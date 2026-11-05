@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   confirmDestructive: true,
   keybindings: {},
   consoleActions: [],
+  consoleAutoComplete: true,
 }
 
 const NAME_MAX = 80
@@ -58,6 +59,7 @@ export const SETTING_KEYS: (keyof DbSettings)[] = [
   'confirmDestructive',
   'keybindings',
   'consoleActions',
+  'consoleAutoComplete',
 ]
 
 function nowIso(): string {
@@ -214,6 +216,9 @@ export class ConfigStore {
             break
           case 'consoleActions':
             settings.consoleActions = readConsoleActionOrder(value)
+            break
+          case 'consoleAutoComplete':
+            settings.consoleAutoComplete = value !== false
             break
         }
       } catch {
@@ -532,6 +537,10 @@ export class ConfigStore {
         case 'consoleActions':
           if (!Array.isArray(value)) throw new DbError('invalid', 'consoleActions 必须是数组')
           next.consoleActions = readConsoleActionOrder(value)
+          break
+        case 'consoleAutoComplete':
+          if (typeof value !== 'boolean') throw new DbError('invalid', 'consoleAutoComplete 必须是布尔值')
+          next.consoleAutoComplete = value
           break
       }
     }

@@ -390,6 +390,29 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
       </Panel>
 
       <Panel
+        title="控制台"
+        collapsible
+        defaultOpen={false}
+        actions={
+          <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
+            保存
+          </Button>
+        }
+        bodyClassName="dshdb-panel-body-pad"
+      >
+        <div className="dshdb-list">
+          <Switch
+            checked={draft.consoleAutoComplete !== false}
+            onChange={(checked) => update('consoleAutoComplete', checked)}
+            label="输入字符后自动展开补全列表"
+          />
+        </div>
+        <div className="dshdb-muted" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+          默认开启。关闭后仍可按补全快捷键手动展开表名、列名建议。
+        </div>
+      </Panel>
+
+      <Panel
         title="控制台工具栏"
         collapsible
         defaultOpen={false}

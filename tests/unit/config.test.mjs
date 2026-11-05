@@ -113,6 +113,20 @@ describe('ConfigStore', () => {
     expect(reloaded.snapshot().settings.consoleActions).toEqual(['export', 'run', 'save'])
   })
 
+  it('defaults console auto-complete on and persists the switch', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().settings.consoleAutoComplete).toBe(true)
+    expect(() => config.updateSettings({ consoleAutoComplete: 'yes' })).toThrow(/consoleAutoComplete/)
+
+    config.updateSettings({ consoleAutoComplete: false })
+    expect(config.snapshot().settings.consoleAutoComplete).toBe(false)
+
+    const secrets = new SecretStore(join(dir, 'secrets.json'))
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), secrets)
+    reloaded.load()
+    expect(reloaded.snapshot().settings.consoleAutoComplete).toBe(false)
+  })
+
   it('persists custom drivers and settings to disk', () => {
     const { config, dir } = store()
     config.upsertDriver({

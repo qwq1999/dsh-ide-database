@@ -6,6 +6,7 @@ import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
 import { setKeybindings } from './keymap'
 import { setConsoleActionOrder } from './consoleactions'
+import { setConsoleAutoComplete } from './consoleprefs'
 import { copyText } from './colmenu'
 import { EditIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
@@ -178,6 +179,11 @@ export function App(props: AppProps): ReactElement {
   useEffect(() => {
     setConsoleActionOrder(snapshot?.settings.consoleActions)
   }, [snapshot?.settings.consoleActions])
+
+  // 控制台「输入时自动展开补全」开关同样从设置发布给控制台标签页。
+  useEffect(() => {
+    setConsoleAutoComplete(snapshot?.settings.consoleAutoComplete !== false)
+  }, [snapshot?.settings.consoleAutoComplete])
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {

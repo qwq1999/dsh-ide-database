@@ -119,6 +119,11 @@ export interface DbSettings {
    * orderConsoleActions() appends actions this saved order does not mention.
    */
   consoleActions?: ConsoleActionId[]
+  /**
+   * Open the completion popup while typing in the console. Missing counts as
+   * enabled, matching the host defaults.
+   */
+  consoleAutoComplete?: boolean
 }
 
 export interface ConnectionConfig {

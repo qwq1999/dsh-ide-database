@@ -60,6 +60,7 @@ import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { toggleSqlComment } from './sqlcomment'
 import { ClockIcon, CopyIcon, DatabaseIcon, DownloadIcon, MoreIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
 import { consoleActionIcon, setConsoleActionOrder, useConsoleActionOrder } from './consoleactions'
+import { setConsoleAutoComplete, useConsoleAutoComplete } from './consoleprefs'
 import { fitActionCount } from './toolbaroverflow'
 import type { ConsoleActionId } from '../shared/consoleactions'
 import { openTableTab, readConsoleTabParams } from './tab-open'
@@ -106,6 +107,15 @@ const TTL_ONLY_KEY = 'dsh-ide-database.redis.ttl-only.v1'
 /** 中文输入法用回车确认候选词时，KeyboardEvent 带 isComposing 标记。 */
 function composing(event: { nativeEvent: Event }): boolean {
   return (event.nativeEvent as unknown as { isComposing?: boolean }).isComposing === true
+}
+
+/** A single typed identifier character may open the completion popup. */
+function opensCompletion(previous: string, next: string): boolean {
+  if (next.length !== previous.length + 1) return false
+  let index = 0
+  while (index < previous.length && previous[index] === next[index]) index += 1
+  const typed = next.charAt(index)
+  return typed !== '' && /[\w$.\u4e00-\u9fa5`"]/.test(typed)
 }
 
 const PAGE_SIZES = [200, 500, 1000, 2000, 5000]
@@ -382,6 +392,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setConnections(status.config.connections)
         setSettings(status.config.settings)
         setConsoleActionOrder(status.config.settings.consoleActions)
+        setConsoleAutoComplete(status.config.settings.consoleAutoComplete !== false)
         setSelectedId((previous) => {
           if (previous !== '' && status.config.connections.some((item) => item.id === previous)) return previous
           return status.config.connections[0]?.id ?? ''
@@ -448,6 +459,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   const [suggestionIndex, setSuggestionIndex] = useState(0)
   const completionAnchor = useRef<HTMLSpanElement>(null)
   const completionCache = useRef(new Map<string, Completion[]>())
+  const autoComplete = useConsoleAutoComplete()
+  /** Set by the editor when the last change typed exactly one character. */
+  const autoCompletePending = useRef(false)
   const closeSuggestions = useCallback(() => setSuggestions(null), [])
   usePopoverDismiss(suggestions !== null, closeSuggestions, completionAnchor)
 
@@ -564,6 +578,21 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     },
     [caretPos, connection, statement],
   )
+
+  // Typing opens the popup once the user pauses briefly; another keystroke
+  // restarts the timer so the fetched list matches the text that triggered it.
+  useEffect(() => {
+    if (!autoComplete || !autoCompletePending.current) return
+    if (suggestions !== null) {
+      autoCompletePending.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      autoCompletePending.current = false
+      void openSuggestions()
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [autoComplete, caretPos, openSuggestions, statement, suggestions])
 
   /** Run the console statement; `page`/`size` wrap a bare SELECT into one page. */
   const execute = useCallback(
@@ -2104,8 +2133,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
               onChange={(event) => {
                 recallRef.current = -1
                 setSelectedRun(false)
+                const next = event.target.value
+                autoCompletePending.current =
+                  !composing(event) && opensCompletion(statement, next)
                 setCaretPos(event.target.selectionStart)
-                setStatement(event.target.value)
+                setStatement(next)
               }}
               onSelect={(event) => setCaretPos(event.currentTarget.selectionStart)}
               onKeyUp={(event) => setCaretPos(event.currentTarget.selectionStart)}
