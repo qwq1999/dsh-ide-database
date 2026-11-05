@@ -570,6 +570,14 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = CHARSET_NAMES.map((name) => ({ name, kind: 'keyword' as const }))
         break
       }
+      case 'frame': {
+        candidates = [...keywordCompletions('frame', dialect)]
+        break
+      }
+      case 'interval': {
+        candidates = [...keywordCompletions('interval', dialect)]
+        break
+      }
       case 'name': {
         // The user is typing a new object name; the catalog cannot guess it.
         candidates = []

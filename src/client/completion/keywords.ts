@@ -448,6 +448,22 @@ const GRANT_OPTION_WORD_WORDS = ['OPTION'] as const
 
 const LOCK_WORDS = ['UPDATE', 'SHARE'] as const
 
+/** Bounds of a window frame after `OVER (ROWS `. */
+const FRAME_WORDS = ['BETWEEN', 'UNBOUNDED', 'CURRENT', 'ROW', 'PRECEDING', 'FOLLOWING'] as const
+
+/** Units after `INTERVAL 1 `. */
+const INTERVAL_UNITS = [
+  'MICROSECOND',
+  'SECOND',
+  'MINUTE',
+  'HOUR',
+  'DAY',
+  'WEEK',
+  'MONTH',
+  'QUARTER',
+  'YEAR',
+] as const
+
 /** Collation names keep their usual case; MySQL matches them case-insensitively. */
 export const COLLATION_NAMES = [
   'utf8mb4_general_ci',
@@ -560,6 +576,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return GRANT_OPTION_WORD_WORDS
     case 'lock':
       return LOCK_WORDS
+    case 'frame':
+      return FRAME_WORDS
+    case 'interval':
+      return INTERVAL_UNITS
     case 'name':
       // The user is typing a name only they know.
       return []

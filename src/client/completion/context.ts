@@ -183,6 +183,8 @@ function insideCreateTableParen(tokens: readonly Token[]): boolean {
 function startsSubquery(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
+  // `WINDOW w AS (` starts a window specification, not a subquery.
+  if (tokens.some((token) => token.text.toLowerCase() === 'window')) return false
   const before = previousKeyword(tokens, tokens.length - 1)
   return (
     before === 'as' ||
@@ -276,22 +278,84 @@ function usingParenOpen(tokens: readonly Token[]): boolean {
   return false
 }
 
-/** The caret is inside the parenthesis of `OVER (...)`. */
-function overParenOpen(tokens: readonly Token[]): boolean {
+const WINDOW_PARTS = new Set(['partition', 'order', 'rows', 'range', 'groups'])
+
+/** Index of the `(` opening the window specification around the caret, or -1. */
+function windowSpecOpen(tokens: readonly Token[]): number {
   let depth = 0
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
     if (token.kind !== 'punct') continue
-    if (token.text === ')') depth += 1
-    else if (token.text === '(') {
-      if (depth === 0) {
-        const owner = tokens[index - 1] as Token | undefined
-        return owner?.text.toLowerCase() === 'over'
-      }
-      depth -= 1
+    if (token.text === ')') {
+      depth += 1
+      continue
     }
+    if (token.text !== '(') continue
+    if (depth > 0) {
+      depth -= 1
+      continue
+    }
+    const owner = tokens[index - 1]
+    if (owner === undefined) return -1
+    if (owner.text.toLowerCase() === 'over') return index
+    // `WINDOW w AS (` names a window specification, not a subquery.
+    const namedWindow = tokens
+      .slice(0, index - 1)
+      .some((candidate) => candidate.text.toLowerCase() === 'window')
+    return owner.text.toLowerCase() === 'as' && namedWindow ? index : -1
   }
-  return false
+  return -1
+}
+
+/**
+ * What a caret inside `OVER (...)` / `WINDOW w AS (...)` expects: a window part
+ * at the start, a column after `PARTITION BY`/`ORDER BY`, a frame bound after
+ * `ROWS`/`RANGE`/`GROUPS`, or a direction after a sort key.
+ */
+function windowExpectation(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const open = windowSpecOpen(tokens)
+  if (open < 0) return undefined
+  const inside: Token[] = []
+  let depth = 0
+  for (let index = open + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') {
+        if (depth === 0) break
+        depth -= 1
+      }
+    }
+    if (depth === 0) inside.push(token)
+  }
+  let partAt = -1
+  depth = 0
+  for (let index = 0; index < inside.length; index += 1) {
+    const token = inside[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')' && depth > 0) depth -= 1
+      continue
+    }
+    // ROWS/RANGE/GROUPS are not reserved words in every dialect, so match text.
+    if (depth === 0 && WINDOW_PARTS.has(token.text.toLowerCase())) partAt = index
+  }
+  if (partAt < 0) return 'over'
+  const part = (inside[partAt] as Token).lower
+  const tail = inside.slice(partAt + 1)
+  const last = tail[tail.length - 1]
+  const lower = last?.text.toLowerCase()
+  if (part === 'partition') {
+    return lower === 'partition' ? 'over' : 'column'
+  }
+  if (part === 'order') {
+    if (lower === 'order') return 'over'
+    if (last?.kind === 'keyword' && (last.lower === 'asc' || last.lower === 'desc')) return 'over'
+    return endsOperand(last) ? 'direction' : 'column'
+  }
+  if (lower === 'rows' || lower === 'range' || lower === 'groups') return 'frame'
+  if (lower === 'preceding' || lower === 'following' || lower === 'row') return 'number'
+  return 'frame'
 }
 
 /** `GRANT `, `GRANT SELECT, `: privileges come before the ON clause. */
@@ -569,6 +633,40 @@ function castAs(tokens: readonly Token[]): boolean {
   return false
 }
 
+const INTERVAL_UNITS = new Set([
+  'microsecond',
+  'second',
+  'minute',
+  'hour',
+  'day',
+  'week',
+  'month',
+  'quarter',
+  'year',
+])
+
+/** `INTERVAL ` and `INTERVAL 1 ` take a unit; a finished unit ends the literal. */
+function intervalTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  if (last.kind === 'keyword' && last.lower === 'interval') return 'interval'
+  const previous = tokens[tokens.length - 2]
+  if (
+    previous !== undefined &&
+    previous.text.toLowerCase() === 'interval' &&
+    (last.kind === 'number' || last.kind === 'string')
+  ) {
+    return 'interval'
+  }
+  if (
+    INTERVAL_UNITS.has(last.text.toLowerCase()) &&
+    tokens.some((token) => token.text.toLowerCase() === 'interval')
+  ) {
+    return 'number'
+  }
+  return undefined
+}
+
 /** `ON DUPLICATE KEY UPDATE ` assigns columns of the inserted table. */
 function duplicateKeyUpdate(tokens: readonly Token[]): boolean {
   if (tokens.length < 4) return false
@@ -773,6 +871,7 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (first === undefined || first.text.toLowerCase() !== 'show') return undefined
   const words = tokens.map((token) => token.text.toLowerCase())
   const second = words[1]
+  const kind = second === 'full' ? words[2] : second
   if (second === 'create') {
     const object = words[2]
     if (object === 'database' || object === 'schema') return 'database'
@@ -796,11 +895,11 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
     return from === words.length - 1 ? 'database' : 'number'
   }
   if (
-    second === 'columns' ||
-    second === 'fields' ||
-    second === 'index' ||
-    second === 'indexes' ||
-    second === 'keys'
+    kind === 'columns' ||
+    kind === 'fields' ||
+    kind === 'index' ||
+    kind === 'indexes' ||
+    kind === 'keys'
   ) {
     if (from >= 0 && from < tokens.length - 1) return 'name'
     return undefined
@@ -1341,6 +1440,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (duplicateKeyUpdate(tokens)) return 'column'
   if (valuesListComplete(tokens)) return 'insertTail'
   if (castAs(tokens)) return 'type'
+  const interval = intervalTail(tokens)
+  if (interval !== undefined) return interval
   const expression = expressionTail(tokens)
   if (expression !== undefined) return expression
   const last = tokens[tokens.length - 1]
@@ -1361,11 +1462,12 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (last?.kind === 'keyword' && last.lower === 'like') return 'number'
   if (escapeTail(tokens)) return 'number'
   if (lockStart(tokens)) return 'lock'
+  // `OVER (...)`/`WINDOW ... AS (...)`: the spec's own PARTITION BY / ORDER BY
+  // / frame clause decides, before the statement's ORDER BY rules apply.
+  const window = windowExpectation(tokens)
+  if (window !== undefined) return window
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
-  // `OVER (` and `OVER (PARTITION BY x ` take the window keywords; once the
-  // window has its own ORDER BY, the normal ordering rules apply.
-  if (overParenOpen(tokens)) return 'over'
   if (groupByPosition(tokens)) return 'groupTail'
   const operator = conditionOperator(tokens)
   if (operator !== undefined) return operator

@@ -82,6 +82,8 @@ export type CompletionExpectation =
   | 'grantOption'
   | 'grantOptionWord'
   | 'lock'
+  | 'frame'
+  | 'interval'
   | 'database'
   | 'keyword'
   | 'any'

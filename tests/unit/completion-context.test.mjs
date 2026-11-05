@@ -828,7 +828,9 @@ describe('analyze USING columns, LIKE patterns and GRANT privileges', () => {
 
   it('offers window keywords inside OVER and yields to ORDER BY', () => {
     expect(caretAtEnd('SELECT ROW_NUMBER() OVER (').expectation).toBe('over')
-    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (PARTITION BY user_id ').expectation).toBe('over')
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (PARTITION BY user_id ').expectation).toBe(
+      'column',
+    )
     expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id ').expectation).toBe('direction')
     expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id) ').expectation).toBe(
       'expressionTail',
@@ -917,5 +919,40 @@ describe('analyze database names and index collations', () => {
   it('offers collations inside index and column definitions', () => {
     expect(caretAtEnd('CREATE INDEX idx ON orders (name COLLATE ').expectation).toBe('collation')
     expect(caretAtEnd('CREATE TABLE t (name COLLATE ').expectation).toBe('collation')
+  })
+})
+
+describe('analyze window specifications and intervals', () => {
+  it('offers columns inside PARTITION BY and ORDER BY', () => {
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (PARTITION BY status, ').expectation).toBe('column')
+  })
+
+  it('offers directions after a window sort key', () => {
+    expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id ').expectation).toBe('direction')
+  })
+
+  it('offers frame bounds inside ROWS and RANGE', () => {
+    expect(caretAtEnd('SELECT SUM(total) OVER (ROWS ').expectation).toBe('frame')
+    expect(caretAtEnd('SELECT SUM(total) OVER (ROWS BETWEEN ').expectation).toBe('frame')
+    expect(caretAtEnd('SELECT SUM(total) OVER (RANGE BETWEEN 1 PRECEDING AND ').expectation).toBe('frame')
+    expect(
+      caretAtEnd('SELECT SUM(total) OVER (ROWS BETWEEN 1 PRECEDING AND CURRENT ROW ').expectation,
+    ).toBe('number')
+  })
+
+  it('treats WINDOW ... AS ( as a window spec, not a subquery', () => {
+    expect(caretAtEnd('SELECT SUM(total) OVER w FROM orders WINDOW w AS (').expectation).toBe('over')
+  })
+
+  it('offers interval units', () => {
+    expect(caretAtEnd('SELECT CURRENT_DATE + INTERVAL ').expectation).toBe('interval')
+    expect(caretAtEnd('SELECT DATE_ADD(created_at, INTERVAL 1 ').expectation).toBe('interval')
+    expect(caretAtEnd('SELECT DATE_ADD(created_at, INTERVAL 1 DAY ').expectation).toBe('number')
+  })
+
+  it('names the object after SHOW FULL COLUMNS / INDEX', () => {
+    expect(caretAtEnd('SHOW FULL COLUMNS FROM orders ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW FULL INDEX FROM orders ').expectation).toBe('name')
   })
 })

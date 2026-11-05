@@ -289,3 +289,30 @@ describe('grant option and lock words', () => {
     expect(names(keywordCompletions('lock', 'generic'))).toEqual(['UPDATE', 'SHARE'])
   })
 })
+
+describe('frame and interval words', () => {
+  it('offers frame bounds', () => {
+    expect(names(keywordCompletions('frame', 'generic'))).toEqual([
+      'BETWEEN',
+      'UNBOUNDED',
+      'CURRENT',
+      'ROW',
+      'PRECEDING',
+      'FOLLOWING',
+    ])
+  })
+
+  it('offers interval units', () => {
+    expect(names(keywordCompletions('interval', 'generic'))).toEqual([
+      'MICROSECOND',
+      'SECOND',
+      'MINUTE',
+      'HOUR',
+      'DAY',
+      'WEEK',
+      'MONTH',
+      'QUARTER',
+      'YEAR',
+    ])
+  })
+})

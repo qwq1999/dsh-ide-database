@@ -1509,3 +1509,37 @@ describe('complete CREATE names and ALTER column tails', () => {
     expect(names(another)).toEqual(['ADD', 'DROP', 'MODIFY', 'CHANGE', 'RENAME', 'ALTER'])
   })
 })
+
+describe('complete window and interval positions', () => {
+  it('offers window parts at the start of a specification', async () => {
+    const result = await complete(request('SELECT ROW_NUMBER() OVER ('))
+    expect(result.analysis.expectation).toBe('over')
+    expect(names(result)).toEqual(['PARTITION', 'ORDER', 'RANGE', 'ROWS', 'GROUPS'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('offers frame bounds after ROWS', async () => {
+    const result = await complete(request('SELECT SUM(total) OVER (ROWS '))
+    expect(result.analysis.expectation).toBe('frame')
+    expect(names(result)).toEqual(['BETWEEN', 'UNBOUNDED', 'CURRENT', 'ROW', 'PRECEDING', 'FOLLOWING'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('offers interval units', async () => {
+    for (const statement of ['SELECT CURRENT_DATE + INTERVAL ', 'SELECT DATE_ADD(created_at, INTERVAL 1 ']) {
+      const result = await complete(request(statement))
+      expect(result.analysis.expectation).toBe('interval')
+      expect(names(result)).toContain('DAY')
+      expect(names(result)).toContain('YEAR')
+      expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    }
+  })
+
+  it('stays quiet after a SHOW FULL COLUMNS object', async () => {
+    const req = request('SHOW FULL COLUMNS FROM orders ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
