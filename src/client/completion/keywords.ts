@@ -438,6 +438,26 @@ const GROUP_TAIL_WORDS = ['HAVING', 'ORDER', 'LIMIT', 'WITH'] as const
 /** The only clause left after an INSERT values tuple list. */
 const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
 
+/** The source of rows after `INSERT INTO t (cols)`. */
+const INSERT_SOURCE_WORDS = ['VALUES', 'SELECT', 'SET'] as const
+
+/** Clauses that may follow a completed `JOIN ... USING (...)`. */
+const JOIN_TAIL_WORDS = [
+  'JOIN',
+  'LEFT',
+  'RIGHT',
+  'INNER',
+  'OUTER',
+  'CROSS',
+  'NATURAL',
+  'WHERE',
+  'GROUP',
+  'ORDER',
+  'HAVING',
+  'LIMIT',
+  'UNION',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -484,6 +504,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return GROUP_TAIL_WORDS
     case 'insertTail':
       return INSERT_TAIL_WORDS
+    case 'insertSource':
+      return INSERT_SOURCE_WORDS
+    case 'joinTail':
+      return JOIN_TAIL_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

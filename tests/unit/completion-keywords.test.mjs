@@ -217,3 +217,27 @@ describe('keywordCompletions tails', () => {
     ])
   })
 })
+
+describe('keywordCompletions sources and join tails', () => {
+  it('offers the row source after an INSERT column list', () => {
+    expect(names(keywordCompletions('insertSource', 'mysql'))).toEqual(['VALUES', 'SELECT', 'SET'])
+  })
+
+  it('offers clause tails after JOIN USING', () => {
+    expect(names(keywordCompletions('joinTail', 'mysql'))).toEqual([
+      'JOIN',
+      'LEFT',
+      'RIGHT',
+      'INNER',
+      'OUTER',
+      'CROSS',
+      'NATURAL',
+      'WHERE',
+      'GROUP',
+      'ORDER',
+      'HAVING',
+      'LIMIT',
+      'UNION',
+    ])
+  })
+})

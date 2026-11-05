@@ -183,7 +183,7 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('WITH x AS (').expectation).toBe('keyword')
     expect(caretAtEnd('CREATE VIEW v AS (').expectation).toBe('keyword')
     expect(caretAtEnd('SELECT * FROM (').expectation).toBe('keyword')
-    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('keyword')
   })
 
   it('expects a table after IF EXISTS', () => {
@@ -745,5 +745,34 @@ describe('resolve relations written after the caret', () => {
 
   it('leaves the relation list alone when there is no qualifier', () => {
     expect(analyze('SELECT o FROM orders o', 8).relations).toEqual([])
+  })
+})
+
+describe('analyze boolean, insert and join tails', () => {
+  it('expects a literal after IS and an operator after NOT', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IS ').expectation).toBe('value')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id NOT ').expectation).toBe('comparison')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IS NOT ').expectation).toBe('value')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IS NULL ').expectation).toBe('boolean')
+  })
+
+  it('expects the row source after a complete INSERT column list', () => {
+    expect(caretAtEnd('INSERT INTO orders (id) ').expectation).toBe('insertSource')
+    expect(caretAtEnd('INSERT INTO orders (id, total) ').expectation).toBe('insertSource')
+    expect(caretAtEnd('INSERT INTO orders (').expectation).toBe('column')
+    expect(caretAtEnd('INSERT INTO orders (id) VALUES (').expectation).toBe('value')
+  })
+
+  it('moves on after a complete JOIN USING list', () => {
+    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (id) ').expectation).toBe(
+      'joinTail',
+    )
+    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c USING (').expectation).toBe(
+      'column',
+    )
+  })
+
+  it('starts a statement inside an IN parenthesis', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('keyword')
   })
 })

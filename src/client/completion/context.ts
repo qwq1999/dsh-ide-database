@@ -184,7 +184,46 @@ function startsSubquery(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
   const before = previousKeyword(tokens, tokens.length - 1)
-  return before === 'as' || before === 'from' || before === 'exists'
+  return before === 'as' || before === 'from' || before === 'exists' || before === 'in'
+}
+
+/** `INSERT INTO t (cols) ` is complete and expects the row source. */
+function insertColumnListComplete(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'insert') return false
+  if (tokens.some((token) => token.kind === 'keyword' && token.lower === 'values')) return false
+  let depth = 0
+  let close = -1
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')' && depth > 0) {
+      depth -= 1
+      if (depth === 0) close = index
+    }
+  }
+  return close >= 0 && close === tokens.length - 1
+}
+
+/** `JOIN ... USING (id) ` is complete; only clause tails remain. */
+function usingTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== ')') return false
+  let depth = 0
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      depth -= 1
+      if (depth === 0) {
+        const owner = tokens[index - 1] as Token | undefined
+        return owner?.text.toLowerCase() === 'using'
+      }
+    }
+  }
+  return false
 }
 
 /**
@@ -1051,6 +1090,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (lockClauseTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet
+  if (insertColumnListComplete(tokens)) return 'insertSource'
+  if (usingTail(tokens)) return 'joinTail'
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
@@ -1087,6 +1128,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
     // `IS NOT ` only takes NULL/TRUE/FALSE.
     return 'value'
   }
+  // `IS ` takes a literal predicate, and a bare `NOT ` takes an operator.
+  if (last?.kind === 'keyword' && last.lower === 'is') return 'value'
+  if (last?.kind === 'keyword' && last.lower === 'not') return 'comparison'
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
   if (groupByPosition(tokens)) return 'groupTail'

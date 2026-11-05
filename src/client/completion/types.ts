@@ -73,6 +73,8 @@ export type CompletionExpectation =
   | 'expressionTail'
   | 'groupTail'
   | 'insertTail'
+  | 'insertSource'
+  | 'joinTail'
   | 'keyword'
   | 'any'
 

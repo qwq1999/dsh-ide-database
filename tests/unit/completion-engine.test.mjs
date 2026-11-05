@@ -1285,3 +1285,39 @@ describe('complete aliases written after the caret', () => {
     expect(result.items.every((item) => item.kind === 'table')).toBe(true)
   })
 })
+
+describe('complete boolean, insert and join tails', () => {
+  it('offers literals after IS', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id IS '))
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result).slice(0, 4)).toEqual(['DEFAULT', 'NULL', 'TRUE', 'FALSE'])
+  })
+
+  it('offers operators after NOT', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id NOT '))
+    expect(result.analysis.expectation).toBe('comparison')
+    expect(names(result)).toEqual(['LIKE', 'IN', 'IS', 'NOT', 'BETWEEN', 'REGEXP'])
+  })
+
+  it('offers the row source after an INSERT column list', async () => {
+    const result = await complete(request('INSERT INTO orders (id) '))
+    expect(result.analysis.expectation).toBe('insertSource')
+    expect(names(result)).toEqual(['VALUES', 'SELECT', 'SET'])
+  })
+
+  it('offers clause tails after JOIN USING', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders o JOIN customers c USING (id) '),
+    )
+    expect(result.analysis.expectation).toBe('joinTail')
+    expect(names(result)).toContain('JOIN')
+    expect(names(result)).toContain('WHERE')
+  })
+
+  it('offers SELECT inside an IN parenthesis', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id IN ('))
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+})
