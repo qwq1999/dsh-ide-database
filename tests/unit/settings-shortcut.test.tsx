@@ -77,8 +77,23 @@ describe('settings shortcut recorder', () => {
     expect(input.value).toBe('Ctrl + L')
   })
 
-  it('no longer offers a shortcut-panel reset-all button', () => {
-    setup()
+  it('offers a shortcut-panel 恢复默认 that clears every override', () => {
+    const { onSave } = setup()
+    const input = field('清空编辑器（不影响已拿到的结果） 的快捷键')
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'k', ctrlKey: true, altKey: true })
+    expect(input.value).toBe('Ctrl + Alt + K')
+    // The panel-level button is the one that does not live in a shortcut row.
+    const panelReset = screen
+      .getAllByRole('button', { name: '恢复默认' })
+      .find((button) => button.closest('.dshdb-driver-row') === null)
+    expect(panelReset).toBeTruthy()
+    fireEvent.click(panelReset!)
+    expect(input.value).toBe('Ctrl + L')
+    fireEvent.click(within(panelReset!.parentElement as HTMLElement).getByRole('button', { name: '保存' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave.mock.calls[0]![0].keybindings).toEqual({})
+    // The wording stays 恢复默认; the old 全部恢复默认 label is gone.
     expect(screen.queryByRole('button', { name: '全部恢复默认' })).toBeNull()
   })
 
