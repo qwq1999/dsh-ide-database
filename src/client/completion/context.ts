@@ -1088,8 +1088,8 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
     kind === 'indexes' ||
     kind === 'keys'
   ) {
-    if (from >= 0 && from < tokens.length - 1) return 'name'
-    return undefined
+    if (from < 0) return undefined
+    return from === words.length - 1 ? 'tableName' : 'name'
   }
   if (second === 'grants' && words.length > 2) return 'name'
   if (words[words.length - 1] === 'like') return 'name'
@@ -1831,6 +1831,41 @@ function insertSetPosition(tokens: readonly Token[]): 'number' | 'value' | undef
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
+function triggerTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens.length < 2) return undefined
+  if (tokens[0]?.text.toLowerCase() !== 'create') return undefined
+  if (tokens[1]?.text.toLowerCase() !== 'trigger') return undefined
+  if (tokens.length === 2) return 'name'
+  if (tokens.length === 3) return 'triggerTiming'
+  if (tokens.length === 4) return 'triggerEvent'
+  if (tokens.length === 5) return 'triggerOn'
+  const onIndex = tokens.findIndex(
+    (token) => token.text.toLowerCase() === 'on' && token.kind === 'keyword',
+  )
+  if (onIndex < 0) return 'triggerOn'
+  if (onIndex === tokens.length - 1) return 'tableName'
+  const forIndex = tokens.findIndex((token) => token.text.toLowerCase() === 'for')
+  if (forIndex < 0) return 'triggerFor'
+  if (forIndex === tokens.length - 1) return 'triggerEach'
+  const eachIndex = tokens.findIndex((token) => token.text.toLowerCase() === 'each')
+  if (eachIndex < 0 || eachIndex === tokens.length - 1) return 'triggerRow'
+  return 'statement'
+}
+
+function returnsTail(tokens: readonly Token[]): boolean {
+  if (tokens.length < 2) return false
+  if (tokens[0]?.text.toLowerCase() !== 'create') return false
+  const index = tokens.findIndex((token) => token.text.toLowerCase() === 'returns')
+  return index >= 0 && index === tokens.length - 1
+}
+
+function declareTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'declare') return undefined
+  if (tokens.length === 1) return 'name'
+  if (tokens.length === 2) return 'columnType'
+  return 'number'
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
@@ -1844,6 +1879,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
   if (createTableLike(tokens)) return 'tableName'
   if (createObjectName(tokens)) return 'name'
+  const trigger = triggerTail(tokens)
+  if (trigger !== undefined) return trigger
+  if (returnsTail(tokens)) return 'columnType'
+  const declared = declareTail(tokens)
+  if (declared !== undefined) return declared
   if (createTableOptionsTail(tokens)) return 'tableOptions'
   if (indexUsingTail(tokens)) return 'indexMethod'
   const alterColumn = alterColumnStage(tokens)

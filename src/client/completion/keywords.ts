@@ -500,6 +500,18 @@ const ROW_FORMAT_WORDS = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDAN
 /** `PARTITION BY ` methods. */
 const PARTITION_WORDS = ['HASH', 'KEY', 'RANGE', 'LIST', 'LINEAR'] as const
 
+const TRIGGER_TIMING_WORDS = ['BEFORE', 'AFTER'] as const
+
+const TRIGGER_EVENT_WORDS = ['INSERT', 'UPDATE', 'DELETE'] as const
+
+const TRIGGER_ON_WORDS = ['ON'] as const
+
+const TRIGGER_FOR_WORDS = ['FOR'] as const
+
+const TRIGGER_EACH_WORDS = ['EACH'] as const
+
+const TRIGGER_ROW_WORDS = ['ROW'] as const
+
 /** `START TRANSACTION ` takes an access mode or a snapshot clause. */
 const TRANSACTION_WORDS = ['READ', 'WRITE', 'WITH'] as const
 
@@ -625,6 +637,18 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return CAST_TYPE_WORDS
     case 'columnType':
       return COLUMN_TYPE_WORDS
+    case 'triggerTiming':
+      return TRIGGER_TIMING_WORDS
+    case 'triggerEvent':
+      return TRIGGER_EVENT_WORDS
+    case 'triggerOn':
+      return TRIGGER_ON_WORDS
+    case 'triggerFor':
+      return TRIGGER_FOR_WORDS
+    case 'triggerEach':
+      return TRIGGER_EACH_WORDS
+    case 'triggerRow':
+      return TRIGGER_ROW_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

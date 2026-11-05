@@ -163,6 +163,12 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   nulls: KEYWORD_PRIORITY,
   alterColumnSet: KEYWORD_PRIORITY,
   columnType: KEYWORD_PRIORITY,
+  triggerTiming: KEYWORD_PRIORITY,
+  triggerEvent: KEYWORD_PRIORITY,
+  triggerOn: KEYWORD_PRIORITY,
+  triggerFor: KEYWORD_PRIORITY,
+  triggerEach: KEYWORD_PRIORITY,
+  triggerRow: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

@@ -670,7 +670,13 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'isolationLevel':
       case 'isolationRead':
       case 'nulls':
-      case 'alterColumnSet': {
+      case 'alterColumnSet':
+      case 'triggerTiming':
+      case 'triggerEvent':
+      case 'triggerOn':
+      case 'triggerFor':
+      case 'triggerEach':
+      case 'triggerRow': {
         candidates = [...keywordCompletions(expectation, dialect)]
         break
       }

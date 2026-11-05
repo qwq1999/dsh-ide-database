@@ -1168,3 +1168,41 @@ describe('analyze insert targets, column types and expression tails', () => {
     )
   })
 })
+
+describe('analyze trigger and routine tails', () => {
+  it('walks through a CREATE TRIGGER definition', () => {
+    expect(analyze('CREATE TRIGGER ', 15).expectation).toBe('name')
+    expect(analyze('CREATE TRIGGER trg ', 19).expectation).toBe('triggerTiming')
+    expect(analyze('CREATE TRIGGER trg BEFORE ', 26).expectation).toBe('triggerEvent')
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ', 33).expectation).toBe('triggerOn')
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ON ', 36).expectation).toBe('tableName')
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ON orders ', 43).expectation).toBe(
+      'triggerFor',
+    )
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ON orders FOR ', 47).expectation).toBe(
+      'triggerEach',
+    )
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH ', 52).expectation).toBe(
+      'triggerRow',
+    )
+    expect(analyze('CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH ROW ', 56).expectation).toBe(
+      'statement',
+    )
+    expect(
+      analyze('CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH ROW BEGIN ', 62).expectation,
+    ).toBe('statement')
+  })
+
+  it('names routine declarations and return types', () => {
+    expect(analyze('CREATE FUNCTION f() RETURNS ', 28).expectation).toBe('columnType')
+    expect(analyze('DECLARE ', 8).expectation).toBe('name')
+    expect(analyze('DECLARE x ', 10).expectation).toBe('columnType')
+    expect(analyze('DECLARE x INT ', 14).expectation).toBe('number')
+  })
+
+  it('expects a table after SHOW COLUMNS and SHOW INDEX', () => {
+    expect(analyze('SHOW COLUMNS FROM ', 18).expectation).toBe('tableName')
+    expect(analyze('SHOW INDEX FROM ', 16).expectation).toBe('tableName')
+    expect(analyze('SHOW COLUMNS FROM orders ', 25).expectation).toBe('name')
+  })
+})

@@ -1880,3 +1880,65 @@ describe('complete insert targets, column types and expression tails', () => {
     expect(names(result)).toEqual(['AND', 'OR'])
   })
 })
+
+describe('complete trigger and routine positions', () => {
+  it('offers trigger timing and event words', async () => {
+    const timing = await complete(request('CREATE TRIGGER trg '))
+    expect(timing.analysis.expectation).toBe('triggerTiming')
+    expect(names(timing)).toEqual(['BEFORE', 'AFTER'])
+    expect(timing.items.every((item) => item.kind === 'keyword')).toBe(true)
+
+    const event = await complete(request('CREATE TRIGGER trg BEFORE '))
+    expect(event.analysis.expectation).toBe('triggerEvent')
+    expect(names(event)).toEqual(['INSERT', 'UPDATE', 'DELETE'])
+  })
+
+  it('offers the trigger table and the FOR EACH ROW chain', async () => {
+    const on = await complete(request('CREATE TRIGGER trg BEFORE INSERT ON '))
+    expect(on.analysis.expectation).toBe('tableName')
+    expect(names(on)[0]).toBe('orders')
+    expect(on.items.some((item) => item.kind === 'table')).toBe(true)
+
+    const forWord = await complete(request('CREATE TRIGGER trg BEFORE INSERT ON orders '))
+    expect(forWord.analysis.expectation).toBe('triggerFor')
+    expect(names(forWord)).toEqual(['FOR'])
+    const each = await complete(
+      request('CREATE TRIGGER trg BEFORE INSERT ON orders FOR '),
+    )
+    expect(each.analysis.expectation).toBe('triggerEach')
+    expect(names(each)).toEqual(['EACH'])
+    const row = await complete(
+      request('CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH '),
+    )
+    expect(names(row)).toEqual(['ROW'])
+  })
+
+  it('offers statements inside a trigger body', async () => {
+    const req = request('CREATE TRIGGER trg BEFORE INSERT ON orders FOR EACH ROW ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('statement')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers a return type and keeps declarations quiet', async () => {
+    const returns = await complete(request('CREATE FUNCTION f() RETURNS '))
+    expect(returns.analysis.expectation).toBe('columnType')
+    expect(names(returns)).toContain('INT')
+
+    const declare = await complete(request('DECLARE '))
+    expect(declare.analysis.expectation).toBe('name')
+    expect(declare.items).toEqual([])
+  })
+
+  it('offers tables after SHOW COLUMNS and SHOW INDEX FROM', async () => {
+    const columns = await complete(request('SHOW COLUMNS FROM '))
+    expect(columns.analysis.expectation).toBe('tableName')
+    expect(names(columns)[0]).toBe('orders')
+    expect(columns.items.every((item) => item.kind === 'table' || item.kind === 'schema')).toBe(
+      true,
+    )
+  })
+})

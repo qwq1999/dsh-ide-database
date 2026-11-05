@@ -412,3 +412,18 @@ describe('column type words', () => {
     expect(words).toContain('DATETIME')
   })
 })
+
+describe('trigger words', () => {
+  it('offers trigger timing, event and FOR EACH ROW words', () => {
+    expect(names(keywordCompletions('triggerTiming', 'generic'))).toEqual(['BEFORE', 'AFTER'])
+    expect(names(keywordCompletions('triggerEvent', 'generic'))).toEqual([
+      'INSERT',
+      'UPDATE',
+      'DELETE',
+    ])
+    expect(names(keywordCompletions('triggerOn', 'generic'))).toEqual(['ON'])
+    expect(names(keywordCompletions('triggerFor', 'generic'))).toEqual(['FOR'])
+    expect(names(keywordCompletions('triggerEach', 'generic'))).toEqual(['EACH'])
+    expect(names(keywordCompletions('triggerRow', 'generic'))).toEqual(['ROW'])
+  })
+})
