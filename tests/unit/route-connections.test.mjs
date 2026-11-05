@@ -5,7 +5,7 @@ import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
 
 const servers = []
-const calls = { test: [], sqlConnect: [], redisConnect: [], sqlDisconnect: [], redisDisconnect: [] }
+const calls = { test: [], sqlConnect: [], redisConnect: [], sqlDisconnect: [], redisDisconnect: [], reorder: [] }
 
 const mysql = {
   id: 'm1',
@@ -53,6 +53,10 @@ function deps() {
       settings: () => ({}),
       snapshot: () => ({}),
       connection: (id) => ({ m1: mysql, r1: redis })[id],
+      reorderConnections: (ids) => {
+        calls.reorder.push(ids)
+        return { connections: ids.map((id) => ({ id })) }
+      },
     },
     secrets: {},
     drivers: { statuses: () => [] },
@@ -166,5 +170,29 @@ describe('POST /connections/disconnect over HTTP', () => {
 
     expect(calls.sqlDisconnect).toEqual(['m1'])
     expect(calls.redisDisconnect).toEqual(['m1'])
+  })
+})
+
+describe('POST /connections/reorder over HTTP', () => {
+  it('passes the id order to the config store, dropping non-string ids', async () => {
+    const url = await start('/connections/reorder')
+
+    const result = await post(url, { ids: ['r1', 'm1', 7] })
+
+    expect(result.body).toMatchObject({
+      ok: true,
+      data: { config: { connections: [{ id: 'r1' }, { id: 'm1' }] } },
+    })
+    expect(calls.reorder).toEqual([['r1', 'm1']])
+  })
+
+  it('rejects an order that is not an array', async () => {
+    const url = await start('/connections/reorder')
+
+    const result = await post(url, { ids: 'r1' })
+
+    expect(result.status).toBe(400)
+    expect(result.body).toMatchObject({ ok: false, error: { code: 'invalid' } })
+    expect(calls.reorder).toHaveLength(0)
   })
 })

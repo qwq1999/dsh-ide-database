@@ -454,6 +454,26 @@ export class ConfigStore {
     return count
   }
 
+  /** Apply a new display order. Unknown ids are ignored and unmentioned connections keep their order at the end. */
+  reorderConnections(ids: string[]): ClientConfig {
+    const byId = new Map(this.data.connections.map((connection) => [connection.id, connection]))
+    const ordered: ConnectionConfig[] = []
+    const seen = new Set<string>()
+    for (const id of ids) {
+      const connection = byId.get(id)
+      if (connection === undefined || seen.has(id)) continue
+      seen.add(id)
+      ordered.push(connection)
+    }
+    for (const connection of this.data.connections) if (!seen.has(connection.id)) ordered.push(connection)
+    const changed = ordered.some((connection, index) => connection.id !== this.data.connections[index]?.id)
+    if (changed) {
+      this.data.connections = ordered
+      this.persist()
+    }
+    return this.snapshot()
+  }
+
   touchConnection(id: string): void {
     const connection = this.connection(id)
     if (connection === undefined) return

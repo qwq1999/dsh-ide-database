@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { readText, writeText } from '../prefs'
+import { orderById } from '../dragorder'
 
 /** Remembered so reopening the panel lands on the same data source. */
 const LAST_CONNECTION_KEY = 'dsh-ide-database.last-connection.v1'
@@ -101,6 +102,8 @@ export interface DataSources {
   refreshSelected: () => Promise<void>
   resetDetail: () => void
   toggleConnection: (id: string) => void
+  /** Persist a new data-source order after a row drag. */
+  reorderConnections: (ids: string[]) => void
   toggleFolder: (connectionId: string, schema: string, folder: string) => void
   toggleSchema: (connectionId: string, schema: string) => Promise<void>
   loadObjects: (connectionId: string, schema: string) => Promise<void>
@@ -499,6 +502,21 @@ export function useDataSources(notify: Notify): DataSources {
     setExpanded((previous) => ({ ...previous, [id]: previous[id] !== true }))
   }, [])
 
+  const reorderConnections = useCallback((ids: string[]): void => {
+    // Apply the dropped order at once so the row never snaps back while the
+    // host writes the config; a rejected write reloads the saved order.
+    setSnapshot((previous) => (previous ? { ...previous, connections: orderById(previous.connections, ids) } : previous))
+    void api
+      .reorderConnections(ids)
+      .then((result) => {
+        setSnapshot((previous) => (previous ? { ...previous, connections: result.config.connections } : previous))
+      })
+      .catch((error) => {
+        notify(`排序失败：${errorText(error)}`, 'error')
+        void refresh()
+      })
+  }, [notify, refresh])
+
   const toggleFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
     const key = `${connectionId}:${schema}#${folder}`
     setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
@@ -845,6 +863,7 @@ export function useDataSources(notify: Notify): DataSources {
     refreshSelected,
     resetDetail,
     toggleConnection,
+    reorderConnections,
     toggleFolder,
     toggleSchema,
     loadObjects,

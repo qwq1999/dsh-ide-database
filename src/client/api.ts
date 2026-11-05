@@ -84,6 +84,7 @@ export const api = {
   purgeConnection: (id: string) =>
     post<{ deleted: { id: string; name: string; dialect: string }; config: ClientConfig }>('/connections/purge', { id }),
   emptyTrash: () => post<{ purged: number; config: ClientConfig }>('/connections/trash/empty'),
+  reorderConnections: (ids: string[]) => post<{ config: ClientConfig }>('/connections/reorder', { ids }),
   testConnection: (draft: ConnectionDraft) => post<ConnectionTestResult>('/connections/test', { draft }),
   connect: (id: string) => post<ServerInfo>('/connections/connect', { id }),
   disconnect: (id: string) => post<{ disconnected: string }>('/connections/disconnect', { id }),

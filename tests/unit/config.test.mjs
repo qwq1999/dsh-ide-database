@@ -206,4 +206,38 @@ describe('ConfigStore', () => {
 
     expect(() => config.deleteDriver(driverId)).toThrow(/仍被/)
   })
+
+  it('reorders connections and remembers the order after a reload', () => {
+    const { config, dir } = store()
+    const first = config.saveConnection({
+      name: 'One', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', database: 'app',
+    })
+    const second = config.saveConnection({
+      name: 'Two', driver: 'mysql', host: '127.0.0.2', port: 3306, user: 'root', database: 'app',
+    })
+    const third = config.saveConnection({
+      name: 'Three', driver: 'mysql', host: '127.0.0.3', port: 3306, user: 'root', database: 'app',
+    })
+
+    const reordered = config.reorderConnections([third.id, first.id, second.id])
+
+    expect(reordered.connections.map((connection) => connection.name)).toEqual(['Three', 'One', 'Two'])
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().connections.map((connection) => connection.name)).toEqual(['Three', 'One', 'Two'])
+  })
+
+  it('ignores unknown ids and keeps unmentioned connections at the end', () => {
+    const { config } = store()
+    const first = config.saveConnection({
+      name: 'One', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', database: 'app',
+    })
+    const second = config.saveConnection({
+      name: 'Two', driver: 'mysql', host: '127.0.0.2', port: 3306, user: 'root', database: 'app',
+    })
+
+    const reordered = config.reorderConnections(['ghost', second.id, second.id])
+
+    expect(reordered.connections.map((connection) => connection.id)).toEqual([second.id, first.id])
+  })
 })

@@ -143,6 +143,7 @@ export function App(props: AppProps): ReactElement {
     refresh,
     connect,
     disconnect,
+    reorderConnections,
     refreshSelected,
     toggleConnection,
     toggleFolder,
@@ -481,6 +482,7 @@ export function App(props: AppProps): ReactElement {
               onAddConnection={() => setConnModal({ open: true, editing: null })}
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
+              onReorderConnections={reorderConnections}
               onConnect={(id) => void connect(id)}
               onRefresh={() => void refreshSelected()}
               onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}

@@ -295,6 +295,13 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       sendJson(response, 200, { ok: true, data: { purged, config: deps.config.snapshot() } })
       return
     }
+    case '/connections/reorder': {
+      const ids = data.ids
+      if (!Array.isArray(ids)) throw new DbError('invalid', 'ids 必须是数组')
+      const config = deps.config.reorderConnections(ids.filter((id): id is string => typeof id === 'string'))
+      sendJson(response, 200, { ok: true, data: { config } })
+      return
+    }
     case '/connections/test': {
       const draft = data.draft
       if (typeof draft !== 'object' || draft === null) throw new DbError('invalid', '缺少连接草稿')

@@ -1,4 +1,5 @@
 import { agoText } from '../relativetime'
+import { moveId } from '../dragorder'
 import {
   useCallback,
   useEffect,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
@@ -80,6 +82,8 @@ export interface DataViewProps {
   onAddConnection: () => void
   onSelectConnection: (id: string) => void
   onToggleConnection: (id: string) => void
+  /** Persist a new data-source order after a row drag. */
+  onReorderConnections?: (ids: string[]) => void
   onConnect: (id: string) => void
   onRefresh?: () => void
   onToggleSchema: (connectionId: string, schema: string) => void
@@ -144,6 +148,9 @@ export function DataView(props: DataViewProps): ReactElement {
   const [objectMenu, setObjectMenu] = useState<TreeMenuState | null>(null)
   const [schemaMenu, setSchemaMenu] = useState<TreeMenuState | null>(null)
   const [connectionMenu, setConnectionMenu] = useState<TreeMenuState | null>(null)
+  // Row being dragged plus the row it currently hovers; `after` puts the drop
+  // line under the target, otherwise above it.
+  const [dragging, setDragging] = useState<{ id: string; overId: string; after: boolean } | null>(null)
   // Typing must stay responsive on big trees: match against the last settled
   // term and apply the new one once the user pauses.
   const [settledFilter, setSettledFilter] = useState('')
@@ -154,6 +161,53 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [filter, settledFilter])
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
+
+  const handleRowDragStart = (event: DragEvent<HTMLElement>, id: string): void => {
+    if (props.onReorderConnections === undefined) return
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', id)
+    }
+    setDragging({ id, overId: '', after: false })
+  }
+
+  const handleRowDragOver = (event: DragEvent<HTMLElement>, id: string): void => {
+    if (props.onReorderConnections === undefined || dragging === null) return
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    if (dragging.id === id) {
+      if (dragging.overId !== '') setDragging({ ...dragging, overId: '', after: false })
+      return
+    }
+    // Dropping on the upper half of a row inserts above it, the lower half below.
+    const rect = event.currentTarget.getBoundingClientRect()
+    const after = event.clientY > rect.top + rect.height / 2
+    if (dragging.overId !== id || dragging.after !== after) setDragging({ ...dragging, overId: id, after })
+  }
+
+  const handleRowDragLeave = (event: DragEvent<HTMLElement>): void => {
+    if (dragging === null) return
+    const next = event.relatedTarget
+    if (next instanceof Node && event.currentTarget.contains(next)) return
+    setDragging({ ...dragging, overId: '', after: false })
+  }
+
+  const handleRowDrop = (event: DragEvent<HTMLElement>, id: string): void => {
+    if (props.onReorderConnections === undefined || dragging === null) return
+    event.preventDefault()
+    const next = moveId(
+      connections.map((connection) => connection.id),
+      dragging.id,
+      id,
+      dragging.after,
+    )
+    setDragging(null)
+    if (next !== null) props.onReorderConnections(next)
+  }
+
+  const handleRowDragEnd = (): void => {
+    setDragging(null)
+  }
 
   /** Put the caret in the tree filter, by name because the input is rendered further down. */
   const focusTreeFilter = useCallback((): void => {
@@ -538,7 +592,13 @@ export function DataView(props: DataViewProps): ReactElement {
                 <div key={connection.id}>
                   <button
                     type="button"
-                    className="dshdb-row"
+                    className={`dshdb-row${dragging?.id === connection.id ? ' dshdb-row-dragging' : ''}${
+                      dragging?.overId === connection.id
+                        ? dragging.after
+                          ? ' dshdb-row-drop-after'
+                          : ' dshdb-row-drop-before'
+                        : ''
+                    }`}
                     role="treeitem"
                     aria-level={1}
                     aria-expanded={isExpanded}
@@ -550,6 +610,12 @@ export function DataView(props: DataViewProps): ReactElement {
                     onClick={() => props.onSelectConnection(connection.id)}
                     onDoubleClick={() => props.onToggleConnection(connection.id)}
                     onContextMenu={(event) => openConnectionMenu(event, connection)}
+                    draggable={props.onReorderConnections !== undefined}
+                    onDragStart={(event) => handleRowDragStart(event, connection.id)}
+                    onDragOver={(event) => handleRowDragOver(event, connection.id)}
+                    onDragLeave={handleRowDragLeave}
+                    onDrop={(event) => handleRowDrop(event, connection.id)}
+                    onDragEnd={handleRowDragEnd}
                   >
                     <RowToggle
                       open={isExpanded}

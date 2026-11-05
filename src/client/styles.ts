@@ -195,6 +195,7 @@ export const CSS = `
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+  position: relative;
 }
 .dshdb-row:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-row:focus-visible {
@@ -242,6 +243,25 @@ export const CSS = `
   font-size: 11px;
 }
 .dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
+
+/* Dragging a data source above or below another one reorders the saved list.
+   The drop line is a pseudo-element so the row layout does not shift. */
+.dshdb-row[draggable="true"] { cursor: grab; }
+.dshdb-row[draggable="true"]:active { cursor: grabbing; }
+.dshdb-row-dragging { opacity: 0.45; }
+.dshdb-row-drop-before::after,
+.dshdb-row-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-state-business-primary);
+  pointer-events: none;
+}
+.dshdb-row-drop-before::after { top: -1px; }
+.dshdb-row-drop-after::after { bottom: -1px; }
 
 /* Row-end affordances: connect text, copy/refresh icons and the clear (×) buttons.
    The host app only sets font-family on <button>, so every button has to reset the
