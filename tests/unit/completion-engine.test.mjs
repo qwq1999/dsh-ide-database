@@ -2040,3 +2040,58 @@ describe('complete function and INTO tails', () => {
     expect(names(result)).toContain('orders')
   })
 })
+
+describe('complete USE, constraint and routine tails', () => {
+  it('stops after a USE database name', async () => {
+    const req = request('USE shop ')
+    const result = await complete(req)
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers constraint kinds after ADD CONSTRAINT name', async () => {
+    const req = request('ALTER TABLE orders ADD CONSTRAINT fk ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('constraintType')
+    expect(names(result)).toEqual(['FOREIGN', 'PRIMARY', 'UNIQUE', 'CHECK'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet for inline constraint column lists', async () => {
+    const pk = request('CREATE TABLE t (a INT, PRIMARY KEY (')
+    expect((await complete(pk)).items).toEqual([])
+    expect(pk.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers the parent table after REFERENCES', async () => {
+    const req = request('CREATE TABLE t (a INT, FOREIGN KEY (a) REFERENCES ')
+    const result = await complete(req)
+    expect(names(result)[0]).toBe('orders')
+    expect(req.catalog.calls.tables).toContain('shop')
+  })
+
+  it('takes an expression after RETURN', async () => {
+    const result = await complete(request('RETURN '))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('COUNT')
+  })
+
+  it('takes a value after DECLARE ... DEFAULT', async () => {
+    const result = await complete(request('DECLARE x INT DEFAULT '))
+    expect(names(result)).toContain('DEFAULT')
+  })
+
+  it('parses the rest of a multi-table DELETE', async () => {
+    const req = request('DELETE FROM orders USING orders JOIN ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)[0]).toBe('orders')
+  })
+
+  it('recognises an aggregate at the end of GROUP BY', async () => {
+    const result = await complete(request('SELECT * FROM orders GROUP BY COUNT(*) '))
+    expect(result.analysis.expectation).toBe('groupTail')
+    expect(names(result)).toEqual(['HAVING', 'ORDER', 'LIMIT', 'WITH'])
+  })
+})

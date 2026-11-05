@@ -447,3 +447,14 @@ describe('INTO target words', () => {
     expect(names(keywordCompletions('intoTarget', 'generic'))).toEqual(['OUTFILE', 'DUMPFILE'])
   })
 })
+
+describe('constraint type words', () => {
+  it('offers the constraint kinds', () => {
+    expect(names(keywordCompletions('constraintType', 'generic'))).toEqual([
+      'FOREIGN',
+      'PRIMARY',
+      'UNIQUE',
+      'CHECK',
+    ])
+  })
+})

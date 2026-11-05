@@ -146,6 +146,12 @@ function previousKeyword(tokens: readonly Token[], index: number): string | null
  * True when the caret sits inside a `CREATE TABLE` body. Those parentheses
  * hold column definitions (`PRIMARY KEY`, `NOT NULL`), not relations.
  */
+/** `REFERENCES ` inside a CREATE TABLE body names the parent table. */
+function referencesTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'references'
+}
+
 function insideCreateTableParen(tokens: readonly Token[]): boolean {
   let table = -1
   for (let index = 0; index < tokens.length; index += 1) {
@@ -1142,9 +1148,15 @@ function deleteUsing(tokens: readonly Token[]): CompletionExpectation | undefine
   if (words[0] !== 'delete') return undefined
   const at = words.indexOf('using')
   if (at < 0) return undefined
-  if (at === words.length - 1) return 'tableName'
+  const after = tokens.slice(at + 1)
+  if (after.length === 0) return 'tableName'
   const last = tokens[tokens.length - 1]
   if (last?.kind === 'punct' && last.text === ',') return 'tableName'
+  // Once a JOIN or a following clause starts, the normal parser takes over.
+  const continues = words.some(
+    (word) => word === 'join' || word === 'where' || word === 'order' || word === 'limit',
+  )
+  if (continues) return undefined
   return 'number'
 }
 
@@ -1245,6 +1257,14 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
       tokens[start + 2] !== undefined
     ) {
       return 'number'
+    }
+    // `ADD CONSTRAINT fk ` takes the constraint kind next.
+    if (
+      action.lower === 'add' &&
+      object.lower === 'constraint' &&
+      tokens[start + 2] !== undefined
+    ) {
+      return 'constraintType'
     }
     // `ADD COLUMN x INT ` still takes column options (NOT NULL, COMMENT, ...).
     if (action.lower === 'add' && (object.lower === 'column' || object.kind === 'ident')) {
@@ -1475,7 +1495,9 @@ function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTai
 }
 
 /** Inside a `CREATE TABLE` body: the start of a column definition, or its type. */
-function createColumnStage(tokens: readonly Token[]): 'name' | 'columnType' | undefined {
+function createColumnStage(
+  tokens: readonly Token[],
+): 'name' | 'columnType' | 'number' | undefined {
   let created = false
   let table = -1
   for (let index = 0; index < tokens.length; index += 1) {
@@ -1514,6 +1536,16 @@ function createColumnStage(tokens: readonly Token[]): 'name' | 'columnType' | un
   }
   const rest = tokens.slice(segment)
   if (rest.length === 0) return 'name'
+  // `PRIMARY KEY (`, `UNIQUE KEY (`, `FOREIGN KEY (` and `INDEX (` list
+  // column names, not another definition.
+  const words = rest.map((token) => token.text.toLowerCase())
+  const inlineConstraint = words.some(
+    (word) => word === 'primary' || word === 'unique' || word === 'index' || word === 'key' || word === 'foreign',
+  )
+  const tail = rest[rest.length - 1]
+  // The new table's own columns are not in the catalog yet, so stay quiet
+  // instead of offering functions for a constraint column list.
+  if (inlineConstraint && tail?.kind === 'punct' && tail.text === '(') return 'number'
   const first = rest[0] as Token
   if (rest.length === 1 && first.kind === 'ident') return 'columnType'
   return undefined
@@ -1735,7 +1767,9 @@ function groupByPosition(tokens: readonly Token[]): 'groupTail' | 'rollupTail' |
   // `WITH ROLLUP` closes the grouping clause, a second WITH is redundant.
   if (last.text.toLowerCase() === 'rollup') return 'rollupTail'
   if (!endsOperand(last)) return undefined
-  let depth = 0
+  // A completed function call ends with ')': its own parenthesis is already
+  // closed, so the backward scan starts one level deep.
+  let depth = last.kind === 'punct' && last.text === ')' ? 1 : 0
   for (let index = tokens.length - 2; index >= 0; index -= 1) {
     const token = tokens[index] as Token
     if (token.kind === 'punct') {
@@ -1869,6 +1903,8 @@ function returnsTail(tokens: readonly Token[]): boolean {
 
 function declareTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (tokens[0]?.text.toLowerCase() !== 'declare') return undefined
+  const last = tokens[tokens.length - 1]
+  if (last?.kind === 'keyword' && last.lower === 'default') return 'value'
   if (tokens.length === 1) return 'name'
   if (tokens.length === 2) return 'columnType'
   return 'number'
@@ -1928,7 +1964,12 @@ function routineTail(tokens: readonly Token[]): CompletionExpectation | undefine
   }
   const after = tokens.slice(close + 1).map((token) => token.text.toLowerCase())
   if (after.length === 0) return routineBody ? 'routineReturn' : 'statement'
-  if (after[0] === 'returns') return after.length === 1 ? 'columnType' : 'number'
+  if (after[0] === 'returns') {
+    if (after.length === 1) return 'columnType'
+    // `RETURNS <type> RETURN ` starts the function body expression.
+    if (after[after.length - 1] === 'return') return 'column'
+    return 'number'
+  }
   if (after[0] === 'begin') return 'statement'
   if (after[0] === 'return') return 'column'
   return 'number'
@@ -2051,6 +2092,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterIndexColumns(tokens)) return 'column'
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
+  if (referencesTail(tokens)) return 'tableName'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -2100,6 +2142,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'tableName'
   if (useDatabase(tokens)) return 'database'
+  // `USE shop ` already named the database; nothing catalog-bound follows.
+  if (tokens.length > 1 && tokens[0]?.text.toLowerCase() === 'use') return 'number'
   const transaction = transactionTail(tokens)
   if (transaction !== undefined) return transaction
   const call = callStart(tokens)
@@ -2184,6 +2228,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (last?.kind === 'keyword' && last.lower === 'not') return 'comparison'
   // LIKE takes a pattern literal, so no column list belongs here.
   if (last?.kind === 'keyword' && last.lower === 'like') return 'number'
+  // `RETURN ` in a routine body starts an expression (RETURN is not a
+  // reserved word in every dialect, so match the text).
+  if (last !== undefined && last.text.toLowerCase() === 'return') return 'column'
   if (escapeTail(tokens)) return 'number'
   if (lockStart(tokens)) return 'lock'
   // `OVER w ` and a closed `WINDOW w AS (...)` end the window expression.

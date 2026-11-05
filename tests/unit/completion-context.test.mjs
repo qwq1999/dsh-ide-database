@@ -1300,3 +1300,42 @@ describe('analyze function and INTO tails', () => {
     ).toBe('relation')
   })
 })
+
+describe('analyze USE, constraints and routine tails', () => {
+  it('goes quiet after a USE database name', () => {
+    expect(caretAtEnd('USE shop ').expectation).toBe('number')
+    expect(caretAtEnd('USE ').expectation).toBe('database')
+  })
+
+  it('offers constraint kinds after ADD CONSTRAINT name', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT fk ').expectation).toBe('constraintType')
+    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('name')
+  })
+
+  it('stays quiet for inline constraint column lists', () => {
+    expect(caretAtEnd('CREATE TABLE t (a INT, PRIMARY KEY (').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (a INT, FOREIGN KEY (').expectation).toBe('number')
+    expect(
+      caretAtEnd('CREATE TABLE t (a INT, FOREIGN KEY (a) REFERENCES ').expectation,
+    ).toBe('tableName')
+  })
+
+  it('takes an expression after RETURN', () => {
+    expect(caretAtEnd('RETURN ').expectation).toBe('column')
+    expect(caretAtEnd('CREATE FUNCTION f() RETURNS INT RETURN ').expectation).toBe('column')
+  })
+
+  it('takes a value after DECLARE ... DEFAULT', () => {
+    expect(caretAtEnd('DECLARE x INT DEFAULT ').expectation).toBe('value')
+  })
+
+  it('parses the rest of a multi-table DELETE', () => {
+    expect(caretAtEnd('DELETE FROM orders USING orders JOIN ').expectation).toBe('relation')
+    expect(caretAtEnd('DELETE FROM orders USING ').expectation).toBe('tableName')
+  })
+
+  it('recognises an aggregate at the end of GROUP BY', () => {
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY COUNT(*) ').expectation).toBe('groupTail')
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY id + 1 ').expectation).toBe('groupTail')
+  })
+})

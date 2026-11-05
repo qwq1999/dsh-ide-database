@@ -114,6 +114,7 @@ export type CompletionExpectation =
   | 'eventTiming'
   | 'eventTail'
   | 'intoTarget'
+  | 'constraintType'
   | 'database'
   | 'keyword'
   | 'any'
