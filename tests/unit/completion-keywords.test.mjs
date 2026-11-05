@@ -35,6 +35,17 @@ describe('keywordCompletions', () => {
     expect(words).toContain('REFERENCES')
   })
 
+  it('offers ALTER actions after the table name', () => {
+    expect(names(keywordCompletions('alter', 'mysql'))).toEqual([
+      'ADD',
+      'DROP',
+      'MODIFY',
+      'CHANGE',
+      'RENAME',
+      'ALTER',
+    ])
+  })
+
   it('adds the MySQL-only words on MySQL connections', () => {
     const words = names(keywordCompletions('any', 'mysql'))
     expect(words).toContain('STRAIGHT_JOIN')

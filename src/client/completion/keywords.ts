@@ -107,6 +107,9 @@ const SCHEMA_WORDS = [
   'TYPE',
 ] as const
 
+/** Actions that follow `ALTER TABLE <name>`. */
+const ALTER_WORDS = ['ADD', 'DROP', 'MODIFY', 'CHANGE', 'RENAME', 'ALTER'] as const
+
 /** Keywords in alias position (only `AS` can really start one). */
 const ALIAS_WORDS = ['AS'] as const
 
@@ -285,6 +288,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return VALUE_WORDS
     case 'definition':
       return DEFINITION_WORDS
+    case 'alter':
+      return ALTER_WORDS
     case 'keyword':
       return ANY_WORDS
     case 'any':

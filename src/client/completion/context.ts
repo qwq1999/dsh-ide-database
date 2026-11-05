@@ -176,11 +176,49 @@ function insideCreateTableParen(tokens: readonly Token[]): boolean {
 }
 
 /**
+ * True when the caret sits right after the table named by `ALTER TABLE`, the
+ * position where the alter action (`ADD`, `DROP`, `MODIFY`, ...) belongs.
+ */
+function alterTableAt(tokens: readonly Token[]): boolean {
+  const alter = tokens[0]
+  const table = tokens[1]
+  if (
+    alter === undefined ||
+    table === undefined ||
+    alter.kind !== 'keyword' ||
+    alter.lower !== 'alter' ||
+    table.kind !== 'keyword' ||
+    table.lower !== 'table'
+  ) {
+    return false
+  }
+  let index = 2
+  const first = tokens[index]
+  if (first === undefined) return false
+  // `ALTER TABLE IF EXISTS name`; the tolerant tokenizer may see them as names.
+  if (first.text.toLowerCase() === 'if') {
+    const exists = tokens[index + 1]
+    if (exists === undefined || exists.text.toLowerCase() !== 'exists') return false
+    index += 2
+  }
+  const name = tokens[index]
+  if (name === undefined || name.kind !== 'ident') return false
+  index += 1
+  const dot = tokens[index]
+  const second = tokens[index + 1]
+  if (dot !== undefined && dot.kind === 'punct' && dot.text === '.' && second !== undefined && second.kind === 'ident') {
+    index += 2
+  }
+  return index >= tokens.length
+}
+
+/**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insideCreateTableParen(tokens)) return 'definition'
+  if (alterTableAt(tokens)) return 'alter'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token

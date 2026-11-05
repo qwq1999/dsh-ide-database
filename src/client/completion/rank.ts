@@ -111,10 +111,11 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   schema: SCHEMA_PRIORITY,
   alias: ALIAS_PRIORITY,
   keyword: KEYWORD_PRIORITY,
-  // A value or a column definition is a keyword-first position, like a fresh
-  // statement, so they share the keyword order.
+  // A value, a column definition or an `ALTER TABLE` action is a keyword-first
+  // position, like a fresh statement, so they share the keyword order.
   value: KEYWORD_PRIORITY,
   definition: KEYWORD_PRIORITY,
+  alter: KEYWORD_PRIORITY,
 }
 
 /**

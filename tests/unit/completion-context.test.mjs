@@ -116,6 +116,16 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('CREATE TABLE ').expectation).toBe('relation')
     expect(caretAtEnd('SELECT * FROM orders WHERE ').expectation).toBe('column')
   })
+
+  it('expects an ALTER action right after the table name', () => {
+    expect(caretAtEnd('ALTER TABLE orders ').expectation).toBe('alter')
+    expect(caretAtEnd('ALTER TABLE shop.orders ').expectation).toBe('alter')
+    expect(caretAtEnd('ALTER TABLE IF EXISTS orders ').expectation).toBe('alter')
+  })
+
+  it('lets the typed ALTER action take over', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD ').expectation).not.toBe('alter')
+  })
 })
 
 describe('analyze statement bounds', () => {

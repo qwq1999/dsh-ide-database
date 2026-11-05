@@ -549,4 +549,22 @@ describe('complete values and column definitions', () => {
     expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
+
+  it('offers ALTER actions instead of tables after the table name', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'ALTER TABLE orders ',
+      caret: 19,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('alter')
+    expect(names(result)).toContain('ADD')
+    expect(names(result)).toContain('DROP')
+    expect(names(result)).toContain('MODIFY')
+    expect(names(result)).not.toContain('orders')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
 })

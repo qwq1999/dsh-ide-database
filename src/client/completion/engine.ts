@@ -528,6 +528,10 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('definition', dialect)]
         break
       }
+      case 'alter': {
+        candidates = [...keywordCompletions('alter', dialect)]
+        break
+      }
       case 'keyword': {
         const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [...snippets, ...keywordCompletions('keyword', dialect)]
