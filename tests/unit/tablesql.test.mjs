@@ -7,6 +7,8 @@ import {
   insertStatement,
   insertStatements,
   isNumericType,
+  isTemporalType,
+  temporalLiteral,
   pageClause,
   qualifiedName,
   quoteIdent,
@@ -248,6 +250,43 @@ describe('inListOf', () => {
   it('escapes backslashes for MySQL literal text', () => {
     const backslash = String.fromCharCode(92)
     expect(inListOf('mysql', [['C:' + backslash + 'temp']], 0)).toBe("('C:" + backslash + backslash + "temp')")
+  })
+})
+
+describe('temporal literals', () => {
+  it('wraps Oracle timestamp filters in TO_TIMESTAMP with an explicit format', () => {
+    const timestamp = { name: 'CREATETIME', typeName: 'TIMESTAMP(6)' }
+    expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33' })).toBe(
+      `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
+    )
+    expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33.123' })).toBe(
+      `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33.123', 'YYYY-MM-DD HH24:MI:SS.FF')`,
+    )
+    expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11' })).toBe(
+      `"CREATETIME" = TO_TIMESTAMP('2024-11-11', 'YYYY-MM-DD')`,
+    )
+  })
+
+  it('uses TO_DATE for Oracle DATE columns and keeps time zone offsets typed', () => {
+    const date = { name: 'DAY', typeName: 'DATE' }
+    expect(cellWhere('oracle', date, '2024-11-11 09:54:33')).toBe(
+      `"DAY" = TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
+    )
+    const stamp = { name: 'AT', typeName: 'TIMESTAMP WITH TIME ZONE' }
+    expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54:33.123 +08:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 09:54:33.123 +08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+  })
+
+  it('leaves other dialects and non-temporal text alone', () => {
+    const column = { name: 'city', typeName: 'VARCHAR(20)' }
+    expect(filterExpression('oracle', column, { op: 'eq', text: '2024-11-11' })).toBe(`"city" = '2024-11-11'`)
+    expect(filterExpression('mysql', { name: 'CREATETIME', typeName: 'datetime' }, { op: 'eq', text: '2024-11-11 09:54:33' })).toBe(
+      "`CREATETIME` = '2024-11-11 09:54:33'",
+    )
+    expect(temporalLiteral('oracle', 'VARCHAR(20)', '2024-11-11')).toBe("'2024-11-11'")
+    expect(isTemporalType('DATETIME(3)')).toBe(true)
+    expect(isTemporalType('VARCHAR(20)')).toBe(false)
   })
 })
 

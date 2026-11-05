@@ -92,6 +92,41 @@ export function isNumericType(typeName: string): boolean {
   return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }
 
+/** Date / timestamp columns need a typed literal on Oracle-family servers. */
+export function isTemporalType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  return /^(date|datetime|timestamp)/iu.test(typeName.replace(/[\s(].*$/u, ''))
+}
+
+/**
+ * Oracle compares a DATE or TIMESTAMP column with a bare string by converting
+ * that string with NLS_DATE_FORMAT / NLS_TIMESTAMP_FORMAT, which does not accept
+ * the ISO text the grid shows, so the filter fails with ORA-01861. Wrap the
+ * value in TO_DATE/TO_TIMESTAMP and spell the format out instead. The other
+ * dialects parse ISO literals on their own and keep the plain quoted form.
+ */
+export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: string, text: string): string {
+  const literal = quoteLiteral(text, dialect)
+  if (!isTemporalType(typeName)) return literal
+  if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
+  if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
+  const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
+  const escaped = text.replace(/'/gu, "''")
+  const hasTime = /\d{2}:\d{2}:\d{2}/u.test(text)
+  const hasFraction = /\.\d+/u.test(text)
+  const hasZone = /(?:[+-]\d{2}:\d{2}|Z)$/u.test(text)
+  if (base.startsWith('timestamp')) {
+    if (hasZone) {
+      const format = `YYYY-MM-DD HH24:MI:SS${hasFraction ? '.FF' : ''} TZH:TZM`
+      return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
+    }
+    const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}${hasFraction ? '.FF' : ''}`
+    return `TO_TIMESTAMP('${escaped}', '${format}')`
+  }
+  const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}`
+  return `TO_DATE('${escaped}', '${format}')`
+}
+
 /**
  * A quoted string literal. MySQL treats the backslash as an escape character,
  * so a Windows path or a regexp has to be doubled there or the value that comes
@@ -170,6 +205,7 @@ export function filterExpression(
   if (text === '') return undefined
   if (filter.op === 'eq') {
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
+    if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
   return `${name} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
@@ -189,6 +225,9 @@ export function cellWhere(
   if (value === null) return `${name} IS NULL`
   if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
   if (typeof value === 'boolean') return `${name} = ${value ? 'TRUE' : 'FALSE'}`
+  if (typeof value === 'string' && isTemporalType(column.typeName)) {
+    return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
+  }
   return `${name} = ${quoteLiteral(String(value), dialect)}`
 }
 
