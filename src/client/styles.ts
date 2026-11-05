@@ -631,7 +631,8 @@ export const CSS = `
   z-index: 5;
   display: flex;
   flex-direction: column;
-  min-width: 190px;
+  /* Size to the widest item instead of a fixed minimum. */
+  width: max-content;
   padding: 4px;
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsw-radius-md);

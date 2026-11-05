@@ -195,5 +195,8 @@ describe('console toolbar', () => {
     expect(menu).toMatch(/position\s*:\s*absolute/)
     expect(menu).toMatch(/right\s*:\s*0/)
     expect(menu).not.toMatch(/left\s*:\s*0/)
+    // Hug the widest item instead of a fixed 190px minimum width.
+    expect(menu).toMatch(/width\s*:\s*max-content/)
+    expect(menu).not.toMatch(/min-width\s*:\s*190px/)
   })
 })
