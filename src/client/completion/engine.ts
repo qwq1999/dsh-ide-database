@@ -8,7 +8,13 @@
  * show an error, it just shows fewer (or no) entries.
  */
 import { analyze } from './context'
-import { CHARSET_NAMES, ENGINE_NAMES, functionCompletions, keywordCompletions } from './keywords'
+import {
+  CHARSET_NAMES,
+  COLLATION_NAMES,
+  ENGINE_NAMES,
+  functionCompletions,
+  keywordCompletions,
+} from './keywords'
 import {
   aliasCandidates,
   columnCandidates,
@@ -607,6 +613,22 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       }
       case 'privilege': {
         candidates = [...keywordCompletions('privilege', dialect)]
+        break
+      }
+      case 'collation': {
+        candidates = COLLATION_NAMES.map((name) => ({ name, kind: 'keyword' as const }))
+        break
+      }
+      case 'grantOption': {
+        candidates = [...keywordCompletions('grantOption', dialect)]
+        break
+      }
+      case 'grantOptionWord': {
+        candidates = [...keywordCompletions('grantOptionWord', dialect)]
+        break
+      }
+      case 'lock': {
+        candidates = [...keywordCompletions('lock', dialect)]
         break
       }
       case 'keyword': {

@@ -1037,7 +1037,6 @@ describe('complete DDL and tail leftovers', () => {
   it('stays quiet after COMMENT and DESCRIBE targets', async () => {
     for (const statement of [
       'CREATE TABLE t (id INT) COMMENT ',
-      'CREATE TABLE t (id INT) COLLATE ',
       'DESCRIBE orders ',
       'CREATE USER ',
       'SELECT * FROM orders LIMIT 10 ',
@@ -1402,5 +1401,37 @@ describe('complete USING, OVER and GRANT positions', () => {
     const grantee = await complete(request('GRANT SELECT ON orders TO alice '))
     expect(grantee.analysis.expectation).toBe('number')
     expect(grantee.items).toEqual([])
+  })
+})
+
+
+describe('complete collation, grant option and lock positions', () => {
+  it('offers collation names after COLLATE', async () => {
+    const req = request('SELECT * FROM orders ORDER BY name COLLATE ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('collation')
+    expect(names(result)).toContain('utf8mb4_general_ci')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('offers GRANT/ADMIN then OPTION after WITH', async () => {
+    const withOption = await complete(request('GRANT SELECT ON orders TO alice WITH '))
+    expect(names(withOption)).toEqual(['GRANT', 'ADMIN'])
+
+    const option = await complete(request('GRANT SELECT ON orders TO alice WITH GRANT '))
+    expect(names(option)).toEqual(['OPTION'])
+  })
+
+  it('lists databases when dropping one', async () => {
+    const result = await complete(request('DROP DATABASE '))
+    expect(result.analysis.expectation).toBe('schema')
+    expect(names(result)).toContain('shop')
+  })
+
+  it('offers the lock clause after FOR', async () => {
+    const result = await complete(request('SELECT * FROM orders FOR '))
+    expect(result.analysis.expectation).toBe('lock')
+    expect(names(result)).toEqual(['UPDATE', 'SHARE'])
   })
 })

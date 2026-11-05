@@ -538,7 +538,7 @@ describe('analyze DDL and tail leftovers', () => {
     expect(caretAtEnd('CREATE TABLE t (id INT) COMMENT ').expectation).toBe('name')
     expect(caretAtEnd('CREATE TABLE t (id INT) COMMENT = ').expectation).toBe('name')
     expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT ').expectation).toBe('value')
-    expect(caretAtEnd('CREATE TABLE t (id INT) COLLATE ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (id INT) COLLATE ').expectation).toBe('collation')
   })
 
   it('keeps the CREATE TABLE body positions intact', () => {
@@ -833,5 +833,41 @@ describe('analyze USING columns, LIKE patterns and GRANT privileges', () => {
     expect(caretAtEnd('SELECT ROW_NUMBER() OVER (ORDER BY id) ').expectation).toBe(
       'expressionTail',
     )
+  })
+})
+
+
+describe('analyze collations, grant options and lock tails', () => {
+  it('expects a collation name after COLLATE', () => {
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY name COLLATE ').expectation).toBe('collation')
+    expect(caretAtEnd('CREATE TABLE t (id INT) COLLATE ').expectation).toBe('collation')
+  })
+
+  it('stays quiet after ESCAPE', () => {
+    expect(caretAtEnd("SELECT * FROM orders WHERE name LIKE '%x' ESCAPE ").expectation).toBe(
+      'number',
+    )
+  })
+
+  it('follows WITH in a GRANT statement', () => {
+    expect(caretAtEnd('GRANT SELECT ON orders TO alice WITH ').expectation).toBe('grantOption')
+    expect(caretAtEnd('GRANT SELECT ON orders TO alice WITH GRANT ').expectation).toBe(
+      'grantOptionWord',
+    )
+    expect(caretAtEnd('GRANT SELECT ON orders TO alice WITH ADMIN ').expectation).toBe(
+      'grantOptionWord',
+    )
+    expect(caretAtEnd('GRANT SELECT ON orders TO alice WITH GRANT OPTION ').expectation).toBe(
+      'number',
+    )
+  })
+
+  it('lists databases for DROP DATABASE and DROP SCHEMA', () => {
+    expect(caretAtEnd('DROP DATABASE ').expectation).toBe('schema')
+    expect(caretAtEnd('DROP SCHEMA ').expectation).toBe('schema')
+  })
+
+  it('offers the lock clause after FOR', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR ').expectation).toBe('lock')
   })
 })

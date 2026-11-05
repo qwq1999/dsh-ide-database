@@ -139,6 +139,10 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   using: COLUMN_PRIORITY,
   over: KEYWORD_PRIORITY,
   privilege: KEYWORD_PRIORITY,
+  collation: KEYWORD_PRIORITY,
+  grantOption: KEYWORD_PRIORITY,
+  grantOptionWord: KEYWORD_PRIORITY,
+  lock: KEYWORD_PRIORITY,
 }
 
 /**

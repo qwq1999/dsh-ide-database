@@ -78,6 +78,10 @@ export type CompletionExpectation =
   | 'using'
   | 'over'
   | 'privilege'
+  | 'collation'
+  | 'grantOption'
+  | 'grantOptionWord'
+  | 'lock'
   | 'keyword'
   | 'any'
 

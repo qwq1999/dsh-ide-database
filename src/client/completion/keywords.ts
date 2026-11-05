@@ -442,6 +442,24 @@ const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
 const INSERT_SOURCE_WORDS = ['VALUES', 'SELECT', 'SET'] as const
 
 /** Clauses that may follow a completed `JOIN ... USING (...)`. */
+const GRANT_OPTION_WORDS = ['GRANT', 'ADMIN'] as const
+
+const GRANT_OPTION_WORD_WORDS = ['OPTION'] as const
+
+const LOCK_WORDS = ['UPDATE', 'SHARE'] as const
+
+/** Collation names keep their usual case; MySQL matches them case-insensitively. */
+export const COLLATION_NAMES = [
+  'utf8mb4_general_ci',
+  'utf8mb4_unicode_ci',
+  'utf8mb4_bin',
+  'utf8_general_ci',
+  'utf8_unicode_ci',
+  'latin1_swedish_ci',
+  'ascii_general_ci',
+  'binary',
+] as const
+
 const PRIVILEGE_WORDS = [
   'SELECT',
   'INSERT',
@@ -533,6 +551,15 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return PRIVILEGE_WORDS
     case 'over':
       return OVER_WORDS
+    case 'collation':
+      // Collation names come from COLLATION_NAMES (original case).
+      return []
+    case 'grantOption':
+      return GRANT_OPTION_WORDS
+    case 'grantOptionWord':
+      return GRANT_OPTION_WORD_WORDS
+    case 'lock':
+      return LOCK_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

@@ -274,3 +274,18 @@ describe('privilege and window words', () => {
     ])
   })
 })
+
+
+describe('grant option and lock words', () => {
+  it('offers GRANT/ADMIN after WITH', () => {
+    expect(names(keywordCompletions('grantOption', 'generic'))).toEqual(['GRANT', 'ADMIN'])
+  })
+
+  it('offers OPTION after WITH GRANT or WITH ADMIN', () => {
+    expect(names(keywordCompletions('grantOptionWord', 'generic'))).toEqual(['OPTION'])
+  })
+
+  it('offers the lock clauses', () => {
+    expect(names(keywordCompletions('lock', 'generic'))).toEqual(['UPDATE', 'SHARE'])
+  })
+})

@@ -321,6 +321,54 @@ function granteeTail(tokens: readonly Token[]): boolean {
   )
 }
 
+/** `COLLATE ` takes a collation name, in ORDER BY as well as in DDL. */
+function collationValue(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'collate'
+}
+
+/** `... ESCAPE ` takes a single pattern-escape character. */
+function escapeTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'escape'
+}
+
+/** `WITH GRANT ` / `WITH ADMIN ` in a GRANT statement. */
+function grantWith(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.kind !== 'keyword') return undefined
+  const head = first.text.toLowerCase()
+  if (head !== 'grant' && head !== 'revoke') return undefined
+  let index = tokens.length - 1
+  while (index >= 0 && tokens[index]?.text.toLowerCase() !== 'with') index -= 1
+  if (index < 0) return undefined
+  const rest = tokens
+    .slice(index + 1)
+    .map((token) => token.text.toLowerCase())
+    .filter((text) => text !== '')
+  if (rest.length === 0) return 'grantOption'
+  const lastWord = rest[rest.length - 1]
+  if (rest.length === 1 && (lastWord === 'grant' || lastWord === 'admin')) {
+    return 'grantOptionWord'
+  }
+  return undefined
+}
+
+/** `DROP DATABASE `/`DROP SCHEMA ` names an existing database. */
+function dropDatabase(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first?.text.toLowerCase() !== 'drop') return false
+  const object = second?.text.toLowerCase()
+  return object === 'database' || object === 'schema'
+}
+
+/** `FOR ` at the end of a SELECT takes the lock clause. */
+function lockStart(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'for'
+}
+
 function grantTarget(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'keyword' || last.lower !== 'on') return false
@@ -558,7 +606,6 @@ function tableOptionValue(tokens: readonly Token[]): CompletionExpectation | und
   if (last === undefined) return undefined
   const lower = last.text.toLowerCase()
   if (lower === 'comment') return 'name'
-  if (lower === 'collate') return 'number'
   if (lower === 'default') return 'value'
   if (last.kind === 'punct' && last.text === '=') {
     return previous?.text.toLowerCase() === 'comment' ? 'name' : undefined
@@ -1185,7 +1232,10 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
   if (objectName(tokens)) return 'name'
+  if (dropDatabase(tokens)) return 'schema'
   if (grantee(tokens)) return 'name'
+  const withOption = grantWith(tokens)
+  if (withOption !== undefined) return withOption
   if (granteeTail(tokens)) return 'number'
   if (unionStatement(tokens)) return 'statement'
   if (explainStart(tokens)) return 'statement'
@@ -1194,6 +1244,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (showStart(tokens)) return 'show'
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
+  if (collationValue(tokens)) return 'collation'
   if (createTableEngine(tokens)) return 'engine'
   if (charsetValue(tokens)) return 'charset'
   const optionValue = tableOptionValue(tokens)
@@ -1222,6 +1273,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (last?.kind === 'keyword' && last.lower === 'not') return 'comparison'
   // LIKE takes a pattern literal, so no column list belongs here.
   if (last?.kind === 'keyword' && last.lower === 'like') return 'number'
+  if (escapeTail(tokens)) return 'number'
+  if (lockStart(tokens)) return 'lock'
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
   // `OVER (` and `OVER (PARTITION BY x ` take the window keywords; once the
