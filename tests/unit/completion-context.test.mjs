@@ -1495,3 +1495,35 @@ describe('analyze alter constraints, options and partition lists', () => {
     ).toBe('number')
   })
 })
+
+
+describe('analyze function lengths and statement tails', () => {
+  it('takes a length inside SUBSTRING ... FOR', () => {
+    expect(caretAtEnd('SELECT SUBSTRING(name FROM 1 FOR ').expectation).toBe('number')
+  })
+
+  it('still recognises a row lock at the end of a statement', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR ').expectation).toBe('lock')
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE ').expectation).toBe('number')
+  })
+
+  it('takes a length after a type name', () => {
+    expect(caretAtEnd('SELECT CAST(id AS CHAR(').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (name VARCHAR(').expectation).toBe('number')
+  })
+
+  it('lets the explained statement decide its own context', () => {
+    expect(caretAtEnd('EXPLAIN FORMAT=TREE ').expectation).toBe('statement')
+    expect(caretAtEnd('EXPLAIN FORMAT=TREE SELECT ').expectation).toBe('column')
+  })
+
+  it('names the object of DROP TEMPORARY TABLE', () => {
+    expect(caretAtEnd('DROP TEMPORARY TABLE ').expectation).toBe('tableName')
+    expect(caretAtEnd('DROP TEMPORARY TABLE orders ').expectation).toBe('number')
+  })
+
+  it('takes column options in ALTER TABLE', () => {
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN total INT DEFAULT ').expectation).toBe('value')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN total INT COMMENT ').expectation).toBe('name')
+  })
+})

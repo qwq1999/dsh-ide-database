@@ -490,6 +490,47 @@ function useDatabase(tokens: readonly Token[]): boolean {
 /** `FOR ` at the end of a SELECT takes the lock clause. */
 function lockStart(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'keyword' || last.lower !== 'for') return false
+  // `SUBSTRING(name FROM n FOR ` is inside a function call, not a row lock.
+  let depth = 0
+  for (const token of tokens) {
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+  }
+  return depth === 0
+}
+
+/** The length in `SUBSTRING(name FROM n FOR ` and `CHAR(`-style lengths. */
+const LENGTH_TYPES = new Set([
+  'char',
+  'varchar',
+  'binary',
+  'varbinary',
+  'decimal',
+  'numeric',
+  'bit',
+  'time',
+  'datetime',
+  'timestamp',
+  'year',
+])
+
+/** A type's length/precision takes a number, not a name. */
+function columnLength(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== '(') return false
+  const owner = tokens[tokens.length - 2]
+  if (owner === undefined) return false
+  if (!LENGTH_TYPES.has(owner.text.toLowerCase())) return false
+  return tokens.some((token) =>
+    ['create', 'alter', 'cast', 'convert'].includes(token.text.toLowerCase()),
+  )
+}
+
+/** `SUBSTRING(name FROM n FOR ` takes a length even though it sits in a call. */
+function forLengthTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
   return last?.kind === 'keyword' && last.lower === 'for'
 }
 
@@ -521,14 +562,15 @@ function describeTableTail(tokens: readonly Token[]): boolean {
 /** `DROP TABLE orders ` / `TRUNCATE TABLE orders ` already named the object. */
 function tableNameTail(tokens: readonly Token[]): boolean {
   const first = tokens[0]
-  const second = tokens[1]
-  if (first === undefined || second === undefined) return false
+  if (first === undefined) return false
   const start = first.text.toLowerCase()
-  const object = second.text.toLowerCase()
+  let index = 1
+  if (start === 'drop' && tokens[1]?.text.toLowerCase() === 'temporary') index = 2
+  const object = tokens[index]?.text.toLowerCase()
   if ((start !== 'drop' && start !== 'truncate') || (object !== 'table' && object !== 'view')) {
     return false
   }
-  return tokens.length >= 3
+  return tokens.length >= index + 2
 }
 
 /** `RENAME TABLE orders TO ` names the new table, which only the user knows. */
@@ -569,7 +611,14 @@ function ddlTableName(tokens: readonly Token[]): boolean {
   if (start === 'analyze' || start === 'optimize' || start === 'check' || start === 'repair') {
     return object === 'table' && bare
   }
-  if (start === 'drop') return (object === 'table' || object === 'view') && bare
+  if (start === 'drop') {
+    const temporary = object === 'temporary'
+    const target = temporary ? tokens[2]?.text.toLowerCase() : object
+    return (
+      (target === 'table' || target === 'view') &&
+      (tokens.length === (temporary ? 3 : 2) || commaTail)
+    )
+  }
   if (start === 'alter' || start === 'lock') {
     return (object === 'table' || object === 'tables') && tokens.length === 2
   }
@@ -1011,8 +1060,19 @@ function explainStart(tokens: readonly Token[]): boolean {
   const second = tokens[1] as Token
   const secondText = second.text.toLowerCase()
   if (tokens.length === 2 && secondText === 'analyze') return true
-  // `EXPLAIN FORMAT=TREE ` / `EXPLAIN FORMAT JSON ` still precede the statement.
-  return tokens.length >= 3 && secondText === 'format'
+  // `EXPLAIN FORMAT=TREE ` / `EXPLAIN FORMAT JSON ` still precede the statement,
+  // unless the explained statement has already started.
+  if (secondText !== 'format') return false
+  return !tokens.some(
+    (token) =>
+      token.kind === 'keyword' &&
+      (token.lower === 'select' ||
+        token.lower === 'insert' ||
+        token.lower === 'update' ||
+        token.lower === 'delete' ||
+        token.lower === 'with' ||
+        token.lower === 'table'),
+  )
 }
 
 /** `UNION ` / `UNION ALL ` start another SELECT, not a table list. */
@@ -1528,6 +1588,27 @@ function createColumnOption(
   if (last.kind === 'keyword' && last.lower === 'comment') return 'name'
   // `PRIMARY KEY ` / `AUTO_INCREMENT ` finish a definition; nothing catalog-bound follows.
   if (tail === 'key' || tail === 'auto_increment') return 'number'
+  return undefined
+}
+
+/** `ALTER TABLE … MODIFY/CHANGE/ADD [COLUMN] … DEFAULT ` and friends. */
+function alterColumnOption(
+  tokens: readonly Token[],
+): CompletionExpectation | undefined {
+  if (alterTableStart(tokens) < 0) return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.some((word) => word === 'column' || word === 'modify' || word === 'change' || word === 'add')) {
+    return undefined
+  }
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  const previous = tokens[tokens.length - 2]
+  if (last.kind === 'keyword' && last.lower === 'default') {
+    return previous?.text.toLowerCase() === 'drop' ? 'number' : 'value'
+  }
+  if (last.kind === 'keyword' && last.lower === 'comment') return 'name'
+  const tail = last.text.toLowerCase()
+  if (tail === 'auto_increment' || tail === 'key') return 'number'
   return undefined
 }
 
@@ -2382,8 +2463,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (partition !== undefined) return partition
   if (indexHint(tokens)) return 'number'
   if (alterIndexColumns(tokens)) return 'column'
+  if (columnLength(tokens)) return 'number'
   const columnOption = createColumnOption(tokens)
   if (columnOption !== undefined) return columnOption
+  const alterColumnSetting = alterColumnOption(tokens)
+  if (alterColumnSetting !== undefined) return alterColumnSetting
   if (tableExpressionParen(tokens)) return 'column'
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
@@ -2547,6 +2631,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (last !== undefined && last.text.toLowerCase() === 'return') return 'column'
   if (escapeTail(tokens)) return 'number'
   if (lockStart(tokens)) return 'lock'
+  if (forLengthTail(tokens)) return 'number'
   const forLock = forLockTail(tokens)
   if (forLock !== undefined) return forLock
   // `OVER w ` and a closed `WINDOW w AS (...)` end the window expression.

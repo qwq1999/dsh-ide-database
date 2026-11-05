@@ -2258,3 +2258,39 @@ describe('complete alter constraints, options and partition positions', () => {
     expect(names(result)).toContain('COUNT')
   })
 })
+
+
+describe('complete function lengths and statement tails', () => {
+  it('stays quiet for a SUBSTRING length', async () => {
+    const req = request('SELECT SUBSTRING(name FROM 1 FOR ')
+    expect((await complete(req)).items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet for a type length', async () => {
+    expect((await complete(request('SELECT CAST(id AS CHAR('))).items).toEqual([])
+    expect((await complete(request('CREATE TABLE t (name VARCHAR('))).items).toEqual([])
+  })
+
+  it('lets EXPLAIN FORMAT=TREE follow the explained statement', async () => {
+    const result = await complete(request('EXPLAIN FORMAT=TREE SELECT '))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('COUNT')
+    expect((await complete(request('EXPLAIN FORMAT=TREE '))).analysis.expectation).toBe('statement')
+  })
+
+  it('names the object of DROP TEMPORARY TABLE then stays quiet', async () => {
+    const req = request('DROP TEMPORARY TABLE ')
+    const result = await complete(req)
+    expect(names(result)[0]).toBe('orders')
+    expect(result.items.every((item) => item.kind === 'table' || item.kind === 'schema')).toBe(true)
+    expect(req.catalog.calls.tables).toContain('shop')
+    expect((await complete(request('DROP TEMPORARY TABLE orders '))).items).toEqual([])
+  })
+
+  it('offers column options after ALTER TABLE ... MODIFY COLUMN', async () => {
+    const result = await complete(request('ALTER TABLE orders MODIFY COLUMN total INT DEFAULT '))
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('DEFAULT')
+  })
+})
