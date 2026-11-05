@@ -532,3 +532,41 @@ describe('WITH ROLLUP and ALTER DATABASE words', () => {
     ])
   })
 })
+
+describe('utility words', () => {
+  it('offers LOCK TABLE mode starters and modes', () => {
+    expect(names(keywordCompletions('lockModeStart', 'generic'))).toEqual(['IN'])
+    expect(names(keywordCompletions('lockMode', 'generic'))).toEqual([
+      'ACCESS',
+      'ROW',
+      'SHARE',
+      'EXCLUSIVE',
+      'UPDATE',
+      'KEY',
+    ])
+  })
+
+  it('offers EXPLAIN planner options', () => {
+    expect(names(keywordCompletions('explainOption', 'generic'))).toEqual([
+      'ANALYZE',
+      'VERBOSE',
+      'BUFFERS',
+      'COSTS',
+      'SETTINGS',
+      'TIMING',
+      'FORMAT',
+      'WAL',
+    ])
+  })
+
+  it('offers ALTER TYPE actions and additions', () => {
+    expect(names(keywordCompletions('typeAlter', 'generic'))).toEqual([
+      'ADD',
+      'RENAME',
+      'ALTER',
+      'SET',
+      'OWNER',
+    ])
+    expect(names(keywordCompletions('typeAdd', 'generic'))).toEqual(['VALUE', 'ATTRIBUTE'])
+  })
+})

@@ -1588,3 +1588,49 @@ describe('analyze WITH ROLLUP, database, user and foreign-key tails', () => {
     ).toBe('number')
   })
 })
+
+describe('analyze MERGE, COPY and utility tails', () => {
+  it('offers the MERGE source relation and collects both sides', () => {
+    expect(caretAtEnd('MERGE INTO orders o USING ').expectation).toBe('relation')
+    const analysis = caretAtEnd('MERGE INTO orders o USING customers c ON ')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations.map((relation) => relation.alias)).toEqual(['o', 'c'])
+    expect(
+      caretAtEnd(
+        'MERGE INTO orders o USING customers c ON o.id = c.id WHEN NOT MATCHED THEN INSERT ',
+      ).expectation,
+    ).toBe('name')
+  })
+
+  it('stays quiet for COPY sources and takes column lists', () => {
+    expect(caretAtEnd('COPY ').expectation).toBe('tableName')
+    expect(caretAtEnd('COPY orders FROM ').expectation).toBe('number')
+    expect(caretAtEnd('COPY orders TO ').expectation).toBe('number')
+    expect(caretAtEnd('COPY orders (id, ').expectation).toBe('column')
+  })
+
+  it('offers EXPLAIN planner options', () => {
+    expect(caretAtEnd('EXPLAIN (').expectation).toBe('explainOption')
+    expect(caretAtEnd('EXPLAIN (ANALYZE, ').expectation).toBe('explainOption')
+  })
+
+  it('handles PostgreSQL LOCK TABLE modes', () => {
+    expect(caretAtEnd('LOCK TABLE orders ').expectation).toBe('lockModeStart')
+    expect(caretAtEnd('LOCK TABLE orders IN ').expectation).toBe('lockMode')
+    expect(caretAtEnd('LOCK TABLE orders IN ACCESS EXCLUSIVE MODE ').expectation).toBe('number')
+  })
+
+  it('ends DISTINCT ON lists and INSERT values with DEFAULT', () => {
+    expect(caretAtEnd('SELECT DISTINCT ON (id) ').expectation).toBe('expressionTail')
+    expect(caretAtEnd('INSERT INTO orders (id) VALUES (DEFAULT, ').expectation).toBe('value')
+  })
+
+  it('stages user-defined types', () => {
+    expect(caretAtEnd('CREATE TYPE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE EXTENSION ').expectation).toBe('name')
+    expect(caretAtEnd('DROP TYPE ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TYPE mood ').expectation).toBe('typeAlter')
+    expect(caretAtEnd('ALTER TYPE mood ADD ').expectation).toBe('typeAdd')
+    expect(caretAtEnd('ALTER TYPE mood ADD VALUE ').expectation).toBe('number')
+  })
+})

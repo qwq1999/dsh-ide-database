@@ -618,6 +618,11 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'rollupTail':
       case 'withRollup':
       case 'alterDatabase':
+      case 'lockModeStart':
+      case 'lockMode':
+      case 'explainOption':
+      case 'typeAlter':
+      case 'typeAdd':
       case 'insertTail':
       case 'insertSource':
       case 'joinTail': {

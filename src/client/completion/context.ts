@@ -662,14 +662,19 @@ function literalTail(tokens: readonly Token[]): boolean {
  */
 function lockTableTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (tokens[0]?.text.toLowerCase() !== 'lock') return undefined
-  if (tokens[1]?.text.toLowerCase() !== 'tables') return undefined
+  const object = tokens[1]?.text.toLowerCase()
+  if (object !== 'table' && object !== 'tables') return undefined
   if (tokens.length <= 2) return 'tableName'
   const last = tokens[tokens.length - 1]
   if (last?.kind === 'punct' && last.text === ',') return 'tableName'
-  const hasAccess = tokens.slice(2).some((token) => {
-    const word = token.text.toLowerCase()
-    return word === 'read' || word === 'write' || word === 'as'
-  })
+  const words = tokens.slice(2).map((token) => token.text.toLowerCase())
+  if (object === 'table') {
+    // PostgreSQL: LOCK TABLE t [IN lockmode MODE].
+    if (words[words.length - 1] === 'in') return 'lockMode'
+    if (words.includes('in')) return 'number'
+    return 'lockModeStart'
+  }
+  const hasAccess = words.some((word) => word === 'read' || word === 'write' || word === 'as')
   return hasAccess ? 'number' : 'lockTable'
 }
 
@@ -1019,7 +1024,8 @@ function objectName(tokens: readonly Token[]): boolean {
   if (start === 'drop' && next === 'index') return true
   if (start !== 'create') return false
   return next === 'database' || next === 'schema' || next === 'user' || next === 'role'
-    || next === 'sequence' || next === 'trigger'
+    || next === 'sequence' || next === 'trigger' || next === 'type' || next === 'extension'
+    || next === 'domain'
 }
 
 /** `CREATE TABLE `/`CREATE VIEW ` still need a name only the user knows. */
@@ -2520,6 +2526,96 @@ function alterOptionAssignment(
   return undefined
 }
 
+/** `ALTER TYPE mood ` takes type actions, not catalog names. */
+function alterTypeTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'alter') return undefined
+  if (tokens[1]?.text.toLowerCase() !== 'type') return undefined
+  if (tokens.length <= 3) return 'typeAlter'
+  const last = tokens[tokens.length - 1]
+  if (last?.kind === 'keyword' && last.lower === 'add') return 'typeAdd'
+  return 'number'
+}
+
+/** `MERGE INTO t USING ` names the source relation. */
+function mergeUsingTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'merge') return undefined
+  const last = tokens[tokens.length - 1]
+  return last?.text.toLowerCase() === 'using' ? 'relation' : undefined
+}
+
+/** `MERGE … WHEN NOT MATCHED THEN INSERT ` still needs its column list. */
+function mergeInsertBare(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.text.toLowerCase() !== 'merge') return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'insert'
+}
+
+/** `COPY ` takes a table or a file/text target, not a catalog name list. */
+function copyTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'copy') return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const open = tokens.findIndex((token) => token.kind === 'punct' && token.text === '(')
+  if (open >= 0) {
+    let depth = 0
+    let closed = false
+    for (let index = open; index < tokens.length; index += 1) {
+      const token = tokens[index] as Token
+      if (token.kind !== 'punct') continue
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') {
+        depth -= 1
+        if (depth === 0) closed = true
+      }
+    }
+    if (!closed) {
+      const last = tokens[tokens.length - 1]
+      return last?.kind === 'punct' && (last.text === '(' || last.text === ',')
+        ? 'column'
+        : undefined
+    }
+    return 'number'
+  }
+  if (words.includes('from') || words.includes('to')) return 'number'
+  return 'tableName'
+}
+
+/** `EXPLAIN (` takes planner options, not catalog names. */
+function explainOptions(tokens: readonly Token[]): 'explainOption' | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'explain') return undefined
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || (last.text !== '(' && last.text !== ',')) return undefined
+  return 'explainOption'
+}
+
+/** `SELECT DISTINCT ON (…) ` ends the DISTINCT clause. */
+function distinctOnTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'select' || !words.includes('distinct') || !words.includes('on')) return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'punct' && last.text === ')'
+}
+
+/** `INSERT INTO t VALUES (DEFAULT, ` still continues with a value. */
+function insertValuesTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'insert' && words[0] !== 'replace') return false
+  const values = words.indexOf('values')
+  if (values < 0) return false
+  let depth = 0
+  for (let index = values + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+  }
+  if (depth <= 0) return false
+  const last = tokens[tokens.length - 1]
+  return (
+    (last?.kind === 'punct' && last.text === ',') ||
+    (last?.kind === 'keyword' && last.lower === 'default')
+  )
+}
+
 /** `DROP TRIGGER|USER|… ` names an object that is not a catalog table. */
 function dropObjectTail(tokens: readonly Token[]): boolean {
   const first = tokens[0]?.text.toLowerCase()
@@ -2533,7 +2629,10 @@ function dropObjectTail(tokens: readonly Token[]): boolean {
     object === 'user' ||
     object === 'role' ||
     object === 'server' ||
-    object === 'sequence'
+    object === 'sequence' ||
+    object === 'type' ||
+    object === 'extension' ||
+    object === 'domain'
   )
 }
 
@@ -2651,13 +2750,20 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterUser !== undefined) return alterUser
   const transaction = transactionTail(tokens)
   if (transaction !== undefined) return transaction
+  const mergeUsing = mergeUsingTail(tokens)
+  if (mergeUsing !== undefined) return mergeUsing
+  if (mergeInsertBare(tokens)) return 'name'
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  const copy = copyTail(tokens)
+  if (copy !== undefined) return copy
   if (dropObjectTail(tokens)) return 'name'
   const renamedUser = renameUserTail(tokens)
   if (renamedUser !== undefined) return renamedUser
   if (alterDatabaseTail(tokens)) return 'alterDatabase'
+  const alterType = alterTypeTail(tokens)
+  if (alterType !== undefined) return alterType
   const load = loadDataTail(tokens)
   if (load !== undefined) return load
   const deleteSource = deleteUsing(tokens)
@@ -2694,6 +2800,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (withOption !== undefined) return withOption
   if (granteeTail(tokens)) return 'number'
   if (unionStatement(tokens)) return 'statement'
+  const explainOption = explainOptions(tokens)
+  if (explainOption !== undefined) return explainOption
   if (explainStart(tokens)) return 'statement'
   const show = showTail(tokens)
   if (show !== undefined) return show
@@ -2723,6 +2831,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (duplicateKeyUpdate(tokens)) return 'column'
   if (valuesListComplete(tokens)) return 'insertTail'
   if (valuesNextTuple(tokens)) return 'number'
+  if (insertValuesTail(tokens)) return 'value'
   if (castAs(tokens)) return 'type'
   const interval = intervalTail(tokens)
   if (interval !== undefined) return interval
@@ -2731,6 +2840,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (scalarTail(tokens)) return 'expressionTail'
   const subquery = subqueryClose(tokens)
   if (subquery !== undefined) return subquery
+  if (distinctOnTail(tokens)) return 'expressionTail'
   if (jsonArrowTail(tokens)) return 'number'
   const variable = variableTail(tokens)
   if (variable !== undefined) return variable
@@ -3203,9 +3313,18 @@ function collectRelations(
     if (target !== null) push(target.relation)
   }
 
+  const statementStart = tokens[0]?.text.toLowerCase()
   let index = 0
   while (index < tokens.length) {
     const token = tokens[index] as Token
+    if (statementStart === 'merge' && token.kind === 'keyword' && token.lower === 'using') {
+      const source = parseRelationRef(tokens, index + 1)
+      if (source !== null) {
+        push(source.relation)
+        index = source.next
+        continue
+      }
+    }
     if (token.kind === 'keyword' && token.lower === 'references') {
     const referenced = parseRelationRef(tokens, index + 1)
     if (referenced !== null) {

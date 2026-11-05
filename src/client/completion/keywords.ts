@@ -484,6 +484,30 @@ const WITH_ROLLUP_WORDS = ['ROLLUP'] as const
 /** `ALTER DATABASE name ` takes options, not catalog names. */
 const ALTER_DATABASE_WORDS = ['CHARACTER', 'COLLATE', 'ENCRYPTION', 'READ'] as const
 
+/** `LOCK TABLE t ` continues with the optional `IN`. */
+const LOCK_MODE_START_WORDS = ['IN'] as const
+
+/** PostgreSQL table lock modes after `LOCK TABLE t IN `. */
+const LOCK_MODE_WORDS = ['ACCESS', 'ROW', 'SHARE', 'EXCLUSIVE', 'UPDATE', 'KEY'] as const
+
+/** Actions on a user-defined type. */
+const TYPE_ALTER_WORDS = ['ADD', 'RENAME', 'ALTER', 'SET', 'OWNER'] as const
+
+/** What `ALTER TYPE … ADD ` can add. */
+const TYPE_ADD_WORDS = ['VALUE', 'ATTRIBUTE'] as const
+
+/** Options inside `EXPLAIN (`. */
+const EXPLAIN_OPTION_WORDS = [
+  'ANALYZE',
+  'VERBOSE',
+  'BUFFERS',
+  'COSTS',
+  'SETTINGS',
+  'TIMING',
+  'FORMAT',
+  'WAL',
+] as const
+
 /** The only clause left after an INSERT values tuple list. */
 const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
 
@@ -747,6 +771,16 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return WITH_ROLLUP_WORDS
     case 'alterDatabase':
       return ALTER_DATABASE_WORDS
+    case 'lockModeStart':
+      return LOCK_MODE_START_WORDS
+    case 'lockMode':
+      return LOCK_MODE_WORDS
+    case 'explainOption':
+      return EXPLAIN_OPTION_WORDS
+    case 'typeAlter':
+      return TYPE_ALTER_WORDS
+    case 'typeAdd':
+      return TYPE_ADD_WORDS
     case 'insertTail':
       return INSERT_TAIL_WORDS
     case 'insertSource':

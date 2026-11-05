@@ -2361,3 +2361,64 @@ describe('complete WITH ROLLUP, database, user and foreign-key positions', () =>
     expect(result.items).toEqual([])
   })
 })
+
+describe('complete MERGE, COPY and utility positions', () => {
+  it('offers the MERGE source relation', async () => {
+    const req = request('MERGE INTO orders o USING ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('customers')
+    expect(req.catalog.calls.tables).toContain('shop')
+  })
+
+  it('collects the USING relation for the ON condition', async () => {
+    const req = request('MERGE INTO orders o USING customers c ON ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('name')
+    expect(req.catalog.calls.columns).toContain('shop.customers')
+  })
+
+  it('stays quiet for MERGE INSERT and COPY tails', async () => {
+    const merge = request(
+      'MERGE INTO orders o USING customers c ON o.id = c.id WHEN NOT MATCHED THEN INSERT ',
+    )
+    const mergeResult = await complete(merge)
+    expect(mergeResult.analysis.expectation).toBe('name')
+    expect(mergeResult.items).toEqual([])
+    const copy = request('COPY orders FROM ')
+    const copyResult = await complete(copy)
+    expect(copyResult.analysis.expectation).toBe('number')
+    expect(copyResult.items).toEqual([])
+  })
+
+  it('offers EXPLAIN planner options', async () => {
+    const req = request('EXPLAIN (')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('explainOption')
+    expect(names(result)).toContain('ANALYZE')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers LOCK TABLE modes without catalog names', async () => {
+    const req = request('LOCK TABLE orders IN ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('lockMode')
+    expect(names(result)).toContain('ACCESS')
+    expect(names(result)).toContain('SHARE')
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers ALTER TYPE actions', async () => {
+    const actions = request('ALTER TYPE mood ')
+    const actionResult = await complete(actions)
+    expect(actionResult.analysis.expectation).toBe('typeAlter')
+    expect(names(actionResult)).toContain('ADD')
+    expect(names(actionResult)).toContain('RENAME')
+    const adds = request('ALTER TYPE mood ADD ')
+    const addResult = await complete(adds)
+    expect(addResult.analysis.expectation).toBe('typeAdd')
+    expect(names(addResult)).toContain('VALUE')
+  })
+})
