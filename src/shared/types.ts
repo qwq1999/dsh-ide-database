@@ -308,8 +308,12 @@ export interface CachedStructure {
   fetchedAt: string
   schemas: SchemaInfo[]
   objects: Record<string, SchemaObject[]>
-  /** `schema.table` → described columns and indexes, kept for offline browsing. */
-  descriptions: Record<string, TableDescription>
+  /**
+   * `schema.table` → described columns and indexes. The host keeps these in
+   * per-connection logs and the tree snapshot no longer ships them, so this is
+   * only present when a caller builds the shape itself.
+   */
+  descriptions?: Record<string, TableDescription>
   /** Redis key-space cache, per logical database. */
   redis?: RedisStructureCache
 }

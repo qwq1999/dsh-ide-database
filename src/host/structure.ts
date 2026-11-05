@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
+import { DescriptionCache } from './descriptioncache.js'
 import type {
   CachedStructure,
   ColumnDetail,
@@ -180,11 +182,14 @@ export class StructureStore {
   private dirty = false
   /** Last JSON handed out by snapshotJson(), dropped whenever the data changes. */
   private serialized: string | undefined
+  /** Descriptions grow large, so they live in per-connection append logs. */
+  private readonly descriptions: DescriptionCache
 
   constructor(
     private readonly file: string,
     private readonly log: (message: string) => void,
   ) {
+    this.descriptions = new DescriptionCache(join(dirname(file), 'descriptions'), log)
     this.load()
   }
 
@@ -205,10 +210,27 @@ export class StructureStore {
           ...(redis === undefined ? {} : { redis }),
         }
       }
+      this.migrateDescriptions(next)
       this.data = next
     } catch (error) {
       this.log(`结构缓存读取失败，忽略：${error instanceof Error ? error.message : String(error)}`)
     }
+  }
+
+  /**
+   * Older versions kept descriptions inside structure.json (tens of MB). Move
+   * them into the per-connection logs once, then persist the slim tree file.
+   */
+  private migrateDescriptions(data: StructureSnapshot): void {
+    let migrated = false
+    for (const [connectionId, entry] of Object.entries(data)) {
+      const descriptions = entry.descriptions
+      if (descriptions === undefined || Object.keys(descriptions).length === 0) continue
+      this.descriptions.import(connectionId, descriptions)
+      entry.descriptions = {}
+      migrated = true
+    }
+    if (migrated) this.schedule()
   }
 
   snapshot(): StructureSnapshot {
@@ -218,10 +240,25 @@ export class StructureStore {
   /**
    * The snapshot as JSON, reused until the cached structure changes: the tree
    * endpoint only serializes, so it does not need its own deep copy first.
+   * Descriptions are not shipped here; they are fetched per table (and the host
+   * keeps them warm in their own logs), so the payload stays small.
    */
   snapshotJson(): string {
-    if (this.serialized === undefined) this.serialized = JSON.stringify(this.data)
+    if (this.serialized === undefined) this.serialized = JSON.stringify(this.treeSnapshot())
     return this.serialized
+  }
+
+  private treeSnapshot(): StructureSnapshot {
+    const tree: StructureSnapshot = {}
+    for (const [connectionId, entry] of Object.entries(this.data)) {
+      tree[connectionId] = {
+        fetchedAt: entry.fetchedAt,
+        schemas: entry.schemas,
+        objects: entry.objects,
+        ...(entry.redis === undefined ? {} : { redis: entry.redis }),
+      }
+    }
+    return tree
   }
 
   get(connectionId: string): CachedStructure | undefined {
@@ -248,15 +285,12 @@ export class StructureStore {
     }
     // Descriptions of schemas the server no longer reports would otherwise stay
     // in the cache forever: prune them together with the schema list.
-    const descriptions: Record<string, TableDescription> = {}
-    for (const [key, description] of Object.entries(previous?.descriptions ?? {})) {
-      if (objects[description.schema] !== undefined) descriptions[key] = description
-    }
+    this.descriptions.pruneSchemas(connectionId, schemas.map((schema) => schema.name))
     this.data[connectionId] = {
       fetchedAt: new Date().toISOString(),
       schemas,
       objects,
-      descriptions,
+      descriptions: {},
       ...(previous?.redis === undefined ? {} : { redis: previous.redis }),
     }
     this.schedule()
@@ -274,9 +308,7 @@ export class StructureStore {
     const relations = new Set(
       objects.filter((object) => object.kind === 'table' || object.kind === 'view').map((object) => `${schema}.${object.name}`),
     )
-    for (const [key, description] of Object.entries(previous.descriptions)) {
-      if (description.schema === schema && !relations.has(key)) delete previous.descriptions[key]
-    }
+    this.descriptions.pruneRelations(connectionId, schema, relations)
     previous.objects[schema] = objects
     previous.fetchedAt = new Date().toISOString()
     this.data[connectionId] = previous
@@ -285,23 +317,27 @@ export class StructureStore {
 
   /** `schema.table` keys the description cache; relations only. */
   putDescription(connectionId: string, schema: string, table: string, description: TableDescription): void {
+    // The per-connection log takes the write; its timestamp makes the background
+    // prefetcher incremental (a fresh entry is skipped, a stale one refreshed).
+    this.descriptions.put(connectionId, schema, table, description)
     const entry = this.data[connectionId] ?? {
       fetchedAt: new Date().toISOString(),
       schemas: [],
       objects: {},
       descriptions: {},
     }
-    // The timestamp makes the background prefetcher incremental: a fresh entry
-    // is skipped, a stale one is refreshed on the next connection.
-    entry.descriptions[`${schema}.${table}`] = { ...description, describedAt: new Date().toISOString() }
     entry.fetchedAt = new Date().toISOString()
     this.data[connectionId] = entry
     this.schedule()
   }
 
   getDescription(connectionId: string, schema: string, table: string): TableDescription | undefined {
-    const description = this.data[connectionId]?.descriptions[`${schema}.${table}`]
-    return description === undefined ? undefined : (JSON.parse(JSON.stringify(description)) as TableDescription)
+    return this.descriptions.get(connectionId, schema, table)
+  }
+
+  /** Whether a description is cached, without cloning it (the prefetcher asks this). */
+  hasDescription(connectionId: string, schema: string, table: string): boolean {
+    return this.descriptions.has(connectionId, schema, table)
   }
 
   private redisEntry(connectionId: string): CachedStructure {
@@ -349,6 +385,7 @@ export class StructureStore {
   }
 
   clear(connectionId: string): void {
+    this.descriptions.clear(connectionId)
     if (this.data[connectionId] === undefined) return
     delete this.data[connectionId]
     this.schedule()
@@ -359,10 +396,10 @@ export class StructureStore {
     const allowed = new Set(connectionIds)
     let changed = false
     for (const id of Object.keys(this.data)) {
-      if (!allowed.has(id)) {
-        delete this.data[id]
-        changed = true
-      }
+      if (allowed.has(id)) continue
+      delete this.data[id]
+      this.descriptions.clear(id)
+      changed = true
     }
     if (changed) this.schedule()
   }
@@ -379,11 +416,13 @@ export class StructureStore {
   }
 
   flush(): void {
+    this.descriptions.flush()
     if (!this.dirty) return
     this.dirty = false
     try {
       const temp = `${this.file}.tmp-${process.pid}`
-      writeFileSync(temp, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+      // Compact JSON: the tree is small, and indentation only inflates I/O.
+      writeFileSync(temp, `${JSON.stringify(this.treeSnapshot())}\n`, { encoding: 'utf8', mode: 0o600 })
       renameSync(temp, this.file)
     } catch (error) {
       this.log(`结构缓存写入失败：${error instanceof Error ? error.message : String(error)}`)

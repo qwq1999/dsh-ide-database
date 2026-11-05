@@ -23,6 +23,7 @@ function fakeStructure({ objects = {}, descriptions = {} } = {}) {
         state.puts.push(`${schema}.${table}`)
         state.descriptions[`${schema}.${table}`] = { ...value, describedAt: new Date().toISOString() }
       },
+      hasDescription: (id, schema, table) => state.descriptions[`${schema}.${table}`] !== undefined,
     },
   }
 }

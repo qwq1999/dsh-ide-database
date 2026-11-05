@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -117,5 +117,60 @@ describe('StructureStore accessors', () => {
 
     expect(instance.getDescription('c1', 'app', 'a')).toBeDefined()
     expect(instance.getDescription('c1', 'crm', 'b')).toBeUndefined()
+  })
+
+  it('keeps descriptions out of the tree snapshot payload', () => {
+    const { instance } = store()
+    instance.putSchemas('c1', [{ name: 'app' }])
+    instance.putObjects('c1', 'app', [{ name: 'orders', kind: 'table' }])
+    instance.putDescription('c1', 'app', 'orders', {
+      schema: 'app',
+      table: 'orders',
+      kind: 'table',
+      columns: [{ name: 'id', typeName: 'INT', nullable: false }],
+      indexes: [],
+    })
+
+    const snapshot = JSON.parse(instance.snapshotJson())
+    expect(snapshot.c1.schemas).toEqual([{ name: 'app' }])
+    expect(snapshot.c1.objects.app).toHaveLength(1)
+    expect(snapshot.c1.descriptions).toBeUndefined()
+  })
+
+  it('splits a legacy single-file cache into a tree file and description logs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-structure-'))
+    dirs.push(dir)
+    const file = join(dir, 'structure.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        c1: {
+          fetchedAt: '2026-11-05T11:00:00.000Z',
+          schemas: [{ name: 'app' }],
+          objects: { app: [{ name: 'orders', kind: 'table' }] },
+          descriptions: {
+            'app.orders': {
+              schema: 'app',
+              table: 'orders',
+              kind: 'table',
+              columns: [{ name: 'id', typeName: 'INT', nullable: false }],
+              indexes: [],
+            },
+          },
+        },
+      }),
+    )
+
+    const instance = new StructureStore(file, () => {})
+    expect(instance.getDescription('c1', 'app', 'orders')?.columns).toHaveLength(1)
+
+    instance.flush()
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    expect(raw.c1.schemas).toEqual([{ name: 'app' }])
+    expect(raw.c1.descriptions).toBeUndefined()
+    expect(existsSync(join(dir, 'descriptions', 'c1.ndjson'))).toBe(true)
+
+    const reloaded = new StructureStore(file, () => {})
+    expect(reloaded.getDescription('c1', 'app', 'orders')?.columns).toHaveLength(1)
   })
 })

@@ -27,7 +27,7 @@ interface PrefetchSession extends PrefetchProgress {
 
 interface PrefetchDeps {
   sql: Pick<SqlService, 'describe'>
-  structure: Pick<StructureStore, 'get' | 'putDescription'>
+  structure: Pick<StructureStore, 'get' | 'hasDescription' | 'putDescription'>
   log: (message: string) => void
 }
 
@@ -81,7 +81,7 @@ export class DescriptionPrefetcher {
       if (session.schemas !== undefined && !session.schemas.has(schema)) continue
       for (const object of objects) {
         if (object.kind !== 'table' && object.kind !== 'view') continue
-        if (!session.refreshAll && entry.descriptions?.[`${schema}.${object.name}`] !== undefined) continue
+        if (!session.refreshAll && this.deps.structure.hasDescription(connectionId, schema, object.name)) continue
         targets.push({ schema, table: object.name, kind: object.kind })
       }
     }

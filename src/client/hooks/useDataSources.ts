@@ -713,12 +713,8 @@ export function useDataSources(notify: Notify): DataSources {
         }
         return
       }
-      if (!servers[connectionId]) {
-        setDetailLoading(false)
-        setDetail(null)
-        notify('数据源未连接，连接后可查看表结构', 'info')
-        return
-      }
+      // Descriptions are no longer shipped with the tree snapshot, so even when
+      // the source is offline the host can answer this from its cache.
       setDetailLoading(true)
       setLoadingDescriptions((previous) => ({ ...previous, [key]: true }))
       try {
@@ -727,7 +723,8 @@ export function useDataSources(notify: Notify): DataSources {
         if (detailRequest.current === request) setDetail(description)
       } catch (error) {
         if (detailRequest.current === request) setDetail(null)
-        notify(`读取表结构失败：${errorText(error)}`, 'error')
+        if (!servers[connectionId]) notify('数据源未连接，连接后可查看表结构', 'info')
+        else notify(`读取表结构失败：${errorText(error)}`, 'error')
       } finally {
         if (detailRequest.current === request) setDetailLoading(false)
         setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
