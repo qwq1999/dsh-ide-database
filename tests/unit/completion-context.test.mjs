@@ -82,7 +82,7 @@ describe('analyze expectation', () => {
   })
 
   it('expects an alias after AS', () => {
-    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('alias')
+    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('name')
   })
 
   it('expects a schema after DDL and USE', () => {
@@ -451,7 +451,7 @@ describe('analyze SET and CAST tails', () => {
   })
 
   it('keeps AS an alias outside CAST', () => {
-    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('alias')
+    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('name')
   })
 
   it('assigns columns after ON DUPLICATE KEY UPDATE', () => {
@@ -743,8 +743,10 @@ describe('resolve relations written after the caret', () => {
     ])
   })
 
-  it('leaves the relation list alone when there is no qualifier', () => {
-    expect(analyze('SELECT o FROM orders o', 8).relations).toEqual([])
+  it('reads later relations for a select list without a qualifier', () => {
+    expect(analyze('SELECT o FROM orders o', 8).relations).toEqual([
+      { table: 'orders', alias: 'o' },
+    ])
   })
 })
 
@@ -774,5 +776,31 @@ describe('analyze boolean, insert and join tails', () => {
 
   it('starts a statement inside an IN parenthesis', () => {
     expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('keyword')
+  })
+})
+
+describe('analyze alias names, windows and later FROM', () => {
+  it('treats AS as the start of a name, not a relation', () => {
+    expect(caretAtEnd('SELECT id AS ').expectation).toBe('name')
+    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('name')
+  })
+
+  it('finishes a window expression after OVER', () => {
+    expect(
+      caretAtEnd('SELECT ROW_NUMBER() OVER (PARTITION BY user_id) ').expectation,
+    ).toBe('expressionTail')
+  })
+
+  it('starts a subquery after ANY and ALL', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = ANY (').expectation).toBe('keyword')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = ALL (').expectation).toBe('keyword')
+  })
+
+  it('reads a FROM clause written after the select list', () => {
+    expect(analyze('SELECT id FROM orders', 9)).toMatchObject({
+      expectation: 'column',
+      relations: [{ table: 'orders' }],
+    })
+    expect(analyze('SELECT id ', 10).relations).toEqual([])
   })
 })

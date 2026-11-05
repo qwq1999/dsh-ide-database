@@ -110,7 +110,7 @@ const EXPECTED_AFTER = new Map<string, CompletionExpectation>([
   ['partition', 'column'],
   ['filter', 'column'],
   // alias position
-  ['as', 'alias'],
+  ['as', 'name'],
   // schema object position
   ['use', 'schema'],
   ['create', 'schema'],
@@ -184,7 +184,15 @@ function startsSubquery(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
   const before = previousKeyword(tokens, tokens.length - 1)
-  return before === 'as' || before === 'from' || before === 'exists' || before === 'in'
+  return (
+    before === 'as' ||
+    before === 'from' ||
+    before === 'exists' ||
+    before === 'in' ||
+    before === 'any' ||
+    before === 'all' ||
+    before === 'some'
+  )
 }
 
 /** `INSERT INTO t (cols) ` is complete and expects the row source. */
@@ -845,8 +853,10 @@ function completedExpression(tokens: readonly Token[]): boolean {
     if (token.text === ')') depth += 1
     else if (token.text === '(') {
       if (depth === 0) {
-        // A function call closes an expression; a grouped condition does not.
-        return tokens[index - 1]?.kind === 'ident'
+        // A function call or a window closes an expression; a grouped
+        // condition does not.
+        const owner = tokens[index - 1]
+        return owner?.kind === 'ident' || (owner?.kind === 'keyword' && owner.lower === 'over')
       }
       depth -= 1
     }
@@ -1644,12 +1654,18 @@ export function analyze(text: string, caret: number): Analysis {
     else if (definition.source !== undefined) relation.source = definition.source
     return relation
   })
+  let expectation = expectationAt(statementTokens)
+  // A dotted caret (`orders.`, `shop.orders.`, `u.`) always wants a member of
+  // the qualifier, whatever clause it appears in.
+  if (qualifier.length > 0 && expectation !== 'schema') expectation = 'column'
   const relations = collectRelations(statementTokens, withClause.ctes)
-  // `SELECT o. FROM orders o`: the alias is written after the caret, but a
-  // dotted qualifier can only point at that relation. Spell the statement out
-  // to the end and read the relations from there; the caret's clause is still
+  // Two cases need the rest of the statement: a dotted qualifier whose alias is
+  // only written in a later FROM (`SELECT o. FROM orders o`), and a select list
+  // typed before its FROM (`SELECT id | FROM orders`). Spell the statement out
+  // to the end and read the relations there; the caret's clause is still
   // decided from the tokens before it only.
-  if (qualifier.length > 0) {
+  const needsLaterRelations = qualifier.length > 0 || (expectation === 'column' && relations.length === 0)
+  if (needsLaterRelations) {
     const remainder = tokens.filter((token) => token.start >= word.end - bounds.start)
     const seen = new Set(relations.map(relationKey))
     for (const relation of collectRelations(remainder, withClause.ctes)) {
@@ -1659,10 +1675,6 @@ export function analyze(text: string, caret: number): Analysis {
       relations.push(relation)
     }
   }
-  let expectation = expectationAt(statementTokens)
-  // A dotted caret (`orders.`, `shop.orders.`, `u.`) always wants a member of
-  // the qualifier, whatever clause it appears in.
-  if (qualifier.length > 0 && expectation !== 'schema') expectation = 'column'
 
   const analysis: Analysis = { masked, statement, relations, expectation, qualifier, word }
   if (isInsideCommentOrString(text, at)) analysis.inLiteral = true

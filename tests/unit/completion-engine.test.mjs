@@ -1321,3 +1321,40 @@ describe('complete boolean, insert and join tails', () => {
     expect(result.items.some((item) => item.kind === 'table')).toBe(false)
   })
 })
+
+describe('complete alias names, window tails and early select lists', () => {
+  it('stays quiet while a name is typed after AS', async () => {
+    const result = await complete(request('SELECT id AS '))
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+  })
+
+  it('offers AS/FROM after a window expression', async () => {
+    const result = await complete(request('SELECT ROW_NUMBER() OVER (PARTITION BY user_id) '))
+    expect(result.analysis.expectation).toBe('expressionTail')
+    expect(names(result)).toEqual(['AS', 'FROM', 'WHERE', 'GROUP', 'ORDER', 'HAVING', 'LIMIT', 'UNION', 'AND', 'OR'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('offers SELECT after ANY parentheses', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id = ANY ('))
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+
+  it('uses a FROM written after the select list', async () => {
+    const req = request('SELECT id FROM orders', { caret: 9 })
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('column')
+    // The caret prefix still narrows the list, but the later FROM supplied the columns.
+    expect(names(result)).toContain('id')
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('does not invent relations before any FROM exists', async () => {
+    const result = await complete(request('SELECT id '))
+    expect(result.analysis.relations).toEqual([])
+    expect(names(result)).not.toContain('id')
+  })
+})
