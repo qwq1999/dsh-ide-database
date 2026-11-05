@@ -96,7 +96,11 @@ export function applyCompletion(
   // too, not an identifier to quote.
   const call = name.endsWith('(') && PLAIN.test(name.slice(0, -1))
   const literal = kind === 'snippet'
-  const insertion = literal || PLAIN.test(name) || call || name === '*' ? name : quoteIdent(dialect, name)
+  // Keep the quote the user opened. Dropping it changes the meaning in
+  // case-sensitive dialects (`"Orders"` in PostgreSQL folds to `orders`).
+  const quoted = word.quote !== ''
+  const insertion =
+    literal || call || name === '*' ? name : quoted || !PLAIN.test(name) ? quoteIdent(dialect, name) : name
   return {
     statement: `${statement.slice(0, start)}${insertion}${statement.slice(tail)}`,
     caret: start + insertion.length,

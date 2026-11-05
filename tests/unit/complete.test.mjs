@@ -66,12 +66,12 @@ describe('applyCompletion', () => {
 
   it('keeps the quote the user opened', () => {
     expect(applyCompletion('SELECT * FROM `ord', 18, 'orders', 'mysql')).toEqual({
-      statement: 'SELECT * FROM orders',
-      caret: 20,
+      statement: 'SELECT * FROM `orders`',
+      caret: 22,
     })
     expect(applyCompletion('SELECT * FROM `ord` ', 18, 'orders', 'mysql')).toEqual({
-      statement: 'SELECT * FROM orders ',
-      caret: 20,
+      statement: 'SELECT * FROM `orders` ',
+      caret: 22,
     })
   })
 

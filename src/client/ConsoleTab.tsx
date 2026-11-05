@@ -526,7 +526,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }, [connection?.id])
 
 
-  const openSuggestions = useCallback(async (): Promise<void> => {
+  const openSuggestions = useCallback(async (options?: { silentWhenEmpty?: boolean }): Promise<void> => {
     if (connection === undefined || connection.dialect === 'redis') return
     const target = schema !== '' ? schema : defaultSchema
     const catalog =
@@ -564,6 +564,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setSuggestions(null)
         return
       }
+      // An automatically opened popup that has nothing to offer is pure noise;
+      // Ctrl+Space still shows the empty state on purpose (it answers a question).
+      if (options?.silentWhenEmpty === true && result.items.length === 0) return
       setSuggestionIndex(0)
       suggestionSnapshot.current = { statement, caret: caretPos }
       setSuggestions(result.items)
@@ -615,7 +618,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     if (!autoComplete || !autoCompletePending.current) return
     const timer = window.setTimeout(() => {
       autoCompletePending.current = false
-      void openSuggestions()
+      // A word starting with a digit is a numeric literal (`LIMIT 10`, `id = 1`):
+      // no identifier can start there, so do not flash an empty popup.
+      const word = wordAtCaret(statement, caretPos)
+      if (word.quote === '' && /^\d/u.test(word.prefix)) return
+      void openSuggestions({ silentWhenEmpty: true })
     }, 120)
     return () => window.clearTimeout(timer)
   }, [autoComplete, caretPos, openSuggestions, statement, suggestions])

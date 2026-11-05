@@ -101,6 +101,14 @@ function completeAt(area: HTMLTextAreaElement): void {
   fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
 }
 
+/** Let the 120ms auto-complete debounce fire and its metadata reads settle. */
+const pause = (ms: number) =>
+  act(async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, ms)
+    })
+  })
+
 function popup(): HTMLElement {
   return screen.getByRole('listbox', { name: '补全候选' })
 }
@@ -403,5 +411,42 @@ describe('console completion integration', () => {
 
     await screen.findByRole('listbox', { name: '补全候选' })
     expect(names().length).toBeGreaterThan(0)
+  })
+
+  it('does not auto-open the popup for a numeric literal', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, 'SELECT * FROM orders LIMIT ')
+    typeSql(area, 'SELECT * FROM orders LIMIT 1')
+    await pause(240)
+
+    // Identifiers cannot start with a digit, so the debounced request must not
+    // flash an empty popup while a limit/offset value is typed.
+    expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull()
+  })
+
+  it('does not auto-open an empty popup, but opens once a name matches', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, 'SELECT * FROM ')
+    typeSql(area, 'SELECT * FROM z')
+    await pause(240)
+    expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull()
+
+    typeSql(area, 'SELECT * FROM zz')
+    await pause(240)
+    expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull()
+
+    // Same auto trigger, but now the schema has a matching table.
+    typeSql(area, 'SELECT * FROM ')
+    typeSql(area, 'SELECT * FROM o')
+    await screen.findByRole('listbox', { name: '补全候选' })
+    expect(names()).toContain('orders')
   })
 })

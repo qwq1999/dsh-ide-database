@@ -33,9 +33,15 @@ describe('applyCompletion', () => {
     expect(legacy.statement).toBe('SELECT COUNT(')
   })
 
-  it('replaces a dangling opening quote along with the partial name', () => {
+  it('keeps the opening quote the user typed', () => {
     const result = applyCompletion('SELECT * FROM `ord', 18, 'orders', 'mysql')
-    expect(result.statement).toBe('SELECT * FROM orders')
+    expect(result.statement).toBe('SELECT * FROM `orders`')
+    expect(result.caret).toBe('SELECT * FROM `orders`'.length)
+  })
+
+  it('keeps case-sensitive quoted names quoted', () => {
+    const result = applyCompletion('SELECT * FROM "Ord', 18, 'Orders', 'postgres')
+    expect(result.statement).toBe('SELECT * FROM "Orders"')
   })
 })
 
