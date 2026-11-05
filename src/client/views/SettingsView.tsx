@@ -358,14 +358,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
         collapsible
         defaultOpen={false}
         actions={
-          <div className="dshdb-inline">
-            <Button size="sm" variant="ghost" onClick={() => update('keybindings', {})}>
-              全部恢复默认
-            </Button>
-            <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
-              保存
-            </Button>
-          </div>
+          <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
+            保存
+          </Button>
         }
         bodyClassName="dshdb-panel-body-pad"
       >

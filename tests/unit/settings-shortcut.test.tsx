@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SettingsView } from '../../src/client/views/SettingsView.tsx'
@@ -65,15 +65,21 @@ describe('settings shortcut recorder', () => {
     expect(field('格式化 SQL 的快捷键').value).toBe('Ctrl + Shift + F')
   })
 
-  it('records a new combination and clears it with 全部恢复默认', () => {
+  it('records a new combination and clears it with the row 恢复默认', () => {
     setup()
     const input = field('清空编辑器（不影响已拿到的结果） 的快捷键')
     fireEvent.focus(input)
     expect(input.value).toBe('按下组合键…')
     fireEvent.keyDown(input, { key: 'k', ctrlKey: true, altKey: true })
     expect(input.value).toBe('Ctrl + Alt + K')
-    fireEvent.click(screen.getByRole('button', { name: '全部恢复默认' }))
+    const row = input.closest('.dshdb-driver-row') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: '恢复默认' }))
     expect(input.value).toBe('Ctrl + L')
+  })
+
+  it('no longer offers a shortcut-panel reset-all button', () => {
+    setup()
+    expect(screen.queryByRole('button', { name: '全部恢复默认' })).toBeNull()
   })
 
   it('refuses a combination another action of the same area already uses', () => {
