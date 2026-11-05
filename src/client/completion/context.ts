@@ -842,6 +842,12 @@ export function analyze(text: string, caret: number): Analysis {
   const statementTokens =
     withClause.mainStart > 0 ? before.slice(withClause.mainStart) : before
   const ctes = withClause.ctes.map((definition) => definition.name)
+  const cteRelations = withClause.ctes.map((definition) => {
+    const relation: CompletionRelation = { table: '', alias: definition.name }
+    if (definition.columns !== undefined) relation.columns = definition.columns
+    else if (definition.source !== undefined) relation.source = definition.source
+    return relation
+  })
   const relations = collectRelations(statementTokens, withClause.ctes)
   let expectation = expectationAt(statementTokens)
   // A dotted caret (`orders.`, `shop.orders.`, `u.`) always wants a member of
@@ -851,5 +857,6 @@ export function analyze(text: string, caret: number): Analysis {
   const analysis: Analysis = { masked, statement, relations, expectation, qualifier, word }
   if (isInsideCommentOrString(text, at)) analysis.inLiteral = true
   if (ctes.length > 0) analysis.ctes = ctes
+  if (cteRelations.length > 0) analysis.cteRelations = cteRelations
   return analysis
 }

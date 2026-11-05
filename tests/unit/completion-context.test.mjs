@@ -349,6 +349,20 @@ describe('analyze CTEs and derived tables', () => {
     expect(analysis.relations).toEqual([])
   })
 
+  it('exposes CTEs as relations a qualifier can point at', () => {
+    const starred = caretAtEnd('WITH recent AS (SELECT * FROM orders) SELECT recent.')
+    expect(starred.cteRelations).toEqual([
+      { table: '', alias: 'recent', source: { table: 'orders' } },
+    ])
+    expect(starred.relations).toEqual([])
+    const explicit = caretAtEnd('WITH recent AS (SELECT id, total FROM orders) SELECT recent.')
+    expect(explicit.cteRelations).toEqual([
+      { table: '', alias: 'recent', columns: ['id', 'total'] },
+    ])
+    const unknown = caretAtEnd('WITH recent AS (SELECT 1) SELECT recent.')
+    expect(unknown.cteRelations).toEqual([{ table: '', alias: 'recent' }])
+  })
+
   it('falls back cleanly on an incomplete WITH', () => {
     expect(() => caretAtEnd('WITH x AS (')).not.toThrow()
     expect(caretAtEnd('WITH x AS (').ctes).toBeUndefined()

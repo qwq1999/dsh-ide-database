@@ -417,6 +417,7 @@ async function qualifiedCandidates(
   request: CompletionRequest,
   qualifier: readonly string[],
   relations: readonly CompletionRelation[],
+  cteRelations: readonly CompletionRelation[] = [],
 ): Promise<Completion[]> {
   if (qualifier.length >= 2) {
     const schema = qualifier[qualifier.length - 2] as string
@@ -425,7 +426,8 @@ async function qualifiedCandidates(
   }
 
   const name = qualifier[0] as string
-  const relation = findRelation(relations, name)
+  // A CTE is in scope before the main statement's FROM clause mentions it.
+  const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
   if (relation !== undefined && relation.columns !== undefined) {
     return columnCandidates(relation.columns.map((column) => ({ name: column })))
   }
@@ -435,14 +437,15 @@ async function qualifiedCandidates(
       const columns = await columnCandidatesOf(request, lookup.schema, lookup.table)
       if (columns.length > 0) return columns
     }
+    // A CTE whose shape is unknown is not a schema: a table list here would
+    // only be noise.
+    if (findRelation(relations, name) === undefined) return []
   }
   // A trailing dot (`orders.`) hides the relation from the parser above, so the
   // bare name is still tried as a table of the current schema before treating
   // it as a schema name.
-  if (relation === undefined) {
-    const columns = await columnCandidatesOf(request, request.schema, name)
-    if (columns.length > 0) return columns
-  }
+  const columns = await columnCandidatesOf(request, request.schema, name)
+  if (columns.length > 0) return columns
   return tableCandidatesOf(request, name)
 }
 
@@ -463,7 +466,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   let priorities = prioritiesFor(expectation)
 
   if (qualifier.length > 0) {
-    candidates = await qualifiedCandidates(request, qualifier, relations)
+    candidates = await qualifiedCandidates(request, qualifier, relations, analysis.cteRelations ?? [])
   } else {
     switch (expectation) {
       case 'relation': {

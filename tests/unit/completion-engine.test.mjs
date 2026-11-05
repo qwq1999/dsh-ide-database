@@ -629,6 +629,58 @@ describe('complete ALTER TABLE objects', () => {
   })
 })
 
+describe('complete CTE qualifiers', () => {
+  it('offers the columns of a SELECT * CTE used as a qualifier', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'WITH recent AS (SELECT * FROM orders) SELECT recent.',
+      caret: 52,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.qualifier).toEqual(['recent'])
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+    expect(catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('offers explicit CTE columns used as a qualifier', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'WITH recent AS (SELECT id, total FROM orders) SELECT recent.',
+      caret: 60,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(names(result)).toEqual(['id', 'total'])
+  })
+
+  it('stays quiet for a CTE whose columns are unknown', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'WITH recent AS (SELECT 1) SELECT recent.',
+      caret: 40,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.items).toEqual([])
+  })
+
+  it('does not mistake a CTE name for a schema with tables', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'WITH orders AS (SELECT 1) SELECT orders.',
+      caret: 40,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.items).toEqual([])
+  })
+})
+
 describe('complete DDL tails', () => {
   it('offers tables after IF EXISTS', async () => {
     const catalog = createCatalog()

@@ -92,6 +92,12 @@ export interface Analysis {
   qualifier: string[]
   /** CTE names visible in the current statement, for FROM/JOIN suggestions. */
   ctes?: readonly string[]
+  /**
+   * CTE names as relations a qualifier can point at before a `FROM` is written
+   * (`WITH recent AS (...) SELECT recent.`). Their columns may be inferred or
+   * come from a `source` relation looked up in the catalog.
+   */
+  cteRelations?: readonly CompletionRelation[]
   /** Identifier being typed at the caret. */
   word: WordAtCaret
   /** The caret is inside a comment or string literal, where no name applies. */
