@@ -2687,6 +2687,67 @@ function variableTail(tokens: readonly Token[]): CompletionExpectation | undefin
 }
 
 
+/** `ON ` after a complete INSERT ... SELECT can only start the duplicate clause. */
+function insertOnTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const head = first.text.toLowerCase()
+  if (head !== 'insert' && head !== 'replace') return false
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'select')) {
+    return false
+  }
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'on'
+}
+
+/** `INSERT INTO t SELECT ... FROM s ` ends with the duplicate-key tail. */
+function insertSelectDone(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const head = first.text.toLowerCase()
+  if (head !== 'insert' && head !== 'replace') return false
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'select')) {
+    return false
+  }
+  const last = tokens[tokens.length - 1]
+  return last !== undefined && (last.kind === 'ident' || (last.kind === 'punct' && last.text === ')'))
+}
+
+/** `IS [NOT] DISTINCT FROM ` compares against an operand. */
+function distinctFromTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last?.kind !== 'keyword' || last.lower !== 'from') return undefined
+  if (previous?.text.toLowerCase() !== 'distinct') return undefined
+  return 'value'
+}
+
+/** MySQL's `<=>` null-safe equality takes a right operand. */
+function nullSafeTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const size = tokens.length
+  const last = tokens[size - 1]
+  const previous = tokens[size - 2]
+  const beforePrevious = tokens[size - 3]
+  if (last?.kind !== 'punct' || last.text !== '>') return undefined
+  if (previous?.kind !== 'punct' || previous.text !== '=') return undefined
+  if (beforePrevious?.kind !== 'punct' || beforePrevious.text !== '<') return undefined
+  return 'value'
+}
+
+/** `REGEXP `/`RLIKE ` and `AGAINST (` take a pattern literal, not a column list. */
+function patternTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last === undefined) return false
+  if (last.text.toLowerCase() === 'regexp' || last.text.toLowerCase() === 'rlike') return true
+  return (
+    last.kind === 'punct' &&
+    last.text === '(' &&
+    previous !== undefined &&
+    previous.text.toLowerCase() === 'against'
+  )
+}
+
 /** `expr::` names a type; once the type is typed the cast is an operand. */
 function castTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   let colon = -1
@@ -2904,6 +2965,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (updateTail(tokens)) return 'assignment'
   if (functionArgumentFrom(tokens)) return 'column'
   if (insertTargetTail(tokens)) return 'insertSource'
+  if (insertOnTail(tokens)) return 'insertOn'
+  if (insertSelectDone(tokens)) return 'insertTail'
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
   if (selectInto(tokens)) return 'intoTarget'
@@ -2978,13 +3041,18 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (variable !== undefined) return variable
   const last = tokens[tokens.length - 1]
   const before = tokens[tokens.length - 2]
+  const distinctFrom = distinctFromTail(tokens)
+  if (distinctFrom !== undefined) return distinctFrom
+  const nullSafe = nullSafeTail(tokens)
+  if (nullSafe !== undefined) return nullSafe
+  if (patternTail(tokens)) return 'number'
+  // `IS NOT ` only takes NULL/TRUE/FALSE.
   if (
     last?.kind === 'keyword' &&
     last.lower === 'not' &&
     before?.kind === 'keyword' &&
     before.lower === 'is'
   ) {
-    // `IS NOT ` only takes NULL/TRUE/FALSE.
     return 'value'
   }
   // `IS ` takes a literal predicate, and a bare `NOT ` takes an operator.
@@ -3045,7 +3113,9 @@ function aliasAt(tokens: readonly Token[], index: number): { alias?: string; nex
     if (name !== undefined && name.kind === 'ident') return { alias: name.text, next: index + 2 }
     return { name: undefined, next: index + 1 } as { alias?: string; next: number }
   }
-  if (token.kind === 'ident') return { alias: token.text, next: index + 1 }
+  if (token.kind === 'ident' && token.text.toLowerCase() !== 'window') {
+    return { alias: token.text, next: index + 1 }
+  }
   return { next: index }
 }
 
@@ -3336,15 +3406,42 @@ function parseRelationRef(
     const body = tokens.slice(index + 1, Math.max(index + 1, cursor - 1))
     const alias = aliasAt(tokens, cursor)
     const relation: CompletionRelation = { table: '' }
-    if (alias.alias !== undefined) relation.alias = alias.alias
-    const columns = inferSelectColumns(body)
-    if (columns !== undefined) {
-      relation.columns = columns
-    } else {
-      const source = starSource(body)
-      if (source !== undefined) relation.source = source
+    let next = alias.next
+    if (alias.alias !== undefined) {
+      relation.alias = alias.alias
+      // `(...) AS d(a, b)` renames the derived table's columns.
+      const columnOpen = tokens[next]
+      if (columnOpen !== undefined && columnOpen.kind === 'punct' && columnOpen.text === '(') {
+        const renamed: string[] = []
+        let depth = 0
+        let at = next
+        for (; at < tokens.length; at += 1) {
+          const current = tokens[at] as Token
+          if (current.kind === 'punct' && current.text === '(') {
+            depth += 1
+          } else if (current.kind === 'punct' && current.text === ')') {
+            depth -= 1
+            if (depth === 0) break
+          } else if (current.kind === 'ident' && depth === 1) {
+            renamed.push(current.text)
+          }
+        }
+        if (renamed.length > 0 && at < tokens.length) {
+          relation.columns = renamed
+          next = at + 1
+        }
+      }
     }
-    return { relation, next: alias.next }
+    if (relation.columns === undefined) {
+      const columns = inferSelectColumns(body)
+      if (columns !== undefined) {
+        relation.columns = columns
+      } else {
+        const source = starSource(body)
+        if (source !== undefined) relation.source = source
+      }
+    }
+    return { relation, next }
   }
 
   if (token.kind !== 'ident') return null
@@ -3596,6 +3693,31 @@ export function analyze(text: string, caret: number): Analysis {
     )
     relations.length = 0
     relations.push(...kept)
+  }
+  // `... REFERENCES customers (id, ` lists only the referenced table's columns.
+  const referencesAt = statementTokens.findIndex(
+    (token) => token.kind === 'keyword' && token.lower === 'references',
+  )
+  if (referencesAt >= 0) {
+    const reference = parseRelationRef(statementTokens, referencesAt + 1)
+    if (reference !== null) {
+      let depth = 0
+      let sawParen = false
+      for (let cursor = reference.next; cursor < statementTokens.length; cursor += 1) {
+        const token = statementTokens[cursor] as Token
+        if (token.kind !== 'punct') continue
+        if (token.text === '(') {
+          depth += 1
+          sawParen = true
+        } else if (token.text === ')' && depth > 0) {
+          depth -= 1
+        }
+      }
+      if (sawParen && depth > 0) {
+        relations.length = 0
+        relations.push(reference.relation)
+      }
+    }
   }
   // Two cases need the rest of the statement: a dotted qualifier whose alias is
   // only written in a later FROM (`SELECT o. FROM orders o`), and a select list

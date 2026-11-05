@@ -607,6 +607,9 @@ const ISOLATION_LEVEL_WORDS = ['LEVEL'] as const
 /** `SET TRANSACTION ISOLATION LEVEL READ ` takes an isolation variant. */
 const ISOLATION_READ_WORDS = ['COMMITTED', 'UNCOMMITTED'] as const
 
+/** `ON ` after a complete INSERT ... SELECT names the duplicate-key clause. */
+const INSERT_ON_WORDS = ['DUPLICATE'] as const
+
 /** `ORDER BY ... NULLS ` direction. */
 const NULLS_WORDS = ['FIRST', 'LAST'] as const
 
@@ -788,6 +791,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return INSERT_TAIL_WORDS
     case 'insertSource':
       return INSERT_SOURCE_WORDS
+    case 'insertOn':
+      return INSERT_ON_WORDS
     case 'joinTail':
       return JOIN_TAIL_WORDS
     case 'privilege':

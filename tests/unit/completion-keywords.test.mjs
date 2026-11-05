@@ -581,3 +581,9 @@ describe('alter column drop words', () => {
     ])
   })
 })
+
+describe('insert on words', () => {
+  it('offers DUPLICATE after ON', () => {
+    expect(names(keywordCompletions('insertOn', 'mysql'))).toEqual(['DUPLICATE'])
+  })
+})

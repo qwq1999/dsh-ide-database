@@ -1687,3 +1687,43 @@ describe('analyze casts, grants and index predicates', () => {
     expect(caretAtEnd('SELECT GROUP_CONCAT(name ORDER BY name DESC ').expectation).toBe('number')
   })
 })
+
+describe('analyze derived aliases, insert tails and operators', () => {
+  it('uses the explicit column names of an aliased derived table', () => {
+    const analysis = caretAtEnd('SELECT * FROM (SELECT id, total FROM orders) AS d(a, b) WHERE d.')
+    expect(analysis.relations[0]).toMatchObject({ alias: 'd', columns: ['a', 'b'] })
+  })
+
+  it('expects the duplicate-key tail after a complete INSERT ... SELECT', () => {
+    expect(caretAtEnd('INSERT INTO orders SELECT * FROM customers ').expectation).toBe('insertTail')
+  })
+
+  it('offers DUPLICATE after ON', () => {
+    expect(caretAtEnd('INSERT INTO orders SELECT * FROM customers ON ').expectation).toBe('insertOn')
+  })
+
+  it('takes an operand after a null-safe or distinct comparison', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IS NOT DISTINCT FROM ').expectation).toBe('value')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id <=> ').expectation).toBe('value')
+  })
+
+  it('stays quiet for REGEXP and AGAINST patterns', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id REGEXP ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders WHERE MATCH(title) AGAINST (').expectation).toBe('number')
+  })
+
+  it('lists only the referenced table columns', () => {
+    const analysis = caretAtEnd(
+      'ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY (user_id) REFERENCES customers (',
+    )
+    expect(analysis.relations).toEqual([{ table: 'customers' }])
+    expect(analysis.expectation).toBe('column')
+  })
+
+  it('does not mistake WINDOW for a table alias', () => {
+    const analysis = caretAtEnd(
+      'SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY status ORDER BY id) ',
+    )
+    expect(analysis.relations).toEqual([{ table: 'orders' }])
+  })
+})

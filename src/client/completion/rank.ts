@@ -144,6 +144,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   typeAdd: KEYWORD_PRIORITY,
   insertTail: KEYWORD_PRIORITY,
   insertSource: KEYWORD_PRIORITY,
+  insertOn: KEYWORD_PRIORITY,
   joinTail: KEYWORD_PRIORITY,
   // Common columns first, like an unqualified column list.
   using: COLUMN_PRIORITY,

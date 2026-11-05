@@ -83,6 +83,7 @@ export type CompletionExpectation =
   | 'typeAdd'
   | 'insertTail'
   | 'insertSource'
+  | 'insertOn'
   | 'joinTail'
   | 'using'
   | 'over'

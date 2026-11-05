@@ -2501,3 +2501,55 @@ describe('complete casts, grants and index predicates', () => {
     expect(result.items).toEqual([])
   })
 })
+
+describe('complete derived aliases, insert tails and operators', () => {
+  it('uses the renamed columns of a derived table', async () => {
+    const result = await complete(
+      request('SELECT * FROM (SELECT id, total FROM orders) AS d(a, b) WHERE d.'),
+    )
+    expect(names(result)).toEqual(['a', 'b'])
+  })
+
+  it('offers the duplicate-key tail after INSERT ... SELECT', async () => {
+    const result = await complete(request('INSERT INTO orders SELECT * FROM customers '))
+    expect(result.analysis.expectation).toBe('insertTail')
+    expect(names(result)).toEqual(['ON DUPLICATE KEY UPDATE'])
+  })
+
+  it('offers DUPLICATE after ON', async () => {
+    const result = await complete(request('INSERT INTO orders SELECT * FROM customers ON '))
+    expect(result.analysis.expectation).toBe('insertOn')
+    expect(names(result)).toEqual(['DUPLICATE'])
+  })
+
+  it('takes a literal operand for null-safe comparisons', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE id <=> '))
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result).slice(0, 4)).toEqual(['DEFAULT', 'NULL', 'TRUE', 'FALSE'])
+  })
+
+  it('stays quiet for REGEXP and AGAINST patterns', async () => {
+    expect((await complete(request('SELECT * FROM orders WHERE id REGEXP '))).items).toEqual([])
+    expect(
+      (await complete(request('SELECT * FROM orders WHERE MATCH(title) AGAINST ('))).items,
+    ).toEqual([])
+  })
+
+  it('lists only the referenced table columns', async () => {
+    const req = request(
+      'ALTER TABLE orders ADD CONSTRAINT fk FOREIGN KEY (user_id) REFERENCES customers (',
+    )
+    const result = await complete(req)
+    expect(result.analysis.relations).toEqual([{ table: 'customers' }])
+    expect(names(result)).toContain('id')
+    expect(names(result)).toContain('name')
+    expect(req.catalog.calls.columns).toContain('shop.customers')
+  })
+
+  it('does not mistake WINDOW for a table alias', async () => {
+    const result = await complete(
+      request('SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY status ORDER BY id) '),
+    )
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+  })
+})
