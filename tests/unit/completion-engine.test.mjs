@@ -1723,3 +1723,103 @@ describe('complete alter options, lock tables and duplicate updates', () => {
     expect(names(partition)).toEqual(['HASH', 'KEY', 'RANGE', 'LIST', 'LINEAR'])
   })
 })
+
+describe('complete transaction, nulls and multi-table delete tails', () => {
+  it('offers START TRANSACTION access modes', async () => {
+    const req = request('START TRANSACTION ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('transaction')
+    expect(names(result)).toEqual(['READ', 'WRITE', 'WITH'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.tables).toEqual([])
+  })
+
+  it('offers ONLY or WRITE after READ', async () => {
+    const result = await complete(request('START TRANSACTION READ '))
+
+    expect(result.analysis.expectation).toBe('transactionRead')
+    expect(names(result)).toEqual(['ONLY', 'WRITE'])
+  })
+
+  it('names a savepoint after ROLLBACK TO', async () => {
+    const result = await complete(request('ROLLBACK TO '))
+    expect(result.analysis.expectation).toBe('rollbackTo')
+    expect(names(result)).toEqual(['SAVEPOINT'])
+
+    const quiet = await complete(request('ROLLBACK TO SAVEPOINT '))
+    expect(quiet.analysis.expectation).toBe('name')
+    expect(quiet.items).toEqual([])
+  })
+
+  it('offers isolation levels', async () => {
+    const result = await complete(request('SET TRANSACTION ISOLATION LEVEL '))
+
+    expect(result.analysis.expectation).toBe('isolation')
+    expect(names(result)).toEqual(['READ', 'REPEATABLE', 'SERIALIZABLE'])
+  })
+
+  it('offers FIRST or LAST after NULLS', async () => {
+    const result = await complete(request('SELECT * FROM orders ORDER BY id NULLS '))
+
+    expect(result.analysis.expectation).toBe('nulls')
+    expect(names(result)).toEqual(['FIRST', 'LAST'])
+  })
+
+  it('offers the tables of a multi-table DELETE', async () => {
+    const req = request('DELETE FROM orders USING ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('tableName')
+    expect(names(result)).toContain('orders')
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('offers ALTER COLUMN SET options', async () => {
+    const result = await complete(request('ALTER TABLE orders ALTER COLUMN id SET '))
+    expect(result.analysis.expectation).toBe('alterColumnSet')
+    expect(names(result)).toEqual(['DEFAULT', 'VISIBLE', 'INVISIBLE'])
+
+    const value = await complete(request('ALTER TABLE orders ALTER COLUMN id SET DEFAULT '))
+    expect(value.analysis.expectation).toBe('value')
+    expect(names(value)).toContain('NULL')
+  })
+
+  it('offers comparison words after SHOW ... WHERE', async () => {
+    const result = await complete(request('SHOW STATUS WHERE '))
+
+    expect(result.analysis.expectation).toBe('comparison')
+    expect(names(result)).toContain('LIKE')
+  })
+
+  it('finishes FOR UPDATE NOWAIT quietly', async () => {
+    const result = await complete(request('SELECT * FROM orders FOR UPDATE NOWAIT '))
+
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})
+
+describe('complete SET TRANSACTION tails', () => {
+  it('offers ISOLATION or READ after SET TRANSACTION', async () => {
+    const result = await complete(request('SET TRANSACTION '))
+    expect(result.analysis.expectation).toBe('setTransaction')
+    expect(names(result)).toEqual(['ISOLATION', 'READ'])
+
+    const isolation = await complete(request('SET TRANSACTION ISOLATION '))
+    expect(isolation.analysis.expectation).toBe('isolationLevel')
+    expect(names(isolation)).toEqual(['LEVEL'])
+
+    const mode = await complete(request('SET TRANSACTION READ '))
+    expect(mode.analysis.expectation).toBe('transactionRead')
+    expect(names(mode)).toEqual(['ONLY', 'WRITE'])
+  })
+})
+
+describe('complete isolation level values', () => {
+  it('offers COMMITTED or UNCOMMITTED after READ', async () => {
+    const result = await complete(request('SET TRANSACTION ISOLATION LEVEL READ '))
+    expect(result.analysis.expectation).toBe('isolationRead')
+    expect(names(result)).toEqual(['COMMITTED', 'UNCOMMITTED'])
+  })
+})

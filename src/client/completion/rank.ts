@@ -152,6 +152,16 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   lockTable: KEYWORD_PRIORITY,
   rowFormat: KEYWORD_PRIORITY,
   partition: KEYWORD_PRIORITY,
+  transaction: KEYWORD_PRIORITY,
+  transactionRead: KEYWORD_PRIORITY,
+  transactionWith: KEYWORD_PRIORITY,
+  rollbackTo: KEYWORD_PRIORITY,
+  isolation: KEYWORD_PRIORITY,
+  setTransaction: KEYWORD_PRIORITY,
+  isolationLevel: KEYWORD_PRIORITY,
+  isolationRead: KEYWORD_PRIORITY,
+  nulls: KEYWORD_PRIORITY,
+  alterColumnSet: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

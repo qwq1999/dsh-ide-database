@@ -1093,6 +1093,9 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   }
   if (second === 'grants' && words.length > 2) return 'name'
   if (words[words.length - 1] === 'like') return 'name'
+  if ((second === 'status' || second === 'variables') && words[words.length - 1] === 'where') {
+    return 'comparison'
+  }
   if (
     second === 'engines' ||
     second === 'warnings' ||
@@ -1101,6 +1104,55 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   ) {
     return 'number'
   }
+  return undefined
+}
+
+/** `SET TRANSACTION ...` tails: access mode, `ISOLATION LEVEL`. */
+function setTransactionTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'set') return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[1] !== 'transaction') return undefined
+  if (tokens.length === 2) return 'setTransaction'
+  const tail = words[words.length - 1]
+  if (tail === 'read') return words.includes('isolation') ? 'isolationRead' : 'transactionRead'
+  if (tail === 'isolation') return 'isolationLevel'
+  if (tail === 'level') return 'isolation'
+  return 'number'
+}
+
+/** `SET TRANSACTION ISOLATION LEVEL ` names an isolation level. */
+function isolationStart(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  return (
+    words[0] === 'set' &&
+    words[1] === 'transaction' &&
+    words[2] === 'isolation' &&
+    words[3] === 'level' &&
+    words.length === 4
+  )
+}
+
+/** `DELETE FROM t USING ` names the extra tables of a multi-table delete. */
+function deleteUsing(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'delete') return undefined
+  const at = words.indexOf('using')
+  if (at < 0) return undefined
+  if (at === words.length - 1) return 'tableName'
+  const last = tokens[tokens.length - 1]
+  if (last?.kind === 'punct' && last.text === ',') return 'tableName'
+  return 'number'
+}
+
+/** `ORDER BY ... NULLS ` takes FIRST or LAST. */
+function nullsTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  const tail = last.text.toLowerCase()
+  if (tail === 'nulls') return 'nulls'
+  const hasOrder = tokens.some((token) => token.text.toLowerCase() === 'order')
+  if (hasOrder && (tail === 'first' || tail === 'last')) return 'number'
   return undefined
 }
 
@@ -1195,6 +1247,16 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
         if (last.lower === 'collate') return 'number'
       }
       return 'definition'
+    }
+    // `ALTER COLUMN id SET ` takes a column option, not catalog names.
+    if (action.lower === 'alter' && object.lower === 'column') {
+      const last = tokens[tokens.length - 1]
+      const word = last?.text.toLowerCase()
+      if (word === 'set') return 'alterColumnSet'
+      if (word === 'default') {
+        return tokens[tokens.length - 2]?.text.toLowerCase() === 'drop' ? 'number' : 'value'
+      }
+      return 'number'
     }
     // `RENAME INDEX old TO ` names the new index, which only the user knows.
     if (action.lower === 'rename' && (object.lower === 'index' || object.lower === 'key')) {
@@ -1551,6 +1613,42 @@ function groupByPosition(tokens: readonly Token[]): 'groupTail' | 'rollupTail' |
 }
 
 /** `FOR UPDATE ` / `FOR SHARE ` / `LOCK IN SHARE MODE ` end the statement. */
+/**
+ * Transaction-control tails: `START TRANSACTION`, `BEGIN`, `COMMIT`,
+ * `ROLLBACK`, savepoints and isolation levels take words the catalog cannot
+ * supply.
+ */
+function transactionTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined) return undefined
+  const start = first.text.toLowerCase()
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const last = tokens[tokens.length - 1]
+  if (start === 'start') {
+    if (words[1] !== 'transaction') return undefined
+    if (tokens.length === 2) return 'transaction'
+    const tail = last?.text.toLowerCase()
+    if (tail === 'read') return 'transactionRead'
+    if (tail === 'with') return 'transactionWith'
+    // READ ONLY / READ WRITE / WITH CONSISTENT SNAPSHOT: nothing to offer.
+    return 'number'
+  }
+  if (start === 'begin' || start === 'commit') return 'number'
+  if (start === 'rollback') {
+    if (tokens.length === 1) return 'number'
+    if (last?.text.toLowerCase() === 'to') return 'rollbackTo'
+    if (last?.text.toLowerCase() === 'savepoint') return 'name'
+    return 'number'
+  }
+  if (start === 'savepoint') return tokens.length === 1 ? 'name' : 'number'
+  if (start === 'release') {
+    if (tokens.length === 1) return 'rollbackTo'
+    if (tokens.length === 2 && last?.text.toLowerCase() === 'savepoint') return 'name'
+    return 'number'
+  }
+  return undefined
+}
+
 function lockClauseTail(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined) return false
@@ -1558,6 +1656,11 @@ function lockClauseTail(tokens: readonly Token[]): boolean {
   if (lower === 'update' || lower === 'share') {
     const previous = tokens[tokens.length - 2]
     return previous !== undefined && previous.text.toLowerCase() === 'for'
+  }
+  if (lower === 'nowait' || lower === 'wait') return true
+  if (lower === 'locked') {
+    const previous = tokens[tokens.length - 2]
+    return previous !== undefined && previous.text.toLowerCase() === 'skip'
   }
   if (lower !== 'mode' || tokens.length < 4) return false
   const tail = tokens.slice(tokens.length - 4).map((token) => token.text.toLowerCase())
@@ -1623,9 +1726,13 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'tableName'
   if (useDatabase(tokens)) return 'database'
+  const transaction = transactionTail(tokens)
+  if (transaction !== undefined) return transaction
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  const deleteSource = deleteUsing(tokens)
+  if (deleteSource !== undefined) return deleteSource
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
   // `INSERT ... ON DUPLICATE KEY UPDATE col = ` assigns a value, not a table.
@@ -1668,6 +1775,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const optionValue = tableOptionValue(tokens)
   if (optionValue !== undefined) return optionValue
   if (afterTableOptionValue(tokens)) return 'tableOptions'
+  const setTransaction = setTransactionTail(tokens)
+  if (setTransaction !== undefined) return setTransaction
+  if (isolationStart(tokens)) return 'isolation'
   const set = setStatement(tokens)
   if (set !== undefined) return set
   if (duplicateKeyUpdate(tokens)) return 'column'
@@ -1702,6 +1812,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // / frame clause decides, before the statement's ORDER BY rules apply.
   const window = windowExpectation(tokens)
   if (window !== undefined) return window
+  const nulls = nullsTail(tokens)
+  if (nulls !== undefined) return nulls
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
   const group = groupByPosition(tokens)

@@ -360,3 +360,45 @@ describe('lock, row format and partition words', () => {
     ])
   })
 })
+
+describe('transaction, isolation and NULLS words', () => {
+  it('offers transaction access modes', () => {
+    expect(names(keywordCompletions('transaction', 'generic'))).toEqual(['READ', 'WRITE', 'WITH'])
+    expect(names(keywordCompletions('transactionRead', 'generic'))).toEqual(['ONLY', 'WRITE'])
+    expect(names(keywordCompletions('transactionWith', 'generic'))).toEqual(['CONSISTENT'])
+  })
+
+  it('offers isolation levels and the savepoint keyword', () => {
+    expect(names(keywordCompletions('isolation', 'generic'))).toEqual([
+      'READ',
+      'REPEATABLE',
+      'SERIALIZABLE',
+    ])
+    expect(names(keywordCompletions('rollbackTo', 'generic'))).toEqual(['SAVEPOINT'])
+  })
+
+  it('offers NULLS and ALTER COLUMN SET values', () => {
+    expect(names(keywordCompletions('nulls', 'generic'))).toEqual(['FIRST', 'LAST'])
+    expect(names(keywordCompletions('alterColumnSet', 'generic'))).toEqual([
+      'DEFAULT',
+      'VISIBLE',
+      'INVISIBLE',
+    ])
+  })
+})
+
+describe('SET TRANSACTION words', () => {
+  it('offers the SET TRANSACTION tail words', () => {
+    expect(names(keywordCompletions('setTransaction', 'generic'))).toEqual(['ISOLATION', 'READ'])
+    expect(names(keywordCompletions('isolationLevel', 'generic'))).toEqual(['LEVEL'])
+  })
+})
+
+describe('isolation level value words', () => {
+  it('offers COMMITTED and UNCOMMITTED', () => {
+    expect(names(keywordCompletions('isolationRead', 'generic'))).toEqual([
+      'COMMITTED',
+      'UNCOMMITTED',
+    ])
+  })
+})

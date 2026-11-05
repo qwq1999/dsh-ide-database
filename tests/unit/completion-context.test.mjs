@@ -1056,3 +1056,70 @@ describe('analyze alter options, lock tables and insert updates', () => {
     expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY ').expectation).toBe('partition')
   })
 })
+
+describe('analyze transaction, nulls and multi-table delete tails', () => {
+  it('follows START TRANSACTION access modes', () => {
+    expect(caretAtEnd('START TRANSACTION ').expectation).toBe('transaction')
+    expect(caretAtEnd('START TRANSACTION READ ').expectation).toBe('transactionRead')
+    expect(caretAtEnd('START TRANSACTION WITH ').expectation).toBe('transactionWith')
+    expect(caretAtEnd('START TRANSACTION READ ONLY ').expectation).toBe('number')
+  })
+
+  it('keeps transaction control words out of the catalog', () => {
+    expect(caretAtEnd('BEGIN ').expectation).toBe('number')
+    expect(caretAtEnd('COMMIT ').expectation).toBe('number')
+    expect(caretAtEnd('ROLLBACK ').expectation).toBe('number')
+    expect(caretAtEnd('ROLLBACK TO ').expectation).toBe('rollbackTo')
+    expect(caretAtEnd('ROLLBACK TO SAVEPOINT ').expectation).toBe('name')
+    expect(caretAtEnd('SAVEPOINT sp1 ').expectation).toBe('number')
+    expect(caretAtEnd('RELEASE SAVEPOINT ').expectation).toBe('name')
+  })
+
+  it('names an isolation level', () => {
+    expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL ').expectation).toBe('isolation')
+  })
+
+  it('takes FIRST or LAST after NULLS', () => {
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY id NULLS ').expectation).toBe('nulls')
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY id NULLS FIRST ').expectation).toBe('number')
+  })
+
+  it('names the extra tables of a multi-table DELETE', () => {
+    expect(caretAtEnd('DELETE FROM orders USING ').expectation).toBe('tableName')
+    expect(caretAtEnd('DELETE FROM orders USING orders, ').expectation).toBe('tableName')
+    expect(caretAtEnd('DELETE FROM orders USING orders ').expectation).toBe('number')
+  })
+
+  it('takes ALTER COLUMN SET options', () => {
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id SET ').expectation).toBe('alterColumnSet')
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id SET DEFAULT ').expectation).toBe('value')
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id DROP DEFAULT ').expectation).toBe(
+      'number',
+    )
+  })
+
+  it('takes a condition after SHOW ... WHERE', () => {
+    expect(caretAtEnd('SHOW STATUS WHERE ').expectation).toBe('comparison')
+    expect(caretAtEnd('SHOW VARIABLES WHERE ').expectation).toBe('comparison')
+  })
+
+  it('finishes FOR UPDATE options quietly', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE NOWAIT ').expectation).toBe('number')
+  })
+})
+
+describe('analyze SET TRANSACTION tails', () => {
+  it('offers ISOLATION or READ after SET TRANSACTION', () => {
+    expect(caretAtEnd('SET TRANSACTION ').expectation).toBe('setTransaction')
+    expect(caretAtEnd('SET TRANSACTION READ ').expectation).toBe('transactionRead')
+    expect(caretAtEnd('SET TRANSACTION ISOLATION ').expectation).toBe('isolationLevel')
+    expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL ').expectation).toBe('isolation')
+  })
+})
+
+describe('analyze isolation level values', () => {
+  it('takes COMMITTED or UNCOMMITTED after READ', () => {
+    expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL READ ').expectation).toBe('isolationRead')
+    expect(caretAtEnd('SET TRANSACTION ISOLATION LEVEL REPEATABLE ').expectation).toBe('number')
+  })
+})

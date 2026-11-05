@@ -460,6 +460,36 @@ const ROW_FORMAT_WORDS = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDAN
 /** `PARTITION BY ` methods. */
 const PARTITION_WORDS = ['HASH', 'KEY', 'RANGE', 'LIST', 'LINEAR'] as const
 
+/** `START TRANSACTION ` takes an access mode or a snapshot clause. */
+const TRANSACTION_WORDS = ['READ', 'WRITE', 'WITH'] as const
+
+/** `START TRANSACTION READ ` takes ONLY or WRITE. */
+const TRANSACTION_READ_WORDS = ['ONLY', 'WRITE'] as const
+
+/** `START TRANSACTION WITH ` takes CONSISTENT SNAPSHOT. */
+const TRANSACTION_WITH_WORDS = ['CONSISTENT'] as const
+
+/** `ROLLBACK TO `/`RELEASE ` name a savepoint. */
+const ROLLBACK_TO_WORDS = ['SAVEPOINT'] as const
+
+/** `SET TRANSACTION ISOLATION LEVEL ` values. */
+const ISOLATION_WORDS = ['READ', 'REPEATABLE', 'SERIALIZABLE'] as const
+
+/** `SET TRANSACTION ` takes an isolation level or an access mode. */
+const SET_TRANSACTION_WORDS = ['ISOLATION', 'READ'] as const
+
+/** `SET TRANSACTION ISOLATION ` takes LEVEL. */
+const ISOLATION_LEVEL_WORDS = ['LEVEL'] as const
+
+/** `SET TRANSACTION ISOLATION LEVEL READ ` takes an isolation variant. */
+const ISOLATION_READ_WORDS = ['COMMITTED', 'UNCOMMITTED'] as const
+
+/** `ORDER BY ... NULLS ` direction. */
+const NULLS_WORDS = ['FIRST', 'LAST'] as const
+
+/** `ALTER TABLE ... ALTER COLUMN ... SET ` values. */
+const ALTER_COLUMN_SET_WORDS = ['DEFAULT', 'VISIBLE', 'INVISIBLE'] as const
+
 /** Bounds of a window frame after `OVER (ROWS `. */
 const FRAME_WORDS = ['BETWEEN', 'UNBOUNDED', 'CURRENT', 'ROW', 'PRECEDING', 'FOLLOWING'] as const
 
@@ -599,6 +629,26 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return ROW_FORMAT_WORDS
     case 'partition':
       return PARTITION_WORDS
+    case 'transaction':
+      return TRANSACTION_WORDS
+    case 'transactionRead':
+      return TRANSACTION_READ_WORDS
+    case 'transactionWith':
+      return TRANSACTION_WITH_WORDS
+    case 'rollbackTo':
+      return ROLLBACK_TO_WORDS
+    case 'isolation':
+      return ISOLATION_WORDS
+    case 'setTransaction':
+      return SET_TRANSACTION_WORDS
+    case 'isolationLevel':
+      return ISOLATION_LEVEL_WORDS
+    case 'isolationRead':
+      return ISOLATION_READ_WORDS
+    case 'nulls':
+      return NULLS_WORDS
+    case 'alterColumnSet':
+      return ALTER_COLUMN_SET_WORDS
     case 'frame':
       return FRAME_WORDS
     case 'interval':

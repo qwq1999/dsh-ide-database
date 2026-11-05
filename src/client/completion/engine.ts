@@ -656,7 +656,17 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       }
       case 'lockTable':
       case 'rowFormat':
-      case 'partition': {
+      case 'partition':
+      case 'transaction':
+      case 'transactionRead':
+      case 'transactionWith':
+      case 'rollbackTo':
+      case 'isolation':
+      case 'setTransaction':
+      case 'isolationLevel':
+      case 'isolationRead':
+      case 'nulls':
+      case 'alterColumnSet': {
         candidates = [...keywordCompletions(expectation, dialect)]
         break
       }
