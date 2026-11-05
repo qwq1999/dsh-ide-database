@@ -78,6 +78,7 @@
     "test": "vitest run",
     "pretest": "npm run build:host",
     "test:integration": "node scripts/integration-http.mjs",
+    "test:completion": "vitest run tests/unit/completion- tests/unit/complete-smart.test.mjs tests/unit/console-complete",
     "qa:ui": "node scripts/qa-ui.mjs",
     "changelog": "node scripts/build-changelog.mjs",
     "changelog:check": "node scripts/build-changelog.mjs --check",
