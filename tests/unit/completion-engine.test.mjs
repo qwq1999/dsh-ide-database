@@ -1255,3 +1255,33 @@ describe('complete literal comparisons and lock tails', () => {
     expect(names(result)).toContain('NULL')
   })
 })
+
+describe('complete aliases written after the caret', () => {
+  it('expands a select-list alias whose FROM is typed later', async () => {
+    const req = request('SELECT o. FROM orders o', { caret: 9 })
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('finds the alias among several later relations', async () => {
+    const result = await complete(
+      request('SELECT o. , c.name FROM orders o JOIN customers c ON c.id = o.user_id', {
+        caret: 9,
+      }),
+    )
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+  })
+
+  it('resolves an alias inside a function call', async () => {
+    const result = await complete(request('SELECT COUNT(o. ) FROM orders o', { caret: 15 }))
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+  })
+
+  it('still treats a schema qualifier as a schema', async () => {
+    const result = await complete(request('SELECT shop. FROM orders o', { caret: 12 }))
+    expect(names(result)).toEqual(['orders', 'order_items', 'customers'])
+    expect(result.items.every((item) => item.kind === 'table')).toBe(true)
+  })
+})

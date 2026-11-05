@@ -722,3 +722,28 @@ describe('analyze literals, lock clauses and INSERT SET', () => {
     expect(caretAtEnd('INSERT INTO orders SET total = 1, ').expectation).toBe('column')
   })
 })
+
+describe('resolve relations written after the caret', () => {
+  it('reads the FROM alias of a select list qualifier', () => {
+    expect(analyze('SELECT o. FROM orders o', 9).relations).toEqual([
+      { table: 'orders', alias: 'o' },
+    ])
+    expect(analyze('SELECT o. FROM orders AS o', 9).relations).toEqual([
+      { table: 'orders', alias: 'o' },
+    ])
+  })
+
+  it('merges every relation of the statement', () => {
+    expect(
+      analyze('SELECT o. , c.name FROM orders o JOIN customers c ON c.id = o.user_id', 9)
+        .relations,
+    ).toEqual([
+      { table: 'orders', alias: 'o' },
+      { table: 'customers', alias: 'c' },
+    ])
+  })
+
+  it('leaves the relation list alone when there is no qualifier', () => {
+    expect(analyze('SELECT o FROM orders o', 8).relations).toEqual([])
+  })
+})

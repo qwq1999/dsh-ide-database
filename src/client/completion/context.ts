@@ -1468,6 +1468,13 @@ function attachCteColumns(
   return relation
 }
 
+/** Identity of a relation view: duplicated for the same schema/table/alias. */
+function relationKey(relation: CompletionRelation): string {
+  return [relation.schema ?? '', relation.table, relation.alias ?? '']
+    .join('\u0000')
+    .toLowerCase()
+}
+
 /** Relations mentioned by the token prefix before the caret. */
 function collectRelations(
   tokens: readonly Token[],
@@ -1478,9 +1485,7 @@ function collectRelations(
   const push = (relation: CompletionRelation): void => {
     const resolved = attachCteColumns(relation, ctes)
     if (resolved.table === '' && (resolved.alias === undefined || resolved.alias === '')) return
-    const key = [resolved.schema ?? '', resolved.table, resolved.alias ?? '']
-      .join('\u0000')
-      .toLowerCase()
+    const key = relationKey(resolved)
     if (seen.has(key)) return
     seen.add(key)
     relations.push(resolved)
@@ -1596,6 +1601,20 @@ export function analyze(text: string, caret: number): Analysis {
     return relation
   })
   const relations = collectRelations(statementTokens, withClause.ctes)
+  // `SELECT o. FROM orders o`: the alias is written after the caret, but a
+  // dotted qualifier can only point at that relation. Spell the statement out
+  // to the end and read the relations from there; the caret's clause is still
+  // decided from the tokens before it only.
+  if (qualifier.length > 0) {
+    const remainder = tokens.filter((token) => token.start >= word.end - bounds.start)
+    const seen = new Set(relations.map(relationKey))
+    for (const relation of collectRelations(remainder, withClause.ctes)) {
+      const key = relationKey(relation)
+      if (seen.has(key)) continue
+      seen.add(key)
+      relations.push(relation)
+    }
+  }
   let expectation = expectationAt(statementTokens)
   // A dotted caret (`orders.`, `shop.orders.`, `u.`) always wants a member of
   // the qualifier, whatever clause it appears in.
