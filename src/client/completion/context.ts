@@ -363,6 +363,12 @@ function dropDatabase(tokens: readonly Token[]): boolean {
   return object === 'database' || object === 'schema'
 }
 
+/** `USE ` names an existing database. */
+function useDatabase(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  return tokens.length === 1 && first?.text.toLowerCase() === 'use'
+}
+
 /** `FOR ` at the end of a SELECT takes the lock clause. */
 function lockStart(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -718,7 +724,7 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   const second = words[1]
   if (second === 'create') {
     const object = words[2]
-    if (object === 'database' || object === 'schema') return 'schema'
+    if (object === 'database' || object === 'schema') return 'database'
     if (object === 'table' || object === 'view') return words.length > 3 ? 'name' : 'relation'
     return undefined
   }
@@ -726,17 +732,17 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   const inDatabase = words.indexOf('in')
   if (second === 'tables') {
     if (from < 0 && inDatabase < 0) return 'number'
-    if (from === words.length - 1 || inDatabase === words.length - 1) return 'schema'
+    if (from === words.length - 1 || inDatabase === words.length - 1) return 'database'
     return 'number'
   }
   if (second === 'full' && words[2] === 'tables') {
     if (from < 0 && inDatabase < 0) return 'number'
-    if (from === words.length - 1 || inDatabase === words.length - 1) return 'schema'
+    if (from === words.length - 1 || inDatabase === words.length - 1) return 'database'
     return 'number'
   }
   if (second === 'table' && words[2] === 'status') {
     if (from < 0) return 'number'
-    return from === words.length - 1 ? 'schema' : 'number'
+    return from === words.length - 1 ? 'database' : 'number'
   }
   if (
     second === 'columns' ||
@@ -1187,7 +1193,10 @@ function insertSetPosition(tokens: readonly Token[]): 'number' | 'value' | undef
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
-function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (alterIndexColumns(tokens)) return 'column'
+function expectationAt(tokens: readonly Token[]): CompletionExpectation {
+  // COLLATE always names a collation, wherever it appears.
+  if (collationValue(tokens)) return 'collation'
+  if (alterIndexColumns(tokens)) return 'column'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -1218,6 +1227,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   }
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'relation'
+  if (useDatabase(tokens)) return 'database'
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
   if (lockClauseTail(tokens)) return 'number'
@@ -1232,7 +1242,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
   if (objectName(tokens)) return 'name'
-  if (dropDatabase(tokens)) return 'schema'
+  if (dropDatabase(tokens)) return 'database'
   if (grantee(tokens)) return 'name'
   const withOption = grantWith(tokens)
   if (withOption !== undefined) return withOption
@@ -1244,7 +1254,6 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (showStart(tokens)) return 'show'
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
-  if (collationValue(tokens)) return 'collation'
   if (createTableEngine(tokens)) return 'engine'
   if (charsetValue(tokens)) return 'charset'
   const optionValue = tableOptionValue(tokens)

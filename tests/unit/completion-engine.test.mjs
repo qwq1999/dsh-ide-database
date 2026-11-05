@@ -1425,13 +1425,36 @@ describe('complete collation, grant option and lock positions', () => {
 
   it('lists databases when dropping one', async () => {
     const result = await complete(request('DROP DATABASE '))
-    expect(result.analysis.expectation).toBe('schema')
-    expect(names(result)).toContain('shop')
+    expect(result.analysis.expectation).toBe('database')
+    expect(names(result)).toEqual(SCHEMAS)
   })
 
   it('offers the lock clause after FOR', async () => {
     const result = await complete(request('SELECT * FROM orders FOR '))
     expect(result.analysis.expectation).toBe('lock')
     expect(names(result)).toEqual(['UPDATE', 'SHARE'])
+  })
+})
+
+describe('complete database names and index collations', () => {
+  it('offers only existing databases for USE', async () => {
+    const req = request('USE ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('database')
+    expect(names(result)).toEqual(SCHEMAS)
+    expect(result.items.every((item) => item.kind === 'schema')).toBe(true)
+  })
+
+  it('offers collations inside index and column definitions', async () => {
+    for (const statement of [
+      'CREATE INDEX idx ON orders (name COLLATE ',
+      'CREATE TABLE t (name COLLATE ',
+    ]) {
+      const req = request(statement)
+      const result = await complete(req)
+      expect(result.analysis.expectation).toBe('collation')
+      expect(names(result)).toContain('utf8mb4_general_ci')
+      expect(req.catalog.calls.columns).toEqual([])
+    }
   })
 })

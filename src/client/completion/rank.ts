@@ -143,6 +143,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   grantOption: KEYWORD_PRIORITY,
   grantOptionWord: KEYWORD_PRIORITY,
   lock: KEYWORD_PRIORITY,
+  database: SCHEMA_PRIORITY,
 }
 
 /**

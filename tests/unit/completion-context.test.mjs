@@ -88,7 +88,7 @@ describe('analyze expectation', () => {
   it('expects a schema after DDL and USE', () => {
     expect(caretAtEnd('CREATE ').expectation).toBe('schema')
     expect(caretAtEnd('DROP ').expectation).toBe('schema')
-    expect(caretAtEnd('USE ').expectation).toBe('schema')
+    expect(caretAtEnd('USE ').expectation).toBe('database')
   })
 
   it('falls back to any outside a clause', () => {
@@ -513,10 +513,10 @@ describe('analyze statement continuation tails', () => {
   })
 
   it('points SHOW tails at their targets', () => {
-    expect(caretAtEnd('SHOW CREATE DATABASE ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW CREATE DATABASE ').expectation).toBe('database')
     expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
     expect(caretAtEnd('SHOW CREATE VIEW ').expectation).toBe('relation')
-    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('database')
     expect(caretAtEnd('SHOW TABLES ').expectation).toBe('number')
     expect(caretAtEnd('SHOW COLUMNS FROM orders ').expectation).toBe('name')
     expect(caretAtEnd('SHOW INDEX FROM orders ').expectation).toBe('name')
@@ -675,8 +675,8 @@ describe('analyze grouping, insert and table tails', () => {
   })
 
   it('names the SHOW database and quiets completed SHOW tails', () => {
-    expect(caretAtEnd('SHOW TABLES IN ').expectation).toBe('schema')
-    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW TABLES IN ').expectation).toBe('database')
+    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('database')
     expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
     expect(caretAtEnd('SHOW CREATE TABLE orders ').expectation).toBe('name')
   })
@@ -863,11 +863,25 @@ describe('analyze collations, grant options and lock tails', () => {
   })
 
   it('lists databases for DROP DATABASE and DROP SCHEMA', () => {
-    expect(caretAtEnd('DROP DATABASE ').expectation).toBe('schema')
-    expect(caretAtEnd('DROP SCHEMA ').expectation).toBe('schema')
+    expect(caretAtEnd('DROP DATABASE ').expectation).toBe('database')
+    expect(caretAtEnd('DROP SCHEMA ').expectation).toBe('database')
   })
 
   it('offers the lock clause after FOR', () => {
     expect(caretAtEnd('SELECT * FROM orders FOR ').expectation).toBe('lock')
+  })
+})
+
+describe('analyze database names and index collations', () => {
+  it('offers existing databases where a database name belongs', () => {
+    expect(caretAtEnd('USE ').expectation).toBe('database')
+    expect(caretAtEnd('DROP DATABASE ').expectation).toBe('database')
+    expect(caretAtEnd('SHOW CREATE DATABASE ').expectation).toBe('database')
+    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('database')
+  })
+
+  it('offers collations inside index and column definitions', () => {
+    expect(caretAtEnd('CREATE INDEX idx ON orders (name COLLATE ').expectation).toBe('collation')
+    expect(caretAtEnd('CREATE TABLE t (name COLLATE ').expectation).toBe('collation')
   })
 })

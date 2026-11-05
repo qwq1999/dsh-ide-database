@@ -631,6 +631,11 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('lock', dialect)]
         break
       }
+      case 'database': {
+        // A database name, with no DDL keywords mixed in.
+        candidates = [...(await schemaNamesOf(request))]
+        break
+      }
       case 'keyword': {
         const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [...snippets, ...keywordCompletions('keyword', dialect)]
