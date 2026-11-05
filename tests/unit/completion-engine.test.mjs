@@ -1458,3 +1458,54 @@ describe('complete database names and index collations', () => {
     }
   })
 })
+
+describe('complete CREATE names and ALTER column tails', () => {
+  it('quietly names a new table, view or procedure', async () => {
+    for (const statement of ['CREATE TABLE ', 'CREATE VIEW ']) {
+      const req = request(statement)
+      const result = await complete(req)
+      expect(result.analysis.expectation).toBe('name')
+      expect(result.items).toEqual([])
+      expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+    const call = await complete(request('CALL my_proc('))
+    expect(call.analysis.expectation).toBe('number')
+    expect(call.items).toEqual([])
+  })
+
+  it('offers table options once a new table is named', async () => {
+    const req = request('CREATE TABLE t ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('tableOptions')
+    expect(names(result)).toContain('AS')
+    expect(names(result)).toContain('ENGINE')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.tables).toEqual([])
+  })
+
+  it('keeps DROP VIEW a relation list', async () => {
+    const req = request('DROP VIEW ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)[0]).toBe('orders')
+    expect(req.catalog.calls.tables).toContain('shop')
+  })
+
+  it('follows ALTER TABLE column renames and changes', async () => {
+    const rename = await complete(request('ALTER TABLE orders RENAME COLUMN id TO '))
+    expect(rename.analysis.expectation).toBe('name')
+    expect(rename.items).toEqual([])
+
+    const constraint = await complete(request('ALTER TABLE orders ADD CONSTRAINT '))
+    expect(constraint.analysis.expectation).toBe('name')
+    expect(constraint.items).toEqual([])
+
+    const change = await complete(request('ALTER TABLE orders CHANGE COLUMN id new_id '))
+    expect(change.analysis.expectation).toBe('definition')
+    expect(names(change)).toContain('NOT')
+
+    const another = await complete(request('ALTER TABLE orders DROP PRIMARY KEY, '))
+    expect(another.analysis.expectation).toBe('alter')
+    expect(names(another)).toEqual(['ADD', 'DROP', 'MODIFY', 'CHANGE', 'RENAME', 'ALTER'])
+  })
+})

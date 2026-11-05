@@ -421,6 +421,23 @@ function renameTableTail(tokens: readonly Token[]): boolean {
   return last.kind === 'keyword' && last.lower === 'to'
 }
 
+/** `DROP VIEW ` and a bare `TRUNCATE ` name a relation, like `DROP TABLE` does. */
+function relationKeywordTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const start = first.text.toLowerCase()
+  if (start === 'truncate') return tokens.length === 1
+  const second = tokens[1]
+  if (start !== 'drop' || second === undefined) return false
+  return second.text.toLowerCase() === 'view'
+}
+
+/** `CALL ` names a procedure; its arguments are literals, not catalog names. */
+function callStart(tokens: readonly Token[]): 'name' | 'number' | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'call') return undefined
+  return tokens.length === 1 ? 'name' : 'number'
+}
+
 /** `DROP INDEX idx ON ` names the table that owns the index. */
 function dropIndexOn(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -648,6 +665,40 @@ function objectName(tokens: readonly Token[]): boolean {
     || next === 'sequence' || next === 'trigger'
 }
 
+/** `CREATE TABLE `/`CREATE VIEW ` still need a name only the user knows. */
+function createObjectName(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create') return false
+  let index = 1
+  if (words[1] === 'or' && words[2] === 'replace') index = 3
+  else if (words[1] === 'temporary') index = 2
+  const object = words[index]
+  if (object !== 'table' && object !== 'view') return false
+  const next = words[index + 1]
+  if (next === undefined) return true
+  // `CREATE TABLE IF NOT EXISTS ` still has no object name yet.
+  return (
+    next === 'if' &&
+    words[index + 2] === 'not' &&
+    words[index + 3] === 'exists' &&
+    words[index + 4] === undefined
+  )
+}
+
+/** `CREATE TABLE t ` (name typed, no body yet) continues with table options. */
+function createTableOptionsTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create') return false
+  let index = 1
+  if (words[1] === 'temporary') index = 2
+  if (words[index] !== 'table') return false
+  index += 1
+  if (words[index] === 'if' && words[index + 1] === 'not' && words[index + 2] === 'exists') index += 3
+  const name = tokens[index]
+  if (name === undefined || name.kind !== 'ident') return false
+  return index === tokens.length - 1
+}
+
 /** `GRANT ... TO ` / `REVOKE ... FROM ` name a user, not a relation. */
 function grantee(tokens: readonly Token[]): boolean {
   const first = tokens[0]
@@ -848,11 +899,32 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
       }
       return 'definition'
     }
+    // `RENAME COLUMN old TO ` names the new column, which only the user knows.
+    if (action.lower === 'rename' && object.lower === 'column') {
+      const rest = tokens.slice(start + 2)
+      const last = rest[rest.length - 1]
+      if (last?.kind === 'keyword' && last.lower === 'to') return 'name'
+      return 'alterObject'
+    }
+    // `CHANGE COLUMN old new` takes the new definition after the new name.
+    if (action.lower === 'change' && object.lower === 'column') {
+      const rest = tokens.slice(start + 2)
+      if (rest.length === 0) return 'column'
+      if (rest.length === 1) return 'name'
+      return 'definition'
+    }
+    if (action.lower === 'modify' && object.lower === 'column') {
+      return tokens.slice(start + 2).length === 0 ? 'column' : 'definition'
+    }
+    // A comma ends one alter specification; the next word is another action.
+    const last = tokens[tokens.length - 1]
+    if (last?.kind === 'punct' && last.text === ',') return 'alter'
     return undefined
   }
   switch (action.lower) {
     case 'add':
-      return object.lower === 'column' ? 'definition' : undefined
+      if (object.lower === 'column') return 'definition'
+      return object.lower === 'constraint' ? 'name' : undefined
     case 'drop':
       return object.lower === 'column' ? 'column' : undefined
     case 'modify':
@@ -1203,6 +1275,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (createTableAs(tokens)) return 'statement'
   if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
   if (createTableLike(tokens)) return 'relation'
+  if (createObjectName(tokens)) return 'name'
+  if (createTableOptionsTail(tokens)) return 'tableOptions'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
@@ -1228,8 +1302,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'relation'
   if (useDatabase(tokens)) return 'database'
+  const call = callStart(tokens)
+  if (call !== undefined) return call
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
+  if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet

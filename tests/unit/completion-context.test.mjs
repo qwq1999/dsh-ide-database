@@ -113,7 +113,7 @@ describe('analyze expectation', () => {
   })
 
   it('does not expect a definition outside the CREATE TABLE body', () => {
-    expect(caretAtEnd('CREATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('CREATE TABLE ').expectation).toBe('name')
     expect(caretAtEnd('SELECT * FROM orders WHERE ').expectation).toBe('column')
   })
 
@@ -869,6 +869,40 @@ describe('analyze collations, grant options and lock tails', () => {
 
   it('offers the lock clause after FOR', () => {
     expect(caretAtEnd('SELECT * FROM orders FOR ').expectation).toBe('lock')
+  })
+})
+
+describe('analyze CREATE names and ALTER column tails', () => {
+  it('quietly names a new table or view', () => {
+    expect(caretAtEnd('CREATE TABLE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TEMPORARY TABLE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE VIEW ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE OR REPLACE VIEW ').expectation).toBe('name')
+  })
+
+  it('moves to table options once a new table is named', () => {
+    expect(caretAtEnd('CREATE TABLE orders ').expectation).toBe('tableOptions')
+    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS orders ').expectation).toBe('tableOptions')
+  })
+
+  it('names a procedure only the user knows', () => {
+    expect(caretAtEnd('CALL ').expectation).toBe('name')
+    expect(caretAtEnd('CALL my_proc(').expectation).toBe('number')
+  })
+
+  it('treats DROP VIEW and bare TRUNCATE like DROP TABLE', () => {
+    expect(caretAtEnd('DROP VIEW ').expectation).toBe('relation')
+    expect(caretAtEnd('TRUNCATE ').expectation).toBe('relation')
+    expect(caretAtEnd('TRUNCATE TABLE ').expectation).toBe('relation')
+  })
+
+  it('follows ALTER TABLE column renames and changes', () => {
+    expect(caretAtEnd('ALTER TABLE orders RENAME COLUMN id TO ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN id new_id ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders DROP PRIMARY KEY, ').expectation).toBe('alter')
   })
 })
 
