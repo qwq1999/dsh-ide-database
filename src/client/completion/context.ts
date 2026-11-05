@@ -267,6 +267,32 @@ function alterIndexColumns(tokens: readonly Token[]): boolean {
   return depth > 0
 }
 
+/** `LIMIT `/`OFFSET ` take a number, not a catalog name. */
+function limitCount(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return (
+    last !== undefined &&
+    last.kind === 'keyword' &&
+    (last.lower === 'limit' || last.lower === 'offset')
+  )
+}
+
+/** `CREATE TABLE ... ENGINE = ` names a storage engine. */
+function createTableEngine(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'create') return false
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last === undefined) return false
+  if (last.text.toLowerCase() === 'engine') return true
+  return (
+    last.kind === 'punct' &&
+    last.text === '=' &&
+    previous !== undefined &&
+    previous.text.toLowerCase() === 'engine'
+  )
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -412,6 +438,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (dropIndexOn(tokens)) return 'relation'
+  if (limitCount(tokens)) return 'number'
+  if (createTableEngine(tokens)) return 'engine'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token

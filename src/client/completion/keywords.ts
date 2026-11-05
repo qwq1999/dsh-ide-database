@@ -305,6 +305,24 @@ const TABLE_OPTION_WORDS = [
   'TABLESPACE',
 ] as const
 
+/**
+ * Storage engines offered after `ENGINE =`. Kept in the spelling MySQL
+ * documents; engine names are case insensitive, so the original case is nicer
+ * to read than the uppercased keyword list.
+ */
+export const ENGINE_NAMES = [
+  'InnoDB',
+  'MyISAM',
+  'MEMORY',
+  'CSV',
+  'ARCHIVE',
+  'BLACKHOLE',
+  'FEDERATED',
+  'NDB',
+  'PERFORMANCE_SCHEMA',
+  'MRG_MYISAM',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -321,6 +339,11 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return DEFINITION_WORDS
     case 'tableOptions':
       return TABLE_OPTION_WORDS
+    case 'engine':
+    case 'number':
+      // `ENGINE =` names come from ENGINE_NAMES (original case); a LIMIT
+      // count has no keyword to offer.
+      return []
     case 'alter':
       return ALTER_WORDS
     case 'alterObject':

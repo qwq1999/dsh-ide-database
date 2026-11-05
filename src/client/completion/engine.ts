@@ -8,7 +8,7 @@
  * show an error, it just shows fewer (or no) entries.
  */
 import { analyze } from './context'
-import { functionCompletions, keywordCompletions } from './keywords'
+import { ENGINE_NAMES, functionCompletions, keywordCompletions } from './keywords'
 import {
   aliasCandidates,
   columnCandidates,
@@ -541,6 +541,15 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       }
       case 'tableOptions': {
         candidates = [...keywordCompletions('tableOptions', dialect)]
+        break
+      }
+      case 'number': {
+        // A LIMIT/OFFSET count is a literal, so no catalog name applies.
+        candidates = []
+        break
+      }
+      case 'engine': {
+        candidates = ENGINE_NAMES.map((name) => ({ name, kind: 'keyword' as const }))
         break
       }
       case 'keyword': {

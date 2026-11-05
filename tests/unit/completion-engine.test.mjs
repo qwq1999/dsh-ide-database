@@ -843,3 +843,49 @@ describe('complete subquery bodies', () => {
     expect(result.items.some((item) => item.kind === 'table')).toBe(false)
   })
 })
+
+describe('complete LIMIT/OFFSET and ENGINE positions', () => {
+  it('stays quiet after LIMIT and OFFSET', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'SELECT * FROM orders LIMIT ',
+      caret: 27,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet after OFFSET', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'SELECT * FROM orders LIMIT 10 OFFSET ',
+      caret: 37,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers storage engines after ENGINE =', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE TABLE t (id INT) ENGINE = ',
+      caret: 33,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('engine')
+    expect(names(result)).toContain('InnoDB')
+    expect(names(result)).toContain('MyISAM')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})

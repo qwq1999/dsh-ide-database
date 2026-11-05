@@ -406,3 +406,23 @@ describe('analyze literal positions', () => {
     expect(analyze(comment, comment.length).inLiteral).toBeUndefined()
   })
 })
+
+describe('analyze statement tails', () => {
+  it('expects a number right after LIMIT or OFFSET', () => {
+    expect(caretAtEnd('SELECT * FROM orders LIMIT ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 OFFSET ').expectation).toBe('number')
+  })
+
+  it('returns to the generic list once the count is typed', () => {
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('any')
+  })
+
+  it('expects a storage engine after ENGINE', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) ENGINE = ').expectation).toBe('engine')
+    expect(caretAtEnd('CREATE TABLE t (id INT) ENGINE ').expectation).toBe('engine')
+  })
+
+  it('does not treat a column named engine as an engine position', () => {
+    expect(caretAtEnd('SELECT engine = ').expectation).not.toBe('engine')
+  })
+})

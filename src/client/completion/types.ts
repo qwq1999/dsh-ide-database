@@ -58,6 +58,8 @@ export type CompletionExpectation =
   | 'alter'
   | 'alterObject'
   | 'tableOptions'
+  | 'engine'
+  | 'number'
   | 'keyword'
   | 'any'
 

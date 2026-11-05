@@ -118,6 +118,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   alter: KEYWORD_PRIORITY,
   alterObject: KEYWORD_PRIORITY,
   tableOptions: KEYWORD_PRIORITY,
+  engine: KEYWORD_PRIORITY,
+  number: KEYWORD_PRIORITY,
 }
 
 /**
