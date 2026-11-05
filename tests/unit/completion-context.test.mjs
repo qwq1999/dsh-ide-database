@@ -612,3 +612,40 @@ describe('analyze condition and ordering tails', () => {
     ).toBe('column')
   })
 })
+
+describe('analyze finished expressions and parameters', () => {
+  it('expects a connector after a parameter or IN-list comparison', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = ? ').expectation).toBe('boolean')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = :id ').expectation).toBe('boolean')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (1, 2) ').expectation).toBe('boolean')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id NOT IN (1, 2) ').expectation).toBe('boolean')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id BETWEEN 1 AND 2 ').expectation).toBe('boolean')
+  })
+
+  it('expects a clause after a complete select-list expression', () => {
+    expect(caretAtEnd('SELECT COUNT(*) ').expectation).toBe('expressionTail')
+    expect(caretAtEnd('SELECT id, COUNT(*) ').expectation).toBe('expressionTail')
+    expect(caretAtEnd('SELECT CASE WHEN id = 1 THEN 1 END ').expectation).toBe('expressionTail')
+  })
+
+  it('expects an operator after a complete CASE expression in a condition', () => {
+    expect(
+      caretAtEnd('SELECT * FROM orders WHERE CASE WHEN id = 1 THEN 1 END ').expectation,
+    ).toBe('comparison')
+  })
+
+  it('offers only scalar values after IS NOT', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IS NOT ').expectation).toBe('value')
+  })
+
+  it('keeps incomplete expressions and plain positions as columns', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT COUNT(').expectation).toBe('column')
+  })
+
+  it('expects column options after a finished ALTER COLUMN definition', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT COMMENT ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT DEFAULT ').expectation).toBe('value')
+  })
+})

@@ -418,6 +418,20 @@ const DIRECTION_WORDS = ['ASC', 'DESC'] as const
 /** Clauses that may follow a finished ORDER BY item. */
 const ORDER_TAIL_WORDS = ['LIMIT', 'OFFSET'] as const
 
+/** What may follow a complete select-list expression (`COUNT(*) `). */
+const EXPRESSION_TAIL_WORDS = [
+  'AS',
+  'FROM',
+  'WHERE',
+  'GROUP',
+  'ORDER',
+  'HAVING',
+  'LIMIT',
+  'UNION',
+  'AND',
+  'OR',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -458,6 +472,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return DIRECTION_WORDS
     case 'orderTail':
       return ORDER_TAIL_WORDS
+    case 'expressionTail':
+      return EXPRESSION_TAIL_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

@@ -63,6 +63,21 @@ describe('keywordCompletions', () => {
     expect(names(keywordCompletions('orderTail', 'mysql'))).toEqual(['LIMIT', 'OFFSET'])
   })
 
+  it('offers clauses after a complete select-list expression', () => {
+    expect(names(keywordCompletions('expressionTail', 'mysql'))).toEqual([
+      'AS',
+      'FROM',
+      'WHERE',
+      'GROUP',
+      'ORDER',
+      'HAVING',
+      'LIMIT',
+      'UNION',
+      'AND',
+      'OR',
+    ])
+  })
+
   it('offers ALTER objects after an action', () => {
     expect(names(keywordCompletions('alterObject', 'mysql'))).toEqual([
       'COLUMN',

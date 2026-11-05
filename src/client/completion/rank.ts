@@ -130,6 +130,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   boolean: KEYWORD_PRIORITY,
   direction: KEYWORD_PRIORITY,
   orderTail: KEYWORD_PRIORITY,
+  expressionTail: KEYWORD_PRIORITY,
 }
 
 /**

@@ -70,6 +70,7 @@ export type CompletionExpectation =
   | 'boolean'
   | 'direction'
   | 'orderTail'
+  | 'expressionTail'
   | 'keyword'
   | 'any'
 

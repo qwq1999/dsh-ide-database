@@ -625,6 +625,16 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
     ) {
       return 'number'
     }
+    // `ADD COLUMN x INT ` still takes column options (NOT NULL, COMMENT, ...).
+    if (action.lower === 'add' && (object.lower === 'column' || object.kind === 'ident')) {
+      const last = tokens[tokens.length - 1]
+      if (last?.kind === 'keyword') {
+        if (last.lower === 'comment') return 'name'
+        if (last.lower === 'default') return 'value'
+        if (last.lower === 'collate') return 'number'
+      }
+      return 'definition'
+    }
     return undefined
   }
   switch (action.lower) {
@@ -700,7 +710,14 @@ function createTableBodyTail(tokens: readonly Token[]): CompletionExpectation | 
 /** Tokens that can end an expression inside a condition. */
 function endsOperand(token: Token | undefined): boolean {
   if (token === undefined) return false
-  if (token.kind === 'ident' || token.kind === 'number' || token.kind === 'string') return true
+  if (
+    token.kind === 'ident' ||
+    token.kind === 'number' ||
+    token.kind === 'param' ||
+    token.kind === 'string'
+  ) {
+    return true
+  }
   if (token.kind === 'punct' && token.text === ')') return true
   return (
     token.kind === 'keyword' &&
@@ -724,7 +741,50 @@ const CONDITION_BREAKS = new Set([
   'returning',
 ])
 const COMPARATORS = new Set(['=', '<', '>', '!'])
-const COMPARISON_KEYWORDS = new Set(['like', 'in', 'is', 'between', 'not', 'regexp'])
+const COMPARISON_KEYWORDS = new Set(['like', 'in', 'is', 'between', 'not', 'regexp', 'and', 'or'])
+
+/** A complete expression (`COUNT(*)`, `CASE ... END`) still takes a next clause. */
+function completedExpression(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  if (last.kind === 'keyword' && last.lower === 'end') return true
+  if (last.kind !== 'punct' || last.text !== ')') return false
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        // A function call closes an expression; a grouped condition does not.
+        return tokens[index - 1]?.kind === 'ident'
+      }
+      depth -= 1
+    }
+  }
+  return false
+}
+
+/** `SELECT COUNT(*) ` takes AS/FROM; `WHERE CASE WHEN ... END ` takes an operator. */
+function expressionTail(tokens: readonly Token[]): 'comparison' | 'expressionTail' | undefined {
+  if (!completedExpression(tokens)) return undefined
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(' && depth > 0) depth -= 1
+      continue
+    }
+    if (token.kind !== 'keyword' || depth > 0) continue
+    if (token.lower === 'where' || token.lower === 'having' || token.lower === 'on') {
+      return 'comparison'
+    }
+    if (token.lower === 'select') return 'expressionTail'
+    if (CONDITION_BREAKS.has(token.lower)) return undefined
+  }
+  return undefined
+}
 
 /** `WHERE total ` needs a comparison; `WHERE id = 1 ` needs a connector. */
 function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' | undefined {
@@ -736,7 +796,8 @@ function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' |
     if (token.kind === 'punct') {
       if (token.text === ')') depth += 1
       else if (token.text === '(') {
-        if (depth === 0) break
+        // An IN-list or grouped operand does not leave the clause.
+        if (depth === 0) continue
         depth -= 1
       }
       continue
@@ -749,13 +810,52 @@ function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' |
     if (CONDITION_BREAKS.has(token.lower)) return undefined
   }
   if (!inCondition) return undefined
-  // Walk back over the operand's path (`o.user_id`) to find its operator.
+  // Walk back over the operand (including `o.user_id` paths and IN-list groups)
+  // to find its operator.
   let index = tokens.length - 2
+  depth = 0
   for (;;) {
     const token = tokens[index]
     if (token === undefined) break
-    if (token.kind !== 'ident' && !(token.kind === 'punct' && token.text === '.')) break
-    index -= 1
+    if (token.kind === 'punct') {
+      if (token.text === ')') {
+        depth += 1
+        index -= 1
+        continue
+      }
+      if (token.text === '(') {
+        if (depth > 0) {
+          depth -= 1
+          index -= 1
+          continue
+        }
+        index -= 1
+        break
+      }
+      if (token.text === ',' && depth === 0) {
+        index -= 1
+        continue
+      }
+      if (token.text === '.' && depth === 0) {
+        index -= 1
+        continue
+      }
+      break
+    }
+    if (depth > 0) {
+      index -= 1
+      continue
+    }
+    if (
+      token.kind === 'ident' ||
+      token.kind === 'number' ||
+      token.kind === 'param' ||
+      token.kind === 'string'
+    ) {
+      index -= 1
+      continue
+    }
+    break
   }
   const before = tokens[index]
   const compared =
@@ -836,6 +936,19 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (set !== undefined) return set
   if (duplicateKeyUpdate(tokens)) return 'column'
   if (castAs(tokens)) return 'type'
+  const expression = expressionTail(tokens)
+  if (expression !== undefined) return expression
+  const last = tokens[tokens.length - 1]
+  const before = tokens[tokens.length - 2]
+  if (
+    last?.kind === 'keyword' &&
+    last.lower === 'not' &&
+    before?.kind === 'keyword' &&
+    before.lower === 'is'
+  ) {
+    // `IS NOT ` only takes NULL/TRUE/FALSE.
+    return 'value'
+  }
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
   const operator = conditionOperator(tokens)

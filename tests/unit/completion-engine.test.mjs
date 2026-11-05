@@ -1116,3 +1116,61 @@ describe('complete condition and ordering tails', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete finished expressions and parameters', () => {
+  it('offers connectors after a parameter comparison', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders WHERE id = ? '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers connectors after a finished IN list', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders WHERE id IN (1, 2) '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers clauses after a complete select-list expression', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT COUNT(*) '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('expressionTail')
+    for (const word of ['AS', 'FROM', 'WHERE', 'GROUP']) {
+      expect(names(result)).toContain(word)
+    }
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers clauses after a whole CASE expression', async () => {
+    const result = await complete({
+      ...request('SELECT CASE WHEN id = 1 THEN 1 END '),
+    })
+    expect(result.analysis.expectation).toBe('expressionTail')
+    expect(names(result)).toContain('AS')
+  })
+
+  it('offers column options after a finished ALTER COLUMN definition', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('ALTER TABLE orders ADD COLUMN x INT '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('definition')
+    expect(names(result)).toContain('NOT')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
