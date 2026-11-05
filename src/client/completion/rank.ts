@@ -169,6 +169,12 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   triggerFor: KEYWORD_PRIORITY,
   triggerEach: KEYWORD_PRIORITY,
   triggerRow: KEYWORD_PRIORITY,
+  routineReturn: KEYWORD_PRIORITY,
+  viewTail: KEYWORD_PRIORITY,
+  eventOn: KEYWORD_PRIORITY,
+  eventSchedule: KEYWORD_PRIORITY,
+  eventTiming: KEYWORD_PRIORITY,
+  eventTail: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

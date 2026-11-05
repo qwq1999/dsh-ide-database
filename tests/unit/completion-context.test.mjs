@@ -1206,3 +1206,57 @@ describe('analyze trigger and routine tails', () => {
     expect(analyze('SHOW COLUMNS FROM orders ', 25).expectation).toBe('name')
   })
 })
+
+describe('analyze routine, view and event definitions', () => {
+  it('walks a procedure definition', () => {
+    expect(caretAtEnd('CREATE PROCEDURE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE PROCEDURE p (').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p (IN ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p (IN x ').expectation).toBe('columnType')
+    expect(caretAtEnd('CREATE PROCEDURE p (IN x INT ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE PROCEDURE p (IN x INT, ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE PROCEDURE p() ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE PROCEDURE p() BEGIN ').expectation).toBe('statement')
+  })
+
+  it('offers RETURNS after a function parameter list', () => {
+    expect(caretAtEnd('CREATE FUNCTION f(').expectation).toBe('name')
+    expect(caretAtEnd('CREATE FUNCTION f() ').expectation).toBe('routineReturn')
+    expect(caretAtEnd('CREATE FUNCTION f() RETURNS ').expectation).toBe('columnType')
+    expect(caretAtEnd('CREATE FUNCTION f() RETURNS INT ').expectation).toBe('number')
+  })
+
+  it('walks a view definition', () => {
+    expect(caretAtEnd('CREATE VIEW ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE VIEW v ').expectation).toBe('viewTail')
+    expect(caretAtEnd('CREATE VIEW v (').expectation).toBe('name')
+    expect(caretAtEnd('CREATE VIEW v (a, ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE VIEW v (a) ').expectation).toBe('viewTail')
+    expect(caretAtEnd('CREATE VIEW v AS ').expectation).toBe('statement')
+  })
+
+  it('walks the CREATE EVENT schedule', () => {
+    expect(caretAtEnd('CREATE EVENT ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE EVENT e ').expectation).toBe('eventOn')
+    expect(caretAtEnd('CREATE EVENT e ON ').expectation).toBe('eventSchedule')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE ').expectation).toBe('eventTiming')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE AT ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY 1 ').expectation).toBe('interval')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY 1 DAY ').expectation).toBe('eventTail')
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY 1 DAY STARTS ').expectation).toBe(
+      'number',
+    )
+    expect(caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO ').expectation).toBe(
+      'statement',
+    )
+  })
+
+  it('names the routine in SHOW CREATE', () => {
+    expect(caretAtEnd('SHOW CREATE PROCEDURE ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW CREATE FUNCTION ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW CREATE EVENT ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW CREATE TRIGGER ').expectation).toBe('name')
+  })
+})

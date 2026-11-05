@@ -512,6 +512,18 @@ const TRIGGER_EACH_WORDS = ['EACH'] as const
 
 const TRIGGER_ROW_WORDS = ['ROW'] as const
 
+const ROUTINE_RETURN_WORDS = ['RETURNS'] as const
+
+const VIEW_TAIL_WORDS = ['AS'] as const
+
+const EVENT_ON_WORDS = ['ON'] as const
+
+const EVENT_SCHEDULE_WORDS = ['SCHEDULE'] as const
+
+const EVENT_TIMING_WORDS = ['AT', 'EVERY'] as const
+
+const EVENT_TAIL_WORDS = ['STARTS', 'ENDS', 'DO'] as const
+
 /** `START TRANSACTION ` takes an access mode or a snapshot clause. */
 const TRANSACTION_WORDS = ['READ', 'WRITE', 'WITH'] as const
 
@@ -649,6 +661,18 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return TRIGGER_EACH_WORDS
     case 'triggerRow':
       return TRIGGER_ROW_WORDS
+    case 'routineReturn':
+      return ROUTINE_RETURN_WORDS
+    case 'viewTail':
+      return VIEW_TAIL_WORDS
+    case 'eventOn':
+      return EVENT_ON_WORDS
+    case 'eventSchedule':
+      return EVENT_SCHEDULE_WORDS
+    case 'eventTiming':
+      return EVENT_TIMING_WORDS
+    case 'eventTail':
+      return EVENT_TAIL_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

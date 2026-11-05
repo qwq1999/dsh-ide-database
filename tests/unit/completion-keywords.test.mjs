@@ -427,3 +427,17 @@ describe('trigger words', () => {
     expect(names(keywordCompletions('triggerRow', 'generic'))).toEqual(['ROW'])
   })
 })
+
+describe('routine and event words', () => {
+  it('offers RETURNS and the view AS keyword', () => {
+    expect(names(keywordCompletions('routineReturn', 'generic'))).toEqual(['RETURNS'])
+    expect(names(keywordCompletions('viewTail', 'generic'))).toEqual(['AS'])
+  })
+
+  it('offers event schedule words', () => {
+    expect(names(keywordCompletions('eventOn', 'generic'))).toEqual(['ON'])
+    expect(names(keywordCompletions('eventSchedule', 'generic'))).toEqual(['SCHEDULE'])
+    expect(names(keywordCompletions('eventTiming', 'generic'))).toEqual(['AT', 'EVERY'])
+    expect(names(keywordCompletions('eventTail', 'generic'))).toEqual(['STARTS', 'ENDS', 'DO'])
+  })
+})

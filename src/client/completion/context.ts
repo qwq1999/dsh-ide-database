@@ -1062,6 +1062,9 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (second === 'create') {
     const object = words[2]
     if (object === 'database' || object === 'schema') return 'database'
+    if (object === 'procedure' || object === 'function' || object === 'event' || object === 'trigger') {
+      return 'name'
+    }
     if (object === 'table' || object === 'view') return words.length > 3 ? 'name' : 'tableName'
     return undefined
   }
@@ -1866,6 +1869,133 @@ function declareTail(tokens: readonly Token[]): CompletionExpectation | undefine
   return 'number'
 }
 
+/** `CREATE [OR REPLACE] PROCEDURE|FUNCTION name (...)`: walks the definition. */
+function routineTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens.length < 2) return undefined
+  if (tokens[0]?.text.toLowerCase() !== 'create') return undefined
+  let index = 1
+  if (tokens[1]?.text.toLowerCase() === 'or' && tokens[2]?.text.toLowerCase() === 'replace') {
+    index = 3
+  }
+  const object = tokens[index]?.text.toLowerCase()
+  if (object !== 'procedure' && object !== 'function') return undefined
+  const routineBody = object === 'function'
+  const nameIndex = index + 1
+  if (tokens[nameIndex] === undefined) return 'name'
+  const open = tokens.findIndex(
+    (token, at) => at > nameIndex && token.kind === 'punct' && token.text === '(',
+  )
+  if (open < 0) return 'number'
+  // Find the matching close; while it is unclosed the caret is in the parameters.
+  let depth = 0
+  let close = -1
+  for (let at = open; at < tokens.length; at += 1) {
+    const token = tokens[at] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+    } else if (token.text === ')') {
+      depth -= 1
+      if (depth === 0) {
+        close = at
+        break
+      }
+    }
+  }
+  if (close < 0) {
+    let segmentStart = open
+    depth = 0
+    for (let at = open; at < tokens.length; at += 1) {
+      const token = tokens[at] as Token
+      if (token.kind !== 'punct') continue
+      if (token.text === '(') depth += 1
+      else if (token.text === ')' && depth > 0) depth -= 1
+      else if (token.text === ',' && depth === 1) segmentStart = at
+    }
+    const segment = tokens
+      .slice(segmentStart + 1)
+      .filter((token) => token.text.toLowerCase() !== 'in')
+      .filter((token) => token.text.toLowerCase() !== 'out')
+      .filter((token) => token.text.toLowerCase() !== 'inout')
+    if (segment.length === 0) return 'name'
+    if (segment.length === 1 && segment[0]?.kind === 'ident') return 'columnType'
+    return 'number'
+  }
+  const after = tokens.slice(close + 1).map((token) => token.text.toLowerCase())
+  if (after.length === 0) return routineBody ? 'routineReturn' : 'statement'
+  if (after[0] === 'returns') return after.length === 1 ? 'columnType' : 'number'
+  if (after[0] === 'begin') return 'statement'
+  if (after[0] === 'return') return 'column'
+  return 'number'
+}
+
+/** `CREATE [OR REPLACE] VIEW name [(columns)] AS ...`. */
+function createViewTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create') return undefined
+  let index = 1
+  if (words[1] === 'or' && words[2] === 'replace') index = 3
+  if (words[index] !== 'view') return undefined
+  const nameIndex = index + 1
+  if (words[nameIndex] === undefined) return 'name'
+  // `CREATE VIEW v AS (...)` has already started the select; the parenthesis is
+  // the subquery, not a view column list.
+  if (words.indexOf('as', nameIndex + 1) >= 0) return undefined
+  let depth = 0
+  let open = -1
+  let close = -1
+  for (let at = nameIndex + 1; at < words.length; at += 1) {
+    const word = words[at]
+    if (word === '(') {
+      if (open < 0) open = at
+      depth += 1
+    } else if (word === ')' && depth > 0) {
+      depth -= 1
+      if (open >= 0 && depth === 0) {
+        close = at
+        break
+      }
+    }
+  }
+  if (open < 0) return 'viewTail'
+  if (close < 0) {
+    const last = words[words.length - 1]
+    if (last === '(' || last === ',') return 'name'
+    return 'number'
+  }
+  return 'viewTail'
+}
+
+/** `CREATE EVENT name ON SCHEDULE ... [DO ...]`. */
+function createEventTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create') return undefined
+  let index = 1
+  if (words[index] === 'definer') {
+    while (tokens[index] !== undefined && tokens[index]?.text !== '=') index += 1
+    index += 1
+  }
+  if (words[index] !== 'event') return undefined
+  const nameIndex = index + 1
+  if (words[nameIndex] === undefined) return 'name'
+  if (words[nameIndex + 1] === undefined) return 'eventOn'
+  const onIndex = words.indexOf('on', nameIndex + 1)
+  if (onIndex < 0) return 'eventOn'
+  const scheduleIndex = words.indexOf('schedule', onIndex + 1)
+  if (onIndex === words.length - 1) return 'eventSchedule'
+  if (scheduleIndex < 0) return 'eventSchedule'
+  if (scheduleIndex === words.length - 1) return 'eventTiming'
+  const timing = words[scheduleIndex + 1]
+  const rest = tokens.slice(scheduleIndex + 2)
+  if (timing === 'every' && rest.length === 0) return 'number'
+  if (timing === 'every' && rest.length === 1 && rest[0]?.kind === 'number') return 'interval'
+  if (timing === 'at' && rest.length === 0) return 'number'
+  const last = words[words.length - 1] as string
+  if (last === 'starts' || last === 'ends') return 'number'
+  if (last === 'do') return 'statement'
+  return 'eventTail'
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
@@ -1877,8 +2007,14 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (tableTail !== undefined) return tableTail
   if (createTableAs(tokens)) return 'statement'
   if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
+  const view = createViewTail(tokens)
+  if (view !== undefined) return view
   if (createTableLike(tokens)) return 'tableName'
   if (createObjectName(tokens)) return 'name'
+  const routine = routineTail(tokens)
+  if (routine !== undefined) return routine
+  const event = createEventTail(tokens)
+  if (event !== undefined) return event
   const trigger = triggerTail(tokens)
   if (trigger !== undefined) return trigger
   if (returnsTail(tokens)) return 'columnType'

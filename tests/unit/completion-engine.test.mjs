@@ -1942,3 +1942,54 @@ describe('complete trigger and routine positions', () => {
     )
   })
 })
+
+describe('complete routine, view and event positions', () => {
+  it('walks procedure parameters and body', async () => {
+    const param = await complete(request('CREATE PROCEDURE p (IN '))
+    expect(param.analysis.expectation).toBe('name')
+
+    const type = await complete(request('CREATE PROCEDURE p (IN x '))
+    expect(type.analysis.expectation).toBe('columnType')
+    expect(names(type).slice(0, 3)).toEqual(['INT', 'INTEGER', 'BIGINT'])
+
+    const body = await complete(request('CREATE PROCEDURE p() BEGIN '))
+    expect(body.analysis.expectation).toBe('statement')
+    expect(names(body)).toContain('SELECT')
+  })
+
+  it('offers RETURNS after a function parameter list', async () => {
+    const result = await complete(request('CREATE FUNCTION f() '))
+    expect(result.analysis.expectation).toBe('routineReturn')
+    expect(names(result)).toEqual(['RETURNS'])
+  })
+
+  it('offers AS after a view name', async () => {
+    const result = await complete(request('CREATE VIEW v '))
+    expect(result.analysis.expectation).toBe('viewTail')
+    expect(names(result)).toEqual(['AS'])
+  })
+
+  it('walks the CREATE EVENT schedule', async () => {
+    const on = await complete(request('CREATE EVENT e '))
+    expect(on.analysis.expectation).toBe('eventOn')
+    expect(names(on)).toEqual(['ON'])
+
+    const everyReq = request('CREATE EVENT e ON SCHEDULE EVERY 1 ')
+    const every = await complete(everyReq)
+    expect(every.analysis.expectation).toBe('interval')
+    expect(names(every)).toContain('DAY')
+    expect(everyReq.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+
+    const tail = await complete(request('CREATE EVENT e ON SCHEDULE EVERY 1 DAY '))
+    expect(tail.analysis.expectation).toBe('eventTail')
+    expect(names(tail)).toEqual(['STARTS', 'ENDS', 'DO'])
+  })
+
+  it('names the routine in SHOW CREATE', async () => {
+    const req = request('SHOW CREATE PROCEDURE ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
