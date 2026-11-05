@@ -176,6 +176,10 @@ describe('console toolbar', () => {
       const items = await screen.findAllByRole('menuitem')
       expect(items).toHaveLength(13)
       expect(items[0]?.textContent).toContain('取消')
+      // Hidden toolbar buttons keep their disabled state inside the menu.
+      const item = (label: string) => items.find((entry) => entry.textContent?.includes(label))
+      expect(item('取消')?.hasAttribute('disabled')).toBe(true)
+      expect(item('导出')?.hasAttribute('disabled')).toBe(true)
       expect(screen.getByLabelText('更多操作').getAttribute('aria-expanded')).toBe('true')
       // Right-aligned to the trigger, otherwise the menu would run past the
       // panel edge when the "…" button sits near the right side.
@@ -198,5 +202,9 @@ describe('console toolbar', () => {
     // Hug the widest item instead of a fixed 190px minimum width.
     expect(menu).toMatch(/width\s*:\s*max-content/)
     expect(menu).not.toMatch(/min-width\s*:\s*190px/)
+    // Disabled entries are greyed out like their toolbar counterparts.
+    expect(CSS).toMatch(
+      /\.dshdb-menu button:disabled\s*\{[^}]*color\s*:\s*var\(--dsw-alias-label-tertiary\)/,
+    )
   })
 })
