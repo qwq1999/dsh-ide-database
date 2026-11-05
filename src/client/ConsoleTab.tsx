@@ -49,11 +49,13 @@ import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, 
 import {
   applyCompletion,
   completionCandidates,
+  functionCompletions,
   keywordCompletions,
   qualifierBefore,
   wordAtCaret,
   type Completion,
 } from './complete'
+import { columnOwner, completionContext, referencedTables } from './sqlcontext'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -539,40 +541,52 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     [connection, schemas],
   )
 
+  const loadColumnCompletions = useCallback(
+    async (connectionId: string, schemaName: string, table: string): Promise<Completion[] | null> => {
+      const cacheKey = `${connectionId}:columns:${schemaName}.${table}`
+      const cached = completionCache.current.get(cacheKey)
+      if (cached !== undefined) return cached
+      try {
+        const described = await api.describe(connectionId, schemaName, table, 'table')
+        if (described.columns.length === 0) return null
+        const items: Completion[] = described.columns.map((column) => ({
+          name: column.name,
+          kind: 'column' as const,
+          detail: column.typeName,
+        }))
+        completionCache.current.set(cacheKey, items)
+        return items
+      } catch {
+        return null
+      }
+    },
+    [],
+  )
+
   const openSuggestions = useCallback(async (): Promise<void> => {
     if (connection === undefined || connection.dialect === 'redis') return
     const target = schema !== '' ? schema : defaultSchema
+    const connectionId = connection.id
+    const refs = referencedTables(statement, caretPos)
     const qualifier = qualifierBefore(statement, caretPos)
     if (qualifier.length > 0) {
       const name = qualifier[qualifier.length - 1] ?? ''
       const hinted = qualifier.length > 1 ? qualifier[qualifier.length - 2] ?? '' : ''
-      const columnsSchema = hinted !== '' ? hinted : target
-      const columnsKey = `${connection.id}:columns:${columnsSchema}.${name}`
-      const cached = completionCache.current.get(columnsKey)
-      if (cached !== undefined) {
-        setSuggestionIndex(0)
-        setSuggestions(cached)
-        return
-      }
+      // `u.` may be an alias declared in the statement, which is more precise
+      // than guessing that the qualifier is a table in the current schema.
+      const owner = hinted === '' ? columnOwner(refs, name) : null
+      const columnsSchema = hinted !== '' ? hinted : owner?.schema ?? target
+      const columnsTable = hinted !== '' ? name : owner?.table ?? name
       if (columnsSchema !== '') {
-        try {
-          const described = await api.describe(connection.id, columnsSchema, name, 'table')
-          if (described.columns.length > 0) {
-            const items: Completion[] = described.columns.map((column) => ({
-              name: column.name,
-              kind: 'column' as const,
-            }))
-            completionCache.current.set(columnsKey, items)
-            setSuggestionIndex(0)
-            setSuggestions(items)
-            return
-          }
-        } catch {
-          // The qualifier may be a schema rather than a table; list its relations below.
+        const columns = await loadColumnCompletions(connectionId, columnsSchema, columnsTable)
+        if (columns !== null) {
+          setSuggestionIndex(0)
+          setSuggestions(columns)
+          return
         }
       }
       try {
-        const listed = await api.objects(connection.id, name)
+        const listed = await api.objects(connectionId, name)
         const items: Completion[] = listed.objects
           .filter((item) => item.kind === 'table' || item.kind === 'view')
           .map((item) => ({ name: item.name, kind: 'table' as const }))
@@ -587,15 +601,43 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setFailure({ message: `没有找到 ${name} 的列或表` })
       return
     }
+
     const items = await loadSchemaCompletions(target)
     if (items === null) return
+    // Inside SELECT/WHERE/ON the interesting names are the columns of the
+    // tables the statement already mentions, not another table list.
+    let columns: Completion[] = []
+    if (completionContext(statement, caretPos) === 'column' && refs.length > 0) {
+      const lists = await Promise.all(
+        refs.slice(0, 6).map((ref) => loadColumnCompletions(connectionId, ref.schema ?? target, ref.table)),
+      )
+      columns = lists.flatMap((list) => list ?? [])
+    }
     setSuggestionIndex(0)
-    setSuggestions([...items, ...keywordCompletions()])
-  }, [caretPos, connection, defaultSchema, loadSchemaCompletions, schema, statement])
+    setSuggestions([
+      ...columns,
+      ...items,
+      ...keywordCompletions(),
+      ...functionCompletions(),
+    ])
+  }, [
+    caretPos,
+    connection,
+    defaultSchema,
+    loadColumnCompletions,
+    loadSchemaCompletions,
+    schema,
+    statement,
+  ])
 
   const insertSuggestion = useCallback(
-    (name: string): void => {
-      const next = applyCompletion(statement, caretPos, name, connection?.dialect ?? 'mysql')
+    (picked: Completion): void => {
+      const next = applyCompletion(
+        statement,
+        caretPos,
+        picked.insert ?? picked.name,
+        connection?.dialect ?? 'mysql',
+      )
       setSelectedRun(false)
       setStatement(next.statement)
       setSuggestions(null)
@@ -2262,7 +2304,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                     const picked = suggestionItems[activeSuggestionIndex]
                     if (picked !== undefined) {
                       event.preventDefault()
-                      insertSuggestion(picked.name)
+                      insertSuggestion(picked)
                       return
                     }
                   }
@@ -2325,7 +2367,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             {suggestions !== null ? (
               <div className="dshdb-complete" id={`${completeId}-list`} role="listbox" aria-label="补全候选">
                 {suggestionItems.length === 0 ? (
-                  <span className="dshdb-complete-empty">没有匹配的表</span>
+                  <span className="dshdb-complete-empty">没有匹配的候选</span>
                 ) : (
                   suggestionItems.map((item, index) => (
                     <button
@@ -2337,18 +2379,25 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                       className={index === activeSuggestionIndex ? 'dshdb-complete-item dshdb-complete-active' : 'dshdb-complete-item'}
                       onMouseDown={(event) => {
                         event.preventDefault()
-                        insertSuggestion(item.name)
+                        insertSuggestion(item)
                       }}
                     >
                       <span className="dshdb-complete-name">{item.name}</span>
-                      <span className="dshdb-complete-kind">
-                        {item.kind === 'column'
-                          ? '列'
-                          : item.kind === 'table'
-                            ? '表'
-                            : item.kind === 'schema'
-                              ? '库'
-                              : '关键字'}
+                      <span className="dshdb-complete-meta">
+                        {item.detail !== undefined ? (
+                          <span className="dshdb-complete-detail">{item.detail}</span>
+                        ) : null}
+                        <span className="dshdb-complete-kind">
+                          {item.kind === 'column'
+                            ? '列'
+                            : item.kind === 'table'
+                              ? '表'
+                              : item.kind === 'schema'
+                                ? '库'
+                                : item.kind === 'function'
+                                  ? '函数'
+                                  : '关键字'}
+                        </span>
                       </span>
                     </button>
                   ))

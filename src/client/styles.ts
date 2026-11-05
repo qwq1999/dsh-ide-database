@@ -1348,6 +1348,8 @@ export const CSS = `
 }
 .dshdb-complete-active { background: var(--dsw-alias-interactive-bg-hover); }
 .dshdb-complete-kind { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
+.dshdb-complete-meta { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.dshdb-complete-detail { color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
 .dshdb-complete-empty { padding: 6px 8px; color: var(--dsw-alias-label-tertiary); font-size: 11px; }
 .dshdb-console-value {
   flex: none;

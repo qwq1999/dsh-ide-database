@@ -10,11 +10,15 @@
 import type { ClientConnection } from '../shared/types'
 import { quoteIdent } from './tablesql'
 
-export type CompletionKind = 'table' | 'schema' | 'column' | 'keyword'
+export type CompletionKind = 'table' | 'schema' | 'column' | 'keyword' | 'function'
 
 export interface Completion {
   name: string
   kind: CompletionKind
+  /** Short right-aligned hint, for example the column type. */
+  detail?: string
+  /** Text inserted instead of `name`, for example `COUNT(`. */
+  insert?: string
 }
 
 /**
@@ -32,6 +36,25 @@ export const SQL_KEYWORDS = [
 /** Keyword candidates for the popup, in the order above. */
 export function keywordCompletions(): Completion[] {
   return SQL_KEYWORDS.map((name) => ({ name: name.toUpperCase(), kind: 'keyword' as const }))
+}
+
+/**
+ * SQL functions get their own kind so they never outrank a table or a column
+ * with the same prefix; picking one inserts the opening parenthesis too.
+ */
+export const SQL_FUNCTIONS = [
+  'count', 'sum', 'avg', 'min', 'max', 'coalesce', 'cast', 'round', 'abs',
+  'concat', 'substr', 'length', 'upper', 'lower', 'trim', 'replace',
+  'now', 'date_format', 'to_date', 'to_char', 'nvl', 'ifnull',
+  'row_number', 'rank', 'dense_rank',
+] as const
+
+/** Function candidates for the popup. */
+export function functionCompletions(): Completion[] {
+  return SQL_FUNCTIONS.map((name) => {
+    const upper = name.toUpperCase()
+    return { name: upper, kind: 'function' as const, insert: `${upper}(` }
+  })
 }
 
 export interface WordAtCaret {
@@ -102,7 +125,34 @@ export function qualifierBefore(statement: string, start: number): string[] {
   return names
 }
 
-/** Names matching `prefix` (case-insensitive), capped at `limit`. */
+/**
+ * How well `name` matches `needle`, or -1 when it does not match at all.
+ *
+ * 0: the name starts with the needle (the old behaviour);
+ * 1: the needle starts a later word, so `id` finds `order_id`;
+ * 2: the needle is a subsequence, so `crat` finds `created_at`.
+ */
+function matchScore(name: string, needle: string): number {
+  if (needle === '') return 0
+  const lower = name.toLowerCase()
+  if (lower.startsWith(needle)) return 0
+  for (let index = 1; index < lower.length; index += 1) {
+    const previous = lower[index - 1] ?? ''
+    const boundary =
+      /[_.\s-]/u.test(previous) ||
+      (/[a-z]/u.test(previous) && /[A-Z]/u.test(name[index] ?? ''))
+    if (boundary && lower.startsWith(needle, index)) return 1
+  }
+  let at = 0
+  for (const character of needle) {
+    const found = lower.indexOf(character, at)
+    if (found < 0) return -1
+    at = found + 1
+  }
+  return 2
+}
+
+/** Names matching `prefix` (case-insensitive), best matches first, capped at `limit`. */
 export function completionCandidates(
   prefix: string,
   items: readonly Completion[],
@@ -110,17 +160,18 @@ export function completionCandidates(
 ): Completion[] {
   const needle = prefix.toLowerCase()
   const seen = new Set<string>()
-  const matches: Completion[] = []
-  for (const item of items) {
-    if (item.name === '') continue
-    if (needle !== '' && !item.name.toLowerCase().startsWith(needle)) continue
+  const scored: { item: Completion; score: number; order: number }[] = []
+  items.forEach((item, order) => {
+    if (item.name === '') return
+    const score = matchScore(item.name, needle)
+    if (score < 0) return
     const key = `${item.kind}:${item.name}`
-    if (seen.has(key)) continue
+    if (seen.has(key)) return
     seen.add(key)
-    matches.push(item)
-    if (matches.length >= limit) break
-  }
-  return matches
+    scored.push({ item, score, order })
+  })
+  scored.sort((left, right) => left.score - right.score || left.order - right.order)
+  return scored.slice(0, limit).map((entry) => entry.item)
 }
 
 /**
@@ -136,7 +187,10 @@ export function applyCompletion(
   const word = wordAtCaret(statement, caret)
   const start = word.quote === '' ? word.start : word.start - 1
   const tail = word.quote === '' ? word.end : statement[word.end] === word.quote ? word.end + 1 : word.end
-  const insertion = PLAIN.test(name) ? name : quoteIdent(dialect, name)
+  // A function candidate inserts its call syntax (`COUNT(`) verbatim: quoting it
+  // would turn the parenthesis into part of an identifier.
+  const call = name.endsWith('(') && PLAIN.test(name.slice(0, -1))
+  const insertion = PLAIN.test(name) || call ? name : quoteIdent(dialect, name)
   return {
     statement: `${statement.slice(0, start)}${insertion}${statement.slice(tail)}`,
     caret: start + insertion.length,
