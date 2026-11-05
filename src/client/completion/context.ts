@@ -8,7 +8,12 @@
  * `JOIN orders o` never throws — it just produces the relations found so far.
  */
 import { qualifierBefore, wordAtCaret } from './edit'
-import { maskCommentsAndStrings, tokenize, type Token } from './tokenizer'
+import {
+  isInsideCommentOrString,
+  maskCommentsAndStrings,
+  tokenize,
+  type Token,
+} from './tokenizer'
 import type {
   Analysis,
   CompletionExpectation,
@@ -542,6 +547,7 @@ export function analyze(text: string, caret: number): Analysis {
   if (qualifier.length > 0 && expectation !== 'schema') expectation = 'column'
 
   const analysis: Analysis = { masked, statement, relations, expectation, qualifier, word }
+  if (isInsideCommentOrString(text, at)) analysis.inLiteral = true
   if (ctes.length > 0) analysis.ctes = ctes
   return analysis
 }

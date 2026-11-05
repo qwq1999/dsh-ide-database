@@ -452,3 +452,25 @@ describe('complete ranking', () => {
     expect(result.items[0]?.name).toBe('id')
   })
 })
+
+describe('complete inside literals and comments', () => {
+  it('returns no candidates without touching the catalog', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'SELECT * FROM orders -- note',
+      caret: 27,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.inLiteral).toBe(true)
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('completes again once the literal is closed', async () => {
+    const result = await complete(request("SELECT 'hi' "))
+    expect(result.analysis.inLiteral).toBeUndefined()
+    expect(result.items.length).toBeGreaterThan(0)
+  })
+})

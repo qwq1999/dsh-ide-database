@@ -558,6 +558,12 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         result.items.length,
         result.analysis.word.prefix,
       )
+      // Inside a string literal or comment there is nothing to complete; keep
+      // the popup closed instead of showing a list the caret cannot use.
+      if (result.analysis.inLiteral === true) {
+        setSuggestions(null)
+        return
+      }
       setSuggestionIndex(0)
       suggestionSnapshot.current = { statement, caret: caretPos }
       setSuggestions(result.items)

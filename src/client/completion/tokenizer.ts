@@ -181,57 +181,91 @@ function isDigit(char: string | undefined): boolean {
   return char !== undefined && DIGIT.test(char)
 }
 
+/** A comment or single-quoted string literal in the analysed text. */
+export interface MaskSpan {
+  /** First character, including the opening delimiter. */
+  start: number
+  /** One past the last character, including a closing delimiter when present. */
+  end: number
+}
+
 /**
- * Replace comments and string literals with spaces while keeping every offset
- * (and every newline) in place. Quoted identifiers are left alone: the
+ * Spans of comments and string literals, in source order.
+ *
+ * A `--` comment stops before its newline; an unterminated comment or string
+ * runs to the end of the text. Quoted identifiers are deliberately absent: the
  * context parser still needs to read `"shop"."orders"`.
  */
-export function maskCommentsAndStrings(text: string): string {
-  const chars = text.split('')
-  const length = chars.length
+export function maskedRanges(text: string): MaskSpan[] {
+  const spans: MaskSpan[] = []
+  const length = text.length
   let index = 0
 
-  const blank = (from: number, to: number): void => {
-    for (let cursor = from; cursor < Math.min(to, length); cursor += 1) {
-      if (chars[cursor] !== '\n') chars[cursor] = ' '
-    }
-  }
-
   while (index < length) {
-    const char = chars[index] as string
-    if (char === '-' && chars[index + 1] === '-') {
+    const char = text[index] as string
+    if (char === '-' && text[index + 1] === '-') {
       const start = index
       index += 2
-      while (index < length && chars[index] !== '\n') index += 1
-      blank(start, index)
+      while (index < length && text[index] !== '\n') index += 1
+      spans.push({ start, end: index })
       continue
     }
-    if (char === '/' && chars[index + 1] === '*') {
+    if (char === '/' && text[index + 1] === '*') {
       const start = index
       index += 2
-      while (index < length && !(chars[index] === '*' && chars[index + 1] === '/')) index += 1
+      while (index < length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
       index = Math.min(length, index + 2)
-      blank(start, index)
+      spans.push({ start, end: index })
       continue
     }
     if (char === "'") {
       const start = index
       index += 1
       while (index < length) {
-        const current = chars[index]
+        const current = text[index] as string
         index += 1
         if (current !== "'") continue
-        if (chars[index] === "'") {
+        if (text[index] === "'") {
           index += 1
           continue
         }
         break
       }
-      blank(start, index)
+      spans.push({ start, end: index })
       continue
     }
     index += 1
   }
 
+  return spans
+}
+
+/**
+ * Replace comments and string literals with spaces while keeping every offset
+ * (and every newline) in place.
+ */
+export function maskCommentsAndStrings(text: string): string {
+  const chars = text.split('')
+  for (const span of maskedRanges(text)) {
+    for (let cursor = span.start; cursor < Math.min(span.end, chars.length); cursor += 1) {
+      if (chars[cursor] !== '\n') chars[cursor] = ' '
+    }
+  }
   return chars.join('')
+}
+
+/**
+ * Whether `index` sits inside a comment or a single-quoted string literal.
+ *
+ * A caret right after a closed literal or comment is outside; inside an
+ * unterminated one the very end of the text still counts as inside.
+ */
+export function isInsideCommentOrString(text: string, index: number): boolean {
+  const at = Math.max(0, Math.min(index, text.length))
+  for (const span of maskedRanges(text)) {
+    if (at <= span.start) continue
+    if (at < span.end) return true
+    if (at === span.end && span.end === text.length) return true
+  }
+  return false
 }

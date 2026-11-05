@@ -240,3 +240,17 @@ describe('analyze CTEs and derived tables', () => {
     expect(caretAtEnd('WITH x AS (').ctes).toBeUndefined()
   })
 })
+
+describe('analyze literal positions', () => {
+  it('marks a caret inside a string literal or comment', () => {
+    expect(analyze("SELECT 'he", 11).inLiteral).toBe(true)
+    expect(analyze('SELECT * FROM t -- note', 21).inLiteral).toBe(true)
+    expect(analyze('SELECT 1 /* note */ FROM t', 12).inLiteral).toBe(true)
+  })
+
+  it('does not mark a caret after a closed literal or comment', () => {
+    expect(analyze("SELECT 'hi' ", 12).inLiteral).toBeUndefined()
+    const comment = 'SELECT 1 -- note\n'
+    expect(analyze(comment, comment.length).inLiteral).toBeUndefined()
+  })
+})

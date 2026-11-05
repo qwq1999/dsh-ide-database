@@ -430,6 +430,9 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   if (request.signal?.aborted === true) throw abortError()
 
   const analysis = analyze(request.statement, request.caret)
+  // Nothing written inside a string literal or comment is an identifier;
+  // offering names there would only paste them into prose.
+  if (analysis.inLiteral === true) return { items: [], analysis }
   const { expectation, qualifier, relations } = analysis
   const dialect = request.dialect
   let candidates: Completion[]

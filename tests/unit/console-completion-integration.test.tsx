@@ -370,4 +370,38 @@ describe('console completion integration', () => {
     await waitFor(() => expect(names()).toContain('orders'), { timeout: 2000 })
     expect(kinds().slice(0, 2)).toEqual(['表', '表'])
   })
+
+  it('does not open the popup inside a string literal or comment', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, "SELECT 'he")
+    completeAt(area)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull()
+
+    typeSql(area, 'SELECT * FROM orders -- note')
+    completeAt(area)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull()
+  })
+
+  it('completes again after the string literal closes', async () => {
+    render(<ConsoleTab useTabInfo={tabWith('mysql-1')} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+
+    const area = editor()
+    typeSql(area, "SELECT 'hi' ")
+    completeAt(area)
+
+    await screen.findByRole('listbox', { name: '补全候选' })
+    expect(names().length).toBeGreaterThan(0)
+  })
 })

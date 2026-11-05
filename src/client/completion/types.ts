@@ -83,6 +83,8 @@ export interface Analysis {
   ctes?: readonly string[]
   /** Identifier being typed at the caret. */
   word: WordAtCaret
+  /** The caret is inside a comment or string literal, where no name applies. */
+  inLiteral?: boolean
 }
 
 /** Metadata source the engine asks for suggestions. */

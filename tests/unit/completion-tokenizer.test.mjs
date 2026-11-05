@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { maskCommentsAndStrings, tokenize } from '../../src/client/completion/tokenizer'
+import { isInsideCommentOrString, maskCommentsAndStrings, tokenize } from '../../src/client/completion/tokenizer'
 
 const kinds = (text) => tokenize(text).map((token) => `${token.kind}:${token.text}`)
 
@@ -141,5 +141,36 @@ describe('maskCommentsAndStrings', () => {
     expect(() => maskCommentsAndStrings('SELECT /* x')).not.toThrow()
     expect(() => maskCommentsAndStrings("SELECT 'x")).not.toThrow()
     expect(maskCommentsAndStrings("SELECT 'x").endsWith(' ')).toBe(true)
+  })
+})
+
+describe('isInsideCommentOrString', () => {
+  it('detects a caret inside an unterminated string literal', () => {
+    const text = "SELECT 'he"
+    expect(isInsideCommentOrString(text, 8)).toBe(true)
+    expect(isInsideCommentOrString(text, text.length)).toBe(true)
+    expect(isInsideCommentOrString(text, 6)).toBe(false)
+  })
+
+  it('treats the position right after a closed literal as outside', () => {
+    const text = "SELECT 'hi' WHERE "
+    const after = text.indexOf("'", 8) + 1
+    expect(isInsideCommentOrString(text, after - 1)).toBe(true)
+    expect(isInsideCommentOrString(text, after)).toBe(false)
+  })
+
+  it('detects comments and leaves the newline ending a line comment outside', () => {
+    const line = 'SELECT 1 -- note\nFROM t'
+    expect(isInsideCommentOrString(line, line.indexOf('note'))).toBe(true)
+    expect(isInsideCommentOrString(line, line.indexOf('\n'))).toBe(false)
+
+    const block = 'SELECT /* note */ 1'
+    expect(isInsideCommentOrString(block, block.indexOf('note'))).toBe(true)
+    expect(isInsideCommentOrString(block, block.indexOf('*/') + 2)).toBe(false)
+  })
+
+  it('ignores quoted identifiers and unterminated block comments still count', () => {
+    expect(isInsideCommentOrString('SELECT "na', 9)).toBe(false)
+    expect(isInsideCommentOrString('SELECT 1 /* never closed', 20)).toBe(true)
   })
 })
