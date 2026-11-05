@@ -631,7 +631,13 @@ function ddlTableName(tokens: readonly Token[]): boolean {
   const commaTail = last?.kind === 'punct' && last.text === ','
   const bare = tokens.length === 2 || commaTail
   if (start === 'truncate' || start === 'rename') return object === 'table' && bare
-  if (start === 'analyze' || start === 'optimize' || start === 'check' || start === 'repair') {
+  if (
+    start === 'analyze' ||
+    start === 'optimize' ||
+    start === 'check' ||
+    start === 'repair' ||
+    start === 'checksum'
+  ) {
     return object === 'table' && bare
   }
   if (start === 'drop') {
@@ -646,6 +652,15 @@ function ddlTableName(tokens: readonly Token[]): boolean {
     return (object === 'table' || object === 'tables') && tokens.length === 2
   }
   return false
+}
+
+/** `CHECKSUM TABLE orders ` is done; nothing catalog-related comes next. */
+function checksumDone(tokens: readonly Token[]): boolean {
+  return (
+    tokens[0]?.text.toLowerCase() === 'checksum' &&
+    tokens[1]?.text.toLowerCase() === 'table' &&
+    tokens.length >= 3
+  )
 }
 
 /**
@@ -978,7 +993,10 @@ function charsetValue(tokens: readonly Token[]): boolean {
   if (last === undefined) return false
   if (last.text.toLowerCase() === 'charset') return true
   if (last.kind === 'punct' && last.text === '=') {
-    return previous?.text.toLowerCase() === 'charset'
+    const word = previous?.text.toLowerCase()
+    if (word === 'charset') return true
+    // `ALTER DATABASE shop CHARACTER SET = ` names a charset too.
+    return word === 'set' && tokens[tokens.length - 3]?.text.toLowerCase() === 'character'
   }
   return (
     last.kind === 'keyword' &&
@@ -1225,7 +1243,7 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
     if (from < 0) return undefined
     return from === words.length - 1 ? 'tableName' : 'name'
   }
-  if (second === 'grants' && words.length > 2) return 'name'
+  if (second === 'grants') return 'name'
   if (words[words.length - 1] === 'like') return 'name'
   if ((second === 'status' || second === 'variables') && words[words.length - 1] === 'where') {
     return 'comparison'
@@ -1359,6 +1377,9 @@ function alterTableStart(tokens: readonly Token[]): number {
 function alterExpectation(tokens: readonly Token[]): CompletionExpectation | undefined {
   const start = alterTableStart(tokens)
   if (start < 0) return undefined
+  // A comma closes one ALTER clause; the next word starts another action.
+  const trailingComma = tokens[tokens.length - 1]
+  if (trailingComma?.kind === 'punct' && trailingComma.text === ',') return 'alter'
   const action = tokens[start]
   if (action === undefined) return 'alter'
   if (action.kind !== 'keyword' || !ALTER_ACTIONS.has(action.lower)) return undefined
@@ -2545,6 +2566,40 @@ function partitionParen(
   return 'number'
 }
 
+/** `PARTITIONS ` takes a count, never a catalog name. */
+function partitionCount(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  return last !== undefined && last.text.toLowerCase() === 'partitions'
+}
+
+/**
+ * Partition bounds are literals: after `VALUES IN (1, ` or `VALUES LESS THAN (1, `
+ * the next word is another value, not a catalog column.
+ */
+function partitionValuesIn(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== ',') return false
+  if (!tokens.some((token) => token.text.toLowerCase() === 'partition')) return false
+  let depth = 0
+  let open = -1
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        open = index
+        break
+      }
+      depth -= 1
+    }
+  }
+  if (open < 2) return false
+  const owner = tokens[open - 1]?.text.toLowerCase()
+  if (owner !== 'in' && owner !== 'than') return false
+  return tokens.slice(0, open).some((token) => token.text.toLowerCase() === 'values')
+}
+
 /** `ALTER TABLE … DROP FOREIGN KEY|CONSTRAINT|CHECK ` names a constraint. */
 function alterDropConstraint(tokens: readonly Token[]): boolean {
   const start = alterTableStart(tokens)
@@ -2927,6 +2982,27 @@ function updateAssignmentValue(tokens: readonly Token[]): boolean {
   return !tokens.some((token) => token.kind === 'keyword' && token.lower === 'where')
 }
 
+/** `WITH cte (a, ` continues a CTE column list; those names are user text. */
+function cteColumnListTail(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.kind !== 'keyword' || tokens[0].lower !== 'with') return false
+  if (tokens[1]?.kind !== 'ident') return false
+  // A column list opens right after the CTE name; `WITH x AS (` opens the body.
+  const open = 2
+  const opener = tokens[open]
+  if (opener?.kind !== 'punct' || opener.text !== '(') return false
+  let depth = 0
+  for (let index = open; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') {
+      depth -= 1
+      if (depth === 0) return false
+    }
+  }
+  return true
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
@@ -2939,6 +3015,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterDatabaseDone(tokens)) return 'number'
   // Partition definitions carry literals, and index names are not catalog
   // objects this engine can list.
+  if (partitionCount(tokens)) return 'number'
+  if (partitionValuesIn(tokens)) return 'value'
   const partition = partitionParen(tokens)
   if (partition !== undefined) return partition
   if (indexHint(tokens)) return 'number'
@@ -2964,6 +3042,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (tableTail !== undefined) return tableTail
   if (createTableAs(tokens)) return 'statement'
   if (createViewAs(tokens) || afterCteDefinition(tokens)) return 'statement'
+  if (cteColumnListTail(tokens)) return 'name'
   const view = createViewTail(tokens)
   if (view !== undefined) return view
   if (createTableLike(tokens)) return 'tableName'
@@ -3032,6 +3111,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  if (checksumDone(tokens)) return 'number'
   const copy = copyTail(tokens)
   if (copy !== undefined) return copy
   if (dropObjectTail(tokens)) return 'name'
@@ -3196,6 +3276,19 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
 }
 
 /** Optional `AS alias` / bare `alias` after a relation reference. */
+/**
+ * Words that follow a relation in DDL (`ALTER TABLE orders CONVERT ...`) but
+ * never name a table alias.
+ */
+const ALIAS_STOPWORDS = new Set([
+  'convert',
+  'algorithm',
+  'engine',
+  'partition',
+  'comment',
+  'after',
+])
+
 function aliasAt(tokens: readonly Token[], index: number): { alias?: string; next: number } {
   const token = tokens[index]
   if (token === undefined) return { next: index }
@@ -3204,7 +3297,11 @@ function aliasAt(tokens: readonly Token[], index: number): { alias?: string; nex
     if (name !== undefined && name.kind === 'ident') return { alias: name.text, next: index + 2 }
     return { name: undefined, next: index + 1 } as { alias?: string; next: number }
   }
-  if (token.kind === 'ident' && token.text.toLowerCase() !== 'window') {
+  if (
+    token.kind === 'ident' &&
+    token.text.toLowerCase() !== 'window' &&
+    !ALIAS_STOPWORDS.has(token.text.toLowerCase())
+  ) {
     return { alias: token.text, next: index + 1 }
   }
   return { next: index }

@@ -2608,3 +2608,70 @@ describe('complete JSON_TABLE nesting, column options and range bounds', () => {
     expect(result.items).toEqual([])
   })
 })
+
+describe('complete ALTER lists, partitions and CTE columns', () => {
+  it('offers ALTER actions after a clause comma', async () => {
+    const req = request('ALTER TABLE orders ADD COLUMN a INT, ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('alter')
+    expect(names(result)).toEqual(['ADD', 'DROP', 'MODIFY', 'CHANGE', 'RENAME', 'ALTER'])
+    expect(req.catalog.calls.schemas).toBe(0)
+    expect(req.catalog.calls.tables).toEqual([])
+  })
+
+  it('stays quiet for partition counts', async () => {
+    const req = request('CREATE TABLE t (id INT) PARTITIONS ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.schemas).toBe(0)
+  })
+
+  it('offers literals inside partition value lists', async () => {
+    const result = await complete(request('CREATE TABLE t (id INT) PARTITION p0 VALUES IN (1, '))
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result).slice(0, 4)).toEqual(['DEFAULT', 'NULL', 'TRUE', 'FALSE'])
+  })
+
+  it('offers charsets for ALTER DATABASE CHARACTER SET =', async () => {
+    const result = await complete(request('ALTER DATABASE shop CHARACTER SET = '))
+    expect(result.analysis.expectation).toBe('charset')
+    expect(names(result)).toContain('utf8mb4')
+  })
+
+  it('stays quiet after a bare SHOW GRANTS', async () => {
+    const req = request('SHOW GRANTS ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.schemas).toBe(0)
+  })
+
+  it('lists tables for CHECKSUM TABLE and then stays quiet', async () => {
+    const listed = await complete(request('CHECKSUM TABLE '))
+    expect(listed.analysis.expectation).toBe('tableName')
+    expect(names(listed)).toContain('orders')
+    const done = request('CHECKSUM TABLE orders ')
+    const result = await complete(done)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(done.catalog.calls.schemas).toBe(0)
+  })
+
+  it('keeps CONVERT out of the relation list', async () => {
+    const result = await complete(
+      request('ALTER TABLE orders CONVERT TO CHARACTER SET utf8mb4 COLLATE '),
+    )
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+    expect(result.analysis.expectation).toBe('collation')
+    expect(names(result)).toContain('utf8mb4_bin')
+  })
+
+  it('stays quiet inside a CTE column list', async () => {
+    const req = request('WITH cte (a, ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.schemas).toBe(0)
+  })
+})

@@ -1770,3 +1770,52 @@ describe('analyze JSON_TABLE nesting, column options and range bounds', () => {
     ])
   })
 })
+
+describe('analyze ALTER clause lists, partitions and CTE columns', () => {
+  it('starts a new ALTER action after a clause comma', () => {
+    expect(
+      caretAtEnd('ALTER TABLE orders ADD COLUMN a INT, ADD COLUMN b INT, ').expectation,
+    ).toBe('alter')
+    expect(caretAtEnd('ALTER TABLE orders RENAME COLUMN a TO b, ').expectation).toBe('alter')
+  })
+
+  it('takes a partition count', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITIONS ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders PARTITION BY HASH(id) PARTITIONS ').expectation).toBe(
+      'number',
+    )
+  })
+
+  it('continues partition value lists with literals', () => {
+    expect(
+      caretAtEnd('CREATE TABLE t (id INT) PARTITION p0 VALUES IN (1, ').expectation,
+    ).toBe('value')
+    expect(
+      caretAtEnd('CREATE TABLE t (id INT) PARTITION p0 VALUES LESS THAN (1, ').expectation,
+    ).toBe('value')
+  })
+
+  it('takes a charset after ALTER DATABASE CHARACTER SET =', () => {
+    expect(caretAtEnd('ALTER DATABASE shop CHARACTER SET = ').expectation).toBe('charset')
+  })
+
+  it('takes a user name after a bare SHOW GRANTS', () => {
+    expect(caretAtEnd('SHOW GRANTS ').expectation).toBe('name')
+  })
+
+  it('lists tables after CHECKSUM TABLE and then stays quiet', () => {
+    expect(caretAtEnd('CHECKSUM TABLE ').expectation).toBe('tableName')
+    expect(caretAtEnd('CHECKSUM TABLE orders ').expectation).toBe('number')
+  })
+
+  it('keeps CONVERT out of ALTER relation aliases', () => {
+    expect(
+      caretAtEnd('ALTER TABLE orders CONVERT TO CHARACTER SET utf8mb4 COLLATE ').relations,
+    ).toEqual([{ table: 'orders' }])
+  })
+
+  it('takes CTE column names', () => {
+    expect(caretAtEnd('WITH cte (').expectation).toBe('name')
+    expect(caretAtEnd('WITH cte (a, ').expectation).toBe('name')
+  })
+})
