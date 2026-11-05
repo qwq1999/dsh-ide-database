@@ -259,6 +259,15 @@ function createIndexOn(tokens: readonly Token[]): number {
   return -1
 }
 
+/** `CREATE INDEX ... USING ` names an index method (BTREE/HASH). */
+function indexUsingTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'create') return false
+  if (!tokens.some((token) => token.text.toLowerCase() === 'index')) return false
+  const last = tokens[tokens.length - 1]
+  return last !== undefined && last.text.toLowerCase() === 'using'
+}
+
 /** True when the caret follows the `ON` of a `GRANT`/`REVOKE` statement. */
 /** The caret is inside the parenthesis of `USING (...)`. */
 function usingParenOpen(tokens: readonly Token[]): boolean {
@@ -356,6 +365,43 @@ function windowExpectation(tokens: readonly Token[]): CompletionExpectation | un
   if (lower === 'rows' || lower === 'range' || lower === 'groups') return 'frame'
   if (lower === 'preceding' || lower === 'following' || lower === 'row') return 'number'
   return 'frame'
+}
+
+/**
+ * `OVER w ` refers to a named window without parentheses, and a closed
+ * `WINDOW w AS (...)` definition ends the window expression.
+ */
+function namedWindowTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const before = tokens[tokens.length - 2]
+  if (last === undefined) return false
+  if (
+    last.kind === 'ident' &&
+    before !== undefined &&
+    before.text.toLowerCase() === 'over'
+  ) {
+    return true
+  }
+  if (last.kind === 'punct' && last.text === ')') {
+    let depth = 0
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      const token = tokens[index] as Token
+      if (token.kind !== 'punct') continue
+      if (token.text === ')') {
+        depth += 1
+        continue
+      }
+      if (token.text !== '(') continue
+      depth -= 1
+      if (depth > 0) continue
+      const owner = tokens[index - 1]
+      if (owner === undefined || owner.text.toLowerCase() !== 'as') return false
+      return tokens
+        .slice(0, index - 1)
+        .some((candidate) => candidate.text.toLowerCase() === 'window')
+    }
+  }
+  return false
 }
 
 /** `GRANT `, `GRANT SELECT, `: privileges come before the ON clause. */
@@ -700,6 +746,28 @@ function valuesListComplete(tokens: readonly Token[]): boolean {
   return sawParen && depth === 0 && last?.kind === 'punct' && last.text === ')'
 }
 
+/** A closed `VALUES (...)` tuple followed by a comma: only `(` can follow. */
+function valuesNextTuple(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'insert') return false
+  const valuesAt = tokens.findIndex((token) => token.kind === 'keyword' && token.lower === 'values')
+  if (valuesAt < 0) return false
+  let depth = 0
+  let sawParen = false
+  for (let index = valuesAt + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      sawParen = true
+    } else if (token.text === ')' && depth > 0) {
+      depth -= 1
+    }
+  }
+  const last = tokens[tokens.length - 1]
+  return sawParen && depth === 0 && last?.kind === 'punct' && last.text === ','
+}
+
 /** `DEFAULT CHARSET ` / `CHARACTER SET ` name a character set. */
 function charsetValue(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
@@ -922,6 +990,17 @@ function showStart(tokens: readonly Token[]): boolean {
   return tokens.length <= 2 && tokens[0]?.text.toLowerCase() === 'show'
 }
 
+/** A finished `SHOW ... LIKE '<pattern>' ` leaves nothing to complete. */
+function showPatternTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'show') return false
+  const last = tokens[tokens.length - 1]
+  return (
+    last?.kind === 'string' &&
+    tokens.some((token) => token.kind === 'keyword' && token.lower === 'like')
+  )
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -1015,6 +1094,19 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
     if (action.lower === 'modify' && object.lower === 'column') {
       return tokens.slice(start + 2).length === 0 ? 'column' : 'definition'
     }
+    // `ADD INDEX ... (cols)` and `DROP INDEX name` are complete specifications.
+    if (
+      (action.lower === 'add' || action.lower === 'drop') &&
+      (object.lower === 'index' || object.lower === 'key' || object.lower === 'unique')
+    ) {
+      const last = tokens[tokens.length - 1]
+      if (
+        (last?.kind === 'punct' && last.text === ')') ||
+        (action.lower === 'drop' && last?.kind === 'ident')
+      ) {
+        return 'number'
+      }
+    }
     // A comma ends one alter specification; the next word is another action.
     const last = tokens[tokens.length - 1]
     if (last?.kind === 'punct' && last.text === ',') return 'alter'
@@ -1023,6 +1115,9 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
   switch (action.lower) {
     case 'add':
       if (object.lower === 'column') return 'definition'
+      if (object.lower === 'index' || object.lower === 'key' || object.lower === 'unique') {
+        return 'name'
+      }
       return object.lower === 'constraint' ? 'name' : undefined
     case 'drop':
       return object.lower === 'column' ? 'column' : undefined
@@ -1376,6 +1471,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (createTableLike(tokens)) return 'relation'
   if (createObjectName(tokens)) return 'name'
   if (createTableOptionsTail(tokens)) return 'tableOptions'
+  if (indexUsingTail(tokens)) return 'indexMethod'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
@@ -1428,6 +1524,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const show = showTail(tokens)
   if (show !== undefined) return show
   if (showStart(tokens)) return 'show'
+  if (showPatternTail(tokens)) return 'number'
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'
@@ -1439,6 +1536,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (set !== undefined) return set
   if (duplicateKeyUpdate(tokens)) return 'column'
   if (valuesListComplete(tokens)) return 'insertTail'
+  if (valuesNextTuple(tokens)) return 'number'
   if (castAs(tokens)) return 'type'
   const interval = intervalTail(tokens)
   if (interval !== undefined) return interval
@@ -1462,6 +1560,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (last?.kind === 'keyword' && last.lower === 'like') return 'number'
   if (escapeTail(tokens)) return 'number'
   if (lockStart(tokens)) return 'lock'
+  // `OVER w ` and a closed `WINDOW w AS (...)` end the window expression.
+  if (namedWindowTail(tokens)) return 'expressionTail'
   // `OVER (...)`/`WINDOW ... AS (...)`: the spec's own PARTITION BY / ORDER BY
   // / frame clause decides, before the statement's ORDER BY rules apply.
   const window = windowExpectation(tokens)

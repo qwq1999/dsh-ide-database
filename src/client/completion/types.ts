@@ -84,6 +84,7 @@ export type CompletionExpectation =
   | 'lock'
   | 'frame'
   | 'interval'
+  | 'indexMethod'
   | 'database'
   | 'keyword'
   | 'any'

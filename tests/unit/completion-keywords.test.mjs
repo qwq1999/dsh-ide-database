@@ -316,3 +316,9 @@ describe('frame and interval words', () => {
     ])
   })
 })
+
+describe('index method words', () => {
+  it('offers BTREE and HASH for CREATE INDEX ... USING', () => {
+    expect(names(keywordCompletions('indexMethod', 'generic'))).toEqual(['BTREE', 'HASH'])
+  })
+})

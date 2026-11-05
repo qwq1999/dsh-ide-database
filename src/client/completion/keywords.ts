@@ -476,6 +476,9 @@ export const COLLATION_NAMES = [
   'binary',
 ] as const
 
+/** Index methods after `CREATE INDEX ... USING `. */
+const INDEX_METHOD_WORDS = ['BTREE', 'HASH'] as const
+
 const PRIVILEGE_WORDS = [
   'SELECT',
   'INSERT',
@@ -580,6 +583,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return FRAME_WORDS
     case 'interval':
       return INTERVAL_UNITS
+    case 'indexMethod':
+      return INDEX_METHOD_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

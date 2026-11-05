@@ -663,7 +663,7 @@ describe('analyze grouping, insert and table tails', () => {
   it('expects the duplicate key clause after an INSERT values list', () => {
     expect(caretAtEnd('INSERT INTO orders VALUES (1, 2) ').expectation).toBe('insertTail')
     expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), (3, 4) ').expectation).toBe('insertTail')
-    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), ').expectation).toBe('value')
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), ').expectation).toBe('number')
     expect(caretAtEnd('INSERT INTO orders VALUES (1, 2) ON DUPLICATE KEY UPDATE ').expectation).toBe(
       'column',
     )
@@ -954,5 +954,36 @@ describe('analyze window specifications and intervals', () => {
   it('names the object after SHOW FULL COLUMNS / INDEX', () => {
     expect(caretAtEnd('SHOW FULL COLUMNS FROM orders ').expectation).toBe('name')
     expect(caretAtEnd('SHOW FULL INDEX FROM orders ').expectation).toBe('name')
+  })
+})
+
+describe('analyze VALUES tuples, index tails and window names', () => {
+  it('stays quiet after a closed VALUES tuple and comma', () => {
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), ').expectation).toBe('number')
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2) ').expectation).toBe('insertTail')
+  })
+
+  it('offers index methods after USING', () => {
+    expect(caretAtEnd('CREATE INDEX idx ON orders (id) USING ').expectation).toBe('indexMethod')
+  })
+
+  it('finishes ADD/DROP INDEX specifications quietly', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD INDEX idx (id) ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders DROP INDEX idx ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders ADD INDEX ').expectation).toBe('name')
+  })
+
+  it('treats named windows as finished windows', () => {
+    expect(caretAtEnd('SELECT SUM(total) OVER w ').expectation).toBe('expressionTail')
+    expect(
+      caretAtEnd(
+        'SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY status ORDER BY id) ',
+      ).expectation,
+    ).toBe('expressionTail')
+  })
+
+  it('stays quiet after a SHOW LIKE pattern', () => {
+    expect(caretAtEnd('SHOW VARIABLES LIKE ').expectation).toBe('name')
+    expect(caretAtEnd("SHOW VARIABLES LIKE 'max%' ").expectation).toBe('number')
   })
 })

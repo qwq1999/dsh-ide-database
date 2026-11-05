@@ -145,6 +145,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   lock: KEYWORD_PRIORITY,
   frame: KEYWORD_PRIORITY,
   interval: KEYWORD_PRIORITY,
+  indexMethod: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

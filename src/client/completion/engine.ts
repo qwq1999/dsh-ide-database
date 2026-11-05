@@ -578,6 +578,10 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('interval', dialect)]
         break
       }
+      case 'indexMethod': {
+        candidates = [...keywordCompletions('indexMethod', dialect)]
+        break
+      }
       case 'name': {
         // The user is typing a new object name; the catalog cannot guess it.
         candidates = []

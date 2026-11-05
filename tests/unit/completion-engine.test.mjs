@@ -1543,3 +1543,59 @@ describe('complete window and interval positions', () => {
     expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete VALUES, index and window-name tails', () => {
+  it('waits for the next VALUES tuple without offering a value', async () => {
+    const req = request('INSERT INTO orders VALUES (1, 2), ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers index methods after CREATE INDEX ... USING', async () => {
+    const req = request('CREATE INDEX idx ON orders (id) USING ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('indexMethod')
+    expect(names(result)).toEqual(['BTREE', 'HASH'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+  })
+
+  it('stays quiet after complete ADD/DROP INDEX specifications', async () => {
+    for (const statement of [
+      'ALTER TABLE orders ADD INDEX idx (id) ',
+      'ALTER TABLE orders DROP INDEX idx ',
+    ]) {
+      const req = request(statement)
+      const result = await complete(req)
+      expect(result.analysis.expectation).toBe('number')
+      expect(result.items).toEqual([])
+      expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+    const named = await complete(request('ALTER TABLE orders ADD INDEX '))
+    expect(named.analysis.expectation).toBe('name')
+    expect(named.items).toEqual([])
+  })
+
+  it('finishes named window references', async () => {
+    for (const statement of [
+      'SELECT SUM(total) OVER w ',
+      'SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY status ORDER BY id) ',
+    ]) {
+      const req = request(statement)
+      const result = await complete(req)
+      expect(result.analysis.expectation).toBe('expressionTail')
+      expect(names(result).slice(0, 2)).toEqual(['AS', 'FROM'])
+      expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+      expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+  })
+
+  it('stays quiet after a SHOW LIKE pattern', async () => {
+    const req = request("SHOW VARIABLES LIKE 'max%' ")
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
