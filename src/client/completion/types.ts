@@ -53,6 +53,8 @@ export type CompletionExpectation =
   | 'column'
   | 'schema'
   | 'alias'
+  | 'value'
+  | 'definition'
   | 'keyword'
   | 'any'
 

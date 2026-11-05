@@ -101,6 +101,21 @@ describe('analyze expectation', () => {
     expect(analyze('SELECT * FROM ord', 18).expectation).toBe('relation')
     expect(analyze('SELECT * FROM orders WHERE crat', 31).expectation).toBe('column')
   })
+
+  it('expects a value after VALUES', () => {
+    expect(caretAtEnd('INSERT INTO orders VALUES (').expectation).toBe('value')
+    expect(caretAtEnd('INSERT INTO orders VALUES ').expectation).toBe('value')
+  })
+
+  it('expects a column definition inside CREATE TABLE', () => {
+    expect(caretAtEnd('CREATE TABLE new_table (').expectation).toBe('definition')
+    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS new_table (id INT, ').expectation).toBe('definition')
+  })
+
+  it('does not expect a definition outside the CREATE TABLE body', () => {
+    expect(caretAtEnd('CREATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('SELECT * FROM orders WHERE ').expectation).toBe('column')
+  })
 })
 
 describe('analyze statement bounds', () => {

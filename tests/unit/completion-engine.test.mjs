@@ -497,3 +497,39 @@ describe('complete inside literals and comments', () => {
     expect(result.items.length).toBeGreaterThan(0)
   })
 })
+
+describe('complete values and column definitions', () => {
+  it('offers values instead of table columns inside VALUES', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'INSERT INTO orders VALUES (',
+      caret: 27,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('DEFAULT')
+    expect(names(result)).toContain('NOW')
+    expect(names(result)).not.toContain('orders')
+    expect(result.items.some((item) => item.kind === 'column' || item.kind === 'table')).toBe(false)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers DDL words instead of relations inside a CREATE TABLE body', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE TABLE new_table (',
+      caret: 24,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('definition')
+    expect(names(result)).toContain('PRIMARY')
+    expect(names(result)).toContain('AUTO_INCREMENT')
+    expect(names(result)).not.toContain('orders')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})

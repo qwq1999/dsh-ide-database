@@ -24,6 +24,17 @@ describe('keywordCompletions', () => {
     }
   })
 
+  it('offers scalar values where a literal is expected', () => {
+    expect(names(keywordCompletions('value', 'mysql'))).toEqual(['DEFAULT', 'NULL', 'TRUE', 'FALSE'])
+  })
+
+  it('offers column definition words inside CREATE TABLE', () => {
+    const words = names(keywordCompletions('definition', 'mysql'))
+    expect(words).toContain('PRIMARY')
+    expect(words).toContain('AUTO_INCREMENT')
+    expect(words).toContain('REFERENCES')
+  })
+
   it('adds the MySQL-only words on MySQL connections', () => {
     const words = names(keywordCompletions('any', 'mysql'))
     expect(words).toContain('STRAIGHT_JOIN')

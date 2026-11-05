@@ -143,10 +143,44 @@ function previousKeyword(tokens: readonly Token[], index: number): string | null
 }
 
 /**
+ * True when the caret sits inside a `CREATE TABLE` body. Those parentheses
+ * hold column definitions (`PRIMARY KEY`, `NOT NULL`), not relations.
+ */
+function insideCreateTableParen(tokens: readonly Token[]): boolean {
+  let table = -1
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'keyword') continue
+    if (token.lower === 'create' || token.lower === 'alter') {
+      table = -1
+      continue
+    }
+    if (token.lower === 'as' || token.lower === 'like') return false
+    if (token.lower === 'table') table = index
+    if (token.lower === 'select' && table >= 0) return false
+  }
+  if (table < 0) return false
+  let depth = 0
+  let opened = false
+  for (let index = table + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      opened = true
+    } else if (token.text === ')') {
+      depth -= 1
+    }
+  }
+  return opened && depth > 0
+}
+
+/**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
+  if (insideCreateTableParen(tokens)) return 'definition'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
@@ -155,6 +189,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
       continue
     }
     if (token.kind !== 'keyword') continue
+    // `INSERT ... VALUES (` expects a literal or a function, not table columns.
+    if (token.lower === 'values') return 'value'
     // `INSERT INTO orders (id, ` is a column list even though the nearest
     // clause word (INTO) normally expects a relation.
     if (token.lower === 'insert') return sawOpenParen ? 'column' : 'any'

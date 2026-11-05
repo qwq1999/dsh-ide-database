@@ -251,6 +251,26 @@ function dialectWordGroup(dialect: ClientConnection['dialect']): DialectWordGrou
 }
 
 
+/** Scalar placeholders valid where a value expression is expected. */
+const VALUE_WORDS = ['DEFAULT', 'NULL', 'TRUE', 'FALSE'] as const
+
+/** DDL words that can follow a column name in a `CREATE TABLE` body. */
+const DEFINITION_WORDS = [
+  'PRIMARY',
+  'KEY',
+  'NOT',
+  'NULL',
+  'DEFAULT',
+  'UNIQUE',
+  'CHECK',
+  'REFERENCES',
+  'CONSTRAINT',
+  'AUTO_INCREMENT',
+  'COMMENT',
+  'COLLATE',
+  'UNSIGNED',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -261,6 +281,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return SCHEMA_WORDS
     case 'alias':
       return ALIAS_WORDS
+    case 'value':
+      return VALUE_WORDS
+    case 'definition':
+      return DEFINITION_WORDS
     case 'keyword':
       return ANY_WORDS
     case 'any':
@@ -282,7 +306,8 @@ export function keywordCompletions(
   const group = dialectWordGroup(dialect)
   if (group !== undefined) {
     const pinned = context === 'keyword' || context === 'any'
-    if (pinned || group.contexts.includes(context as 'relation' | 'column')) {
+    const clause = context === 'relation' || context === 'column'
+    if (pinned || (clause && group.contexts.includes(context))) {
       words.push(...group.words)
     }
   }
