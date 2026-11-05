@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import type { CellValue, ClientConnection, ColumnInfo, QueryResult, Row } from '../shared/types'
 import { ApiError, api } from './api'
 import { DataGrid, type CellMenuTarget } from './DataGrid'
+import { MenuGroupList, type MenuGroupSpec } from './menugroups'
 import { formatCell, formatCount, formatMs } from './format'
 import { CopyIcon, DownloadIcon, FilterIcon, PlayIcon, RefreshIcon, TableIcon, TerminalIcon } from './icons'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
@@ -807,6 +808,91 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     )
   }
 
+  /** Copy the checked rows in the same formats the page copies offer. */
+  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    if (picked.length === 0) return
+    const text =
+      format === 'csv'
+        ? toCsv(shownColumns, picked)
+        : format === 'tsv'
+          ? toTsv(shownColumns, picked)
+          : format === 'json'
+            ? toJson(shownColumns, picked)
+            : format === 'md'
+              ? toMarkdown(shownColumns, picked)
+              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, shownColumns, picked)
+    void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
+  }
+
+  const exportGroups: MenuGroupSpec[] = [
+    {
+      id: 'page',
+      label: '导出当前页',
+      leaves: [
+        { id: 'page-csv', label: `当前页 CSV（${formatCount(rows.length)} 行）`, onSelect: () => void exportRows('csv', 'page') },
+        { id: 'page-json', label: `当前页 JSON（${formatCount(rows.length)} 行）`, onSelect: () => void exportRows('json', 'page') },
+        { id: 'page-sql', label: `当前页 SQL（${formatCount(rows.length)} 行）`, onSelect: () => void exportRows('sql', 'page') },
+        { id: 'page-md', label: `当前页 Markdown（${formatCount(rows.length)} 行）`, onSelect: () => void exportRows('md', 'page') },
+      ],
+    },
+    ...(selectedRows.size > 0
+      ? [
+          {
+            id: 'selected',
+            label: '导出已选',
+            leaves: [
+              { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => exportSelected('csv') },
+              { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => exportSelected('json') },
+              { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => exportSelected('sql') },
+              { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => exportSelected('md') },
+            ],
+          },
+        ]
+      : []),
+    {
+      id: 'copy-page',
+      label: '复制当前页',
+      leaves: [
+        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown')) },
+        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV')) },
+        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void copyText(toTsv(displayColumns, rows)).then(noteCopied('TSV')) },
+        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON')) },
+        {
+          id: 'copy-page-sql',
+          label: '复制当前页 SQL',
+          onSelect: () =>
+            void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows)).then(noteCopied('SQL')),
+        },
+      ],
+    },
+    ...(selectedRows.size > 0
+      ? [
+          {
+            id: 'copy-selected',
+            label: '复制已选',
+            leaves: [
+              { id: 'copy-selected-md', label: '复制已选 Markdown', onSelect: () => copySelected('md') },
+              { id: 'copy-selected-csv', label: '复制已选 CSV', onSelect: () => copySelected('csv') },
+              { id: 'copy-selected-tsv', label: '复制已选 TSV', onSelect: () => copySelected('tsv') },
+              { id: 'copy-selected-json', label: '复制已选 JSON', onSelect: () => copySelected('json') },
+              { id: 'copy-selected-sql', label: '复制已选 SQL', onSelect: () => copySelected('sql') },
+            ],
+          },
+        ]
+      : []),
+    {
+      id: 'all',
+      label: '导出全部',
+      leaves: [
+        { id: 'all-csv', label: '全部 CSV', onSelect: () => void exportRows('csv', 'all') },
+        { id: 'all-json', label: '全部 JSON', onSelect: () => void exportRows('json', 'all') },
+        { id: 'all-sql', label: '全部 SQL', onSelect: () => void exportRows('sql', 'all') },
+        { id: 'all-md', label: '全部 Markdown', onSelect: () => void exportRows('md', 'all') },
+      ],
+    },
+  ]
+
   return (
     <div className="dshdb-qtab" onKeyDown={handleShortcuts}>
       <div className="dshdb-qbar">
@@ -848,72 +934,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             {exporting ? <Spinner /> : <DownloadIcon size={13} />}
           </button>
           {exportOpen ? (
-            <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
-              <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'page')}>
-                当前页 CSV（{formatCount(rows.length)} 行）
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('json', 'page')}>
-                当前页 JSON（{formatCount(rows.length)} 行）
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'page')}>
-                当前页 SQL（{formatCount(rows.length)} 行）
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('md', 'page')}>
-                当前页 Markdown（{formatCount(rows.length)} 行）
-              </button>
-              {selectedRows.size > 0 ? (
-                <>
-                  <button type="button" role="menuitem" onClick={() => exportSelected('csv')}>
-                    已选 CSV（{selectedRows.size} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportSelected('json')}>
-                    已选 JSON（{selectedRows.size} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportSelected('sql')}>
-                    已选 SQL（{selectedRows.size} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportSelected('md')}>
-                    已选 Markdown（{selectedRows.size} 行）
-                  </button>
-                </>
-              ) : null}
-              <button type="button" role="menuitem" onClick={() => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown'))}>
-                复制当前页 Markdown
-              </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV'))}>
-                复制当前页 CSV
-              </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toTsv(displayColumns, rows)).then(noteCopied('TSV'))}>
-                复制当前页 TSV
-              </button>
-              <button type="button" role="menuitem" onClick={() => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON'))}>
-                复制当前页 JSON
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() =>
-                  void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows)).then(noteCopied('SQL'))
-                }
-              >
-                复制当前页 SQL
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('csv', 'all')}>
-                全部 CSV
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('json', 'all')}>
-                全部 JSON
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('sql', 'all')}>
-                全部 SQL
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportRows('md', 'all')}>
-                全部 Markdown
-              </button>
-              <button type="button" role="menuitem" onClick={() => void exportDump()}>
-                整表脚本（建表 + 数据）
-              </button>
-            </span>
+            <MenuGroupList
+              groups={exportGroups}
+              extra={{ id: 'dump', label: '整表脚本（建表 + 数据）', onSelect: () => void exportDump() }}
+              onClose={() => setExportOpen(false)}
+            />
           ) : null}
         </span>
         <button

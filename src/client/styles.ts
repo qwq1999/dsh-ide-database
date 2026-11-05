@@ -702,6 +702,23 @@ export const CSS = `
   vertical-align: -2px;
   color: var(--dsw-alias-label-secondary);
 }
+/* Grouped menus: the group row opens a flyout so the main column stays short. */
+.dshdb-menu-groups { min-width: 168px; }
+.dshdb-submenu-anchor { position: relative; display: block; }
+.dshdb-submenu-trigger { display: flex; align-items: center; gap: 8px; }
+.dshdb-submenu-trigger::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
+/* Flyouts open to the left because the menu itself is pinned to the right edge. */
+.dshdb-menu .dshdb-submenu {
+  display: none;
+  top: -4px;
+  right: calc(100% + 2px);
+}
+.dshdb-menu .dshdb-submenu[data-open='true'] { display: flex; }
 .dshdb-hmenu {
   position: fixed;
   z-index: 40;

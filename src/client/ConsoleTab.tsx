@@ -62,6 +62,7 @@ import { ClockIcon, CopyIcon, DatabaseIcon, DownloadIcon, MoreIcon, PlayIcon, St
 import { consoleActionIcon, setConsoleActionOrder, useConsoleActionOrder } from './consoleactions'
 import { setConsoleAutoComplete, useConsoleAutoComplete } from './consoleprefs'
 import { fitActionCount } from './toolbaroverflow'
+import { MenuGroupList, type MenuGroupSpec } from './menugroups'
 import type { ConsoleActionId } from '../shared/consoleactions'
 import { openTableTab, readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
@@ -1700,99 +1701,115 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     </Button>
   )
 
-  /** The export formats; the same menu hangs off the export button or "…". */
-  const renderExportMenu = (): ReactElement => (
-    <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
-      <button type="button" role="menuitem" onClick={() => exportPage('csv')} disabled={filteredRows.length === 0}>
-        当前页 CSV（{filteredRows.length} 行）
-      </button>
-      <button type="button" role="menuitem" onClick={() => exportPage('json')} disabled={filteredRows.length === 0}>
-        当前页 JSON（{filteredRows.length} 行）
-      </button>
-      <button type="button" role="menuitem" onClick={() => exportPage('sql')} disabled={filteredRows.length === 0}>
-        当前页 SQL（{filteredRows.length} 行）
-      </button>
-      <button type="button" role="menuitem" onClick={() => exportPage('md')} disabled={filteredRows.length === 0}>
-        当前页 Markdown（{filteredRows.length} 行）
-      </button>
-      {selectedRows.size > 0 ? (
-        <>
-          <button type="button" role="menuitem" onClick={() => exportSelected('csv')}>
-            已选 CSV（{selectedRows.size} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => exportSelected('json')}>
-            已选 JSON（{selectedRows.size} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => exportSelected('sql')}>
-            已选 SQL（{selectedRows.size} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => exportSelected('md')}>
-            已选 Markdown（{selectedRows.size} 行）
-          </button>
-        </>
-      ) : null}
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown'))}
-        disabled={filteredRows.length === 0}
-      >
-        复制当前页 Markdown
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV'))}
-        disabled={filteredRows.length === 0}
-      >
-        复制当前页 CSV
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV'))}
-        disabled={filteredRows.length === 0}
-      >
-        复制当前页 TSV
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON'))}
-        disabled={filteredRows.length === 0}
-      >
-        复制当前页 JSON
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          const target = tableTarget()
-          if (target === null) return
-          void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows)).then(noteCopied('SQL'))
-        }}
-        disabled={filteredRows.length === 0 || tableTarget() === null}
-      >
-        复制当前页 SQL
-      </button>
-      {base !== '' ? (
-        <>
-          <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
-            全部 CSV（最多 {EXPORT_LIMIT} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => void exportAll('json')} disabled={exporting}>
-            全部 JSON（最多 {EXPORT_LIMIT} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => void exportAll('sql')} disabled={exporting}>
-            全部 SQL（最多 {EXPORT_LIMIT} 行）
-          </button>
-          <button type="button" role="menuitem" onClick={() => void exportAll('md')} disabled={exporting}>
-            全部 Markdown（最多 {EXPORT_LIMIT} 行）
-          </button>
-        </>
-      ) : null}
-    </span>
-  )
+  /** Copy the checked rows in the same formats the page copies offer. */
+  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    if (picked.length === 0) return
+    const target = format === 'sql' ? tableTarget() : null
+    if (format === 'sql' && target === null) {
+      noTableNote()
+      return
+    }
+    const text =
+      format === 'csv'
+        ? toCsv(shownColumns, picked)
+        : format === 'tsv'
+          ? toTsv(shownColumns, picked)
+          : format === 'json'
+            ? toJson(shownColumns, picked)
+            : format === 'md'
+              ? toMarkdown(shownColumns, picked)
+              : insertStatements(
+                  connection?.dialect ?? 'mysql',
+                  target!.schema,
+                  target!.table,
+                  shownColumns,
+                  picked,
+                )
+    void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
+  }
+
+  /** The export formats, grouped so the menu stays short. */
+  const renderExportMenu = (): ReactElement => {
+    const groups: MenuGroupSpec[] = [
+      {
+        id: 'page',
+        label: '导出当前页',
+        leaves: [
+          { id: 'page-csv', label: `当前页 CSV（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('csv') },
+          { id: 'page-json', label: `当前页 JSON（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('json') },
+          { id: 'page-sql', label: `当前页 SQL（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('sql') },
+          { id: 'page-md', label: `当前页 Markdown（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('md') },
+        ],
+      },
+      ...(selectedRows.size > 0
+        ? [
+            {
+              id: 'selected',
+              label: '导出已选',
+              leaves: [
+                { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => exportSelected('csv') },
+                { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => exportSelected('json') },
+                { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => exportSelected('sql') },
+                { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => exportSelected('md') },
+              ],
+            },
+          ]
+        : []),
+      {
+        id: 'copy-page',
+        label: '复制当前页',
+        leaves: [
+          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown')) },
+          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV')) },
+          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV')) },
+          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON')) },
+          {
+            id: 'copy-page-sql',
+            label: '复制当前页 SQL',
+            disabled: filteredRows.length === 0 || tableTarget() === null,
+            onSelect: () => {
+              const target = tableTarget()
+              if (target === null) return
+              void copyText(
+                insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows),
+              ).then(noteCopied('SQL'))
+            },
+          },
+        ],
+      },
+      ...(selectedRows.size > 0
+        ? [
+            {
+              id: 'copy-selected',
+              label: '复制已选',
+              leaves: [
+                { id: 'copy-selected-md', label: '复制已选 Markdown', onSelect: () => copySelected('md') },
+                { id: 'copy-selected-csv', label: '复制已选 CSV', onSelect: () => copySelected('csv') },
+                { id: 'copy-selected-tsv', label: '复制已选 TSV', onSelect: () => copySelected('tsv') },
+                { id: 'copy-selected-json', label: '复制已选 JSON', onSelect: () => copySelected('json') },
+                { id: 'copy-selected-sql', label: '复制已选 SQL', onSelect: () => copySelected('sql') },
+              ],
+            },
+          ]
+        : []),
+      ...(base !== ''
+        ? [
+            {
+              id: 'all',
+              label: '导出全部',
+              leaves: [
+                { id: 'all-csv', label: `全部 CSV（最多 ${EXPORT_LIMIT} 行）`, disabled: exporting, onSelect: () => void exportAll('csv') },
+                { id: 'all-json', label: `全部 JSON（最多 ${EXPORT_LIMIT} 行）`, disabled: exporting, onSelect: () => void exportAll('json') },
+                { id: 'all-sql', label: `全部 SQL（最多 ${EXPORT_LIMIT} 行）`, disabled: exporting, onSelect: () => void exportAll('sql') },
+                { id: 'all-md', label: `全部 Markdown（最多 ${EXPORT_LIMIT} 行）`, disabled: exporting, onSelect: () => void exportAll('md') },
+              ],
+            },
+          ]
+        : []),
+    ]
+    return <MenuGroupList groups={groups} onClose={() => setExportOpen(false)} />
+  }
 
   const allRows = pageSize === ALL_PAGE_SIZE
   const hasPrevious = page > 0

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const downloads = vi.hoisted(() => vi.fn())
+const copies = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 
 vi.mock('../../src/client/api', () => ({
   api: { ...mocks },
@@ -27,6 +28,11 @@ vi.mock('../../src/client/api', () => ({
 vi.mock('../../src/client/export', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/export')>()
   return { ...actual, downloadText: downloads }
+})
+
+vi.mock('../../src/client/colmenu', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/client/colmenu')>()
+  return { ...actual, copyText: copies }
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
@@ -127,5 +133,67 @@ describe('exporting selected console rows', () => {
     fireEvent.click(screen.getByLabelText('导出结果'))
     expect(await screen.findByRole('menuitem', { name: /^当前页 CSV/ })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: /^已选 / })).toBeNull()
+  })
+
+  it('copies only the checked rows', async () => {
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT name FROM t',
+      columns: [{ name: 'name', typeName: 'VARCHAR' }],
+      rows: [['alpha'], ['beta'], ['gamma']],
+      rowCount: 3,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT name FROM t' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('alpha')
+
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(screen.getByLabelText('选择第 3 行'))
+    fireEvent.click(screen.getByLabelText('导出结果'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制已选' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制已选 TSV' }))
+
+    await waitFor(() => expect(copies).toHaveBeenCalledTimes(1))
+    const text = copies.mock.calls[0]![0] as string
+    expect(text).toContain('alpha')
+    expect(text).toContain('gamma')
+    expect(text).not.toContain('beta')
+  })
+
+  it('groups the export formats into flyout submenus', async () => {
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT name FROM t',
+      columns: [{ name: 'name', typeName: 'VARCHAR' }],
+      rows: [['alpha'], ['beta']],
+      rowCount: 2,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT name FROM t' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('alpha')
+
+    fireEvent.click(screen.getByLabelText('导出结果'))
+    const page = await screen.findByRole('menuitem', { name: '导出当前页' })
+    expect(page.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.pointerEnter(page)
+    expect(page.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-open')).toBe('true')
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^当前页 CSV/ }))
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
   })
 })

@@ -147,4 +147,42 @@ describe('exporting selected table rows', () => {
     expect(await screen.findByRole('menuitem', { name: /^当前页 CSV/ })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: /^已选 / })).toBeNull()
   })
+
+  it('copies only the checked rows', async () => {
+    renderTable()
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(screen.getByLabelText('选择第 3 行'))
+
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制已选' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制已选 CSV' }))
+
+    await waitFor(() => expect(copies).toHaveBeenCalledTimes(1))
+    const text = copies.mock.calls[0]![0] as string
+    expect(text).toContain('alpha')
+    expect(text).toContain('gamma')
+    expect(text).not.toContain('beta')
+  })
+
+  it('groups the export formats into flyout submenus', async () => {
+    renderTable()
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+    fireEvent.click(trigger)
+
+    const page = await screen.findByRole('menuitem', { name: '导出当前页' })
+    expect(page.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.pointerEnter(page)
+    expect(page.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-open')).toBe('true')
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^当前页 CSV/ }))
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
+  })
 })
