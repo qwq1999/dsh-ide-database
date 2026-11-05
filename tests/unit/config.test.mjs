@@ -101,6 +101,18 @@ describe('ConfigStore', () => {
     expect(reloaded.snapshot().settings.keybindings).toEqual({ 'console.clear': 'mod+k' })
   })
 
+  it('stores the console toolbar order and reloads it without unknown ids', () => {
+    const { config, dir } = store()
+    config.updateSettings({ consoleActions: ['export', 'nope', 'run', 'export', 'save'] })
+    expect(config.snapshot().settings.consoleActions).toEqual(['export', 'run', 'save'])
+    expect(() => config.updateSettings({ consoleActions: 'export' })).toThrow(/consoleActions/)
+
+    const secrets = new SecretStore(join(dir, 'secrets.json'))
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), secrets)
+    reloaded.load()
+    expect(reloaded.snapshot().settings.consoleActions).toEqual(['export', 'run', 'save'])
+  })
+
   it('persists custom drivers and settings to disk', () => {
     const { config, dir } = store()
     config.upsertDriver({

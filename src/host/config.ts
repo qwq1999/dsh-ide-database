@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto'
 
 import { isPresetId, isSqlDialect, PRESETS, presetOf } from '../shared/presets.js'
 import { lenientKeybindings, parseKeybindings } from '../shared/keymap.js'
+import { readConsoleActionOrder } from '../shared/consoleactions.js'
 import type {
   ClientConfig,
   ClientConnection,
@@ -32,6 +33,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   redisScanCount: 200,
   confirmDestructive: true,
   keybindings: {},
+  consoleActions: [],
 }
 
 const NAME_MAX = 80
@@ -55,6 +57,7 @@ export const SETTING_KEYS: (keyof DbSettings)[] = [
   'redisScanCount',
   'confirmDestructive',
   'keybindings',
+  'consoleActions',
 ]
 
 function nowIso(): string {
@@ -208,6 +211,9 @@ export class ConfigStore {
             break
           case 'keybindings':
             settings.keybindings = lenientKeybindings(value)
+            break
+          case 'consoleActions':
+            settings.consoleActions = readConsoleActionOrder(value)
             break
         }
       } catch {
@@ -522,6 +528,10 @@ export class ConfigStore {
           } catch (error) {
             throw new DbError('invalid', errorMessage(error))
           }
+          break
+        case 'consoleActions':
+          if (!Array.isArray(value)) throw new DbError('invalid', 'consoleActions 必须是数组')
+          next.consoleActions = readConsoleActionOrder(value)
           break
       }
     }

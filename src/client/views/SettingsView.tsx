@@ -13,7 +13,9 @@ import {
 } from '../../shared/keymap'
 import { formatBytes } from '../format'
 import { IS_MAC } from '../keymap'
-import { DatabaseIcon, DownloadIcon, EditIcon, PlusIcon, RefreshIcon, TrashIcon } from '../icons'
+import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon, DownloadIcon, EditIcon, PlusIcon, RefreshIcon, TrashIcon } from '../icons'
+import { CONSOLE_ACTION_LABEL, consoleActionIcon } from '../consoleactions'
+import { orderConsoleActions, type ConsoleActionId } from '../../shared/consoleactions'
 import { Banner, Button, Field, Panel, Select, Spinner, Switch, Tag, TextInput } from '../ui'
 
 /** Panel order: the editor first, then everything the user reaches with a mouse. */
@@ -194,6 +196,17 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
   const presets = props.drivers.filter((driver) => driver.preset !== null)
   const customs = props.drivers.filter((driver) => driver.preset === null)
   const keybindings = draft.keybindings ?? {}
+  const actionOrder = orderConsoleActions(draft.consoleActions)
+  /** Swap one step up or down; the header buttons are disabled at the ends. */
+  const moveAction = (id: ConsoleActionId, offset: -1 | 1): void => {
+    const index = actionOrder.indexOf(id)
+    const target = index + offset
+    if (index < 0 || target < 0 || target >= actionOrder.length) return
+    const next = [...actionOrder]
+    next.splice(index, 1)
+    next.splice(target, 0, id)
+    update('consoleActions', next)
+  }
 
   return (
     <div className="dshdb-scroll dshdb-scroll-thin" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -379,6 +392,55 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
             </div>
           </div>
         ))}
+      </Panel>
+
+      <Panel
+        title="控制台工具栏"
+        collapsible
+        defaultOpen={false}
+        actions={
+          <div className="dshdb-inline">
+            <Button size="sm" variant="ghost" onClick={() => update('consoleActions', [])}>
+              恢复默认
+            </Button>
+            <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
+              保存
+            </Button>
+          </div>
+        }
+        bodyClassName="dshdb-panel-body-pad"
+      >
+        <div className="dshdb-muted" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+          控制台工具栏按钮的左右顺序；窗口太窄放不下时，末尾的按钮会收进「⋯」菜单。
+        </div>
+        <div className="dshdb-list">
+          {actionOrder.map((id, index) => (
+            <div className="dshdb-action-row" key={id}>
+              <span className="dshdb-action-icon">{consoleActionIcon(id, 13)}</span>
+              <div className="dshdb-driver-main">
+                <div className="dshdb-driver-name">{CONSOLE_ACTION_LABEL[id]}</div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<ArrowUpIcon size={12} />}
+                aria-label={`上移 ${CONSOLE_ACTION_LABEL[id]}`}
+                title="上移"
+                disabled={index === 0}
+                onClick={() => moveAction(id, -1)}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<ArrowDownIcon size={12} />}
+                aria-label={`下移 ${CONSOLE_ACTION_LABEL[id]}`}
+                title="下移"
+                disabled={index === actionOrder.length - 1}
+                onClick={() => moveAction(id, 1)}
+              />
+            </div>
+          ))}
+        </div>
       </Panel>
 
       <Panel

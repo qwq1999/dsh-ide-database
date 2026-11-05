@@ -320,3 +320,93 @@ export function RecycleIcon(props: IconProps): ReactElement {
   )
 }
 
+/** 格式化 SQL：一根“魔法棒”，和普通的编辑铅笔区分开。 */
+export function FormatIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 19.5 14 10" />
+      <path d="m12.5 8.5 3 3" />
+      <path d="M18.5 3.5v3M17 5h3M7 3.5v2M6 4.5h2" />
+    </Svg>
+  )
+}
+
+/** 导入：下载图标的反向箭头（把文件读进来）。 */
+export function UploadIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M12 16.5V5M7 10l5-5 5 5M4.5 20.5h15" />
+    </Svg>
+  )
+}
+
+export function SaveIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M5 3.5h10.5L20 8v12.5H5Z" />
+      <path d="M8 3.5v5h7v-5" />
+      <path d="M8 20.5v-6h8v6" />
+    </Svg>
+  )
+}
+
+/** 执行计划：带项目符号的清单。 */
+export function PlanIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M9.5 6h11M9.5 12h11M9.5 18h7" />
+      <circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </Svg>
+  )
+}
+
+/** 事务：两条循环箭头，表示开始与结束之间的一段时间。 */
+export function TransactionIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M5 9.5A7.5 7.5 0 0 1 19 8" />
+      <path d="M19 4v4h-4" />
+      <path d="M19 14.5A7.5 7.5 0 0 1 5 16" />
+      <path d="M5 20v-4h4" />
+    </Svg>
+  )
+}
+
+export function UndoIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10a5 5 0 0 1 0 10h-3" />
+    </Svg>
+  )
+}
+
+/** 溢出的工具栏动作收进这个三点按钮。 */
+export function MoreIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </Svg>
+  )
+}
+
+export function ArrowUpIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+    </Svg>
+  )
+}
+
+export function ArrowDownIcon(props: IconProps): ReactElement {
+  return (
+    <Svg {...props}>
+      <path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" />
+    </Svg>
+  )
+}
+

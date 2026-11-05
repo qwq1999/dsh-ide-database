@@ -5,6 +5,7 @@ import { api } from './api'
 import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
 import { setKeybindings } from './keymap'
+import { setConsoleActionOrder } from './consoleactions'
 import { copyText } from './colmenu'
 import { EditIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 import { ConnectionModal } from './modals/ConnectionModal'
@@ -172,6 +173,11 @@ export function App(props: AppProps): ReactElement {
   useEffect(() => {
     setKeybindings(snapshot?.settings.keybindings)
   }, [snapshot?.settings.keybindings])
+
+  // 控制台工具栏的顺序存在设置里，和快捷键一样统一发布给控制台标签页。
+  useEffect(() => {
+    setConsoleActionOrder(snapshot?.settings.consoleActions)
+  }, [snapshot?.settings.consoleActions])
 
   const askConfirm = useCallback((message: string, detail?: string): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {

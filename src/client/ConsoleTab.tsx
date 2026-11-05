@@ -6,7 +6,7 @@
  * keys on top, the selected value below) plus a command box, which is how IDEA
  * presents Redis.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type {
   CellValue,
   ClientConnection,
@@ -58,7 +58,10 @@ import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
 import { toggleSqlComment } from './sqlcomment'
-import { ClockIcon, CopyIcon, DatabaseIcon, DownloadIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
+import { ClockIcon, CopyIcon, DatabaseIcon, DownloadIcon, MoreIcon, PlayIcon, StopIcon, TableIcon, TerminalIcon } from './icons'
+import { consoleActionIcon, setConsoleActionOrder, useConsoleActionOrder } from './consoleactions'
+import { fitActionCount } from './toolbaroverflow'
+import type { ConsoleActionId } from '../shared/consoleactions'
 import { openTableTab, readConsoleTabParams } from './tab-open'
 import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
@@ -74,6 +77,22 @@ export interface ConsoleTabProps {
 interface Failure {
   message: string
   detail?: string
+}
+
+/** One button of the SQL console toolbar; rendered inline or inside the "…" menu. */
+interface ConsoleToolbarAction {
+  id: ConsoleActionId
+  label: string
+  /** Toolbar text when it differs from the menu label (the copy flash). */
+  visibleLabel?: string
+  title?: string
+  /** Accessible name when it has to differ from the visible label (icon-only history). */
+  ariaLabel?: string
+  variant?: 'default' | 'primary' | 'ghost'
+  disabled?: boolean
+  loading?: boolean
+  expanded?: boolean
+  onClick?: () => void
 }
 
 import { CONSOLE_PAGE_KEY, readPageSize, writePageSize } from './pagesize'
@@ -184,9 +203,47 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   }, [exportNote])
   const exportCancelled = useRef(false)
   const [exporting, setExporting] = useState(false)
-  const exportAnchor = useRef<HTMLSpanElement>(null)
+  const exportAnchor = useRef<HTMLSpanElement | null>(null)
   const closeExport = useCallback(() => setExportOpen(false), [])
   usePopoverDismiss(exportOpen, closeExport, exportAnchor)
+
+  /** Console toolbar: the saved order and how many buttons fit before the "…" menu. */
+  const actionOrder = useConsoleActionOrder()
+  const [visibleActions, setVisibleActions] = useState(actionOrder.length)
+  const [overflowOpen, setOverflowOpen] = useState(false)
+  const actionsRef = useRef<HTMLSpanElement>(null)
+  const overflowWrapRef = useRef<HTMLSpanElement>(null)
+  const visibleExportWrapRef = useRef<HTMLSpanElement>(null)
+  const closeOverflow = useCallback(() => setOverflowOpen(false), [])
+  usePopoverDismiss(overflowOpen, closeOverflow, overflowWrapRef)
+  const measureToolbar = useCallback((): void => {
+    const container = actionsRef.current
+    if (container === null) return
+    const slots = Array.from(container.querySelectorAll<HTMLElement>('[data-console-action]'))
+    const widths = slots.map((slot) => slot.getBoundingClientRect().width || slot.offsetWidth)
+    const overflowSlot = container.querySelector<HTMLElement>('[data-console-overflow]')
+    const overflowWidth =
+      overflowSlot === null ? 0 : overflowSlot.getBoundingClientRect().width || overflowSlot.offsetWidth
+    const next = fitActionCount(widths, container.clientWidth, overflowWidth)
+    setVisibleActions((previous) => (previous === next ? previous : next))
+    if (next === actionOrder.length) setOverflowOpen((open) => (open ? false : open))
+  }, [actionOrder.length])
+  useLayoutEffect(() => {
+    measureToolbar()
+  })
+  useEffect(() => {
+    const container = actionsRef.current
+    if (container === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => measureToolbar())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [measureToolbar])
+  useLayoutEffect(() => {
+    // The export popover follows its own button, or the "…" button when the
+    // export action itself is one of the hidden ones.
+    exportAnchor.current =
+      actionOrder.indexOf('export') < visibleActions ? visibleExportWrapRef.current : overflowWrapRef.current
+  })
   const [multiProgress, setMultiProgress] = useState<{ index: number; total: number } | null>(null)
   const [multiNote, setMultiNote] = useState('')
   const [scriptResults, setScriptResults] = useState<QueryResult[]>([])
@@ -324,6 +381,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         if (!alive) return
         setConnections(status.config.connections)
         setSettings(status.config.settings)
+        setConsoleActionOrder(status.config.settings.consoleActions)
         setSelectedId((previous) => {
           if (previous !== '' && status.config.connections.some((item) => item.id === previous)) return previous
           return status.config.connections[0]?.id ?? ''
@@ -1009,6 +1067,19 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     resultFlash.reset()
   }, [commandResult, resultFlash.reset])
 
+  /** Copy the selection, or the statement under the caret when nothing is selected. */
+  const copyStatement = (): void => {
+    const area = inputRef.current
+    const picked =
+      area === null || area.selectionStart === area.selectionEnd
+        ? statementAtCaret(statement, area?.selectionStart ?? caretPos).statement
+        : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
+    if (picked.trim() === '') return
+    void copyText(picked).then((ok) => {
+      statementFlash.flash(ok)
+    })
+  }
+
   /** Re-read the selected key so a TTL countdown or a changed payload can be picked up. */
   const refreshValue = useCallback(async (): Promise<void> => {
     if (selectedId === '' || selectedKey === '') return
@@ -1412,6 +1483,212 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setExporting(false)
     }
   }
+
+  /** Every toolbar action in its default order; `actionOrder` applies the saved order. */
+  const toolbarActions: ConsoleToolbarAction[] = [
+    {
+      id: 'run',
+      label: '执行',
+      title: '有选中内容时只执行选中部分',
+      variant: 'primary',
+      loading: running,
+      onClick: () => void run(),
+    },
+    { id: 'cancel', label: '取消', disabled: !running, onClick: () => void cancel() },
+    {
+      id: 'history',
+      label: '历史',
+      expanded: historyOpen,
+      disabled: history.length === 0,
+      onClick: () => setHistoryOpen((open) => !open),
+    },
+    {
+      id: 'format',
+      label: '格式化',
+      title: `整理关键字大小写与换行（${shortcutLabel('console.format')}）`,
+      disabled: statement.trim() === '',
+      onClick: applyFormat,
+    },
+    {
+      id: 'import',
+      label: '导入',
+      title: `从 .sql 文件读取脚本并插入到光标处（上限 ${String(MAX_SQL_IMPORT_BYTES / 1024 / 1024)} MB）`,
+      onClick: () => fileInputRef.current?.click(),
+    },
+    {
+      id: 'save',
+      label: '保存',
+      title: '把编辑器里的 SQL 保存为 .sql 文件',
+      disabled: statement.trim() === '',
+      onClick: saveSqlFile,
+    },
+    {
+      id: 'clear',
+      label: '清空',
+      title: '清空编辑器里的 SQL（不影响已经拿到的结果）',
+      disabled: statement === '',
+      onClick: () => {
+        setStatement('')
+        setSelectedRun(false)
+        setCaretPos(0)
+        inputRef.current?.focus()
+      },
+    },
+    {
+      id: 'copy',
+      label: '复制 SQL',
+      visibleLabel: statementFlash.copied ? '已复制' : '复制 SQL',
+      title: '复制选中的 SQL；没有选中时复制光标所在的那条',
+      disabled: statement.trim() === '',
+      onClick: copyStatement,
+    },
+    {
+      id: 'explain',
+      label: '执行计划',
+      title: '查看当前语句的执行计划（不会真正执行语句）',
+      loading: planRunning,
+      disabled: statement.trim() === '' || running,
+      onClick: () => void explainPlan(),
+    },
+    {
+      id: 'openTable',
+      label: '打开数据表',
+      title: '在新标签页打开编辑器里这条语句查询的表',
+      disabled: editorTarget() === null || selectedId === '',
+      onClick: () => void openEditorTable(),
+    },
+    {
+      id: 'txStart',
+      label: '事务',
+      title: '发送 BEGIN，开启手动事务',
+      disabled: txButtonDisabled(tx, 'start') || txBusy || selectedId === '',
+      onClick: () => void runTx('start'),
+    },
+    {
+      id: 'txCommit',
+      label: '提交',
+      title: '提交当前事务',
+      disabled: txButtonDisabled(tx, 'commit') || txBusy,
+      onClick: () => void runTx('commit'),
+    },
+    {
+      id: 'txRollback',
+      label: '回滚',
+      title: '回滚当前事务',
+      disabled: txButtonDisabled(tx, 'rollback') || txBusy,
+      onClick: () => void runTx('rollback'),
+    },
+    {
+      id: 'export',
+      label: '导出',
+      ariaLabel: '导出结果',
+      title: exporting ? '正在导出…' : '导出结果',
+      disabled: running || exporting || rows.length === 0,
+      onClick: () => setExportOpen((open) => !open),
+    },
+  ]
+  const actionById = new Map(toolbarActions.map((action) => [action.id, action]))
+  const orderedActions = actionOrder.flatMap((id) => {
+    const action = actionById.get(id)
+    return action === undefined ? [] : [action]
+  })
+  const visibleActionCount = Math.min(visibleActions, orderedActions.length)
+  const hiddenActions = orderedActions.slice(visibleActionCount)
+  const exportHidden = orderedActions.findIndex((action) => action.id === 'export') >= visibleActionCount
+
+  const renderToolbarButton = (action: ConsoleToolbarAction): ReactElement => (
+    <Button
+      size="sm"
+      variant={action.variant ?? 'ghost'}
+      icon={consoleActionIcon(action.id)}
+      title={action.title}
+      aria-label={action.ariaLabel}
+      loading={action.loading === true}
+      disabled={action.disabled === true}
+      aria-expanded={action.expanded}
+      onClick={action.onClick}
+    >
+      {action.visibleLabel ?? action.label}
+    </Button>
+  )
+
+  /** The export formats; the same menu hangs off the export button or "…". */
+  const renderExportMenu = (): ReactElement => (
+    <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
+      <button type="button" role="menuitem" onClick={() => exportPage('csv')} disabled={filteredRows.length === 0}>
+        当前页 CSV（{filteredRows.length} 行）
+      </button>
+      <button type="button" role="menuitem" onClick={() => exportPage('json')} disabled={filteredRows.length === 0}>
+        当前页 JSON（{filteredRows.length} 行）
+      </button>
+      <button type="button" role="menuitem" onClick={() => exportPage('sql')} disabled={filteredRows.length === 0}>
+        当前页 SQL（{filteredRows.length} 行）
+      </button>
+      <button type="button" role="menuitem" onClick={() => exportPage('md')} disabled={filteredRows.length === 0}>
+        当前页 Markdown（{filteredRows.length} 行）
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown'))}
+        disabled={filteredRows.length === 0}
+      >
+        复制当前页 Markdown
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV'))}
+        disabled={filteredRows.length === 0}
+      >
+        复制当前页 CSV
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV'))}
+        disabled={filteredRows.length === 0}
+      >
+        复制当前页 TSV
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON'))}
+        disabled={filteredRows.length === 0}
+      >
+        复制当前页 JSON
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          const target = tableTarget()
+          if (target === null) return
+          void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows)).then(noteCopied('SQL'))
+        }}
+        disabled={filteredRows.length === 0 || tableTarget() === null}
+      >
+        复制当前页 SQL
+      </button>
+      {base !== '' ? (
+        <>
+          <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
+            全部 CSV（最多 {EXPORT_LIMIT} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => void exportAll('json')} disabled={exporting}>
+            全部 JSON（最多 {EXPORT_LIMIT} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => void exportAll('sql')} disabled={exporting}>
+            全部 SQL（最多 {EXPORT_LIMIT} 行）
+          </button>
+          <button type="button" role="menuitem" onClick={() => void exportAll('md')} disabled={exporting}>
+            全部 Markdown（最多 {EXPORT_LIMIT} 行）
+          </button>
+        </>
+      ) : null}
+    </span>
+  )
 
   const allRows = pageSize === ALL_PAGE_SIZE
   const hasPrevious = page > 0
@@ -1957,39 +2234,62 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           </span>
 
           <div className="dshdb-qbar">
-            <Button size="sm" variant="primary" icon={<PlayIcon size={12} />} onClick={() => void run()} loading={running} title="有选中内容时只执行选中部分">
-              执行
-            </Button>
-            <Button size="sm" variant="ghost" icon={<StopIcon size={12} />} onClick={() => void cancel()} disabled={!running}>
-              取消
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<ClockIcon size={12} />}
-              aria-expanded={historyOpen}
-              onClick={() => setHistoryOpen((open) => !open)}
-              disabled={history.length === 0}
-            >
-              历史
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={applyFormat}
-              disabled={statement.trim() === ''}
-              title={`整理关键字大小写与换行（${shortcutLabel('console.format')}）`}
-            >
-              格式化
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              title={`从 .sql 文件读取脚本并插入到光标处（上限 ${String(MAX_SQL_IMPORT_BYTES / 1024 / 1024)} MB）`}
-            >
-              导入
-            </Button>
+            <span className="dshdb-qbar-actions" ref={actionsRef}>
+              {orderedActions.map((action, index) => (
+                <span
+                  key={action.id}
+                  className={`dshdb-qbar-slot${index < visibleActionCount ? '' : ' dshdb-qbar-slot-hidden'}`}
+                  data-console-action={action.id}
+                >
+                  {action.id === 'export' ? (
+                    <span className="dshdb-menu-wrap" ref={index < visibleActionCount ? visibleExportWrapRef : undefined}>
+                      {renderToolbarButton(action)}
+                      {index < visibleActionCount && exportOpen ? renderExportMenu() : null}
+                    </span>
+                  ) : (
+                    renderToolbarButton(action)
+                  )}
+                </span>
+              ))}
+              <span
+                className={`dshdb-menu-wrap dshdb-qbar-slot${hiddenActions.length === 0 ? ' dshdb-qbar-slot-hidden' : ''}`}
+                data-console-overflow="true"
+                ref={overflowWrapRef}
+              >
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<MoreIcon size={13} />}
+                  aria-label="更多操作"
+                  title="更多操作"
+                  aria-expanded={overflowOpen || (exportHidden && exportOpen)}
+                  onClick={() => {
+                    setOverflowOpen((open) => !open)
+                    setExportOpen(false)
+                  }}
+                />
+                {overflowOpen && hiddenActions.length > 0 ? (
+                  <span className="dshdb-menu dshdb-menu-start" role="menu">
+                    {hiddenActions.map((action) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        role="menuitem"
+                        disabled={action.disabled === true}
+                        onClick={() => {
+                          setOverflowOpen(false)
+                          action.onClick?.()
+                        }}
+                      >
+                        <span className="dshdb-menu-icon">{consoleActionIcon(action.id, 12)}</span>
+                        {action.label}
+                      </button>
+                    ))}
+                  </span>
+                ) : null}
+                {exportHidden && exportOpen ? renderExportMenu() : null}
+              </span>
+            </span>
             <input
               ref={fileInputRef}
               type="file"
@@ -2002,188 +2302,6 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                 void importSqlFile(file)
               }}
             />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={saveSqlFile}
-              disabled={statement.trim() === ''}
-              title="把编辑器里的 SQL 保存为 .sql 文件"
-            >
-              保存
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setStatement('')
-                setSelectedRun(false)
-                setCaretPos(0)
-                inputRef.current?.focus()
-              }}
-              disabled={statement === ''}
-              title="清空编辑器里的 SQL（不影响已经拿到的结果）"
-            >
-              清空
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                const area = inputRef.current
-                const picked =
-                  area === null || area.selectionStart === area.selectionEnd
-                    ? statementAtCaret(statement, area?.selectionStart ?? caretPos).statement
-                    : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
-                if (picked.trim() === '') return
-                void copyText(picked).then((ok) => {
-                  statementFlash.flash(ok)
-                })
-              }}
-              disabled={statement.trim() === ''}
-              title="复制选中的 SQL；没有选中时复制光标所在的那条"
-            >
-              {statementFlash.copied ? '已复制' : '复制 SQL'}
-            </Button>
-            {isRedis ? null : (
-              <>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void explainPlan()}
-              loading={planRunning}
-              disabled={statement.trim() === '' || running}
-              title="查看当前语句的执行计划（不会真正执行语句）"
-            >
-              执行计划
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<TableIcon size={12} />}
-              disabled={editorTarget() === null || selectedId === ''}
-              title="在新标签页打开编辑器里这条语句查询的表"
-              onClick={() => void openEditorTable()}
-            >
-              打开数据表
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void runTx('start')}
-              disabled={txButtonDisabled(tx, 'start') || txBusy || selectedId === ''}
-              title="发送 BEGIN，开启手动事务"
-            >
-              事务
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void runTx('commit')}
-              disabled={txButtonDisabled(tx, 'commit') || txBusy}
-              title="提交当前事务"
-            >
-              提交
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void runTx('rollback')}
-              disabled={txButtonDisabled(tx, 'rollback') || txBusy}
-              title="回滚当前事务"
-            >
-              回滚
-            </Button>
-              </>
-            )}
-            <span className="dshdb-menu-wrap" ref={exportAnchor}>
-              <button
-                type="button"
-                className={`dshdb-pager-btn${exportOpen ? ' dshdb-pager-btn-active' : ''}`}
-                title={exporting ? '正在导出…' : '导出结果'}
-                aria-label="导出结果"
-                aria-expanded={exportOpen}
-                onClick={() => setExportOpen((open) => !open)}
-                disabled={running || exporting || rows.length === 0}
-              >
-                <DownloadIcon size={13} />
-              </button>
-              {exportOpen ? (
-                <span className="dshdb-menu" role="menu" onClick={() => setExportOpen(false)}>
-                  <button type="button" role="menuitem" onClick={() => exportPage('csv')} disabled={filteredRows.length === 0}>
-                    当前页 CSV（{filteredRows.length} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('json')} disabled={filteredRows.length === 0}>
-                    当前页 JSON（{filteredRows.length} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('sql')} disabled={filteredRows.length === 0}>
-                    当前页 SQL（{filteredRows.length} 行）
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => exportPage('md')} disabled={filteredRows.length === 0}>
-                    当前页 Markdown（{filteredRows.length} 行）
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown'))}
-                    disabled={filteredRows.length === 0}
-                  >
-                    复制当前页 Markdown
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV'))}
-                    disabled={filteredRows.length === 0}
-                  >
-                    复制当前页 CSV
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV'))}
-                    disabled={filteredRows.length === 0}
-                  >
-                    复制当前页 TSV
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON'))}
-                    disabled={filteredRows.length === 0}
-                  >
-                    复制当前页 JSON
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      const target = tableTarget()
-                      if (target === null) return
-                      void copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows)).then(noteCopied('SQL'))
-                    }}
-                    disabled={filteredRows.length === 0 || tableTarget() === null}
-                  >
-                    复制当前页 SQL
-                  </button>
-                  {base !== '' ? (
-                    <>
-                      <button type="button" role="menuitem" onClick={() => void exportAll('csv')} disabled={exporting}>
-                        全部 CSV（最多 {EXPORT_LIMIT} 行）
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => void exportAll('json')} disabled={exporting}>
-                        全部 JSON（最多 {EXPORT_LIMIT} 行）
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => void exportAll('sql')} disabled={exporting}>
-                        全部 SQL（最多 {EXPORT_LIMIT} 行）
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => void exportAll('md')} disabled={exporting}>
-                        全部 Markdown（最多 {EXPORT_LIMIT} 行）
-                      </button>
-                    </>
-                  ) : null}
-                </span>
-              ) : null}
-            </span>
             {scriptResults.length > 1 ? (
               <select
                 className="dshdb-input dshdb-console-select"

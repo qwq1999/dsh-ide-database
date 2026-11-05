@@ -651,6 +651,14 @@ export const CSS = `
   cursor: pointer;
 }
 .dshdb-menu button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dshdb-menu-start { left: 0; right: auto; }
+.dshdb-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--dsw-alias-label-secondary);
+}
 .dshdb-hmenu {
   position: fixed;
   z-index: 40;
@@ -1045,6 +1053,15 @@ export const CSS = `
   background: var(--dsw-alias-bg-layer-1);
 }
 .dshdb-driver-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+/* Reorderable console toolbar actions in Settings. */
+.dshdb-action-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.dshdb-action-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+}
+.dshdb-action-row .dshdb-driver-main { flex: 1; min-width: 0; }
 .dshdb-driver-name { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .dshdb-driver-sub { color: var(--dsw-alias-label-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dshdb-file-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11.5px; }
@@ -1075,6 +1092,24 @@ export const CSS = `
   white-space: nowrap;
 }
 .dshdb-qbar-spacer { flex: 1; }
+/* Console toolbar actions; whatever does not fit moves into the trailing "…" menu. */
+.dshdb-qbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.dshdb-qbar-slot { display: inline-flex; flex: none; }
+.dshdb-qbar-slot-hidden {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
 /* Executed-statement history, dropped in below the editor while open. */
 .dshdb-history {
   display: flex;

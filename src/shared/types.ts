@@ -4,6 +4,8 @@
  * /dsh-ide-database/api boundary and are stored in the profile data file.
  */
 
+import type { ConsoleActionId } from './consoleactions.js'
+
 export type Dialect =
   | 'mysql'
   | 'oracle'
@@ -112,6 +114,11 @@ export interface DbSettings {
    * ones are stored, the rest fall back to the defaults in shared/keymap.ts.
    */
   keybindings: Record<string, string>
+  /**
+   * Console toolbar order chosen in settings. Empty keeps the default order;
+   * orderConsoleActions() appends actions this saved order does not mention.
+   */
+  consoleActions?: ConsoleActionId[]
 }
 
 export interface ConnectionConfig {
