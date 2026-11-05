@@ -193,6 +193,9 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   reset: KEYWORD_PRIORITY,
   algorithm: KEYWORD_PRIORITY,
   lockOption: KEYWORD_PRIORITY,
+  fromTail: KEYWORD_PRIORITY,
+  raise: KEYWORD_PRIORITY,
+  raiseUsing: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

@@ -1178,6 +1178,7 @@ function createObjectName(tokens: readonly Token[]): boolean {
   let index = 1
   if (words[1] === 'or' && words[2] === 'replace') index = 3
   else if (words[1] === 'temporary') index = 2
+  else if (words[1] === 'unlogged') index = 2
   const object = words[index]
   if (object !== 'table' && object !== 'view') return false
   const next = words[index + 1]
@@ -1448,6 +1449,122 @@ function showPatternTail(tokens: readonly Token[]): boolean {
     last?.kind === 'string' &&
     tokens.some((token) => token.kind === 'keyword' && token.lower === 'like')
   )
+}
+
+
+/** `FROM orders o ` already has its alias: what follows is a clause word. */
+function fromListTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (!words.includes('from') && !words.includes('join')) return false
+  // `FOR UPDATE SKIP LOCKED` ends in ident tokens but is a lock clause.
+  if (words.includes('for') || words.includes('lock')) return false
+  if (
+    words.some(
+      (word) =>
+        word === 'where' ||
+        word === 'group' ||
+        word === 'order' ||
+        word === 'limit' ||
+        word === 'having' ||
+        word === 'union' ||
+        word === 'set',
+    )
+  ) {
+    return false
+  }
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'ident') return false
+  const before = tokens[tokens.length - 2]
+  if (before === undefined) return false
+  if (before.kind === 'ident') return true
+  if (before.kind === 'keyword' && before.lower === 'as') return true
+  return before.kind === 'punct' && before.text === ')'
+}
+
+/** Routine-body statements that start with a keyword every dialect spells alike. */
+function routineKeywordTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] === 'return' && tokens.length === 2) {
+    if (words[1] === 'query') return 'statement'
+    if (words[1] === 'next') return 'column'
+    return undefined
+  }
+  if (words[0] === 'declare' && words[words.length - 1] === 'for' && words.includes('cursor')) {
+    return 'statement'
+  }
+  if (words[0] === 'prepare' && words[words.length - 1] === 'as') return 'statement'
+  return undefined
+}
+
+/** `OPEN`/`CLOSE` name a cursor; `OPEN c FOR ` starts its query. */
+function cursorTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined) return undefined
+  const word = first.text.toLowerCase()
+  if (word !== 'open' && word !== 'close') return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words.includes('for')) return 'statement'
+  if (tokens.length === 1) return 'name'
+  return 'number'
+}
+
+/** `RAISE ` takes a severity; `RAISE ... USING ` takes option names. */
+function raiseTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'raise') return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (tokens.length === 1) return 'raise'
+  if (words.includes('using')) return 'raiseUsing'
+  return 'number'
+}
+
+/** `TRUNCATE ` allows omitting the TABLE keyword. */
+function truncateTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'truncate') return undefined
+  const second = tokens[1]
+  if (second === undefined) return 'tableName'
+  if (second.text.toLowerCase() === 'table') return undefined
+  return 'number'
+}
+
+/** `CREATE TABLE ... INHERITS (` names the parent tables. */
+function inheritsTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create' || !words.includes('table')) return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'punct' && last.text === '(' && words[words.length - 2] === 'inherits'
+}
+
+/** `ALTER TABLE ... SET SCHEMA ` names a database, not another table. */
+function setSchemaTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'alter') return false
+  return words[words.length - 1] === 'schema' && words.includes('set')
+}
+
+/** `ALTER TABLE ... SET (storage parameter` expects no catalog names. */
+function alterStorageTail(tokens: readonly Token[]): boolean {
+  const start = alterTableStart(tokens)
+  if (start < 0) return false
+  const rest = tokens.slice(start)
+  const setIndex = rest.findIndex((token) => token.text.toLowerCase() === 'set')
+  if (setIndex < 0) return false
+  const openIndex = rest.findIndex(
+    (token, index) => index > setIndex && token.kind === 'punct' && token.text === '(',
+  )
+  if (openIndex < 0) return false
+  const closeIndex = rest.findIndex(
+    (token, index) => index > openIndex && token.kind === 'punct' && token.text === ')',
+  )
+  return closeIndex < 0
+}
+
+/** `ORDER BY x USING ` takes an operator name, never catalog names. */
+function orderUsingTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[words.length - 1] !== 'using') return false
+  return words.includes('order')
 }
 
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
@@ -3126,6 +3243,16 @@ function cteColumnListTail(tokens: readonly Token[]): boolean {
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
+  // Routine-only statements win over the generic DECLARE/OPEN handling.
+  const routineKeyword = routineKeywordTail(tokens)
+  if (routineKeyword !== undefined) return routineKeyword
+  const cursor = cursorTail(tokens)
+  if (cursor !== undefined) return cursor
+  const raise = raiseTail(tokens)
+  if (raise !== undefined) return raise
+  // ALTER TABLE storage parameters and SET SCHEMA never name a column.
+  if (setSchemaTail(tokens)) return 'database'
+  if (alterStorageTail(tokens)) return 'number'
   // CHARACTER SET names a charset wherever it appears, including column
   // definitions inside CREATE TABLE / routines.
   if (charsetValue(tokens)) return 'charset'
@@ -3168,6 +3295,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (columnStage !== undefined) return columnStage
   if (referencesTail(tokens)) return 'tableName'
   if (fkReferenceTail(tokens)) return 'number'
+  if (inheritsTail(tokens)) return 'tableName'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -3198,6 +3326,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterColumnDropTail(tokens)) return 'alterColumnDrop'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
+  if (setSchemaTail(tokens)) return 'database'
+  if (alterStorageTail(tokens)) return 'number'
   const alterEngine = alterTableEngine(tokens)
   if (alterEngine !== undefined) return alterEngine
   const indexOn = createIndexOn(tokens)
@@ -3242,6 +3372,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const call = callStart(tokens)
   if (call !== undefined) return call
   if (ddlTableName(tokens)) return 'tableName'
+  const truncate = truncateTail(tokens)
+  if (truncate !== undefined) return truncate
   if (checksumDone(tokens)) return 'number'
   const copy = copyTail(tokens)
   if (copy !== undefined) return copy
@@ -3268,6 +3400,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insertTargetTail(tokens)) return 'insertSource'
   if (insertOnTail(tokens)) return 'insertOn'
   if (insertSelectDone(tokens)) return 'insertTail'
+  if (fromListTail(tokens)) return 'fromTail'
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
   if (selectInto(tokens)) return 'intoTarget'
@@ -3379,6 +3512,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (window !== undefined) return window
   const nulls = nullsTail(tokens)
   if (nulls !== undefined) return nulls
+  if (orderUsingTail(tokens)) return 'number'
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
   if (groupWithRollup(tokens)) return 'withRollup'

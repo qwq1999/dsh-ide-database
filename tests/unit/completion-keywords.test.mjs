@@ -606,3 +606,30 @@ describe('conflict and sample words', () => {
     ])
   })
 })
+
+describe('relation-name and routine words', () => {
+  it('lists FROM tail and RAISE words', () => {
+    const tail = names(keywordCompletions('fromTail', 'mysql'))
+    expect(tail).toContain('WHERE')
+    expect(tail).toContain('JOIN')
+    expect(names(keywordCompletions('raise', 'mysql'))).toEqual([
+      'DEBUG',
+      'LOG',
+      'INFO',
+      'NOTICE',
+      'WARNING',
+      'EXCEPTION',
+    ])
+    expect(names(keywordCompletions('raiseUsing', 'mysql'))).toEqual([
+      'MESSAGE',
+      'DETAIL',
+      'HINT',
+      'ERRCODE',
+      'COLUMN',
+      'CONSTRAINT',
+      'DATATYPE',
+      'TABLE',
+      'SCHEMA',
+    ])
+  })
+})

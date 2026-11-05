@@ -616,6 +616,38 @@ const CONFLICT_ACTION_WORDS = ['NOTHING', 'UPDATE'] as const
 /** `TABLESAMPLE ` takes a sampling method. */
 const SAMPLE_METHOD_WORDS = ['SYSTEM', 'BERNOULLI', 'RESERVOIR', 'ROW', 'PERCENT'] as const
 
+/** Clause words after a FROM/JOIN relation that already has its alias. */
+const FROM_TAIL_WORDS = [
+  'WHERE',
+  'JOIN',
+  'LEFT',
+  'RIGHT',
+  'INNER',
+  'OUTER',
+  'CROSS',
+  'NATURAL',
+  'ON',
+  'USING',
+  'GROUP',
+  'ORDER',
+  'HAVING',
+  'LIMIT',
+  'UNION',
+  'FOR',
+] as const
+const RAISE_WORDS = ['DEBUG', 'LOG', 'INFO', 'NOTICE', 'WARNING', 'EXCEPTION'] as const
+const RAISE_USING_WORDS = [
+  'MESSAGE',
+  'DETAIL',
+  'HINT',
+  'ERRCODE',
+  'COLUMN',
+  'CONSTRAINT',
+  'DATATYPE',
+  'TABLE',
+  'SCHEMA',
+] as const
+
 /** `ORDER BY ... NULLS ` direction. */
 const NULLS_WORDS = ['FIRST', 'LAST'] as const
 
@@ -758,6 +790,12 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return ALGORITHM_WORDS
     case 'lockOption':
       return LOCK_OPTION_WORDS
+    case 'fromTail':
+      return FROM_TAIL_WORDS
+    case 'raise':
+      return RAISE_WORDS
+    case 'raiseUsing':
+      return RAISE_USING_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

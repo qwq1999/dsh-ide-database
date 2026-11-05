@@ -2746,3 +2746,58 @@ describe('complete materialized views, samples and conflicts', () => {
     expect(result.items).toEqual([])
   })
 })
+
+describe('complete relation-name and routine tails', () => {
+  it('offers clause words once a FROM alias is typed', async () => {
+    const req = request('SELECT * FROM orders o ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('fromTail')
+    expect(names(result)).toContain('WHERE')
+    expect(names(result)).toContain('JOIN')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.tables).toEqual([])
+  })
+
+  it('keeps ORDER BY ... USING quiet', async () => {
+    const result = await complete(request('SELECT * FROM orders ORDER BY id USING '))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+
+  it('offers parent tables for INHERITS and databases for SET SCHEMA', async () => {
+    const inherits = await complete(request('CREATE TABLE t (id INT) INHERITS ('))
+    expect(inherits.analysis.expectation).toBe('tableName')
+    expect(names(inherits)).toContain('orders')
+    expect(names(inherits)).not.toContain('WHERE')
+
+    const schema = await complete(request('ALTER TABLE orders SET SCHEMA '))
+    expect(schema.analysis.expectation).toBe('database')
+    expect(names(schema)).toEqual(['shop', 'crm'])
+  })
+
+  it('completes routine keywords and cursor names', async () => {
+    const queryReq = request('RETURN QUERY ')
+    const query = await complete(queryReq)
+    expect(query.analysis.expectation).toBe('statement')
+    expect(names(query)).toContain('SELECT')
+    expect(queryReq.catalog.calls.tables).toEqual([])
+
+    const cursorReq = request('OPEN ')
+    const cursor = await complete(cursorReq)
+    expect(cursor.analysis.expectation).toBe('name')
+    expect(cursor.items).toEqual([])
+    expect(cursorReq.catalog.calls.tables).toEqual([])
+  })
+
+  it('completes RAISE words and TRUNCATE target tables', async () => {
+    const raise = await complete(request('RAISE '))
+    expect(raise.analysis.expectation).toBe('raise')
+    expect(names(raise)).toContain('DEBUG')
+    expect(names(raise)).toContain('EXCEPTION')
+
+    const truncate = await complete(request('TRUNCATE '))
+    expect(truncate.analysis.expectation).toBe('tableName')
+    expect(names(truncate)).toContain('orders')
+    expect(names(truncate)).not.toContain('WHERE')
+  })
+})

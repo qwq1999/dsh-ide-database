@@ -897,7 +897,7 @@ describe('analyze CREATE names and ALTER column tails', () => {
 
   it('treats DROP VIEW and bare TRUNCATE like DROP TABLE', () => {
     expect(caretAtEnd('DROP VIEW ').expectation).toBe('tableName')
-    expect(caretAtEnd('TRUNCATE ').expectation).toBe('relation')
+    expect(caretAtEnd('TRUNCATE ').expectation).toBe('tableName')
     expect(caretAtEnd('TRUNCATE TABLE ').expectation).toBe('tableName')
   })
 
@@ -1868,5 +1868,54 @@ describe('analyze materialized views, samples and conflicts', () => {
 
   it('treats LIMIT ALL as complete', () => {
     expect(caretAtEnd('SELECT * FROM orders LIMIT ALL ').expectation).toBe('number')
+  })
+})
+
+describe('analyze relation-name and routine tails', () => {
+  it('suggests clause words after a FROM/JOIN alias is complete', () => {
+    const analysis = caretAtEnd('SELECT * FROM orders o ')
+    expect(analysis.expectation).toBe('fromTail')
+    expect(analysis.relations).toEqual([{ table: 'orders', alias: 'o' }])
+    expect(caretAtEnd('SELECT * FROM orders o JOIN customers c ').expectation).toBe('fromTail')
+  })
+
+  it('keeps ORDER BY ... USING quiet', () => {
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY id USING ').expectation).toBe('number')
+  })
+
+  it('reads the INHERITS list and ALTER TABLE SET SCHEMA', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) INHERITS (').expectation).toBe('tableName')
+    expect(caretAtEnd('ALTER TABLE orders SET SCHEMA ').expectation).toBe('database')
+    expect(caretAtEnd('ALTER TABLE orders SET (').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders SET (fillfactor = ').expectation).toBe('number')
+  })
+
+  it('completes routine keywords and cursor names', () => {
+    expect(caretAtEnd('RETURN QUERY ').expectation).toBe('statement')
+    expect(caretAtEnd('RETURN NEXT ').expectation).toBe('column')
+    expect(caretAtEnd('DECLARE c CURSOR FOR ').expectation).toBe('statement')
+    expect(caretAtEnd('PREPARE stmt AS ').expectation).toBe('statement')
+    expect(caretAtEnd('OPEN ').expectation).toBe('name')
+    expect(caretAtEnd('OPEN c ').expectation).toBe('number')
+    expect(caretAtEnd('CLOSE c ').expectation).toBe('number')
+    expect(caretAtEnd('OPEN c FOR ').expectation).toBe('statement')
+  })
+
+  it('completes RAISE severities and USING options', () => {
+    expect(caretAtEnd('RAISE ').expectation).toBe('raise')
+    expect(caretAtEnd('RAISE NOTICE ').expectation).toBe('number')
+    expect(caretAtEnd("RAISE EXCEPTION 'x' USING ").expectation).toBe('raiseUsing')
+  })
+
+  it('completes TRUNCATE without the TABLE keyword and unlogged tables', () => {
+    expect(caretAtEnd('TRUNCATE ').expectation).toBe('tableName')
+    expect(caretAtEnd('TRUNCATE orders ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE UNLOGGED TABLE ').expectation).toBe('name')
+  })
+})
+
+describe('analyze prepared statement tails', () => {
+  it('starts the statement after a parameter list', () => {
+    expect(caretAtEnd('PREPARE stmt (int) AS ').expectation).toBe('statement')
   })
 })
