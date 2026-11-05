@@ -426,3 +426,51 @@ describe('analyze statement tails', () => {
     expect(caretAtEnd('SELECT engine = ').expectation).not.toBe('engine')
   })
 })
+
+describe('analyze SET and CAST tails', () => {
+  it('expects SET words instead of catalog names', () => {
+    expect(caretAtEnd('SET ').expectation).toBe('set')
+    expect(caretAtEnd('SET SESSION ').expectation).toBe('set')
+  })
+
+  it('expects a charset after SET NAMES', () => {
+    expect(caretAtEnd('SET NAMES ').expectation).toBe('charset')
+  })
+
+  it('expects a literal in a SET assignment', () => {
+    expect(caretAtEnd('SET autocommit = ').expectation).toBe('value')
+  })
+
+  it('stays quiet once the SET literal is typed', () => {
+    expect(caretAtEnd('SET NAMES utf8mb4 ').expectation).toBe('number')
+  })
+
+  it('expects a type after AS inside CAST', () => {
+    expect(caretAtEnd('SELECT CAST(id AS ').expectation).toBe('type')
+    expect(caretAtEnd('SELECT cast(id as ').expectation).toBe('type')
+  })
+
+  it('keeps AS an alias outside CAST', () => {
+    expect(caretAtEnd('SELECT * FROM orders AS ').expectation).toBe('alias')
+  })
+
+  it('assigns columns after ON DUPLICATE KEY UPDATE', () => {
+    const analysis = caretAtEnd('INSERT INTO orders (id) VALUES (1) ON DUPLICATE KEY UPDATE ')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations).toEqual([{ table: 'orders' }])
+  })
+})
+
+describe('analyze CREATE TABLE option values', () => {
+  it('expects a charset name after DEFAULT CHARSET', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT CHARSET ').expectation).toBe('charset')
+    expect(caretAtEnd('CREATE TABLE t (id INT) CHARACTER SET ').expectation).toBe('charset')
+  })
+
+  it('returns to table options after an option value', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) ENGINE = InnoDB ').expectation).toBe('tableOptions')
+    expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT CHARSET utf8mb4 ').expectation).toBe(
+      'tableOptions',
+    )
+  })
+})

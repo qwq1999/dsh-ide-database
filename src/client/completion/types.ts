@@ -60,6 +60,9 @@ export type CompletionExpectation =
   | 'tableOptions'
   | 'engine'
   | 'number'
+  | 'set'
+  | 'type'
+  | 'charset'
   | 'keyword'
   | 'any'
 

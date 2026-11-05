@@ -120,6 +120,9 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   tableOptions: KEYWORD_PRIORITY,
   engine: KEYWORD_PRIORITY,
   number: KEYWORD_PRIORITY,
+  set: KEYWORD_PRIORITY,
+  type: KEYWORD_PRIORITY,
+  charset: KEYWORD_PRIORITY,
 }
 
 /**

@@ -889,3 +889,64 @@ describe('complete LIMIT/OFFSET and ENGINE positions', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete SET and CAST positions', () => {
+  it('offers SET words instead of functions', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SET '), catalog })
+    expect(result.analysis.expectation).toBe('set')
+    expect(names(result)).toContain('NAMES')
+    expect(names(result)).toContain('SESSION')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers character sets after SET NAMES', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SET NAMES '), catalog })
+    expect(result.analysis.expectation).toBe('charset')
+    expect(names(result)).toContain('utf8mb4')
+    expect(names(result)).toContain('gbk')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers cast types after AS inside CAST', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SELECT CAST(id AS '), catalog })
+    expect(result.analysis.expectation).toBe('type')
+    expect(names(result)).toContain('SIGNED')
+    expect(names(result)).toContain('DECIMAL')
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers inserted table columns after ON DUPLICATE KEY UPDATE', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('INSERT INTO orders (id) VALUES (1) ON DUPLICATE KEY UPDATE '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+    expect(catalog.calls.columns).toContain('shop.orders')
+  })
+})
+
+describe('complete CREATE TABLE option values', () => {
+  it('offers character sets after DEFAULT CHARSET', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('CREATE TABLE t (id INT) DEFAULT CHARSET '), catalog })
+    expect(result.analysis.expectation).toBe('charset')
+    expect(names(result)).toContain('utf8mb4')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('returns to table options after an engine name', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('CREATE TABLE t (id INT) ENGINE = InnoDB '), catalog })
+    expect(result.analysis.expectation).toBe('tableOptions')
+    expect(names(result)).toContain('COMMENT')
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})

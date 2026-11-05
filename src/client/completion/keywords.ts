@@ -323,6 +323,60 @@ export const ENGINE_NAMES = [
   'MRG_MYISAM',
 ] as const
 
+/**
+ * Words a `SET` statement starts with. The variable name and its literal are
+ * user text, so nothing from the catalog belongs here.
+ */
+const SET_WORDS = [
+  'NAMES',
+  'SESSION',
+  'GLOBAL',
+  'LOCAL',
+  'TRANSACTION',
+  'CHARACTER',
+  'PASSWORD',
+  'ROLE',
+] as const
+
+/** Types a `CAST(value AS ` can name. */
+const CAST_TYPE_WORDS = [
+  'SIGNED',
+  'UNSIGNED',
+  'CHAR',
+  'VARCHAR',
+  'BINARY',
+  'INT',
+  'INTEGER',
+  'DECIMAL',
+  'NUMERIC',
+  'DATE',
+  'DATETIME',
+  'TIME',
+  'TIMESTAMP',
+  'JSON',
+  'FLOAT',
+  'DOUBLE',
+  'TEXT',
+  'BLOB',
+] as const
+
+/**
+ * Character sets offered after `SET NAMES` or `DEFAULT CHARSET`. Kept in the
+ * spelling MySQL documents; names are case insensitive.
+ */
+export const CHARSET_NAMES = [
+  'utf8mb4',
+  'utf8',
+  'latin1',
+  'ascii',
+  'binary',
+  'gbk',
+  'gb18030',
+  'utf16',
+  'utf32',
+  'big5',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -343,6 +397,13 @@ function contextWords(context: CompletionExpectation): readonly string[] {
     case 'number':
       // `ENGINE =` names come from ENGINE_NAMES (original case); a LIMIT
       // count has no keyword to offer.
+      return []
+    case 'set':
+      return SET_WORDS
+    case 'type':
+      return CAST_TYPE_WORDS
+    case 'charset':
+      // Charset names come from CHARSET_NAMES (original case).
       return []
     case 'alter':
       return ALTER_WORDS

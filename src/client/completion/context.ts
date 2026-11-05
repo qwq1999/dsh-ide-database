@@ -293,6 +293,77 @@ function createTableEngine(tokens: readonly Token[]): boolean {
   )
 }
 
+/**
+ * What a `SET ` statement expects. Session variables and literals are user
+ * text, so the catalog has nothing to add here.
+ */
+function setStatement(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.kind !== 'keyword' || first.lower !== 'set') return undefined
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || (first === last && tokens.length === 1)) return 'set'
+  if (last.kind === 'punct' && last.text === '=') return 'value'
+  const lower = last.text.toLowerCase()
+  if (lower === 'names' || lower === 'charset') return 'charset'
+  if (tokens.length === 2 && last.kind === 'ident') {
+    const known = new Set(['session', 'global', 'local', 'transaction', 'character', 'password', 'role'])
+    if (known.has(lower)) return 'set'
+  }
+  // `SET NAMES utf8mb4 ` and other literal tails: stay quiet.
+  return 'number'
+}
+
+/** `CAST(value AS ` names a type, not a table or a column. */
+function castAs(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'keyword' || last.lower !== 'as') return false
+  let opened = false
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'keyword') return false
+    if (token.kind === 'punct' && token.text === '(') opened = true
+    if (token.kind === 'ident' && token.text.toLowerCase() === 'cast') return opened
+  }
+  return false
+}
+
+/** `ON DUPLICATE KEY UPDATE ` assigns columns of the inserted table. */
+function duplicateKeyUpdate(tokens: readonly Token[]): boolean {
+  if (tokens.length < 4) return false
+  const tail = tokens.slice(tokens.length - 4).map((token) => token.text.toLowerCase())
+  return tail[0] === 'on' && tail[1] === 'duplicate' && tail[2] === 'key' && tail[3] === 'update'
+}
+
+/** `DEFAULT CHARSET ` / `CHARACTER SET ` name a character set. */
+function charsetValue(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last === undefined) return false
+  if (last.text.toLowerCase() === 'charset') return true
+  return (
+    last.kind === 'keyword' &&
+    last.lower === 'set' &&
+    previous !== undefined &&
+    previous.text.toLowerCase() === 'character'
+  )
+}
+
+/** After `ENGINE = InnoDB `/`DEFAULT CHARSET utf8mb4 ` more table options follow. */
+function afterTableOptionValue(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'create') return false
+  const last = tokens[tokens.length - 1]
+  const secondLast = tokens[tokens.length - 2]
+  const thirdLast = tokens[tokens.length - 3]
+  if (last === undefined || last.kind !== 'ident') return false
+  if (secondLast === undefined) return false
+  if (thirdLast !== undefined && thirdLast.text.toLowerCase() === 'engine' && secondLast.text === '=') {
+    return true
+  }
+  if (secondLast.text.toLowerCase() === 'charset') return true
+  return secondLast.lower === 'set' && thirdLast?.text.toLowerCase() === 'character'
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -440,6 +511,12 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (dropIndexOn(tokens)) return 'relation'
   if (limitCount(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'
+  if (charsetValue(tokens)) return 'charset'
+  if (afterTableOptionValue(tokens)) return 'tableOptions'
+  const set = setStatement(tokens)
+  if (set !== undefined) return set
+  if (duplicateKeyUpdate(tokens)) return 'column'
+  if (castAs(tokens)) return 'type'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
