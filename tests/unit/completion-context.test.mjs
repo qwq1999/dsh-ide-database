@@ -142,6 +142,13 @@ describe('analyze expectation', () => {
       { schema: 'shop', table: 'orders' },
     ])
   })
+
+  it('starts a statement inside subquery parentheses', () => {
+    expect(caretAtEnd('WITH x AS (').expectation).toBe('keyword')
+    expect(caretAtEnd('CREATE VIEW v AS (').expectation).toBe('keyword')
+    expect(caretAtEnd('SELECT * FROM (').expectation).toBe('keyword')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (').expectation).toBe('column')
+  })
 })
 
 describe('analyze statement bounds', () => {

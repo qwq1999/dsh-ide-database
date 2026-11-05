@@ -598,3 +598,33 @@ describe('complete CREATE INDEX', () => {
     expect(catalog.calls.columns).toContain('shop.orders')
   })
 })
+
+describe('complete subquery bodies', () => {
+  it('offers statement keywords at the start of a CTE body', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'WITH recent AS (',
+      caret: 16,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+
+  it('offers statement keywords at the start of a derived table', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'SELECT * FROM (',
+      caret: 15,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+})

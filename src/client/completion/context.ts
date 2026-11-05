@@ -176,6 +176,18 @@ function insideCreateTableParen(tokens: readonly Token[]): boolean {
 }
 
 /**
+ * True when the caret sits at the start of a parenthesised subquery body:
+ * `WITH x AS (`, `CREATE VIEW v AS (`, `SELECT * FROM (`. The next token must
+ * be a statement keyword (`SELECT`), not a relation or an alias.
+ */
+function startsSubquery(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
+  const before = previousKeyword(tokens, tokens.length - 1)
+  return before === 'as' || before === 'from'
+}
+
+/**
  * Index of the `ON` that introduces the table of a `CREATE INDEX` statement,
  * or -1. That position names a relation, and its columns follow.
  */
@@ -246,6 +258,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (indexOn >= 0) {
     return parseRelationRef(tokens, indexOn + 1) === null ? 'relation' : 'column'
   }
+  if (startsSubquery(tokens)) return 'keyword'
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
