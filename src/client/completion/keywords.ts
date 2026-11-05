@@ -524,6 +524,8 @@ const EVENT_TIMING_WORDS = ['AT', 'EVERY'] as const
 
 const EVENT_TAIL_WORDS = ['STARTS', 'ENDS', 'DO'] as const
 
+const INTO_TARGET_WORDS = ['OUTFILE', 'DUMPFILE'] as const
+
 /** `START TRANSACTION ` takes an access mode or a snapshot clause. */
 const TRANSACTION_WORDS = ['READ', 'WRITE', 'WITH'] as const
 
@@ -673,6 +675,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return EVENT_TIMING_WORDS
     case 'eventTail':
       return EVENT_TAIL_WORDS
+    case 'intoTarget':
+      return INTO_TARGET_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
       return []

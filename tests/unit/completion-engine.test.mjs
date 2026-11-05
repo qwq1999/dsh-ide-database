@@ -639,7 +639,7 @@ describe('complete statement targets', () => {
       schema: 'shop',
       catalog,
     })
-    expect(result.analysis.expectation).toBe('relation')
+    expect(result.analysis.expectation).toBe('tableName')
     expect(names(result)[0]).toBe('orders')
     expect(catalog.calls.tables).toContain('shop')
   })
@@ -1991,5 +1991,52 @@ describe('complete routine, view and event positions', () => {
     expect(result.analysis.expectation).toBe('name')
     expect(result.items).toEqual([])
     expect(req.catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
+
+describe('complete function and INTO tails', () => {
+  it('keeps FROM inside functions expression-shaped', async () => {
+    const result = await complete(request("SELECT TRIM(BOTH ' ' FROM "))
+    expect(result.analysis.expectation).toBe('column')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(false)
+  })
+
+  it('offers INTO OUTFILE and DUMPFILE', async () => {
+    const result = await complete(request('SELECT * FROM orders INTO '))
+    expect(result.analysis.expectation).toBe('intoTarget')
+    expect(names(result)).toEqual(['OUTFILE', 'DUMPFILE'])
+  })
+
+  it('offers INSERT sources after the target table', async () => {
+    const result = await complete(request('INSERT INTO orders '))
+    expect(result.analysis.expectation).toBe('insertSource')
+    expect(names(result)).toEqual(['VALUES', 'SELECT', 'SET'])
+  })
+
+  it('offers columns after ALTER ... AFTER and stays quiet after FIRST', async () => {
+    const after = await complete(request('ALTER TABLE orders ADD COLUMN x INT AFTER '))
+    expect(after.analysis.expectation).toBe('column')
+    expect(names(after).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+
+    const first = await complete(request('ALTER TABLE orders ADD COLUMN x INT FIRST '))
+    expect(first.analysis.expectation).toBe('number')
+    expect(first.items).toEqual([])
+  })
+
+  it('cleans the GRANT target', async () => {
+    const result = await complete(request('GRANT ALL PRIVILEGES ON '))
+    expect(result.analysis.expectation).toBe('tableName')
+    expect(
+      result.items.every((item) => item.kind === 'table' || item.kind === 'schema'),
+    ).toBe(true)
+    expect(names(result)).not.toContain('WHERE')
+  })
+
+  it('resumes normal parsing after DO', async () => {
+    const result = await complete(
+      request('CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO INSERT INTO '),
+    )
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('orders')
   })
 })

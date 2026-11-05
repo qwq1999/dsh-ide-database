@@ -158,9 +158,9 @@ describe('analyze expectation', () => {
   })
 
   it('expects a table after GRANT or REVOKE ... ON', () => {
-    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('relation')
-    expect(caretAtEnd('GRANT ALL PRIVILEGES ON ').expectation).toBe('relation')
-    expect(caretAtEnd('REVOKE SELECT ON ').expectation).toBe('relation')
+    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('tableName')
+    expect(caretAtEnd('GRANT ALL PRIVILEGES ON ').expectation).toBe('tableName')
+    expect(caretAtEnd('REVOKE SELECT ON ').expectation).toBe('tableName')
     expect(caretAtEnd('SELECT * FROM orders JOIN customers ON ').expectation).toBe('column')
   })
 
@@ -823,7 +823,7 @@ describe('analyze USING columns, LIKE patterns and GRANT privileges', () => {
     expect(caretAtEnd('REVOKE ').expectation).toBe('privilege')
     expect(caretAtEnd('GRANT SELECT ').expectation).toBe('privilege')
     expect(caretAtEnd('GRANT SELECT, ').expectation).toBe('privilege')
-    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('relation')
+    expect(caretAtEnd('GRANT SELECT ON ').expectation).toBe('tableName')
     expect(caretAtEnd('GRANT SELECT ON orders TO ').expectation).toBe('name')
     expect(caretAtEnd('GRANT SELECT ON orders TO alice ').expectation).toBe('number')
   })
@@ -1258,5 +1258,45 @@ describe('analyze routine, view and event definitions', () => {
     expect(caretAtEnd('SHOW CREATE FUNCTION ').expectation).toBe('name')
     expect(caretAtEnd('SHOW CREATE EVENT ').expectation).toBe('name')
     expect(caretAtEnd('SHOW CREATE TRIGGER ').expectation).toBe('name')
+  })
+})
+
+describe('analyze function and INTO tails', () => {
+  it('reads FROM inside a function argument as an expression', () => {
+    expect(caretAtEnd("SELECT TRIM(BOTH ' ' FROM ").expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM ').expectation).toBe('relation')
+  })
+
+  it('names the INTO target', () => {
+    expect(caretAtEnd('SELECT * FROM orders INTO ').expectation).toBe('intoTarget')
+    expect(caretAtEnd('SELECT * FROM orders INTO OUTFILE ').expectation).toBe('number')
+  })
+
+  it('offers the INSERT source after the target table', () => {
+    expect(caretAtEnd('INSERT INTO orders ').expectation).toBe('insertSource')
+    expect(
+      caretAtEnd('WITH recent AS (SELECT * FROM orders) INSERT INTO order_items ').expectation,
+    ).toBe('insertSource')
+  })
+
+  it('names the existing column after AFTER and finishes FIRST quietly', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT AFTER ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT FIRST ').expectation).toBe('number')
+  })
+
+  it('offers charset names inside a column definition', () => {
+    expect(caretAtEnd('CREATE PROCEDURE p(IN x VARCHAR(10) CHARACTER SET ').expectation).toBe(
+      'charset',
+    )
+    expect(caretAtEnd('CREATE TABLE t (name VARCHAR(10) CHARACTER SET ').expectation).toBe(
+      'charset',
+    )
+  })
+
+  it('cleans the GRANT target and resumes after DO', () => {
+    expect(caretAtEnd('GRANT ALL PRIVILEGES ON ').expectation).toBe('tableName')
+    expect(
+      caretAtEnd('CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO INSERT INTO ').expectation,
+    ).toBe('relation')
   })
 })

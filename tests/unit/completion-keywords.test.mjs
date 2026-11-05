@@ -441,3 +441,9 @@ describe('routine and event words', () => {
     expect(names(keywordCompletions('eventTail', 'generic'))).toEqual(['STARTS', 'ENDS', 'DO'])
   })
 })
+
+describe('INTO target words', () => {
+  it('offers OUTFILE and DUMPFILE', () => {
+    expect(names(keywordCompletions('intoTarget', 'generic'))).toEqual(['OUTFILE', 'DUMPFILE'])
+  })
+})

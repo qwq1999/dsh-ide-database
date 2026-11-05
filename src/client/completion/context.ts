@@ -1225,6 +1225,11 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
   const action = tokens[start]
   if (action === undefined) return 'alter'
   if (action.kind !== 'keyword' || !ALTER_ACTIONS.has(action.lower)) return undefined
+  const lastWord = tokens[tokens.length - 1]?.text.toLowerCase()
+  // `ADD COLUMN x INT AFTER ` names the existing column it goes after; `FIRST`
+  // ends the clause.
+  if (lastWord === 'after') return 'column'
+  if (lastWord === 'first') return 'number'
   const object = tokens[start + 1]
   if (object === undefined) {
     // `MODIFY`/`CHANGE` name an existing column first; the others name an object.
@@ -1992,13 +1997,57 @@ function createEventTail(tokens: readonly Token[]): CompletionExpectation | unde
   if (timing === 'at' && rest.length === 0) return 'number'
   const last = words[words.length - 1] as string
   if (last === 'starts' || last === 'ends') return 'number'
-  if (last === 'do') return 'statement'
+  const doIndex = words.indexOf('do', scheduleIndex + 1)
+  if (doIndex >= 0) return doIndex === words.length - 1 ? 'statement' : undefined
   return 'eventTail'
+}
+
+
+/** `TRIM(BOTH ' ' FROM ` finishes a function argument, not a FROM clause. */
+function functionArgumentFrom(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined || last.kind !== 'keyword' || last.lower !== 'from') return false
+  let depth = 0
+  for (let at = tokens.length - 1; at >= 0; at -= 1) {
+    const token = tokens[at] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') {
+      depth += 1
+    } else if (token.text === '(') {
+      if (depth > 0) {
+        depth -= 1
+        continue
+      }
+      const owner = tokens[at - 1]
+      return owner !== undefined && owner.kind === 'ident'
+    }
+  }
+  return false
+}
+
+/** `SELECT ... INTO ` takes OUTFILE or DUMPFILE; `@var` needs no completion. */
+function selectInto(tokens: readonly Token[]): boolean {
+  if (tokens[0]?.text.toLowerCase() !== 'select') return false
+  const last = tokens[tokens.length - 1]
+  return last !== undefined && last.kind === 'keyword' && last.lower === 'into'
+}
+
+/** `INSERT INTO orders ` takes VALUES / SELECT / SET, not another relation. */
+function insertTargetTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]?.text.toLowerCase()
+  if (first !== 'insert' && first !== 'replace') return false
+  const intoIndex = tokens.findIndex((token) => token.text.toLowerCase() === 'into')
+  if (intoIndex < 0) return false
+  const target = parseRelationRef(tokens, intoIndex + 1)
+  return target !== null && target.next === tokens.length
 }
 
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
+  // CHARACTER SET names a charset wherever it appears, including column
+  // definitions inside CREATE TABLE / routines.
+  if (charsetValue(tokens)) return 'charset'
   if (alterIndexColumns(tokens)) return 'column'
   const columnStage = createColumnStage(tokens)
   if (columnStage !== undefined) return columnStage
@@ -2065,8 +2114,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // `LOCK TABLES orders ` takes an access mode, not a table.
   const lockTable = lockTableTail(tokens)
   if (lockTable !== undefined) return lockTable
+  if (functionArgumentFrom(tokens)) return 'column'
+  if (insertTargetTail(tokens)) return 'insertSource'
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
+  if (selectInto(tokens)) return 'intoTarget'
   if (literalTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet
@@ -2074,7 +2126,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (usingTail(tokens)) return 'joinTail'
   if (usingParenOpen(tokens)) return 'using'
   if (privilegePosition(tokens)) return 'privilege'
-  if (grantTarget(tokens)) return 'relation'
+  if (grantTarget(tokens)) return 'tableName'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'

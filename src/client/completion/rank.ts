@@ -175,6 +175,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   eventSchedule: KEYWORD_PRIORITY,
   eventTiming: KEYWORD_PRIORITY,
   eventTail: KEYWORD_PRIORITY,
+  intoTarget: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 
