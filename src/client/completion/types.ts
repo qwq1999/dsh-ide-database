@@ -8,7 +8,14 @@
 import type { ClientConnection } from '../../shared/types'
 
 /** What an entry in the completion popup stands for. */
-export type CompletionKind = 'table' | 'schema' | 'column' | 'keyword' | 'function' | 'alias'
+export type CompletionKind =
+  | 'table'
+  | 'schema'
+  | 'column'
+  | 'keyword'
+  | 'function'
+  | 'alias'
+  | 'snippet'
 
 /** One row of the completion popup. */
 export interface Completion {

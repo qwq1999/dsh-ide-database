@@ -240,8 +240,8 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
 
 ### 实现进度
 
-- 已完成：P0 全部；P1 的 CTE 与派生表列推断（`WITH x AS (…)`、`WITH RECURSIVE`、显式列清单 `x(a, b)`、`(SELECT …) alias`，`x.` / `d.` 直接给推断列且不查元数据）、`INSERT INTO t (…)` 列清单、`ON` 条件两端列；P2 的补全元数据负缓存（读失败的库 / 表在会话内记住，不再每次弹窗重试）。
-- 待办：P1 的 `SELECT *` 展开、JOIN 关系推荐、方言关键字 / 函数全集、snippet；P2 的最近使用排序、值级补全、批量元数据接口、大小写策略、指标；P3 全部。
+- 已完成：P0 全部；P1 的 CTE 与派生表列推断（`WITH x AS (…)`、`WITH RECURSIVE`、显式列清单 `x(a, b)`、`(SELECT …) alias`，`x.` / `d.` 直接给推断列且不查元数据）、`INSERT INTO t (…)` 列清单、`ON` 条件两端列、JOIN 关系推荐（按已引用表的 `xxx_id` 列 + 单复数表名匹配，生成 `users u ON u.id = o.user_id` 完整子句，元数据失败静默降级）、方言关键字与函数全集（MySQL / Oracle 家族 / PostgreSQL 各自的关键字与内置函数）、语句开头 snippet（6 个模板，原样插入）；P2 的补全元数据负缓存（读失败的库 / 表在会话内记住，不再每次弹窗重试）。
+- 待办：P1 的 `SELECT *` 展开；P2 的最近使用排序、值级补全、批量元数据接口、大小写策略、指标；P3 全部。
 - 每轮完成一项后在此处勾掉，并在提交信息里注明对应用户可见变化。
 
 ## 7. 验收标准（P0）

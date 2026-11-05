@@ -14,12 +14,16 @@ import {
   columnCandidates,
   cteCandidates,
   schemaCandidates,
+  snippetCandidates,
   starCandidate,
   tableCandidates,
   type CatalogColumn,
+  type CatalogTable,
 } from './providers'
 import { prioritiesFor, rank } from './rank'
+import { tokenize } from './tokenizer'
 import type {
+  Analysis,
   Completion,
   CompletionRelation,
   CompletionRequest,
@@ -28,6 +32,15 @@ import type {
 
 /** Max relations whose columns are fetched for an unqualified column caret. */
 const MAX_COLUMN_RELATIONS = 6
+
+/** Max already-referenced relations inspected for a JOIN suggestion. */
+const MAX_JOIN_OWNERS = 3
+
+/** Max JOIN suggestions; they go before the plain table candidates. */
+const MAX_JOIN_SUGGESTIONS = 3
+
+/** Keywords that open a relation position. */
+const RELATION_VERBS: ReadonlySet<string> = new Set(['from', 'join', 'update', 'into', 'table'])
 
 function abortError(): DOMException {
   return new DOMException('The completion request was aborted.', 'AbortError')
@@ -104,6 +117,152 @@ async function columnCandidatesOf(
     [] as readonly CatalogColumn[],
   )
   return columnCandidates(columns)
+}
+
+/**
+ * True when the caret starts a statement and nothing has been typed there yet:
+ * statement templates are only useful at that position.
+ */
+function atStatementStart(request: CompletionRequest, analysis: Analysis): boolean {
+  if (analysis.word.prefix !== '') return false
+  const before = request.statement.slice(0, analysis.word.start)
+  return before.slice(before.lastIndexOf(';') + 1).trim() === ''
+}
+
+/** The last relation keyword (`from`, `join`, ...) before the caret, if any. */
+function relationVerbAt(request: CompletionRequest, before: number): string | undefined {
+  const text = request.statement.slice(0, before)
+  const start = text.lastIndexOf(';') + 1
+  let verb: string | undefined
+  for (const token of tokenize(text.slice(start))) {
+    if (token.kind === 'keyword' && RELATION_VERBS.has(token.lower)) verb = token.lower
+  }
+  return verb
+}
+
+/** Singular-ish forms of a table name, for `users`/`user` style matching. */
+function singularForms(name: string): string[] {
+  const lower = name.toLowerCase()
+  const forms = [lower]
+  if (lower.endsWith('ies') && lower.length > 3) forms.push(`${lower.slice(0, -3)}y`)
+  if (lower.endsWith('es') && lower.length > 2) forms.push(lower.slice(0, -2))
+  if (lower.endsWith('s') && !lower.endsWith('ss')) forms.push(lower.slice(0, -1))
+  return forms
+}
+
+/** Whether two table names differ only by a plural suffix. */
+function sameRelationName(left: string, right: string): boolean {
+  const forms = new Set(singularForms(left))
+  return singularForms(right).some((form) => forms.has(form))
+}
+
+/** A one-letter table alias that does not collide with existing names. */
+function aliasForTable(table: string, taken: Set<string>): string {
+  const base = (table[0] ?? 't').toLowerCase()
+  if (!taken.has(base)) {
+    taken.add(base)
+    return base
+  }
+  let index = 2
+  while (taken.has(`${base}${index}`)) index += 1
+  const alias = `${base}${index}`
+  taken.add(alias)
+  return alias
+}
+
+/** Join key of the target table: `id`, then `<table>_id`, then its first column. */
+function joinKeyColumn(columns: readonly CatalogColumn[], table: string): string | undefined {
+  const names = columns.map((column) => column.name).filter((name) => name !== '')
+  if (names.length === 0) return undefined
+  const id = names.find((name) => name.toLowerCase() === 'id')
+  if (id !== undefined) return id
+  const forms = new Set(singularForms(table))
+  const foreignKey = names.find((name) => {
+    const lower = name.toLowerCase()
+    return lower.endsWith('_id') && forms.has(lower.slice(0, -3))
+  })
+  return foreignKey ?? names[0]
+}
+
+/**
+ * JOIN clauses for the tables the statement probably relates to.
+ *
+ * A `<name>_id` column of an already referenced table suggests a foreign key to
+ * a table called `<name>` (singular or plural). Catalog failures only mean
+ * "no JOIN suggestions"; the plain relation candidates are unaffected.
+ */
+async function joinCandidates(
+  request: CompletionRequest,
+  relations: readonly CompletionRelation[],
+): Promise<Completion[]> {
+  try {
+    const owners = relations
+      .filter((relation) => relation.table !== '')
+      .slice(0, MAX_JOIN_OWNERS)
+    if (owners.length === 0) return []
+
+    const tables = await load(
+      () => request.catalog.tables(request.schema),
+      request.signal,
+      [] as readonly CatalogTable[],
+    )
+    const referenced = new Set(relations.map((relation) => relation.table.toLowerCase()))
+    const taken = new Set<string>()
+    for (const relation of relations) {
+      if (relation.alias !== undefined) taken.add(relation.alias.toLowerCase())
+      if (relation.table !== '') taken.add(relation.table.toLowerCase())
+    }
+
+    const suggestions: Completion[] = []
+    const usedTargets = new Set<string>()
+    for (const owner of owners) {
+      const ownerColumns =
+        owner.columns ??
+        (
+          await load(
+            () => request.catalog.columns(owner.schema ?? request.schema, owner.table),
+            request.signal,
+            [] as readonly CatalogColumn[],
+          )
+        ).map((column) => column.name)
+
+      for (const column of ownerColumns) {
+        if (suggestions.length >= MAX_JOIN_SUGGESTIONS) break
+        const match = /^(.+)_id$/iu.exec(column)
+        const base = match?.[1] ?? ''
+        if (base === '') continue
+        const target = tables.find(
+          (table) =>
+            !referenced.has(table.name.toLowerCase()) &&
+            !usedTargets.has(table.name.toLowerCase()) &&
+            sameRelationName(table.name, base),
+        )
+        if (target === undefined) continue
+
+        const targetColumns = await load(
+          () => request.catalog.columns(request.schema, target.name),
+          request.signal,
+          [] as readonly CatalogColumn[],
+        )
+        const key = joinKeyColumn(targetColumns, target.name)
+        if (key === undefined) continue
+
+        const alias = aliasForTable(target.name, taken)
+        const ownerRef = owner.alias ?? owner.table
+        usedTargets.add(target.name.toLowerCase())
+        suggestions.push({
+          name: target.name,
+          kind: 'table',
+          detail: `关联 ${owner.table}.${column}`,
+          insert: `${target.name} ${alias} ON ${alias}.${key} = ${ownerRef}.${column}`,
+        })
+      }
+    }
+    return suggestions
+  } catch (error) {
+    if (isAbortError(error)) throw error
+    return []
+  }
 }
 
 /** Columns of every relation mentioned before the caret, in statement order. */
@@ -217,6 +376,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   const { expectation, qualifier, relations } = analysis
   const dialect = request.dialect
   let candidates: Completion[]
+  let priorities = prioritiesFor(expectation)
 
   if (qualifier.length > 0) {
     candidates = await qualifiedCandidates(request, qualifier, relations)
@@ -227,13 +387,21 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
           tableCandidatesOf(request, request.schema),
           schemaNamesOf(request),
         ])
+        const joins =
+          relationVerbAt(request, analysis.word.start) === 'join'
+            ? await joinCandidates(request, relations)
+            : []
         candidates = [
           ...aliasCandidates(relations),
           ...cteCandidates(analysis.ctes ?? []),
+          ...joins,
           ...tables,
           ...schemas,
           ...keywordCompletions('relation', dialect),
         ]
+        // The suggested JOIN clause is the most useful row here, more than the
+        // alias of a table that is already joined.
+        if (joins.length > 0) priorities = { ...priorities, table: 0, alias: 1 }
         break
       }
       case 'column': {
@@ -263,29 +431,35 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         ]
         break
       }
-      case 'keyword':
-        candidates = keywordCompletions('keyword', dialect)
+      case 'keyword': {
+        const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
+        candidates = [...snippets, ...keywordCompletions('keyword', dialect)]
+        if (snippets.length > 0) priorities = { ...priorities, snippet: 0 }
         break
+      }
       case 'any':
       default: {
         const [tables, schemas] = await Promise.all([
           tableCandidatesOf(request, request.schema),
           schemaNamesOf(request),
         ])
+        const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [
+          ...snippets,
           ...tables,
           ...schemas,
           ...keywordCompletions('any', dialect),
           ...functionCompletions(dialect),
         ]
+        // Templates are the whole point of an empty statement; normally the
+        // kind priority would push them behind every keyword.
+        if (snippets.length > 0) priorities = { ...priorities, snippet: 0 }
         break
       }
     }
   }
 
   if (request.signal?.aborted) throw abortError()
-  const items = rank(candidates, analysis.word.prefix, 60, {
-    priorities: prioritiesFor(expectation),
-  })
+  const items = rank(candidates, analysis.word.prefix, 60, { priorities })
   return { items, analysis }
 }

@@ -51,6 +51,7 @@ const ANY_PRIORITY: Record<CompletionKind, number> = {
   keyword: 3,
   function: 4,
   alias: 5,
+  snippet: 6,
 }
 
 const RELATION_PRIORITY: Record<CompletionKind, number> = {
@@ -60,6 +61,7 @@ const RELATION_PRIORITY: Record<CompletionKind, number> = {
   keyword: 3,
   function: 4,
   column: 5,
+  snippet: 6,
 }
 
 const COLUMN_PRIORITY: Record<CompletionKind, number> = {
@@ -69,6 +71,7 @@ const COLUMN_PRIORITY: Record<CompletionKind, number> = {
   keyword: 3,
   table: 4,
   schema: 5,
+  snippet: 6,
 }
 
 const SCHEMA_PRIORITY: Record<CompletionKind, number> = {
@@ -78,6 +81,7 @@ const SCHEMA_PRIORITY: Record<CompletionKind, number> = {
   function: 3,
   column: 4,
   alias: 5,
+  snippet: 6,
 }
 
 const ALIAS_PRIORITY: Record<CompletionKind, number> = {
@@ -87,6 +91,7 @@ const ALIAS_PRIORITY: Record<CompletionKind, number> = {
   keyword: 3,
   function: 4,
   column: 5,
+  snippet: 6,
 }
 
 const KEYWORD_PRIORITY: Record<CompletionKind, number> = {
@@ -96,6 +101,7 @@ const KEYWORD_PRIORITY: Record<CompletionKind, number> = {
   schema: 3,
   column: 4,
   alias: 5,
+  snippet: 6,
 }
 
 const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> = {

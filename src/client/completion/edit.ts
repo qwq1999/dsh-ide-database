@@ -9,7 +9,7 @@
  */
 import type { ClientConnection } from '../../shared/types'
 import { quoteIdent } from '../tablesql'
-import type { WordAtCaret } from './types'
+import type { CompletionKind, WordAtCaret } from './types'
 
 export type { WordAtCaret } from './types'
 
@@ -72,13 +72,16 @@ export function qualifierBefore(statement: string, start: number): string[] {
 
 /**
  * Replace the word under the caret with `name`, returning the caret position so
- * the caller can move it after the inserted text.
+ * the caller can move it after the inserted text. Snippets are templates such
+ * as `SELECT * FROM ` and go in verbatim; every other candidate is an
+ * identifier (or a call / `*`) and may need quoting.
  */
 export function applyCompletion(
   statement: string,
   caret: number,
   name: string,
   dialect: ClientConnection['dialect'],
+  kind?: CompletionKind,
 ): { statement: string; caret: number } {
   const word = wordAtCaret(statement, caret)
   const start = word.quote === '' ? word.start : word.start - 1
@@ -87,7 +90,8 @@ export function applyCompletion(
   // would turn the parenthesis into part of an identifier. `*` is an expression
   // too, not an identifier to quote.
   const call = name.endsWith('(') && PLAIN.test(name.slice(0, -1))
-  const insertion = PLAIN.test(name) || call || name === '*' ? name : quoteIdent(dialect, name)
+  const literal = kind === 'snippet'
+  const insertion = literal || PLAIN.test(name) || call || name === '*' ? name : quoteIdent(dialect, name)
   return {
     statement: `${statement.slice(0, start)}${insertion}${statement.slice(tail)}`,
     caret: start + insertion.length,

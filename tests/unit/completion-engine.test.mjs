@@ -264,3 +264,139 @@ describe('complete CTEs and derived tables', () => {
     expect(names(result).slice(0, 2)).toEqual(['id', 'amount'])
   })
 })
+
+describe('complete snippets', () => {
+  it('offers templates at the start of an empty statement', async () => {
+    const result = await complete(request(''))
+    expect(result.items[0]).toMatchObject({
+      name: 'SELECT * FROM ',
+      kind: 'snippet',
+      insert: 'SELECT * FROM ',
+    })
+    expect(result.items.filter((item) => item.kind === 'snippet').length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('offers templates on a fresh statement after a semicolon', async () => {
+    const result = await complete(request('SELECT 1; '))
+    expect(result.items[0].kind).toBe('snippet')
+  })
+
+  it('offers templates after only whitespace', async () => {
+    const result = await complete(request('   '))
+    expect(result.items[0].kind).toBe('snippet')
+  })
+
+  it('does not offer templates while typing a keyword', async () => {
+    const result = await complete(request('sel'))
+    expect(result.items.some((item) => item.kind === 'snippet')).toBe(false)
+    expect(result.items[0]).toMatchObject({ name: 'SELECT', kind: 'keyword' })
+  })
+
+  it('does not offer templates inside a statement', async () => {
+    const result = await complete(request('SELECT * FROM orders WHERE '))
+    expect(result.items.some((item) => item.kind === 'snippet')).toBe(false)
+  })
+
+  it('keeps insert equal to the template text for every snippet', async () => {
+    const result = await complete(request(' '))
+    const snippets = result.items.filter((item) => item.kind === 'snippet')
+    expect(snippets.length).toBeGreaterThan(0)
+    for (const snippet of snippets) expect(snippet.insert).toBe(snippet.name)
+  })
+})
+
+const JOIN_TABLES = [
+  { name: 'orders', kind: 'table' },
+  { name: 'users', kind: 'table' },
+  { name: 'customers', kind: 'table' },
+]
+
+const JOIN_COLUMNS = {
+  'shop.orders': [
+    { name: 'id', typeName: 'INT' },
+    { name: 'user_id', typeName: 'INT' },
+    { name: 'total', typeName: 'DECIMAL' },
+  ],
+  'shop.users': [
+    { name: 'id', typeName: 'INT' },
+    { name: 'name', typeName: 'VARCHAR' },
+  ],
+  'shop.customers': [
+    { name: 'id', typeName: 'INT' },
+    { name: 'name', typeName: 'VARCHAR' },
+  ],
+}
+
+function createJoinCatalog() {
+  const calls = { schemas: 0, tables: [], columns: [] }
+  const catalog = {
+    schemas: async () => ['shop'],
+    tables: async (schema) => {
+      calls.tables.push(schema)
+      return schema === 'shop' ? JOIN_TABLES : []
+    },
+    columns: async (schema, table) => {
+      calls.columns.push(`${schema}.${table}`)
+      return JOIN_COLUMNS[`${schema}.${table}`] ?? []
+    },
+  }
+  return Object.assign(catalog, { calls })
+}
+
+describe('complete JOIN suggestions', () => {
+  it('suggests the table behind an _id column as a complete JOIN clause', async () => {
+    const req = request('SELECT * FROM orders o JOIN ', { catalog: createJoinCatalog() })
+    const result = await complete(req)
+
+    expect(result.items[0]).toMatchObject({
+      name: 'users',
+      kind: 'table',
+      detail: '关联 orders.user_id',
+    })
+    expect(result.items[0].insert).toMatch(/^users u\d* ON u\d*\.id = o\.user_id$/)
+    expect(req.catalog.calls.tables).toContain('shop')
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+    expect(req.catalog.calls.columns).toContain('shop.users')
+  })
+
+  it('uses the table name as the owner reference when there is no alias', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders JOIN ', { catalog: createJoinCatalog() }),
+    )
+    expect(result.items[0]).toMatchObject({ name: 'users', detail: '关联 orders.user_id' })
+    expect(result.items[0].insert).toContain('= orders.user_id')
+  })
+
+  it('does not suggest a table the statement already joined', async () => {
+    const result = await complete(
+      request('SELECT * FROM orders o JOIN users u ON u.id = o.user_id JOIN ', {
+        catalog: createJoinCatalog(),
+      }),
+    )
+    expect(result.items.every((item) => item.insert === undefined)).toBe(true)
+  })
+
+  it('keeps the ordinary candidates when no foreign key matches', async () => {
+    const result = await complete(request('SELECT * FROM customers c JOIN '))
+    expect(result.items.every((item) => item.insert === undefined)).toBe(true)
+    expect(result.items[0]).toMatchObject({ name: 'c', kind: 'alias' })
+    expect(names(result)).toContain('orders')
+  })
+
+  it('only suggests JOIN clauses in a JOIN position, not after FROM or a comma', async () => {
+    const req = request('SELECT * FROM orders o, ', { catalog: createJoinCatalog() })
+    const result = await complete(req)
+    expect(result.items.every((item) => item.insert === undefined)).toBe(true)
+    expect(names(result)).toContain('users')
+  })
+
+  it('degrades silently when the metadata fails', async () => {
+    const catalog = createJoinCatalog()
+    catalog.columns = async () => {
+      throw new Error('metadata unavailable')
+    }
+    const result = await complete(request('SELECT * FROM orders o JOIN ', { catalog }))
+    expect(result.items.every((item) => item.insert === undefined)).toBe(true)
+    expect(names(result)).toContain('orders')
+  })
+})

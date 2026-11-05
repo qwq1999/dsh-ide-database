@@ -5,6 +5,7 @@
  * which `CompletionKind` each metadata source produces, and gives the right
  * hand-side hint (column type, view marker, schema of a table, ...).
  */
+import type { ClientConnection } from '../../shared/types'
 import type { Completion, CompletionRelation } from './types'
 
 /** A table or view returned by the catalog. */
@@ -66,6 +67,30 @@ export function columnCandidates(columns: readonly CatalogColumn[]): Completion[
 /** The `*` shorthand, offered after a relation has been established. */
 export function starCandidate(): Completion {
   return { name: '*', kind: 'column', detail: '所有列' }
+}
+
+/** Ready-to-use statement templates, only useful at the start of a statement. */
+const SNIPPETS: readonly { template: string; detail: string }[] = [
+  { template: 'SELECT * FROM ', detail: '查询模板' },
+  { template: 'SELECT COUNT(*) FROM ', detail: '计数模板' },
+  { template: 'INSERT INTO ', detail: '插入模板' },
+  { template: 'UPDATE ', detail: '更新模板' },
+  { template: 'DELETE FROM ', detail: '删除模板' },
+  { template: 'WITH ', detail: 'CTE 模板' },
+]
+
+/**
+ * Common SQL templates. `insert` is the template itself: the console pastes it
+ * verbatim instead of quoting it like an identifier.
+ */
+export function snippetCandidates(dialect: ClientConnection['dialect']): Completion[] {
+  void dialect
+  return SNIPPETS.map((snippet) => ({
+    name: snippet.template,
+    kind: 'snippet' as const,
+    detail: snippet.detail,
+    insert: snippet.template,
+  }))
 }
 
 /** CTE names the caret statement can use in a FROM/JOIN clause. */

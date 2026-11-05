@@ -562,6 +562,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         caretPos,
         picked.insert ?? picked.name,
         connection?.dialect ?? 'mysql',
+        picked.kind,
       )
       setSelectedRun(false)
       setStatement(next.statement)
@@ -2323,7 +2324,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                                   ? '函数'
                                   : item.kind === 'alias'
                                     ? '别名'
-                                    : '关键字'}
+                                    : item.kind === 'snippet'
+                                      ? '片段'
+                                      : '关键字'}
                         </span>
                       </span>
                     </button>
