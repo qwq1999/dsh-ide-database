@@ -63,6 +63,9 @@ export type CompletionExpectation =
   | 'set'
   | 'type'
   | 'charset'
+  | 'name'
+  | 'statement'
+  | 'show'
   | 'keyword'
   | 'any'
 

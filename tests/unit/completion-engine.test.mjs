@@ -950,3 +950,32 @@ describe('complete CREATE TABLE option values', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete name-only and statement positions', () => {
+  it('stays quiet where only a new name makes sense', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('DROP INDEX '), catalog })
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers statement starters after EXPLAIN', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('EXPLAIN '), catalog })
+    expect(result.analysis.expectation).toBe('statement')
+    expect(names(result)).toContain('SELECT')
+    expect(names(result)).not.toContain('FROM')
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers SHOW subcommands', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SHOW '), catalog })
+    expect(result.analysis.expectation).toBe('show')
+    expect(names(result)).toContain('TABLES')
+    expect(names(result)).toContain('STATUS')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})

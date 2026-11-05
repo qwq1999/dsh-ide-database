@@ -564,6 +564,19 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = CHARSET_NAMES.map((name) => ({ name, kind: 'keyword' as const }))
         break
       }
+      case 'name': {
+        // The user is typing a new object name; the catalog cannot guess it.
+        candidates = []
+        break
+      }
+      case 'statement': {
+        candidates = [...keywordCompletions('statement', dialect)]
+        break
+      }
+      case 'show': {
+        candidates = [...keywordCompletions('show', dialect)]
+        break
+      }
       case 'keyword': {
         const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [...snippets, ...keywordCompletions('keyword', dialect)]

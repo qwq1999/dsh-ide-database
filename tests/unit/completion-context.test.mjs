@@ -94,7 +94,7 @@ describe('analyze expectation', () => {
   it('falls back to any outside a clause', () => {
     expect(caretAtEnd('ord').expectation).toBe('any')
     expect(caretAtEnd('').expectation).toBe('any')
-    expect(caretAtEnd('EXPLAIN ').expectation).toBe('any')
+    expect(caretAtEnd('EXPLAIN ').expectation).toBe('statement')
   })
 
   it('ignores the identifier that is being typed', () => {
@@ -136,7 +136,7 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('definition')
-    expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('relation')
+    expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('name')
   })
 
   it('expects a table after CREATE INDEX ON', () => {
@@ -472,5 +472,24 @@ describe('analyze CREATE TABLE option values', () => {
     expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT CHARSET utf8mb4 ').expectation).toBe(
       'tableOptions',
     )
+  })
+})
+
+describe('analyze name-only and statement tails', () => {
+  it('asks for a name only the user knows', () => {
+    expect(caretAtEnd('DROP INDEX ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE DATABASE ').expectation).toBe('name')
+    expect(caretAtEnd('CREATE SCHEMA ').expectation).toBe('name')
+    expect(caretAtEnd('GRANT SELECT ON orders TO ').expectation).toBe('name')
+    expect(caretAtEnd('REVOKE SELECT ON orders FROM ').expectation).toBe('name')
+  })
+
+  it('expects the explained statement after EXPLAIN', () => {
+    expect(caretAtEnd('EXPLAIN ').expectation).toBe('statement')
+  })
+
+  it('expects SHOW subcommands', () => {
+    expect(caretAtEnd('SHOW ').expectation).toBe('show')
+    expect(caretAtEnd('SHOW FULL ').expectation).toBe('show')
   })
 })

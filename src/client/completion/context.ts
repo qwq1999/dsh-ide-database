@@ -364,6 +364,37 @@ function afterTableOptionValue(tokens: readonly Token[]): boolean {
   return secondLast.lower === 'set' && thirdLast?.text.toLowerCase() === 'character'
 }
 
+/** Statements whose next word is a name only the user knows. */
+function objectName(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first === undefined || second === undefined) return false
+  const start = first.text.toLowerCase()
+  const next = second.text.toLowerCase()
+  if (start === 'drop' && next === 'index') return true
+  return start === 'create' && (next === 'database' || next === 'schema')
+}
+
+/** `GRANT ... TO ` / `REVOKE ... FROM ` name a user, not a relation. */
+function grantee(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const last = tokens[tokens.length - 1]
+  if (first === undefined || last === undefined) return false
+  const start = first.text.toLowerCase()
+  if (start !== 'grant' && start !== 'revoke') return false
+  return last.kind === 'keyword' && (last.lower === 'to' || last.lower === 'from')
+}
+
+/** `EXPLAIN ` is followed by the statement it explains. */
+function explainStart(tokens: readonly Token[]): boolean {
+  return tokens.length === 1 && tokens[0]?.text.toLowerCase() === 'explain'
+}
+
+/** `SHOW ` names a catalog list (`SHOW TABLES`, `SHOW STATUS`, ...). */
+function showStart(tokens: readonly Token[]): boolean {
+  return tokens.length <= 2 && tokens[0]?.text.toLowerCase() === 'show'
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -430,7 +461,8 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
       return object.lower === 'column' ? 'column' : undefined
     case 'rename':
       if (object.lower === 'column') return 'column'
-      return object.lower === 'to' ? 'relation' : undefined
+      // `RENAME TO ` names the *new* table, which only the user knows.
+      return object.lower === 'to' ? 'name' : undefined
     default:
       return undefined
   }
@@ -509,6 +541,10 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (dropIndexOn(tokens)) return 'relation'
+  if (objectName(tokens)) return 'name'
+  if (grantee(tokens)) return 'name'
+  if (explainStart(tokens)) return 'statement'
+  if (showStart(tokens)) return 'show'
   if (limitCount(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'
   if (charsetValue(tokens)) return 'charset'

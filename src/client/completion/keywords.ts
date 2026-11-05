@@ -377,6 +377,35 @@ export const CHARSET_NAMES = [
   'big5',
 ] as const
 
+/** Subcommands a `SHOW ` statement can name. */
+const SHOW_WORDS = [
+  'TABLES',
+  'DATABASES',
+  'SCHEMAS',
+  'COLUMNS',
+  'FIELDS',
+  'INDEX',
+  'INDEXES',
+  'KEYS',
+  'STATUS',
+  'VARIABLES',
+  'GLOBAL',
+  'SESSION',
+  'CREATE',
+  'FULL',
+  'PROCESSLIST',
+  'GRANTS',
+  'TRIGGERS',
+  'EVENTS',
+  'ENGINES',
+  'CHARSET',
+  'COLLATION',
+  'WARNINGS',
+  'ERRORS',
+  'TABLE',
+  'PRIVILEGES',
+] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -404,6 +433,13 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return CAST_TYPE_WORDS
     case 'charset':
       // Charset names come from CHARSET_NAMES (original case).
+      return []
+    case 'statement':
+      return STATEMENT_WORDS
+    case 'show':
+      return SHOW_WORDS
+    case 'name':
+      // The user is typing a name only they know.
       return []
     case 'alter':
       return ALTER_WORDS
