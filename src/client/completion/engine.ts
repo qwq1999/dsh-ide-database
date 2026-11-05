@@ -299,19 +299,24 @@ async function relationColumnLists(
   currentSchema: string,
 ): Promise<RelationColumns[]> {
   const targets: CompletionRelation[] = []
+  const lookups = new Map<CompletionRelation, { schema: string; table: string }>()
   for (const relation of relations) {
-    if (relation.table === '' || relation.columns !== undefined) continue
+    if (relation.columns !== undefined) continue
+    const lookup = columnLookup(relation, currentSchema)
+    if (lookup === undefined) continue
     if (targets.length >= MAX_COLUMN_RELATIONS) break
     targets.push(relation)
+    lookups.set(relation, lookup)
   }
   const lists = await Promise.all(
-    targets.map((relation) =>
-      load(
-        () => request.catalog.columns(relation.schema ?? currentSchema, relation.table),
+    targets.map((relation) => {
+      const lookup = lookups.get(relation) as { schema: string; table: string }
+      return load(
+        () => request.catalog.columns(lookup.schema, lookup.table),
         request.signal,
         [],
-      ),
-    ),
+      )
+    }),
   )
   const fetched = new Map<CompletionRelation, readonly CatalogColumn[]>()
   targets.forEach((relation, index) => {
@@ -321,7 +326,7 @@ async function relationColumnLists(
     if (relation.columns !== undefined) {
       return { relation, columns: relation.columns.map((name) => ({ name })) }
     }
-    if (relation.table === '') return { relation, columns: [] }
+    if (!lookups.has(relation)) return { relation, columns: [] }
     return { relation, columns: fetched.get(relation) ?? [] }
   })
 }
@@ -382,6 +387,26 @@ function findRelation(
 }
 
 /**
+ * Where a relation's columns live: its own table, or the source of a derived
+ * table whose SELECT list was a `*`. `undefined` means the columns are unknown.
+ */
+function columnLookup(
+  relation: CompletionRelation,
+  currentSchema: string,
+): { schema: string; table: string } | undefined {
+  // A CTE or derived table keeps its own name in `table`; the catalog only
+  // knows the relation the `*` was expanded from.
+  const source = relation.source
+  if (source !== undefined) {
+    return { schema: source.schema ?? currentSchema, table: source.table }
+  }
+  if (relation.table !== '') {
+    return { schema: relation.schema ?? currentSchema, table: relation.table }
+  }
+  return undefined
+}
+
+/**
  * Resolve the columns of a `qualifier.` or `schema.table.` caret.
  *
  * The single-qualifier case is deliberately forgiving: `orders.` first means the
@@ -404,13 +429,12 @@ async function qualifiedCandidates(
   if (relation !== undefined && relation.columns !== undefined) {
     return columnCandidates(relation.columns.map((column) => ({ name: column })))
   }
-  if (relation !== undefined && relation.table !== '') {
-    const columns = await columnCandidatesOf(
-      request,
-      relation.schema ?? request.schema,
-      relation.table,
-    )
-    if (columns.length > 0) return columns
+  if (relation !== undefined) {
+    const lookup = columnLookup(relation, request.schema)
+    if (lookup !== undefined) {
+      const columns = await columnCandidatesOf(request, lookup.schema, lookup.table)
+      if (columns.length > 0) return columns
+    }
   }
   // A trailing dot (`orders.`) hides the relation from the parser above, so the
   // bare name is still tried as a table of the current schema before treating

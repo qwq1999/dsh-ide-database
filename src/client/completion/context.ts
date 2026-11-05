@@ -24,6 +24,42 @@ import type {
 /** Keywords that introduce a relation (a table, view or derived table). */
 const RELATION_STARTERS = new Set(['from', 'join', 'into', 'update', 'table'])
 
+/** Clause words that add another relation after a FROM item. */
+const MORE_RELATIONS = new Set(['join', 'left', 'right', 'inner', 'full', 'cross', 'natural'])
+
+/**
+ * The single relation a `SELECT *` body expands to. Only an unambiguous
+ * `FROM <table>` with no JOIN or comma qualifies; anything else stays unknown.
+ */
+function starSource(body: readonly Token[]): CompletionRelation['source'] | undefined {
+  let depth = 0
+  let fromIndex = -1
+  for (let index = 0; index < body.length; index += 1) {
+    const token = body[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (depth === 0 && token.kind === 'keyword' && token.lower === 'from') {
+      fromIndex = index
+      break
+    }
+  }
+  if (fromIndex < 0) return undefined
+  const parsed = parseRelationRef(body, fromIndex + 1)
+  if (parsed === null || parsed.relation.table === '') return undefined
+  const rest = body[parsed.next]
+  if (rest !== undefined) {
+    if (rest.kind === 'punct' && (rest.text === ',' || rest.text === ')')) return undefined
+    if (rest.kind === 'keyword' && MORE_RELATIONS.has(rest.lower)) return undefined
+  }
+  return {
+    ...(parsed.relation.schema === undefined ? {} : { schema: parsed.relation.schema }),
+    table: parsed.relation.table,
+  }
+}
+
 /**
  * What the caret expects after each clause word. Words that start a statement
  * but do not pin a clause (`insert`, `delete`, `explain`, ...) are absent and
@@ -284,6 +320,8 @@ interface CteDefinition {
   name: string
   /** Explicit column list or inferred SELECT output; unknown columns are absent. */
   columns?: string[]
+  /** Relation a `SELECT *` body inherits its columns from, when unambiguous. */
+  source?: CompletionRelation['source']
 }
 
 /**
@@ -355,7 +393,15 @@ function parseWith(tokens: readonly Token[]): { ctes: CteDefinition[]; mainStart
     if (close < 0) return none
 
     const body = tokens.slice(index + 1, close)
-    ctes.push({ name: name.text, columns: explicit ?? inferSelectColumns(body) })
+    const cte: CteDefinition = { name: name.text }
+    const columns = explicit ?? inferSelectColumns(body)
+    if (columns !== undefined) {
+      cte.columns = columns
+    } else {
+      const source = starSource(body)
+      if (source !== undefined) cte.source = source
+    }
+    ctes.push(cte)
     index = close + 1
 
     const comma = tokens[index]
@@ -402,7 +448,12 @@ function parseRelationRef(
     const relation: CompletionRelation = { table: '' }
     if (alias.alias !== undefined) relation.alias = alias.alias
     const columns = inferSelectColumns(body)
-    if (columns !== undefined) relation.columns = columns
+    if (columns !== undefined) {
+      relation.columns = columns
+    } else {
+      const source = starSource(body)
+      if (source !== undefined) relation.source = source
+    }
     return { relation, next: alias.next }
   }
 
@@ -432,7 +483,9 @@ function attachCteColumns(
   if (relation.table === '' || ctes.length === 0) return relation
   const lower = relation.table.toLowerCase()
   const cte = ctes.find((definition) => definition.name.toLowerCase() === lower)
-  if (cte !== undefined && cte.columns !== undefined) relation.columns = cte.columns
+  if (cte === undefined) return relation
+  if (cte.columns !== undefined) relation.columns = cte.columns
+  else if (cte.source !== undefined) relation.source = cte.source
   return relation
 }
 

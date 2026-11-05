@@ -222,11 +222,27 @@ describe('analyze CTEs and derived tables', () => {
     expect(analysis.expectation).toBe('column')
   })
 
-  it('does not invent columns for SELECT *', () => {
+  it('records the source relation behind SELECT * instead of inventing columns', () => {
     const cte = caretAtEnd('WITH all_rows AS (SELECT * FROM orders) SELECT * FROM all_rows WHERE ')
-    expect(cte.relations).toEqual([{ table: 'all_rows' }])
+    expect(cte.relations).toEqual([{ table: 'all_rows', source: { table: 'orders' } }])
     const derived = caretAtEnd('SELECT * FROM (SELECT o.* FROM orders o) d WHERE ')
-    expect(derived.relations).toEqual([{ table: '', alias: 'd' }])
+    expect(derived.relations).toEqual([{ table: '', alias: 'd', source: { table: 'orders' } }])
+  })
+
+  it('keeps the schema of the SELECT * source relation', () => {
+    const analysis = caretAtEnd(
+      'WITH x AS (SELECT * FROM shop.orders) SELECT * FROM x WHERE x.',
+    )
+    expect(analysis.relations).toEqual([
+      { table: 'x', source: { schema: 'shop', table: 'orders' } },
+    ])
+  })
+
+  it('leaves the source unknown for an ambiguous FROM list', () => {
+    const analysis = caretAtEnd(
+      'WITH x AS (SELECT * FROM orders o JOIN customers c ON o.id = c.id) SELECT * FROM x WHERE ',
+    )
+    expect(analysis.relations).toEqual([{ table: 'x' }])
   })
 
   it('gives no CTE list outside a WITH statement', () => {

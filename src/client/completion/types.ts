@@ -39,6 +39,12 @@ export interface CompletionRelation {
    * example after `SELECT *`.
    */
   columns?: readonly string[]
+  /**
+   * Relation a derived table (`SELECT * FROM orders`) inherits its columns from.
+   * The parser cannot name those columns itself, so the engine expands the `*`
+   * through the catalog when the qualifier points here.
+   */
+  source?: { schema?: string; table: string }
 }
 
 /** Which kind of name the caret position expects. */

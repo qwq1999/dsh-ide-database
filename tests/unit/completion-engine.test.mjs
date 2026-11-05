@@ -263,6 +263,29 @@ describe('complete CTEs and derived tables', () => {
     )
     expect(names(result).slice(0, 2)).toEqual(['id', 'amount'])
   })
+
+  it('expands a SELECT * CTE through the catalog', async () => {
+    const req = request(
+      'WITH recent AS (SELECT * FROM orders) SELECT * FROM recent r WHERE r.',
+    )
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('expands a SELECT * derived table through the catalog', async () => {
+    const req = request('SELECT * FROM (SELECT * FROM orders) d WHERE d.')
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'total', 'created_at'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('offers the columns of a SELECT * derived table without a qualifier', async () => {
+    const req = request('SELECT * FROM (SELECT * FROM orders) d WHERE ')
+    const result = await complete(req)
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
 })
 
 describe('complete snippets', () => {
