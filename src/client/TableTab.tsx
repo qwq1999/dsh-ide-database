@@ -936,7 +936,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           {exportOpen ? (
             <MenuGroupList
               groups={exportGroups}
-              extra={{ id: 'dump', label: '整表脚本（建表 + 数据）', onSelect: () => void exportDump() }}
+              extra={{ id: 'dump', label: '整表脚本', onSelect: () => void exportDump() }}
               onClose={() => setExportOpen(false)}
             />
           ) : null}

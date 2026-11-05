@@ -712,13 +712,18 @@ export const CSS = `
   color: var(--dsw-alias-label-tertiary);
   font-size: 10px;
 }
-/* Flyouts open to the left because the menu itself is pinned to the right edge. */
+/* Flyouts open to the right by default; the component flips them left when the edge is in the way. */
 .dshdb-menu .dshdb-submenu {
   display: none;
   top: -4px;
-  right: calc(100% + 2px);
+  left: calc(100% + 2px);
+  right: auto;
 }
 .dshdb-menu .dshdb-submenu[data-open='true'] { display: flex; }
+.dshdb-menu .dshdb-submenu[data-flip='true'] {
+  left: auto;
+  right: calc(100% + 2px);
+}
 .dshdb-hmenu {
   position: fixed;
   z-index: 40;

@@ -178,6 +178,8 @@ describe('exporting selected table rows', () => {
 
     const page = await screen.findByRole('menuitem', { name: '导出当前页' })
     expect(page.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('menuitem', { name: '整表脚本' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: /建表 \+ 数据/ })).toBeNull()
     fireEvent.pointerEnter(page)
     expect(page.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-open')).toBe('true')

@@ -341,7 +341,7 @@ describe('table export menu', () => {
     await waitFor(() => expect(trigger.disabled).toBe(false))
 
     fireEvent.click(trigger)
-    fireEvent.click(await screen.findByRole('menuitem', { name: '整表脚本（建表 + 数据）' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '整表脚本' }))
 
     await waitFor(() => expect(downloads).toHaveBeenCalled())
     const call = downloads.mock.calls.at(-1) ?? []
