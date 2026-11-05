@@ -549,6 +549,10 @@ export function App(props: AppProps): ReactElement {
             <StateDot tone={server ? 'success' : connectingId === selectedId ? 'warn' : 'idle'} />
             <span title={selected.name}>{selected.name}</span>
             <span>·</span>
+            <span className="dshdb-mono dshdb-muted" title={`连接 ID：${selected.id}`}>
+              {selected.id}
+            </span>
+            <span>·</span>
             <span className="dshdb-mono">
               {selected.host}:{selected.port}
             </span>
