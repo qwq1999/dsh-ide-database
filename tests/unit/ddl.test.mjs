@@ -111,7 +111,7 @@ describe('对象定义 (DDL)', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('去掉 Oracle 定义开头和结尾的空行', async () => {
+  it('去掉 Oracle 定义的首尾空行和首行缩进', async () => {
     const text = '\n  CREATE OR REPLACE EDITIONABLE FUNCTION "SHOP"."FN_TOTAL" RETURN NUMBER\nIS\nBEGIN\n  RETURN 1;\nEND\n'
     const { service } = harness({
       connection: { id: 'c1', driver: 'oracle', dialect: 'oracle', database: 'ORCL' },
@@ -119,7 +119,7 @@ describe('对象定义 (DDL)', () => {
     })
     const result = await service.ddl('c1', 'oracle', 'SHOP', 'FN_TOTAL', 'function')
     expect(result.source).toBe('server')
-    expect(result.ddl).toBe('  CREATE OR REPLACE EDITIONABLE FUNCTION "SHOP"."FN_TOTAL" RETURN NUMBER\nIS\nBEGIN\n  RETURN 1;\nEND')
+    expect(result.ddl).toBe('CREATE OR REPLACE EDITIONABLE FUNCTION "SHOP"."FN_TOTAL" RETURN NUMBER\nIS\nBEGIN\n  RETURN 1;\nEND')
   })
 
   it('SHOW CREATE 返回的定义同样去掉首尾空行', async () => {

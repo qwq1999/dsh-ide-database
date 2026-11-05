@@ -290,12 +290,17 @@ function objectKindName(kind: ObjectKind): string {
 
 /**
  * Server DDL is displayed verbatim in a <pre> and is also returned by the
- * agent tools. Oracle's DBMS_METADATA (and some SHOW CREATE results) wrap the
- * statement in blank lines, which render as an empty first line in the tree
- * detail panel; drop only those blank edges and keep the statement itself.
+ * agent tools. Oracle's DBMS_METADATA pretty-prints the statement as
+ * "\n  CREATE …": a blank first line plus a two-space indent, and it also
+ * ends with a newline. Drop the blank edges and the indent of the first line
+ * (a DDL statement never starts with meaningful horizontal whitespace) while
+ * keeping the indentation inside the statement.
  */
 function trimDdlText(text: string): string {
-  return text.replace(/^(?:[ \t]*\r?\n)+/, '').replace(/\s+$/, '')
+  return text
+    .replace(/^(?:[ \t]*\r?\n)+/, '')
+    .replace(/^[ \t]+/, '')
+    .replace(/\s+$/, '')
 }
 
 /**
