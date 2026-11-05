@@ -703,7 +703,7 @@ export const CSS = `
   color: var(--dsw-alias-label-secondary);
 }
 /* Grouped menus: the group row opens a flyout so the main column stays short. */
-.dshdb-menu-groups { min-width: 168px; }
+.dshdb-menu-groups { width: max-content; }
 .dshdb-submenu-anchor { position: relative; display: block; }
 .dshdb-submenu-trigger { display: flex; align-items: center; gap: 8px; }
 .dshdb-submenu-trigger::after {

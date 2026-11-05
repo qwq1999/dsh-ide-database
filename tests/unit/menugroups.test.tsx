@@ -45,4 +45,9 @@ describe('grouped menu flyouts', () => {
     expect(CSS).toMatch(/\.dshdb-menu \.dshdb-submenu \{[^}]*right:\s*auto/)
     expect(CSS).toMatch(/\.dshdb-menu \.dshdb-submenu\[data-flip='true'\] \{[^}]*right:\s*calc\(100% \+ 2px\)/)
   })
+
+  it('sizes the grouped menu to its widest row', () => {
+    expect(CSS).toMatch(/\.dshdb-menu-groups \{[^}]*width:\s*max-content/)
+    expect(CSS).not.toMatch(/\.dshdb-menu-groups \{[^}]*min-width/)
+  })
 })
