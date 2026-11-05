@@ -270,10 +270,28 @@ function alterIndexColumns(tokens: readonly Token[]): boolean {
 /** `LIMIT `/`OFFSET ` take a number, not a catalog name. */
 function limitCount(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  if (last.kind === 'keyword' && (last.lower === 'limit' || last.lower === 'offset')) return true
+  // MySQL's `LIMIT 10, ` form: the row count follows the comma and is a number.
+  if (last.kind !== 'punct' || last.text !== ',') return false
+  let cursor = tokens.length - 2
+  let numbers = 0
+  while (cursor >= 0) {
+    const token = tokens[cursor] as Token
+    if (token.kind === 'number') {
+      numbers += 1
+      cursor -= 1
+      continue
+    }
+    if (token.kind === 'punct' && token.text === ',') {
+      cursor -= 1
+      continue
+    }
+    break
+  }
+  const keyword = tokens[cursor]
   return (
-    last !== undefined &&
-    last.kind === 'keyword' &&
-    (last.lower === 'limit' || last.lower === 'offset')
+    numbers > 0 && keyword !== undefined && keyword.kind === 'keyword' && keyword.lower === 'limit'
   )
 }
 
@@ -385,9 +403,79 @@ function grantee(tokens: readonly Token[]): boolean {
   return last.kind === 'keyword' && (last.lower === 'to' || last.lower === 'from')
 }
 
-/** `EXPLAIN ` is followed by the statement it explains. */
+/** `EXPLAIN ` / `EXPLAIN ANALYZE ` is followed by the statement it explains. */
 function explainStart(tokens: readonly Token[]): boolean {
-  return tokens.length === 1 && tokens[0]?.text.toLowerCase() === 'explain'
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'explain') return false
+  if (tokens.length === 1) return true
+  const second = tokens[1] as Token
+  return tokens.length === 2 && second.text.toLowerCase() === 'analyze'
+}
+
+/** `UNION ` / `UNION ALL ` start another SELECT, not a table list. */
+function unionStatement(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  const lower = last.text.toLowerCase()
+  if (lower === 'union') return true
+  const previous = tokens[tokens.length - 2]
+  return lower === 'all' && previous !== undefined && previous.text.toLowerCase() === 'union'
+}
+
+/** Bare `CREATE TABLE t AS ` (no body yet) continues with a statement. */
+function createTableAs(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const tableAt = words[1] === 'table' ? 1 : words[1] === 'temporary' && words[2] === 'table' ? 2 : -1
+  if (tableAt < 0) return false
+  return words[words.length - 1] === 'as' && !words.includes('(')
+}
+
+/** `SHOW ` tails that name a catalog object or have nothing left to offer. */
+function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'show') return undefined
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const second = words[1]
+  if (second === 'create') {
+    const object = words[2]
+    if (object === 'database' || object === 'schema') return 'schema'
+    if (object === 'table' || object === 'view') return 'relation'
+    return undefined
+  }
+  const from = words.indexOf('from')
+  if (second === 'tables') {
+    if (from < 0) return 'number'
+    return from === words.length - 1 ? 'schema' : 'number'
+  }
+  if (second === 'full' && words[2] === 'tables') {
+    if (from < 0) return 'number'
+    return from === words.length - 1 ? 'schema' : 'number'
+  }
+  if (second === 'table' && words[2] === 'status') {
+    if (from < 0) return 'number'
+    return from === words.length - 1 ? 'schema' : 'number'
+  }
+  if (
+    second === 'columns' ||
+    second === 'fields' ||
+    second === 'index' ||
+    second === 'indexes' ||
+    second === 'keys'
+  ) {
+    if (from >= 0 && from < tokens.length - 1) return 'name'
+    return undefined
+  }
+  if (second === 'grants' && words.length > 2) return 'name'
+  if (words[words.length - 1] === 'like') return 'name'
+  if (
+    second === 'engines' ||
+    second === 'warnings' ||
+    second === 'errors' ||
+    second === 'processlist'
+  ) {
+    return 'number'
+  }
+  return undefined
 }
 
 /** `SHOW ` names a catalog list (`SHOW TABLES`, `SHOW STATUS`, ...). */
@@ -450,7 +538,19 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
     // `MODIFY`/`CHANGE` name an existing column first; the others name an object.
     return action.lower === 'modify' || action.lower === 'change' ? 'column' : 'alterObject'
   }
-  if (object.kind !== 'keyword' || tokens[start + 2] !== undefined) return undefined
+  if (object.kind !== 'keyword' || tokens[start + 2] !== undefined) {
+    // `ALTER TABLE ... RENAME TO <new name> ` already named the table; there is
+    // nothing left for the catalog to offer.
+    if (
+      action.lower === 'rename' &&
+      object.kind === 'keyword' &&
+      object.lower === 'to' &&
+      tokens[start + 2] !== undefined
+    ) {
+      return 'number'
+    }
+    return undefined
+  }
   switch (action.lower) {
     case 'add':
       return object.lower === 'column' ? 'definition' : undefined
@@ -530,6 +630,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
+  if (createTableAs(tokens)) return 'statement'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
@@ -543,7 +644,10 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (dropIndexOn(tokens)) return 'relation'
   if (objectName(tokens)) return 'name'
   if (grantee(tokens)) return 'name'
+  if (unionStatement(tokens)) return 'statement'
   if (explainStart(tokens)) return 'statement'
+  const show = showTail(tokens)
+  if (show !== undefined) return show
   if (showStart(tokens)) return 'show'
   if (limitCount(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'

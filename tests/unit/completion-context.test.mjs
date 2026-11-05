@@ -493,3 +493,42 @@ describe('analyze name-only and statement tails', () => {
     expect(caretAtEnd('SHOW FULL ').expectation).toBe('show')
   })
 })
+
+describe('analyze statement continuation tails', () => {
+  it('expects a statement after UNION and CREATE TABLE ... AS', () => {
+    expect(caretAtEnd('SELECT * FROM orders UNION ').expectation).toBe('statement')
+    expect(caretAtEnd('SELECT * FROM orders UNION ALL ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE TABLE t AS ').expectation).toBe('statement')
+    expect(caretAtEnd('CREATE TABLE IF NOT EXISTS t AS ').expectation).toBe('statement')
+  })
+
+  it('expects the explained statement after EXPLAIN ANALYZE', () => {
+    expect(caretAtEnd('EXPLAIN ANALYZE ').expectation).toBe('statement')
+  })
+
+  it('expects a number after the LIMIT offset comma', () => {
+    expect(caretAtEnd('SELECT * FROM orders LIMIT ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10, ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders LIMIT 10 ').expectation).toBe('any')
+  })
+
+  it('points SHOW tails at their targets', () => {
+    expect(caretAtEnd('SHOW CREATE DATABASE ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('SHOW CREATE VIEW ').expectation).toBe('relation')
+    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW TABLES ').expectation).toBe('number')
+    expect(caretAtEnd('SHOW COLUMNS FROM orders ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW INDEX FROM orders ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW GRANTS FOR users ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW VARIABLES LIKE ').expectation).toBe('name')
+    expect(caretAtEnd('SHOW ENGINES ').expectation).toBe('number')
+    expect(caretAtEnd('SHOW FULL TABLES ').expectation).toBe('number')
+    expect(caretAtEnd('SHOW TABLE STATUS ').expectation).toBe('number')
+  })
+
+  it('stays quiet after a completed ALTER TABLE rename', () => {
+    expect(caretAtEnd('ALTER TABLE orders RENAME TO new_orders ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('name')
+  })
+})

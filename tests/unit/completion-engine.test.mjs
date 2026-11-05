@@ -979,3 +979,47 @@ describe('complete name-only and statement positions', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete statement continuation positions', () => {
+  it('offers statement starters after UNION and CREATE TABLE AS', async () => {
+    for (const statement of ['SELECT * FROM orders UNION ', 'CREATE TABLE t AS ']) {
+      const catalog = createCatalog()
+      const result = await complete({ ...request(statement), catalog })
+      expect(result.analysis.expectation).toBe('statement')
+      expect(names(result)).toContain('SELECT')
+      expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+    }
+  })
+
+  it('offers the explained statement after EXPLAIN ANALYZE', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('EXPLAIN ANALYZE '), catalog })
+    expect(result.analysis.expectation).toBe('statement')
+    expect(names(result)).toContain('SELECT')
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('stays quiet after a completed SHOW command', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SHOW ENGINES '), catalog })
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers tables for SHOW CREATE TABLE', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SHOW CREATE TABLE '), catalog })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('orders')
+    expect(catalog.calls.tables.length).toBeGreaterThan(0)
+  })
+
+  it('stays quiet after a completed SHOW COLUMNS target', async () => {
+    const catalog = createCatalog()
+    const result = await complete({ ...request('SHOW COLUMNS FROM orders '), catalog })
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})
