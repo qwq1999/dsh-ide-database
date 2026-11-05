@@ -19,7 +19,9 @@ import type {
   RedisDatabasesResult,
   RedisScanResult,
   RedisValue,
+  SchemaInfo,
   SchemaListResult,
+  SchemaObject,
   ServerInfo,
   StructureSnapshot,
 } from '../shared/types.js'
@@ -97,6 +99,17 @@ export const api = {
   structure: () => post<{ structures: StructureSnapshot }>('/structure'),
   schemas: (id: string, filter = '') => post<SchemaListResult>('/schema/list', { id, filter }),
   objects: (id: string, schema: string) => post<ObjectListResult>('/schema/objects', { id, schema }),
+  /** Batch the metadata one completion needs, straight from the host structure cache. */
+  completionMetadata: (
+    id: string,
+    request: { schemas?: string[]; tables?: { schema: string; table: string }[] } = {},
+  ) =>
+    post<{
+      cached: boolean
+      schemas: SchemaInfo[]
+      tables: Record<string, SchemaObject[]>
+      columns: Record<string, { name: string; typeName?: string }[]>
+    }>('/completion/metadata', { id, ...request }),
   describe: (id: string, schema: string, table: string, kind: string) =>
     post<DescribeResult>('/schema/describe', { id, schema, table, kind }),
   ddl: (id: string, schema: string, table: string, kind: string) =>
