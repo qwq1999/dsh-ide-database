@@ -46,16 +46,10 @@ import { shortcutHit, shortcutLabel } from './keymap'
 import type { ShortcutId } from '../shared/keymap'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, tableFromStatement } from './tablesql'
-import {
-  applyCompletion,
-  completionCandidates,
-  functionCompletions,
-  keywordCompletions,
-  qualifierBefore,
-  wordAtCaret,
-  type Completion,
-} from './complete'
-import { columnOwner, completionContext, referencedTables } from './sqlcontext'
+import { applyCompletion, wordAtCaret, type Completion } from './complete'
+import { complete as completeRequest } from './completion/engine'
+import { matchScore } from './completion/rank'
+import { ConsoleCompletionCatalog } from './completion/catalog'
 import { collectRows } from './pagedrows'
 import { planTextOf } from './plan'
 import { MAX_SQL_IMPORT_BYTES, mergeSqlFile, scriptFileText } from './sqlfile'
@@ -484,14 +478,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, defaultSchema)
   }, [connection?.dialect, defaultSchema, schema, schemas, selectedId])
 
-  /* -- Ctrl+Space table completion ------------------------------------------
-   * Suggestions come from the object list of the schema the console runs in;
-   * the list is cached per schema so reopening the popup never refetches. */
+  /* -- Ctrl+Space completion ------------------------------------------------
+   * The completion engine owns statement analysis, candidate providers and
+   * ranking; this component only keeps the popup, the keyboard handling and one
+   * metadata catalog per console (the catalog caches schema/table/column reads). */
   const [caretPos, setCaretPos] = useState(0)
   const [suggestions, setSuggestions] = useState<Completion[] | null>(null)
   const [suggestionIndex, setSuggestionIndex] = useState(0)
   const completionAnchor = useRef<HTMLSpanElement>(null)
-  const completionCache = useRef(new Map<string, Completion[]>())
+  const completionCatalog = useRef<ConsoleCompletionCatalog | null>(null)
+  const completionRequest = useRef(0)
+  const completionAbort = useRef<AbortController | null>(null)
   const autoComplete = useConsoleAutoComplete()
   /** Set by the editor when the last change typed exactly one character. */
   const autoCompletePending = useRef(false)
@@ -499,7 +496,13 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
   usePopoverDismiss(suggestions !== null, closeSuggestions, completionAnchor)
 
   const suggestionPrefix = wordAtCaret(statement, caretPos).prefix
-  const suggestionItems = suggestions === null ? [] : completionCandidates(suggestionPrefix, suggestions)
+  // The engine already ranked the list for the prefix it was asked about; while
+  // the popup stays open we only narrow it locally, so typing never fires a
+  // metadata read per keystroke.
+  const suggestionItems =
+    suggestions === null
+      ? []
+      : suggestions.filter((item) => matchScore(item.name, suggestionPrefix) >= 0)
   // Typing narrows the list without resetting the cursor, so clamp it on read.
   const activeSuggestionIndex = suggestionItems.length === 0 ? 0 : suggestionIndex % suggestionItems.length
   useEffect(() => {
@@ -512,123 +515,45 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
     }
   }, [activeSuggestionIndex, suggestions])
 
+  // A different data source means different metadata: drop the cached catalog so
+  // the first popup after switching reads the new server's schema/table names.
+  useEffect(() => {
+    completionCatalog.current = null
+    completionAbort.current?.abort()
+  }, [connection?.id])
 
-  const loadSchemaCompletions = useCallback(
-    async (target: string): Promise<Completion[] | null> => {
-      const connectionId = connection?.id ?? ''
-      const cacheKey = `${connectionId}:${target}`
-      const cached = completionCache.current.get(cacheKey)
-      if (cached !== undefined) return cached
-      if (target === '') {
-        setFailure({ message: '先选择要查询的数据库，再补全表名' })
-        return null
-      }
-      try {
-        const listed = await api.objects(connectionId, target)
-        const items: Completion[] = [
-          ...listed.objects
-            .filter((item) => item.kind === 'table' || item.kind === 'view')
-            .map((item) => ({ name: item.name, kind: 'table' as const })),
-          ...schemas.map((item) => ({ name: item.name, kind: 'schema' as const })),
-        ]
-        completionCache.current.set(cacheKey, items)
-        return items
-      } catch (error) {
-        setFailure(failureText(error))
-        return null
-      }
-    },
-    [connection, schemas],
-  )
-
-  const loadColumnCompletions = useCallback(
-    async (connectionId: string, schemaName: string, table: string): Promise<Completion[] | null> => {
-      const cacheKey = `${connectionId}:columns:${schemaName}.${table}`
-      const cached = completionCache.current.get(cacheKey)
-      if (cached !== undefined) return cached
-      try {
-        const described = await api.describe(connectionId, schemaName, table, 'table')
-        if (described.columns.length === 0) return null
-        const items: Completion[] = described.columns.map((column) => ({
-          name: column.name,
-          kind: 'column' as const,
-          detail: column.typeName,
-        }))
-        completionCache.current.set(cacheKey, items)
-        return items
-      } catch {
-        return null
-      }
-    },
-    [],
-  )
 
   const openSuggestions = useCallback(async (): Promise<void> => {
     if (connection === undefined || connection.dialect === 'redis') return
     const target = schema !== '' ? schema : defaultSchema
-    const connectionId = connection.id
-    const refs = referencedTables(statement, caretPos)
-    const qualifier = qualifierBefore(statement, caretPos)
-    if (qualifier.length > 0) {
-      const name = qualifier[qualifier.length - 1] ?? ''
-      const hinted = qualifier.length > 1 ? qualifier[qualifier.length - 2] ?? '' : ''
-      // `u.` may be an alias declared in the statement, which is more precise
-      // than guessing that the qualifier is a table in the current schema.
-      const owner = hinted === '' ? columnOwner(refs, name) : null
-      const columnsSchema = hinted !== '' ? hinted : owner?.schema ?? target
-      const columnsTable = hinted !== '' ? name : owner?.table ?? name
-      if (columnsSchema !== '') {
-        const columns = await loadColumnCompletions(connectionId, columnsSchema, columnsTable)
-        if (columns !== null) {
-          setSuggestionIndex(0)
-          setSuggestions(columns)
-          return
-        }
-      }
-      try {
-        const listed = await api.objects(connectionId, name)
-        const items: Completion[] = listed.objects
-          .filter((item) => item.kind === 'table' || item.kind === 'view')
-          .map((item) => ({ name: item.name, kind: 'table' as const }))
-        if (items.length > 0) {
-          setSuggestionIndex(0)
-          setSuggestions(items)
-          return
-        }
-      } catch {
-        // Fall through to the hint below.
-      }
-      setFailure({ message: `没有找到 ${name} 的列或表` })
-      return
+    const catalog =
+      completionCatalog.current ??
+      new ConsoleCompletionCatalog(connection.id, () => schemas.map((item) => item.name))
+    completionCatalog.current = catalog
+    // A fast typist opens several popups per second: cancel the metadata reads
+    // of the previous popup so a slower, older request cannot replace the list
+    // that matches the current text.
+    completionAbort.current?.abort()
+    const controller = new AbortController()
+    completionAbort.current = controller
+    const request = ++completionRequest.current
+    try {
+      const result = await completeRequest({
+        statement,
+        caret: caretPos,
+        dialect: connection.dialect,
+        schema: target,
+        catalog,
+        signal: controller.signal,
+      })
+      if (request !== completionRequest.current) return
+      setSuggestionIndex(0)
+      setSuggestions(result.items)
+    } catch (error) {
+      if (request !== completionRequest.current || controller.signal.aborted) return
+      setFailure(failureText(error))
     }
-
-    const items = await loadSchemaCompletions(target)
-    if (items === null) return
-    // Inside SELECT/WHERE/ON the interesting names are the columns of the
-    // tables the statement already mentions, not another table list.
-    let columns: Completion[] = []
-    if (completionContext(statement, caretPos) === 'column' && refs.length > 0) {
-      const lists = await Promise.all(
-        refs.slice(0, 6).map((ref) => loadColumnCompletions(connectionId, ref.schema ?? target, ref.table)),
-      )
-      columns = lists.flatMap((list) => list ?? [])
-    }
-    setSuggestionIndex(0)
-    setSuggestions([
-      ...columns,
-      ...items,
-      ...keywordCompletions(),
-      ...functionCompletions(),
-    ])
-  }, [
-    caretPos,
-    connection,
-    defaultSchema,
-    loadColumnCompletions,
-    loadSchemaCompletions,
-    schema,
-    statement,
-  ])
+  }, [caretPos, connection, defaultSchema, schema, schemas, statement])
 
   const insertSuggestion = useCallback(
     (picked: Completion): void => {
@@ -708,7 +633,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
         setSourceSql(text)
         lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
         if (looksLikeDdl(text)) {
-          completionCache.current.clear()
+          completionCatalog.current?.clear()
           void loadSchemaList(selectedId)
         }
       } catch (error) {
@@ -781,7 +706,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
       if (parts.some(looksLikeDdl)) {
-        completionCache.current.clear()
+        completionCatalog.current?.clear()
         void loadSchemaList(selectedId)
       }
     } finally {
@@ -2396,7 +2321,9 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
                                 ? '库'
                                 : item.kind === 'function'
                                   ? '函数'
-                                  : '关键字'}
+                                  : item.kind === 'alias'
+                                    ? '别名'
+                                    : '关键字'}
                         </span>
                       </span>
                     </button>
