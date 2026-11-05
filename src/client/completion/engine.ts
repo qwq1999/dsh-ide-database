@@ -678,6 +678,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'isolationRead':
       case 'nulls':
       case 'alterColumnSet':
+      case 'alterColumnDrop':
       case 'triggerTiming':
       case 'triggerEvent':
       case 'triggerOn':

@@ -570,3 +570,14 @@ describe('utility words', () => {
     expect(names(keywordCompletions('typeAdd', 'generic'))).toEqual(['VALUE', 'ATTRIBUTE'])
   })
 })
+
+describe('alter column drop words', () => {
+  it('offers the ALTER COLUMN DROP actions', () => {
+    expect(names(keywordCompletions('alterColumnDrop', 'generic'))).toEqual([
+      'DEFAULT',
+      'NOT',
+      'IDENTITY',
+      'EXPRESSION',
+    ])
+  })
+})

@@ -613,6 +613,9 @@ const NULLS_WORDS = ['FIRST', 'LAST'] as const
 /** `ALTER TABLE ... ALTER COLUMN ... SET ` values. */
 const ALTER_COLUMN_SET_WORDS = ['DEFAULT', 'VISIBLE', 'INVISIBLE'] as const
 
+/** `ALTER TABLE ... ALTER COLUMN ... DROP ` actions. */
+const ALTER_COLUMN_DROP_WORDS = ['DEFAULT', 'NOT', 'IDENTITY', 'EXPRESSION'] as const
+
 /** Bounds of a window frame after `OVER (ROWS `. */
 const FRAME_WORDS = ['BETWEEN', 'UNBOUNDED', 'CURRENT', 'ROW', 'PRECEDING', 'FOLLOWING'] as const
 
@@ -826,6 +829,8 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return NULLS_WORDS
     case 'alterColumnSet':
       return ALTER_COLUMN_SET_WORDS
+    case 'alterColumnDrop':
+      return ALTER_COLUMN_DROP_WORDS
     case 'frame':
       return FRAME_WORDS
     case 'interval':

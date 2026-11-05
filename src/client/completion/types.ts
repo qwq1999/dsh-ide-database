@@ -104,6 +104,7 @@ export type CompletionExpectation =
   | 'isolation'
   | 'nulls'
   | 'alterColumnSet'
+  | 'alterColumnDrop'
   | 'setTransaction'
   | 'isolationLevel'
   | 'isolationRead'

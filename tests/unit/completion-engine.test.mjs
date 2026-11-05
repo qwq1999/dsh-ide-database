@@ -2422,3 +2422,82 @@ describe('complete MERGE, COPY and utility positions', () => {
     expect(names(addResult)).toContain('VALUE')
   })
 })
+
+describe('complete casts, grants and index predicates', () => {
+  it('offers column types after a PostgreSQL cast', async () => {
+    const result = await complete(request('SELECT id::'))
+    expect(result.analysis.expectation).toBe('columnType')
+    expect(names(result)).toContain('INT')
+    expect(names(result)).toContain('VARCHAR')
+  })
+
+  it('treats a finished cast as an operand', async () => {
+    const result = await complete(request('SELECT id::int '))
+    expect(result.analysis.expectation).toBe('expressionTail')
+    expect(names(result)).toContain('FROM')
+  })
+
+  it('does not list column names inside a GRANT column list', async () => {
+    const req = request('GRANT SELECT (id, ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('offers the indexed table columns after CREATE INDEX ... WHERE', async () => {
+    const req = request('CREATE INDEX idx ON orders (id) WHERE ')
+    const result = await complete(req)
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 2)).toEqual(['id', 'total'])
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+  })
+
+  it('walks ALTER COLUMN TYPE and DROP tails', async () => {
+    const type = await complete(request('ALTER TABLE orders ALTER COLUMN total TYPE '))
+    expect(type.analysis.expectation).toBe('columnType')
+    expect(names(type)).toContain('DECIMAL')
+    const drop = await complete(request('ALTER TABLE orders ALTER COLUMN id DROP '))
+    expect(drop.analysis.expectation).toBe('alterColumnDrop')
+    expect(names(drop)).toEqual(['DEFAULT', 'NOT', 'IDENTITY', 'EXPRESSION'])
+  })
+
+  it('keeps ALTER SEQUENCE and PREPARE doors quiet', async () => {
+    const sequence = await complete(request('ALTER SEQUENCE seq '))
+    expect(sequence.analysis.expectation).toBe('number')
+    expect(sequence.items).toEqual([])
+    const prepare = await complete(request('PREPARE '))
+    expect(prepare.analysis.expectation).toBe('name')
+    expect(prepare.items).toEqual([])
+    const prepared = await complete(request('PREPARE stmt AS SELECT * FROM '))
+    expect(prepared.analysis.expectation).toBe('relation')
+    expect(names(prepared)[0]).toBe('orders')
+  })
+
+  it('assigns values after ON DUPLICATE KEY UPDATE and in UPDATE SET', async () => {
+    const req = request('INSERT INTO orders (id) SELECT id FROM customers ON DUPLICATE KEY UPDATE ')
+    const duplicate = await complete(req)
+    expect(duplicate.analysis.expectation).toBe('column')
+    expect(duplicate.analysis.relations).toEqual([{ table: 'orders' }])
+    expect(names(duplicate)[0]).toBe('id')
+    expect(req.catalog.calls.columns).toContain('shop.orders')
+    expect(req.catalog.calls.columns).not.toContain('shop.customers')
+    const assignment = await complete(request('UPDATE orders SET status = 1, total = '))
+    expect(assignment.analysis.expectation).toBe('value')
+    expect(names(assignment)).toContain('DEFAULT')
+  })
+
+  it('does not treat a window PARTITION BY as table partitioning', async () => {
+    const result = await complete(
+      request('SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY '),
+    )
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 2)).toEqual(['id', 'total'])
+  })
+
+  it('stays quiet for ORDER BY inside an aggregate call', async () => {
+    const result = await complete(request('SELECT GROUP_CONCAT(name ORDER BY name DESC '))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})

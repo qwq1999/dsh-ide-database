@@ -169,6 +169,7 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   isolationRead: KEYWORD_PRIORITY,
   nulls: KEYWORD_PRIORITY,
   alterColumnSet: KEYWORD_PRIORITY,
+  alterColumnDrop: KEYWORD_PRIORITY,
   columnType: KEYWORD_PRIORITY,
   triggerTiming: KEYWORD_PRIORITY,
   triggerEvent: KEYWORD_PRIORITY,

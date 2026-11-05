@@ -1634,3 +1634,56 @@ describe('analyze MERGE, COPY and utility tails', () => {
     expect(caretAtEnd('ALTER TYPE mood ADD VALUE ').expectation).toBe('number')
   })
 })
+
+describe('analyze casts, grants and index predicates', () => {
+  it('takes a type after a PostgreSQL cast', () => {
+    expect(caretAtEnd('SELECT id::').expectation).toBe('columnType')
+    expect(caretAtEnd('SELECT id::int ').expectation).toBe('expressionTail')
+    expect(caretAtEnd("SELECT data->>'a'::text ").expectation).toBe('expressionTail')
+  })
+
+  it('stays quiet inside a GRANT column list', () => {
+    expect(caretAtEnd('GRANT SELECT (').expectation).toBe('number')
+    expect(caretAtEnd('GRANT SELECT (id, ').expectation).toBe('number')
+    expect(caretAtEnd('GRANT SELECT (id) ON orders ').expectation).toBe('number')
+  })
+
+  it('reads the indexed table after CREATE INDEX ... WHERE', () => {
+    const analysis = caretAtEnd('CREATE INDEX idx ON orders (id) WHERE ')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('walks ALTER COLUMN TYPE and DROP tails', () => {
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN total TYPE ').expectation).toBe('columnType')
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id DROP ').expectation).toBe('alterColumnDrop')
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id SET DEFAULT ').expectation).toBe('value')
+  })
+
+  it('keeps ALTER SEQUENCE and PREPARE doors quiet', () => {
+    expect(caretAtEnd('ALTER SEQUENCE ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER SEQUENCE seq ').expectation).toBe('number')
+    expect(caretAtEnd('PREPARE ').expectation).toBe('name')
+    expect(caretAtEnd('PREPARE stmt ').expectation).toBe('number')
+    expect(caretAtEnd('PREPARE stmt AS SELECT * FROM ').expectation).toBe('relation')
+  })
+
+  it('assigns values in UPDATE and after ON DUPLICATE KEY UPDATE', () => {
+    expect(caretAtEnd('UPDATE orders SET status = 1, total = ').expectation).toBe('value')
+    const duplicate = caretAtEnd(
+      'INSERT INTO orders (id) SELECT id FROM customers ON DUPLICATE KEY UPDATE ',
+    )
+    expect(duplicate.expectation).toBe('column')
+    expect(duplicate.relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('does not treat a window PARTITION BY as a table partition', () => {
+    const analysis = caretAtEnd('SELECT SUM(total) OVER w FROM orders WINDOW w AS (PARTITION BY ')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations.map((relation) => relation.table)).toContain('orders')
+  })
+
+  it('stays quiet for ORDER BY inside an aggregate call', () => {
+    expect(caretAtEnd('SELECT GROUP_CONCAT(name ORDER BY name DESC ').expectation).toBe('number')
+  })
+})

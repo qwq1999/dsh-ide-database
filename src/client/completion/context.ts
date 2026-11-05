@@ -637,7 +637,18 @@ function literalTail(tokens: readonly Token[]): boolean {
   if (last === undefined) return false
   const tail = last.text.toLowerCase()
   if (start === 'select' && (tail === 'outfile' || tail === 'dumpfile')) return true
-  if (start === 'prepare' && last.kind === 'keyword' && last.lower === 'from') return true
+  if (
+    start === 'prepare' &&
+    last.kind === 'keyword' &&
+    last.lower === 'from' &&
+    !tokens.some(
+      (token) =>
+        token.kind === 'keyword' &&
+        ['select', 'insert', 'update', 'delete'].includes(token.lower ?? ''),
+    )
+  ) {
+    return true
+  }
   if (start === 'execute' || start === 'deallocate') return true
   if (start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables') return true
   // `SELECT … INTO OUTFILE 'x' FIELDS TERMINATED BY ` and friends take text.
@@ -991,6 +1002,8 @@ function tableOptionAssignment(tokens: readonly Token[]): CompletionExpectation 
 function partitionBy(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   const previous = tokens[tokens.length - 2]
+  const first = tokens[0]?.text.toLowerCase()
+  if (first !== 'create' && first !== 'alter') return false
   return (
     last?.kind === 'keyword' &&
     last.lower === 'by' &&
@@ -1970,7 +1983,9 @@ function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' |
 }
 
 /** `ORDER BY total ` needs ASC/DESC; `ORDER BY total DESC ` takes LIMIT. */
-function orderByPosition(tokens: readonly Token[]): 'direction' | 'orderTail' | undefined {
+function orderByPosition(
+  tokens: readonly Token[],
+): 'direction' | 'orderTail' | 'number' | undefined {
   const last = tokens[tokens.length - 1]
   const finished = endsOperand(last)
   const directed =
@@ -1978,6 +1993,15 @@ function orderByPosition(tokens: readonly Token[]): 'direction' | 'orderTail' | 
     last.kind === 'keyword' &&
     (last.lower === 'asc' || last.lower === 'desc')
   if (!finished && !directed) return undefined
+  // An ORDER BY inside a function call (GROUP_CONCAT(... ORDER BY ...)) is not
+  // the statement's ORDER BY: only its closing parenthesis can follow.
+  let openParens = 0
+  for (const token of tokens) {
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') openParens += 1
+    else if (token.text === ')' && openParens > 0) openParens -= 1
+  }
+  if (openParens > 0) return 'number'
   let depth = 0
   for (let index = tokens.length - 2; index >= 0; index -= 1) {
     const token = tokens[index] as Token
@@ -2662,6 +2686,98 @@ function variableTail(tokens: readonly Token[]): CompletionExpectation | undefin
   return last.text.startsWith('@') ? 'expressionTail' : undefined
 }
 
+
+/** `expr::` names a type; once the type is typed the cast is an operand. */
+function castTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  let colon = -1
+  for (let index = tokens.length - 1; index > 0; index -= 1) {
+    const token = tokens[index] as Token
+    const previous = tokens[index - 1] as Token
+    if (
+      token.kind === 'punct' &&
+      token.text === ':' &&
+      previous.kind === 'punct' &&
+      previous.text === ':'
+    ) {
+      colon = index
+      break
+    }
+  }
+  if (colon < 0) return undefined
+  return colon === tokens.length - 1 ? 'columnType' : 'expressionTail'
+}
+
+/** `GRANT SELECT (` lists privileges on a column list before any ON clause. */
+/** `GRANT SELECT ON orders ` named the target; nothing catalog-bound follows. */
+function grantTargetDone(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const head = first.text.toLowerCase()
+  if (head !== 'grant' && head !== 'revoke') return false
+  const onAt = tokens.findIndex((token) => token.kind === 'keyword' && token.lower === 'on')
+  if (onAt < 0) return false
+  const parsed = parseRelationRef(tokens, onAt + 1)
+  return parsed !== null && parsed.next === tokens.length
+}
+
+function grantColumnList(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined) return false
+  const head = first.text.toLowerCase()
+  if (head !== 'grant' && head !== 'revoke') return false
+  if (tokens.some((token) => token.kind === 'keyword' && token.lower === 'on')) return false
+  return tokens.some((token) => token.kind === 'punct' && token.text === '(')
+}
+
+/** `ALTER TABLE ... ALTER COLUMN total TYPE ` / `SET DATA TYPE ` takes a type. */
+function alterColumnTypeTail(tokens: readonly Token[]): boolean {
+  if (alterTableStart(tokens) < 0) return false
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'column')) return false
+  const words = tokens.map((token) => token.text.toLowerCase())
+  return words[words.length - 1] === 'type'
+}
+
+/** `ALTER TABLE ... ALTER COLUMN id DROP ` takes a default/identity action. */
+function alterColumnDropTail(tokens: readonly Token[]): boolean {
+  if (alterTableStart(tokens) < 0) return false
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'column')) return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'keyword' && last.lower === 'drop'
+}
+
+/** `ALTER SEQUENCE seq ` ends the statement; a bare one names the sequence. */
+function alterSequenceTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'alter') return undefined
+  if (tokens[1]?.text.toLowerCase() !== 'sequence') return undefined
+  return tokens.length <= 2 ? 'name' : 'number'
+}
+
+/** `PREPARE ` names a statement; `PREPARE stmt ` starts AS/FROM. */
+function prepareTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'prepare') return undefined
+  if (
+    tokens.some(
+      (token) =>
+        token.kind === 'keyword' &&
+        ['select', 'insert', 'update', 'delete'].includes(token.lower ?? ''),
+    )
+  ) {
+    return undefined
+  }
+  return tokens.length === 1 ? 'name' : 'number'
+}
+
+/** `UPDATE t SET a = 1, b = ` assigns values; a WHERE `=` compares columns. */
+function updateAssignmentValue(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'update') return false
+  const setAt = tokens.findIndex((token) => token.kind === 'keyword' && token.lower === 'set')
+  if (setAt < 0) return false
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== '=') return false
+  return !tokens.some((token) => token.kind === 'keyword' && token.lower === 'where')
+}
+
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // COLLATE always names a collation, wherever it appears.
   if (collationValue(tokens)) return 'collation'
@@ -2717,6 +2833,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (alterDropConstraint(tokens)) return 'name'
   const alterOption = alterOptionAssignment(tokens)
   if (alterOption !== undefined) return alterOption
+  if (alterColumnTypeTail(tokens)) return 'columnType'
+  if (alterColumnDropTail(tokens)) return 'alterColumnDrop'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
   const alterEngine = alterTableEngine(tokens)
@@ -2739,7 +2857,12 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
         depth -= 1
       }
     }
-    return sawParen && depth === 0 ? 'number' : 'column'
+    const whereAfter = tokens
+      .slice(target.next)
+      .some((token) => token.text.toLowerCase() === 'where')
+    // `CREATE INDEX ... (id) WHERE total > 1 AND ` filters indexed rows, so the
+    // indexed table's columns belong here.
+    return sawParen && depth === 0 ? (whereAfter ? 'column' : 'number') : 'column'
   }
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'tableName'
@@ -2748,6 +2871,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (tokens.length > 1 && tokens[0]?.text.toLowerCase() === 'use') return 'number'
   const alterUser = alterUserTail(tokens)
   if (alterUser !== undefined) return alterUser
+  const sequence = alterSequenceTail(tokens)
+  if (sequence !== undefined) return sequence
   const transaction = transactionTail(tokens)
   if (transaction !== undefined) return transaction
   const mergeUsing = mergeUsingTail(tokens)
@@ -2775,6 +2900,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // `LOCK TABLES orders ` takes an access mode, not a table.
   const lockTable = lockTableTail(tokens)
   if (lockTable !== undefined) return lockTable
+  if (updateAssignmentValue(tokens)) return 'value'
   if (updateTail(tokens)) return 'assignment'
   if (functionArgumentFrom(tokens)) return 'column'
   if (insertTargetTail(tokens)) return 'insertSource'
@@ -2782,14 +2908,18 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (lockClauseTail(tokens)) return 'number'
   if (selectInto(tokens)) return 'intoTarget'
   if (selectIntoVariableTail(tokens)) return 'number'
+  const prepare = prepareTail(tokens)
+  if (prepare !== undefined) return prepare
   if (literalTail(tokens)) return 'number'
   const insertSet = insertSetPosition(tokens)
   if (insertSet !== undefined) return insertSet
   if (insertColumnListComplete(tokens)) return 'insertSource'
   if (usingTail(tokens)) return 'joinTail'
   if (usingParenOpen(tokens)) return 'using'
+  if (grantColumnList(tokens)) return 'number'
   if (privilegePosition(tokens)) return 'privilege'
   if (grantTarget(tokens)) return 'tableName'
+  if (grantTargetDone(tokens)) return 'number'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
@@ -2835,6 +2965,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (castAs(tokens)) return 'type'
   const interval = intervalTail(tokens)
   if (interval !== undefined) return interval
+  const cast = castTail(tokens)
+  if (cast !== undefined) return cast
   const expression = expressionTail(tokens)
   if (expression !== undefined) return expression
   if (scalarTail(tokens)) return 'expressionTail'
@@ -3333,6 +3465,16 @@ function collectRelations(
       continue
     }
   }
+  // `INSERT ... ON DUPLICATE KEY UPDATE` mentions UPDATE as an action, not a
+  // second target table.
+  if (
+    token.kind === 'keyword' &&
+    token.lower === 'update' &&
+    (statementStart === 'insert' || statementStart === 'replace')
+  ) {
+    index += 1
+    continue
+  }
   if (token.kind !== 'keyword' || !RELATION_STARTERS.has(token.lower)) {
     index += 1
     continue
@@ -3440,8 +3582,18 @@ export function analyze(text: string, caret: number): Analysis {
   const relations = collectRelations(statementTokens, withClause.ctes)
   const insertTarget = insertSelectTarget(statementTokens)
   const insertTargetKey = insertTarget === undefined ? undefined : relationKey(insertTarget)
+  const duplicateAt = tokens.findIndex((token) => token.text.toLowerCase() === 'duplicate')
+  const afterDuplicate =
+    duplicateAt >= 0 && caretRelative > (tokens[duplicateAt]?.start ?? Number.POSITIVE_INFINITY)
   if (insertTargetKey !== undefined) {
-    const kept = relations.filter((relation) => relationKey(relation) !== insertTargetKey)
+    // `ON DUPLICATE KEY UPDATE` assigns the INSERT target's columns again; before
+    // it only the SELECT source matters, so the target must not hide it.
+    const keepTarget = afterDuplicate && expectation === 'column'
+    const kept = relations.filter((relation) =>
+      keepTarget
+        ? relationKey(relation) === insertTargetKey
+        : relationKey(relation) !== insertTargetKey,
+    )
     relations.length = 0
     relations.push(...kept)
   }
