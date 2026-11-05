@@ -40,19 +40,22 @@ const settings: DbSettings = {
   keybindings: {},
 }
 
+const env = {
+  java: { available: false, source: 'missing' },
+  dataDir: '',
+  configPath: '',
+  bridgeJar: '',
+  bridgeBuilt: false,
+  pluginVersion: '0.3.2',
+  platform: 'win32',
+}
+
 beforeEach(() => {
   mocks.status.mockResolvedValue({
     config: { connections: [connection], trash: [], drivers: [], settings },
     drivers: [],
-    env: {
-      java: { available: false, source: 'missing' },
-      dataDir: '',
-      configPath: '',
-      bridgeJar: '',
-      bridgeBuilt: false,
-      pluginVersion: '0.3.2',
-      platform: 'win32',
-    },
+    env,
+    prefetch: [],
   })
 })
 
@@ -74,5 +77,26 @@ describe('App status bar', () => {
     expect(nameAt).toBeGreaterThanOrEqual(0)
     expect(idAt).toBeGreaterThan(nameAt)
     expect(addressAt).toBeGreaterThan(idAt)
+  })
+
+  it('hides the background cache counter when nothing is running', async () => {
+    render(<App />)
+    await screen.findByText('conn-36a8d2bec9')
+    expect(document.querySelector('.dshdb-statusbar-prefetch')).toBeNull()
+  })
+
+  it('shows a spinner and live progress while descriptions are cached', async () => {
+    mocks.status.mockResolvedValue({
+      config: { connections: [connection], trash: [], drivers: [], settings },
+      drivers: [],
+      env,
+      prefetch: [{ connectionId: connection.id, total: 120, done: 45 }],
+    })
+
+    render(<App />)
+
+    await screen.findByText('缓存结构 45/120')
+    const indicator = document.querySelector('.dshdb-statusbar-prefetch')
+    expect(indicator?.querySelector('.dshdb-spinner')).not.toBeNull()
   })
 })

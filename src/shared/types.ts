@@ -340,6 +340,15 @@ export interface StructureSnapshot {
   [connectionId: string]: CachedStructure
 }
 
+/** Live progress of one connection's background description walk. */
+export interface PrefetchProgress {
+  connectionId: string
+  /** Tables/views that still need a (re)read when the walk started. */
+  total: number
+  /** Items finished so far. */
+  done: number
+}
+
 export interface DescribeResult extends TableDescription {
   cached?: boolean
   fetchedAt?: string

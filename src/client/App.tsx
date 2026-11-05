@@ -456,6 +456,11 @@ export function App(props: AppProps): ReactElement {
   const visibleToolbarCount = Math.min(visibleToolbarActions, orderedToolbarActions.length)
   const hiddenToolbarActions = orderedToolbarActions.slice(visibleToolbarCount)
 
+  // Aggregate the host's background description walks for the footer counter.
+  const prefetchEntries = snapshot?.prefetch ?? []
+  const prefetchDone = prefetchEntries.reduce((sum, entry) => sum + entry.done, 0)
+  const prefetchTotal = prefetchEntries.reduce((sum, entry) => sum + entry.total, 0)
+
   const rootStyle: CSSProperties = {
     display: hidden ? 'none' : 'flex',
     flexDirection: 'column',
@@ -706,6 +711,19 @@ export function App(props: AppProps): ReactElement {
           <span>尚未选择数据源</span>
         )}
         <span className="dshdb-statusbar-spacer" />
+        {prefetchEntries.length > 0 ? (
+          <span
+            className="dshdb-statusbar-prefetch"
+            title={`后台正在缓存 ${String(prefetchEntries.length)} 个连接的表结构描述`}
+          >
+            <Spinner size={11} />
+            <span className="dshdb-muted">
+              {prefetchTotal > 0
+                ? `缓存结构 ${prefetchDone.toLocaleString()}/${prefetchTotal.toLocaleString()}`
+                : '正在缓存结构…'}
+            </span>
+          </span>
+        ) : null}
         {snapshot ? (
           <span title={snapshot.env.configPath}>
             Java{' '}

@@ -87,6 +87,7 @@ function deps() {
     prefetch: {
       schedule: (id) => calls.prefetch.push(id),
       cancel: (id) => calls.prefetchCancel.push(id),
+      progress: () => [{ connectionId: 'm1', total: 3, done: 1 }],
     },
     log: () => undefined,
   }
@@ -202,5 +203,16 @@ describe('POST /connections/reorder over HTTP', () => {
     expect(result.status).toBe(400)
     expect(result.body).toMatchObject({ ok: false, error: { code: 'invalid' } })
     expect(calls.reorder).toHaveLength(0)
+  })
+})
+
+describe('POST /status over HTTP', () => {
+  it('reports the background description walks', async () => {
+    const url = await start('/status')
+
+    const result = await post(url, {})
+
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ ok: true, data: { prefetch: [{ connectionId: 'm1', total: 3, done: 1 }] } })
   })
 })

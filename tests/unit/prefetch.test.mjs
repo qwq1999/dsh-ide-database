@@ -174,4 +174,25 @@ describe('DescriptionPrefetcher', () => {
     await vi.waitFor(() => expect(completed).toBe(6))
     expect(peak).toBeLessThanOrEqual(DESCRIPTION_CONCURRENCY)
   })
+
+  it('reports live progress and clears it when the walk ends', async () => {
+    const { structure } = fakeStructure({
+      objects: { app: [{ name: 'orders', kind: 'table' }, { name: 'items', kind: 'table' }] },
+    })
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table, kind) => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return description({ schema, table, kind })
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+    expect(prefetch.progress()).toEqual([{ connectionId: 'c1', total: 2, done: 0 }])
+
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+  })
 })

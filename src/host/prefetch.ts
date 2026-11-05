@@ -1,7 +1,7 @@
 import { DbError } from './errors.js'
 import type { SqlService } from './sql.js'
 import type { StructureStore } from './structure.js'
-import type { ObjectKind, TableDescription } from '../shared/types.js'
+import type { ObjectKind, PrefetchProgress, TableDescription } from '../shared/types.js'
 
 /**
  * How long a cached description counts as fresh. The prefetcher fills missing
@@ -46,20 +46,25 @@ interface PrefetchDeps {
  * next item.
  */
 export class DescriptionPrefetcher {
-  private readonly active = new Set<string>()
+  private readonly active = new Map<string, PrefetchProgress>()
 
   constructor(private readonly deps: PrefetchDeps) {}
 
   /** Start (or keep) a background pass for one connection. */
   schedule(connectionId: string): void {
     if (this.active.has(connectionId)) return
-    this.active.add(connectionId)
+    this.active.set(connectionId, { connectionId, total: 0, done: 0 })
     void this.run(connectionId)
   }
 
   /** Stop a pass, e.g. when the connection is closed, trashed or removed. */
   cancel(connectionId: string): void {
     this.active.delete(connectionId)
+  }
+
+  /** Snapshot of the walks currently running, for the status bar. */
+  progress(): PrefetchProgress[] {
+    return [...this.active.values()].map((entry) => ({ ...entry }))
   }
 
   private targets(connectionId: string): PrefetchTarget[] {
@@ -80,6 +85,9 @@ export class DescriptionPrefetcher {
   private async run(connectionId: string): Promise<void> {
     try {
       const targets = this.targets(connectionId)
+      const session = this.active.get(connectionId)
+      if (session === undefined) return
+      session.total = targets.length
       let next = 0
       const worker = async (): Promise<void> => {
         while (this.active.has(connectionId) && next < targets.length) {
@@ -98,6 +106,8 @@ export class DescriptionPrefetcher {
             const message = error instanceof Error ? error.message : String(error)
             this.deps.log(`后台结构缓存失败（${target.schema}.${target.table}）：${message}`)
           }
+          const current = this.active.get(connectionId)
+          if (current !== undefined) current.done += 1
         }
       }
       const workers = Math.min(DESCRIPTION_CONCURRENCY, targets.length)

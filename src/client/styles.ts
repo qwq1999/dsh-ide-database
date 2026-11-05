@@ -779,6 +779,15 @@ export const CSS = `
 }
 .dshdb-statusbar-spacer { flex: 1; }
 
+/* Live counter for the host's background description walk. */
+.dshdb-statusbar-prefetch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  white-space: nowrap;
+}
+
 .dshdb-banner {
   display: flex;
   align-items: flex-start;

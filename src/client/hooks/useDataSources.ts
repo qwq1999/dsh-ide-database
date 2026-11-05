@@ -18,6 +18,7 @@ import type {
   DbSettings,
   DriverStatus,
   EnvStatus,
+  PrefetchProgress,
   RedisKeyInfo,
   RedisValue,
   SchemaInfo,
@@ -35,6 +36,8 @@ export interface Snapshot {
   drivers: DriverStatus[]
   settings: DbSettings
   env: EnvStatus
+  /** Background description walks the host is running right now. */
+  prefetch: PrefetchProgress[]
 }
 
 export type Notify = (text: string, tone?: 'info' | 'success' | 'error') => void
@@ -206,6 +209,7 @@ export function useDataSources(notify: Notify): DataSources {
         drivers: data.drivers,
         settings: data.config.settings,
         env: data.env,
+        prefetch: data.prefetch ?? [],
       })
       setLoadError('')
     } catch (error) {
@@ -216,6 +220,19 @@ export function useDataSources(notify: Notify): DataSources {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // While the host fills structure descriptions in the background, keep asking
+  // for status so the footer can show a live counter and clear itself when the
+  // walk finishes.
+  useEffect(() => {
+    if ((snapshot?.prefetch.length ?? 0) === 0) return
+    const timer = window.setInterval(() => {
+      void refresh()
+    }, 1500)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [snapshot?.prefetch.length, refresh])
 
   const applyStructures = useCallback((structures: StructureSnapshot): void => {
     const nextSchemas: Record<string, SchemaInfo[]> = {}

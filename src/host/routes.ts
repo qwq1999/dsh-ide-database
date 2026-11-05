@@ -52,7 +52,7 @@ export interface RouteDeps {
   redis: RedisManager
   structure: StructureStore
   /** Fills table/view descriptions in the background after connecting. */
-  prefetch?: Pick<DescriptionPrefetcher, 'schedule' | 'cancel'>
+  prefetch?: Pick<DescriptionPrefetcher, 'schedule' | 'cancel' | 'progress'>
   log: (message: string) => void
 }
 
@@ -229,6 +229,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
           config: deps.config.snapshot(),
           drivers: deps.drivers.statuses(),
           env: envStatus(deps),
+          prefetch: deps.prefetch?.progress() ?? [],
         },
       }
       sendJson(response, 200, snapshot)

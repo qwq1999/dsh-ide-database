@@ -13,6 +13,7 @@ import type {
   EnvStatus,
   ExplainResult,
   ObjectListResult,
+  PrefetchProgress,
   QueryResult,
   RedisCommandResult,
   RedisDatabasesResult,
@@ -69,6 +70,8 @@ export interface StatusSnapshot {
   config: ClientConfig
   drivers: DriverStatus[]
   env: EnvStatus
+  /** Background description walks currently running on the host. */
+  prefetch: PrefetchProgress[]
 }
 
 export const api = {
