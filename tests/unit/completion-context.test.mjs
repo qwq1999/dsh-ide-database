@@ -165,7 +165,7 @@ describe('analyze expectation', () => {
   it('expects a table after DESCRIBE or DESC', () => {
     expect(caretAtEnd('DESCRIBE ').expectation).toBe('relation')
     expect(caretAtEnd('DESC ').expectation).toBe('relation')
-    expect(caretAtEnd('SELECT * FROM orders ORDER BY id DESC ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY id DESC ').expectation).toBe('orderTail')
   })
 
   it('expects a table after DROP INDEX ... ON', () => {
@@ -566,5 +566,49 @@ describe('analyze DDL and tail leftovers', () => {
     expect(caretAtEnd('CREATE ROLE ').expectation).toBe('name')
     expect(caretAtEnd('CREATE SEQUENCE ').expectation).toBe('name')
     expect(caretAtEnd('CREATE TRIGGER ').expectation).toBe('name')
+  })
+})
+
+describe('analyze condition and ordering tails', () => {
+  it('expects a comparison after a condition operand', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE total ').expectation).toBe('comparison')
+    expect(caretAtEnd('SELECT * FROM orders o WHERE o.id ').expectation).toBe('comparison')
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY total HAVING total ').expectation).toBe(
+      'comparison',
+    )
+  })
+
+  it('expects a connector after a finished comparison', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = 1 ').expectation).toBe('boolean')
+    expect(
+      caretAtEnd('SELECT * FROM orders o JOIN customers c ON o.user_id = c.id ').expectation,
+    ).toBe('boolean')
+    expect(caretAtEnd('SELECT * FROM orders HAVING COUNT(*) > 1 ').expectation).toBe('boolean')
+  })
+
+  it('keeps plain condition positions as columns', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id = ').expectation).toBe('column')
+  })
+
+  it('expects a sort direction after an ORDER BY item', () => {
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY total ').expectation).toBe('direction')
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY total DESC, total ').expectation).toBe(
+      'direction',
+    )
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY total ').expectation).toBe('column')
+  })
+
+  it('expects the ORDER BY tail after a direction', () => {
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY total DESC ').expectation).toBe('orderTail')
+  })
+
+  it('does not read clause words out of a closed subquery', () => {
+    expect(
+      caretAtEnd('SELECT * FROM (SELECT id FROM orders ORDER BY id) t ').expectation,
+    ).toBe('column')
+    expect(
+      caretAtEnd('SELECT * FROM (SELECT id FROM orders WHERE id = 1) t ').expectation,
+    ).toBe('column')
   })
 })

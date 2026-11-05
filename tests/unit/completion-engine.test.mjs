@@ -1067,3 +1067,52 @@ describe('complete DDL and tail leftovers', () => {
     expect(catalog.calls.tables.length).toBeGreaterThan(0)
   })
 })
+
+describe('complete condition and ordering tails', () => {
+  it('offers comparison words after a condition operand', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders WHERE total '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('comparison')
+    for (const word of ['LIKE', 'IN', 'IS', 'BETWEEN']) {
+      expect(names(result)).toContain(word)
+    }
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers connectors after a finished comparison', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders WHERE id = 1 '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers sort directions after an ORDER BY item', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders ORDER BY total '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('direction')
+    expect(names(result)).toEqual(['ASC', 'DESC'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers LIMIT and OFFSET after a sort direction', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders ORDER BY total DESC '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('orderTail')
+    expect(names(result)).toEqual(['LIMIT', 'OFFSET'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+})

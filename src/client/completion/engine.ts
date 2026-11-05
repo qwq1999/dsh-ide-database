@@ -577,6 +577,13 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('show', dialect)]
         break
       }
+      case 'comparison':
+      case 'boolean':
+      case 'direction':
+      case 'orderTail': {
+        candidates = [...keywordCompletions(expectation, dialect)]
+        break
+      }
       case 'keyword': {
         const snippets = atStatementStart(request, analysis) ? snippetCandidates(dialect) : []
         candidates = [...snippets, ...keywordCompletions('keyword', dialect)]

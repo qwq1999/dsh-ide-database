@@ -46,6 +46,23 @@ describe('keywordCompletions', () => {
     ])
   })
 
+  it('offers comparison and boolean words in conditions', () => {
+    expect(names(keywordCompletions('comparison', 'mysql'))).toEqual([
+      'LIKE',
+      'IN',
+      'IS',
+      'NOT',
+      'BETWEEN',
+      'REGEXP',
+    ])
+    expect(names(keywordCompletions('boolean', 'mysql'))).toEqual(['AND', 'OR'])
+  })
+
+  it('offers sort directions and the ORDER BY tail', () => {
+    expect(names(keywordCompletions('direction', 'mysql'))).toEqual(['ASC', 'DESC'])
+    expect(names(keywordCompletions('orderTail', 'mysql'))).toEqual(['LIMIT', 'OFFSET'])
+  })
+
   it('offers ALTER objects after an action', () => {
     expect(names(keywordCompletions('alterObject', 'mysql'))).toEqual([
       'COLUMN',

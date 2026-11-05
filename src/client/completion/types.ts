@@ -66,6 +66,10 @@ export type CompletionExpectation =
   | 'name'
   | 'statement'
   | 'show'
+  | 'comparison'
+  | 'boolean'
+  | 'direction'
+  | 'orderTail'
   | 'keyword'
   | 'any'
 

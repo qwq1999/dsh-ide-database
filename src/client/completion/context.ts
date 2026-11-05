@@ -697,12 +697,109 @@ function createTableBodyTail(tokens: readonly Token[]): CompletionExpectation | 
   return asTail ? 'keyword' : 'tableOptions'
 }
 
+/** Tokens that can end an expression inside a condition. */
+function endsOperand(token: Token | undefined): boolean {
+  if (token === undefined) return false
+  if (token.kind === 'ident' || token.kind === 'number' || token.kind === 'string') return true
+  if (token.kind === 'punct' && token.text === ')') return true
+  return (
+    token.kind === 'keyword' &&
+    (token.lower === 'null' || token.lower === 'true' || token.lower === 'false')
+  )
+}
+
+const CONDITION_CLAUSES = new Set(['where', 'having', 'on'])
+const CONDITION_BREAKS = new Set([
+  'select',
+  'from',
+  'group',
+  'order',
+  'limit',
+  'offset',
+  'union',
+  'set',
+  'into',
+  'values',
+  'using',
+  'returning',
+])
+const COMPARATORS = new Set(['=', '<', '>', '!'])
+const COMPARISON_KEYWORDS = new Set(['like', 'in', 'is', 'between', 'not', 'regexp'])
+
+/** `WHERE total ` needs a comparison; `WHERE id = 1 ` needs a connector. */
+function conditionOperator(tokens: readonly Token[]): 'comparison' | 'boolean' | undefined {
+  if (!endsOperand(tokens[tokens.length - 1])) return undefined
+  let inCondition = false
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(') {
+        if (depth === 0) break
+        depth -= 1
+      }
+      continue
+    }
+    if (token.kind !== 'keyword' || depth > 0) continue
+    if (CONDITION_CLAUSES.has(token.lower)) {
+      inCondition = true
+      break
+    }
+    if (CONDITION_BREAKS.has(token.lower)) return undefined
+  }
+  if (!inCondition) return undefined
+  // Walk back over the operand's path (`o.user_id`) to find its operator.
+  let index = tokens.length - 2
+  for (;;) {
+    const token = tokens[index]
+    if (token === undefined) break
+    if (token.kind !== 'ident' && !(token.kind === 'punct' && token.text === '.')) break
+    index -= 1
+  }
+  const before = tokens[index]
+  const compared =
+    before !== undefined &&
+    ((before.kind === 'punct' && COMPARATORS.has(before.text)) ||
+      (before.kind === 'keyword' && COMPARISON_KEYWORDS.has(before.lower)))
+  return compared ? 'boolean' : 'comparison'
+}
+
+/** `ORDER BY total ` needs ASC/DESC; `ORDER BY total DESC ` takes LIMIT. */
+function orderByPosition(tokens: readonly Token[]): 'direction' | 'orderTail' | undefined {
+  const last = tokens[tokens.length - 1]
+  const finished = endsOperand(last)
+  const directed =
+    last !== undefined &&
+    last.kind === 'keyword' &&
+    (last.lower === 'asc' || last.lower === 'desc')
+  if (!finished && !directed) return undefined
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(') {
+        if (depth === 0) break
+        depth -= 1
+      }
+      continue
+    }
+    if (token.kind !== 'keyword' || depth > 0) continue
+    const previous = tokens[index - 1]
+    if (token.lower === 'by' && previous?.kind === 'keyword' && previous.lower === 'order') {
+      return directed ? 'orderTail' : 'direction'
+    }
+    if (CONDITION_BREAKS.has(token.lower) || token.lower === 'by') return undefined
+  }
+  return undefined
+}
+
 /**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
  */
-function expectationAt(tokens: readonly Token[]): CompletionExpectation {
-  if (alterIndexColumns(tokens)) return 'column'
+function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (alterIndexColumns(tokens)) return 'column'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -739,6 +836,10 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (set !== undefined) return set
   if (duplicateKeyUpdate(tokens)) return 'column'
   if (castAs(tokens)) return 'type'
+  const order = orderByPosition(tokens)
+  if (order !== undefined) return order
+  const operator = conditionOperator(tokens)
+  if (operator !== undefined) return operator
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token

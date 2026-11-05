@@ -406,6 +406,18 @@ const SHOW_WORDS = [
   'PRIVILEGES',
 ] as const
 
+/** Comparison words after a condition operand (`WHERE total `). */
+const COMPARISON_WORDS = ['LIKE', 'IN', 'IS', 'NOT', 'BETWEEN', 'REGEXP'] as const
+
+/** Connectors after a finished comparison (`WHERE id = 1 `). */
+const BOOLEAN_WORDS = ['AND', 'OR'] as const
+
+/** Sort directions after an ORDER BY item. */
+const DIRECTION_WORDS = ['ASC', 'DESC'] as const
+
+/** Clauses that may follow a finished ORDER BY item. */
+const ORDER_TAIL_WORDS = ['LIMIT', 'OFFSET'] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -438,6 +450,14 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return STATEMENT_WORDS
     case 'show':
       return SHOW_WORDS
+    case 'comparison':
+      return COMPARISON_WORDS
+    case 'boolean':
+      return BOOLEAN_WORDS
+    case 'direction':
+      return DIRECTION_WORDS
+    case 'orderTail':
+      return ORDER_TAIL_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []
