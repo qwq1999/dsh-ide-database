@@ -166,3 +166,77 @@ describe('analyze word and qualifier', () => {
     expect(analyze('SELECT 1', 500).word.end).toBe(8)
   })
 })
+
+describe('analyze CTEs and derived tables', () => {
+  it('infers the columns of a simple CTE', () => {
+    const analysis = caretAtEnd(
+      'WITH recent AS (SELECT id, total FROM orders) SELECT * FROM recent WHERE ',
+    )
+    expect(analysis.ctes).toEqual(['recent'])
+    expect(analysis.relations).toEqual([{ table: 'recent', columns: ['id', 'total'] }])
+    expect(analysis.expectation).toBe('column')
+  })
+
+  it('uses an explicit CTE column list over the SELECT list', () => {
+    const analysis = caretAtEnd(
+      'WITH x(a, b) AS (SELECT id, total FROM orders) SELECT * FROM x WHERE ',
+    )
+    expect(analysis.ctes).toEqual(['x'])
+    expect(analysis.relations).toEqual([{ table: 'x', columns: ['a', 'b'] }])
+  })
+
+  it('reads several CTEs including RECURSIVE', () => {
+    const analysis = caretAtEnd(
+      'WITH RECURSIVE a AS (SELECT id FROM orders), b AS (SELECT name FROM customers) SELECT * FROM b WHERE ',
+    )
+    expect(analysis.ctes).toEqual(['a', 'b'])
+    expect(analysis.relations).toEqual([{ table: 'b', columns: ['name'] }])
+  })
+
+  it('keeps CTE columns on a joined CTE', () => {
+    const analysis = caretAtEnd(
+      'WITH c AS (SELECT id, name FROM customers) SELECT * FROM orders o JOIN c ON ',
+    )
+    expect(analysis.relations).toEqual([
+      { table: 'orders', alias: 'o' },
+      { table: 'c', columns: ['id', 'name'] },
+    ])
+  })
+
+  it('matches CTE names case insensitively', () => {
+    const analysis = caretAtEnd(
+      'WITH Recent AS (SELECT id FROM orders) SELECT * FROM recent WHERE ',
+    )
+    expect(analysis.ctes).toEqual(['Recent'])
+    expect(analysis.relations).toEqual([{ table: 'recent', columns: ['id'] }])
+  })
+
+  it('infers derived table columns and the alias', () => {
+    const analysis = caretAtEnd(
+      'SELECT * FROM (SELECT id, total AS amount, o.id order_id, o.name FROM orders o) d WHERE d.',
+    )
+    expect(analysis.relations).toEqual([
+      { table: '', alias: 'd', columns: ['id', 'amount', 'order_id', 'name'] },
+    ])
+    expect(analysis.qualifier).toEqual(['d'])
+    expect(analysis.expectation).toBe('column')
+  })
+
+  it('does not invent columns for SELECT *', () => {
+    const cte = caretAtEnd('WITH all_rows AS (SELECT * FROM orders) SELECT * FROM all_rows WHERE ')
+    expect(cte.relations).toEqual([{ table: 'all_rows' }])
+    const derived = caretAtEnd('SELECT * FROM (SELECT o.* FROM orders o) d WHERE ')
+    expect(derived.relations).toEqual([{ table: '', alias: 'd' }])
+  })
+
+  it('gives no CTE list outside a WITH statement', () => {
+    const analysis = caretAtEnd('for (part of items) ')
+    expect(analysis.ctes).toBeUndefined()
+    expect(analysis.relations).toEqual([])
+  })
+
+  it('falls back cleanly on an incomplete WITH', () => {
+    expect(() => caretAtEnd('WITH x AS (')).not.toThrow()
+    expect(caretAtEnd('WITH x AS (').ctes).toBeUndefined()
+  })
+})

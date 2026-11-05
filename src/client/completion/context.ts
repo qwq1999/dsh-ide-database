@@ -138,6 +138,232 @@ function aliasAt(tokens: readonly Token[], index: number): { alias?: string; nex
   return { next: index }
 }
 
+/** Drop a leading DISTINCT/ALL from one SELECT-list item. */
+function stripSelectModifiers(tokens: readonly Token[]): readonly Token[] {
+  let index = 0
+  while (index < tokens.length) {
+    const token = tokens[index] as Token
+    if (token.kind === 'keyword' && (token.lower === 'distinct' || token.lower === 'all')) {
+      index += 1
+      continue
+    }
+    break
+  }
+  return tokens.slice(index)
+}
+
+/**
+ * Tokens of a SELECT-list item outside nested parentheses, with the parentheses
+ * themselves removed. `COUNT(*)` therefore flattens to `COUNT`.
+ */
+function topLevelTokens(tokens: readonly Token[]): Token[] {
+  const flat: Token[] = []
+  let depth = 0
+  for (const token of tokens) {
+    if (token.kind === 'punct') {
+      if (token.text === '(') {
+        depth += 1
+        continue
+      }
+      if (token.text === ')') {
+        depth = Math.max(0, depth - 1)
+        continue
+      }
+    }
+    if (depth === 0) flat.push(token)
+  }
+  return flat
+}
+
+/** `AS alias` or bare `expr alias` name of one SELECT-list item. */
+function selectItemAlias(tokens: readonly Token[]): string | undefined {
+  const flat = topLevelTokens(tokens)
+  for (let index = 0; index < flat.length - 1; index += 1) {
+    const token = flat[index] as Token
+    if (token.kind === 'keyword' && token.lower === 'as') {
+      const name = flat[index + 1] as Token
+      if (name.kind === 'ident') return name.text
+    }
+  }
+  const last = flat[flat.length - 1]
+  const previous = flat[flat.length - 2]
+  if (last === undefined || last.kind !== 'ident' || previous === undefined) return undefined
+  // A bare alias follows an expression; `t.col` and `a + b` are not aliases.
+  const aliasable =
+    previous.kind === 'ident' ||
+    previous.kind === 'number' ||
+    previous.kind === 'string' ||
+    previous.kind === 'param'
+  return aliasable ? last.text : undefined
+}
+
+/** The column name of a plain column reference (`col`, `t.col`, `"Col"`). */
+function selectItemColumn(tokens: readonly Token[]): string | undefined {
+  const flat = topLevelTokens(tokens)
+  // A function call or nested expression has no stable output name.
+  if (flat.length !== tokens.length) return undefined
+  for (const token of flat) {
+    if (token.kind === 'ident') continue
+    if (token.kind === 'punct' && token.text === '.') continue
+    return undefined
+  }
+  const last = flat[flat.length - 1]
+  return last !== undefined && last.kind === 'ident' ? last.text : undefined
+}
+
+/**
+ * Output columns of a SELECT list. `undefined` means "unknown": a `*`/`t.*`
+ * item makes the whole list unguessable, so nothing is invented.
+ */
+function selectListColumns(items: readonly Token[]): string[] | undefined {
+  const groups: Token[][] = []
+  let depth = 0
+  let current: Token[] = []
+  for (const token of items) {
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') depth = Math.max(0, depth - 1)
+      else if (token.text === ',' && depth === 0) {
+        groups.push(current)
+        current = []
+        continue
+      }
+    }
+    current.push(token)
+  }
+  if (current.length > 0 || groups.length === 0) groups.push(current)
+
+  const columns: string[] = []
+  for (const raw of groups) {
+    const group = stripSelectModifiers(raw)
+    if (group.length === 0) continue
+    const flat = topLevelTokens(group)
+    if (flat.some((token) => token.kind === 'punct' && token.text === '*')) return undefined
+    const alias = selectItemAlias(group)
+    if (alias !== undefined) {
+      columns.push(alias)
+      continue
+    }
+    const column = selectItemColumn(group)
+    if (column !== undefined) columns.push(column)
+    // An expression without an alias has no stable output name: skip it.
+  }
+  return columns.length > 0 ? columns : undefined
+}
+
+/** SELECT output columns of a subquery body, or `undefined` when unknown. */
+function inferSelectColumns(body: readonly Token[]): string[] | undefined {
+  let depth = 0
+  let selectIndex = -1
+  for (let index = 0; index < body.length; index += 1) {
+    const token = body[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (depth !== 0 || token.kind !== 'keyword') continue
+    if (selectIndex < 0) {
+      if (token.lower === 'select') selectIndex = index
+      continue
+    }
+    if (token.lower === 'from' || token.lower === 'into') {
+      return selectListColumns(body.slice(selectIndex + 1, index))
+    }
+  }
+  if (selectIndex < 0) return undefined
+  return selectListColumns(body.slice(selectIndex + 1))
+}
+
+interface CteDefinition {
+  name: string
+  /** Explicit column list or inferred SELECT output; unknown columns are absent. */
+  columns?: string[]
+}
+
+/**
+ * Parse a leading `WITH [RECURSIVE] name [(cols)] AS (SELECT ...), ...` clause.
+ * Incomplete or unrecognised syntax yields no CTEs, so the parser falls back to
+ * treating the whole token list as the statement.
+ */
+function parseWith(tokens: readonly Token[]): { ctes: CteDefinition[]; mainStart: number } {
+  const none = { ctes: [] as CteDefinition[], mainStart: 0 }
+  const first = tokens[0]
+  if (first === undefined || first.kind !== 'keyword' || first.lower !== 'with') return none
+
+  let index = 1
+  const recursive = tokens[index]
+  if (recursive !== undefined && recursive.kind === 'keyword' && recursive.lower === 'recursive') {
+    index += 1
+  }
+
+  const ctes: CteDefinition[] = []
+  for (;;) {
+    const name = tokens[index]
+    if (name === undefined || name.kind !== 'ident') return none
+    index += 1
+
+    let explicit: string[] | undefined
+    const maybeOpen = tokens[index]
+    if (maybeOpen !== undefined && maybeOpen.kind === 'punct' && maybeOpen.text === '(') {
+      const columns: string[] = []
+      index += 1
+      let closed = false
+      while (index < tokens.length) {
+        const token = tokens[index] as Token
+        index += 1
+        if (token.kind === 'punct' && token.text === ')') {
+          closed = true
+          break
+        }
+        if (token.kind === 'punct' && token.text === ',') continue
+        if (token.kind === 'ident') {
+          columns.push(token.text)
+          continue
+        }
+        return none
+      }
+      if (!closed) return none
+      if (columns.length > 0) explicit = columns
+    }
+
+    const as = tokens[index]
+    if (as === undefined || as.kind !== 'keyword' || as.lower !== 'as') return none
+    index += 1
+    const open = tokens[index]
+    if (open === undefined || open.kind !== 'punct' || open.text !== '(') return none
+
+    let depth = 0
+    let close = -1
+    for (let cursor = index; cursor < tokens.length; cursor += 1) {
+      const token = tokens[cursor] as Token
+      if (token.kind !== 'punct') continue
+      if (token.text === '(') depth += 1
+      else if (token.text === ')') {
+        depth -= 1
+        if (depth === 0) {
+          close = cursor
+          break
+        }
+      }
+    }
+    if (close < 0) return none
+
+    const body = tokens.slice(index + 1, close)
+    ctes.push({ name: name.text, columns: explicit ?? inferSelectColumns(body) })
+    index = close + 1
+
+    const comma = tokens[index]
+    if (comma !== undefined && comma.kind === 'punct' && comma.text === ',') {
+      index += 1
+      continue
+    }
+    break
+  }
+
+  return { ctes, mainStart: index }
+}
+
 /**
  * Parse one relation reference starting at `index`: `schema.table`, or a
  * parenthesised derived table (`(SELECT ...) alias`, recorded with an empty
@@ -166,9 +392,12 @@ function parseRelationRef(
       }
     }
     if (depth !== 0) return null
+    const body = tokens.slice(index + 1, Math.max(index + 1, cursor - 1))
     const alias = aliasAt(tokens, cursor)
     const relation: CompletionRelation = { table: '' }
     if (alias.alias !== undefined) relation.alias = alias.alias
+    const columns = inferSelectColumns(body)
+    if (columns !== undefined) relation.columns = columns
     return { relation, next: alias.next }
   }
 
@@ -190,18 +419,34 @@ function parseRelationRef(
   return { relation, next: alias.next }
 }
 
+/** Give a relation the inferred columns when its name matches a CTE. */
+function attachCteColumns(
+  relation: CompletionRelation,
+  ctes: readonly CteDefinition[],
+): CompletionRelation {
+  if (relation.table === '' || ctes.length === 0) return relation
+  const lower = relation.table.toLowerCase()
+  const cte = ctes.find((definition) => definition.name.toLowerCase() === lower)
+  if (cte !== undefined && cte.columns !== undefined) relation.columns = cte.columns
+  return relation
+}
+
 /** Relations mentioned by the token prefix before the caret. */
-function collectRelations(tokens: readonly Token[]): CompletionRelation[] {
+function collectRelations(
+  tokens: readonly Token[],
+  ctes: readonly CteDefinition[] = [],
+): CompletionRelation[] {
   const relations: CompletionRelation[] = []
   const seen = new Set<string>()
   const push = (relation: CompletionRelation): void => {
-    if (relation.table === '' && (relation.alias === undefined || relation.alias === '')) return
-    const key = [relation.schema ?? '', relation.table, relation.alias ?? '']
+    const resolved = attachCteColumns(relation, ctes)
+    if (resolved.table === '' && (resolved.alias === undefined || resolved.alias === '')) return
+    const key = [resolved.schema ?? '', resolved.table, resolved.alias ?? '']
       .join('\u0000')
       .toLowerCase()
     if (seen.has(key)) return
     seen.add(key)
-    relations.push(relation)
+    relations.push(resolved)
   }
 
   let index = 0
@@ -284,11 +529,19 @@ export function analyze(text: string, caret: number): Analysis {
     (token) => token.end <= wordStartRelative && token.start < caretRelative,
   )
 
-  const relations = collectRelations(before)
-  let expectation = expectationAt(before)
+  // A leading WITH defines names that only the main statement can use; the CTE
+  // bodies themselves are not part of the caret's clause.
+  const withClause = parseWith(before)
+  const statementTokens =
+    withClause.mainStart > 0 ? before.slice(withClause.mainStart) : before
+  const ctes = withClause.ctes.map((definition) => definition.name)
+  const relations = collectRelations(statementTokens, withClause.ctes)
+  let expectation = expectationAt(statementTokens)
   // A dotted caret (`orders.`, `shop.orders.`, `u.`) always wants a member of
   // the qualifier, whatever clause it appears in.
   if (qualifier.length > 0 && expectation !== 'schema') expectation = 'column'
 
-  return { masked, statement, relations, expectation, qualifier, word }
+  const analysis: Analysis = { masked, statement, relations, expectation, qualifier, word }
+  if (ctes.length > 0) analysis.ctes = ctes
+  return analysis
 }

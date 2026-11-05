@@ -26,6 +26,12 @@ export interface CompletionRelation {
   schema?: string
   table: string
   alias?: string
+  /**
+   * Output columns when the relation is derived (CTE or subquery) and they can
+   * be inferred from the statement; `undefined` when they are unknown, for
+   * example after `SELECT *`.
+   */
+  columns?: readonly string[]
 }
 
 /** Which kind of name the caret position expects. */
@@ -66,6 +72,8 @@ export interface Analysis {
   expectation: CompletionExpectation
   /** Already typed qualifier chain before the dotted caret, e.g. `['shop','orders']`. */
   qualifier: string[]
+  /** CTE names visible in the current statement, for FROM/JOIN suggestions. */
+  ctes?: readonly string[]
   /** Identifier being typed at the caret. */
   word: WordAtCaret
 }

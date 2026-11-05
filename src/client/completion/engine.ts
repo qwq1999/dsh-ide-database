@@ -12,6 +12,7 @@ import { functionCompletions, keywordCompletions } from './keywords'
 import {
   aliasCandidates,
   columnCandidates,
+  cteCandidates,
   schemaCandidates,
   starCandidate,
   tableCandidates,
@@ -105,28 +106,47 @@ async function columnCandidatesOf(
   return columnCandidates(columns)
 }
 
-/** Columns of every concrete relation mentioned before the caret, in order. */
+/** Columns of every relation mentioned before the caret, in statement order. */
 async function referencedColumns(
   request: CompletionRequest,
   relations: readonly CompletionRelation[],
   currentSchema: string,
 ): Promise<Completion[]> {
-  const targets = relations.filter((relation) => relation.table !== '').slice(0, MAX_COLUMN_RELATIONS)
-  if (targets.length === 0) return []
+  // Derived relations (CTEs, subqueries) already carry their columns; only the
+  // concrete tables without them need a catalog round-trip.
+  const targets: CompletionRelation[] = []
+  for (const relation of relations) {
+    if (relation.table === '' || relation.columns !== undefined) continue
+    if (targets.length >= MAX_COLUMN_RELATIONS) break
+    targets.push(relation)
+  }
   const lists = await Promise.all(
     targets.map((relation) =>
       columnCandidatesOf(request, relation.schema ?? currentSchema, relation.table),
     ),
   )
+  const fetched = new Map<CompletionRelation, Completion[]>()
+  targets.forEach((relation, index) => {
+    fetched.set(relation, lists[index] ?? [])
+  })
+
   const seen = new Set<string>()
   const items: Completion[] = []
-  for (const list of lists) {
+  const push = (list: readonly Completion[]): void => {
     for (const item of list) {
       const key = item.name.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
       items.push(item)
     }
+  }
+  for (const relation of relations) {
+    if (relation.columns !== undefined) {
+      push(columnCandidates(relation.columns.map((column) => ({ name: column }))))
+      continue
+    }
+    if (relation.table === '') continue
+    push(fetched.get(relation) ?? [])
   }
   return items
 }
@@ -165,6 +185,9 @@ async function qualifiedCandidates(
 
   const name = qualifier[0] as string
   const relation = findRelation(relations, name)
+  if (relation !== undefined && relation.columns !== undefined) {
+    return columnCandidates(relation.columns.map((column) => ({ name: column })))
+  }
   if (relation !== undefined && relation.table !== '') {
     const columns = await columnCandidatesOf(
       request,
@@ -206,6 +229,7 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         ])
         candidates = [
           ...aliasCandidates(relations),
+          ...cteCandidates(analysis.ctes ?? []),
           ...tables,
           ...schemas,
           ...keywordCompletions('relation', dialect),
@@ -216,7 +240,11 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         const columns = await referencedColumns(request, relations, request.schema)
         candidates = [
           ...columns,
-          ...(relations.some((relation) => relation.table !== '') ? [starCandidate()] : []),
+          ...(relations.some(
+            (relation) => relation.table !== '' || relation.columns !== undefined,
+          )
+            ? [starCandidate()]
+            : []),
           ...functionCompletions(dialect),
           ...keywordCompletions('column', dialect),
         ]

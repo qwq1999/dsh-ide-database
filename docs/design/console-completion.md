@@ -238,6 +238,12 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
 - **P2 体验与性能**：最近使用/频次本地排序、值级补全（日期/枚举）、批量元数据接口（`/completion/metadata`）+ 客户端 LRU、大小写策略、补全启动耗时与候选数量指标（仅本地 console.debug，不上报）。
 - **P3 工程质量**：性能基准（首屏候选 < 16 ms、缓存命中 < 2 ms）、端到端用例、CI 中的 completion 专项测试。
 
+### 实现进度
+
+- 已完成：P0 全部；P1 的 CTE 与派生表列推断（`WITH x AS (…)`、`WITH RECURSIVE`、显式列清单 `x(a, b)`、`(SELECT …) alias`，`x.` / `d.` 直接给推断列且不查元数据）、`INSERT INTO t (…)` 列清单、`ON` 条件两端列；P2 的补全元数据负缓存（读失败的库 / 表在会话内记住，不再每次弹窗重试）。
+- 待办：P1 的 `SELECT *` 展开、JOIN 关系推荐、方言关键字 / 函数全集、snippet；P2 的最近使用排序、值级补全、批量元数据接口、大小写策略、指标；P3 全部。
+- 每轮完成一项后在此处勾掉，并在提交信息里注明对应用户可见变化。
+
 ## 7. 验收标准（P0）
 
 1. `npm run verify` 全绿（含新增 completion 测试）；`npm run build:client` 成功。

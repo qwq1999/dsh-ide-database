@@ -68,6 +68,20 @@ export function starCandidate(): Completion {
   return { name: '*', kind: 'column', detail: '所有列' }
 }
 
+/** CTE names the caret statement can use in a FROM/JOIN clause. */
+export function cteCandidates(names: readonly string[]): Completion[] {
+  const seen = new Set<string>()
+  const items: Completion[] = []
+  for (const name of names) {
+    if (name === '') continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push({ name, kind: 'table', detail: 'CTE' })
+  }
+  return items
+}
+
 /**
  * Aliases declared by the statement. A derived table (subquery) has an alias but
  * no catalog relation, so it is shown with a `子查询` hint.

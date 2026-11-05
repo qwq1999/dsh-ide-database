@@ -203,3 +203,64 @@ describe('complete failure handling', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 })
+
+describe('complete CTEs and derived tables', () => {
+  it('uses CTE columns without asking the catalog', async () => {
+    const req = request(
+      'WITH x AS (SELECT id, total FROM orders) SELECT * FROM x WHERE ',
+    )
+    const result = await complete(req)
+    expect(names(result).slice(0, 2)).toEqual(['id', 'total'])
+    expect(req.catalog.calls.columns).not.toContain('shop.x')
+  })
+
+  it('resolves a cte. qualifier to the inferred columns', async () => {
+    const req = request(
+      'WITH x AS (SELECT id, total FROM orders) SELECT * FROM x WHERE x.',
+    )
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'total'])
+    expect(req.catalog.calls.columns).not.toContain('shop.x')
+  })
+
+  it('honours an explicit CTE column list', async () => {
+    const result = await complete(
+      request('WITH x(a, b) AS (SELECT id, total FROM orders) SELECT * FROM x WHERE x.'),
+    )
+    expect(names(result)).toEqual(['a', 'b'])
+  })
+
+  it('resolves a derived table alias to its inferred columns', async () => {
+    const req = request(
+      'SELECT * FROM (SELECT id, total AS amount FROM orders) d WHERE d.',
+    )
+    const result = await complete(req)
+    expect(names(result)).toEqual(['id', 'amount'])
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('suggests CTE names after FROM, before the catalog tables', async () => {
+    const result = await complete(
+      request('WITH x AS (SELECT id FROM orders) SELECT * FROM '),
+    )
+    expect(result.analysis.expectation).toBe('relation')
+    expect(result.items[0]).toMatchObject({ name: 'x', kind: 'table', detail: 'CTE' })
+  })
+
+  it('merges CTE columns with a concrete table in WHERE', async () => {
+    const req = request(
+      'WITH x AS (SELECT id, total FROM orders) SELECT * FROM customers c JOIN x ON ',
+    )
+    const result = await complete(req)
+    expect(names(result).slice(0, 3)).toEqual(['id', 'name', 'total'])
+    expect(req.catalog.calls.columns).toContain('shop.customers')
+    expect(req.catalog.calls.columns).not.toContain('shop.x')
+  })
+
+  it('includes a derived relation in an unqualified WHERE column list', async () => {
+    const result = await complete(
+      request('SELECT * FROM (SELECT id, total AS amount FROM orders) d WHERE '),
+    )
+    expect(names(result).slice(0, 2)).toEqual(['id', 'amount'])
+  })
+})
