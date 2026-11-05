@@ -1092,7 +1092,9 @@ export const CSS = `
   white-space: nowrap;
 }
 .dshdb-qbar-spacer { flex: 1; }
-/* Console toolbar actions; whatever does not fit moves into the trailing "…" menu. */
+/* Console toolbar actions; whatever does not fit moves into the trailing "…" menu.
+   No overflow clipping here: the "…" and export popovers are absolutely
+   positioned children that drop below the bar. */
 .dshdb-qbar-actions {
   display: flex;
   align-items: center;
@@ -1100,7 +1102,6 @@ export const CSS = `
   flex: 1 1 auto;
   min-width: 0;
   position: relative;
-  overflow: hidden;
 }
 .dshdb-qbar-slot { display: inline-flex; flex: none; }
 .dshdb-qbar-slot-hidden {

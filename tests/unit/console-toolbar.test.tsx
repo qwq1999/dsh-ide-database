@@ -47,6 +47,7 @@ vi.mock('../../src/client/colmenu', async (importOriginal) => {
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
+import { CSS } from '../../src/client/styles'
 import { waitForConsoleSource } from '../stubs/console-ready'
 
 const connection = {
@@ -180,5 +181,14 @@ describe('console toolbar', () => {
       if (original === undefined) delete (Element.prototype as { clientWidth?: unknown }).clientWidth
       else Object.defineProperty(Element.prototype, 'clientWidth', original)
     }
+  })
+
+  it('does not clip the "…" menu when it drops below the toolbar', () => {
+    // jsdom cannot paint, so guard the CSS invariant instead: the menu is an
+    // absolutely-positioned child of the actions row and must not be clipped.
+    const actions = /\.dshdb-qbar-actions\s*\{([^}]*)\}/.exec(CSS)?.[1] ?? ''
+    expect(actions).not.toMatch(/overflow\s*:\s*hidden/)
+    const menu = /\.dshdb-menu\s*\{([^}]*)\}/.exec(CSS)?.[1] ?? ''
+    expect(menu).toMatch(/position\s*:\s*absolute/)
   })
 })
