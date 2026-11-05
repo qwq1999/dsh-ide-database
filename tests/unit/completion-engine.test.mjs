@@ -1656,3 +1656,70 @@ describe('complete relation name and literal tails', () => {
     expect(names(result)).toEqual(['HAVING', 'ORDER', 'LIMIT'])
   })
 })
+
+describe('complete alter options, lock tables and duplicate updates', () => {
+  it('offers engine names after ALTER TABLE ... ENGINE =', async () => {
+    const req = request('ALTER TABLE orders ENGINE = ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('engine')
+    expect(names(result)).toContain('InnoDB')
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(req.catalog.calls.schemas).toBe(0)
+    expect(req.catalog.calls.tables).toEqual([])
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('continues with table options after the engine name', async () => {
+    const result = await complete(request('ALTER TABLE orders ENGINE = InnoDB '))
+
+    expect(result.analysis.expectation).toBe('tableOptions')
+    expect(names(result)).toContain('COMMENT')
+  })
+
+  it('assigns a value in ON DUPLICATE KEY UPDATE', async () => {
+    const req = request('INSERT INTO orders VALUES (1) ON DUPLICATE KEY UPDATE total = ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('DEFAULT')
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('keeps RENAME INDEX names quiet', async () => {
+    const req = request('ALTER TABLE orders RENAME INDEX idx TO ')
+    const result = await complete(req)
+
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(req.catalog.calls.columns).toEqual([])
+  })
+
+  it('offers LOCK TABLES access modes and the next table', async () => {
+    const modes = await complete(request('LOCK TABLES orders '))
+    expect(modes.analysis.expectation).toBe('lockTable')
+    expect(names(modes)).toEqual(['READ', 'WRITE', 'LOW_PRIORITY', 'AS'])
+
+    const next = await complete(request('LOCK TABLES orders READ, '))
+    expect(next.analysis.expectation).toBe('tableName')
+    expect(names(next)).toContain('orders')
+  })
+
+  it('reads CREATE TABLE option assignments', async () => {
+    const auto = await complete(request('CREATE TABLE t (id INT) AUTO_INCREMENT = '))
+    expect(auto.analysis.expectation).toBe('number')
+    expect(auto.items).toEqual([])
+
+    const rowFormat = await complete(request('CREATE TABLE t (id INT) ROW_FORMAT = '))
+    expect(rowFormat.analysis.expectation).toBe('rowFormat')
+    expect(names(rowFormat)).toContain('DYNAMIC')
+
+    const charset = await complete(request('CREATE TABLE t (id INT) DEFAULT CHARSET = '))
+    expect(charset.analysis.expectation).toBe('charset')
+    expect(names(charset)).toContain('utf8mb4')
+
+    const partition = await complete(request('CREATE TABLE t (id INT) PARTITION BY '))
+    expect(partition.analysis.expectation).toBe('partition')
+    expect(names(partition)).toEqual(['HASH', 'KEY', 'RANGE', 'LIST', 'LINEAR'])
+  })
+})

@@ -149,6 +149,9 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   frame: KEYWORD_PRIORITY,
   interval: KEYWORD_PRIORITY,
   indexMethod: KEYWORD_PRIORITY,
+  lockTable: KEYWORD_PRIORITY,
+  rowFormat: KEYWORD_PRIORITY,
+  partition: KEYWORD_PRIORITY,
   database: SCHEMA_PRIORITY,
 }
 

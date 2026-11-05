@@ -451,6 +451,15 @@ const GRANT_OPTION_WORD_WORDS = ['OPTION'] as const
 
 const LOCK_WORDS = ['UPDATE', 'SHARE'] as const
 
+/** Access modes after `LOCK TABLES orders `. */
+const LOCK_TABLE_WORDS = ['READ', 'WRITE', 'LOW_PRIORITY', 'AS'] as const
+
+/** `ROW_FORMAT = ` values in a CREATE TABLE tail. */
+const ROW_FORMAT_WORDS = ['DEFAULT', 'DYNAMIC', 'FIXED', 'COMPRESSED', 'REDUNDANT', 'COMPACT'] as const
+
+/** `PARTITION BY ` methods. */
+const PARTITION_WORDS = ['HASH', 'KEY', 'RANGE', 'LIST', 'LINEAR'] as const
+
 /** Bounds of a window frame after `OVER (ROWS `. */
 const FRAME_WORDS = ['BETWEEN', 'UNBOUNDED', 'CURRENT', 'ROW', 'PRECEDING', 'FOLLOWING'] as const
 
@@ -584,6 +593,12 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return GRANT_OPTION_WORD_WORDS
     case 'lock':
       return LOCK_WORDS
+    case 'lockTable':
+      return LOCK_TABLE_WORDS
+    case 'rowFormat':
+      return ROW_FORMAT_WORDS
+    case 'partition':
+      return PARTITION_WORDS
     case 'frame':
       return FRAME_WORDS
     case 'interval':

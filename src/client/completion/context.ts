@@ -584,6 +584,23 @@ function literalTail(tokens: readonly Token[]): boolean {
   return start === 'unlock' && tokens[1]?.text.toLowerCase() === 'tables'
 }
 
+/**
+ * `LOCK TABLES orders ` takes an access mode; after `READ, ` the next word is
+ * another table name.
+ */
+function lockTableTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  if (tokens[0]?.text.toLowerCase() !== 'lock') return undefined
+  if (tokens[1]?.text.toLowerCase() !== 'tables') return undefined
+  if (tokens.length <= 2) return 'tableName'
+  const last = tokens[tokens.length - 1]
+  if (last?.kind === 'punct' && last.text === ',') return 'tableName'
+  const hasAccess = tokens.slice(2).some((token) => {
+    const word = token.text.toLowerCase()
+    return word === 'read' || word === 'write' || word === 'as'
+  })
+  return hasAccess ? 'number' : 'lockTable'
+}
+
 /** `CALL ` names a procedure; its arguments are literals, not catalog names. */
 function callStart(tokens: readonly Token[]): 'name' | 'number' | undefined {
   if (tokens[0]?.text.toLowerCase() !== 'call') return undefined
@@ -687,6 +704,22 @@ function createTableEngine(tokens: readonly Token[]): boolean {
   )
 }
 
+/** `ALTER TABLE ... ENGINE = ` names a storage engine; its value ends the option. */
+function alterTableEngine(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const start = alterTableStart(tokens)
+  if (start < 0) return undefined
+  const engineAt = tokens.findIndex(
+    (token, index) => index >= start && token.text.toLowerCase() === 'engine',
+  )
+  if (engineAt < 0) return undefined
+  const equals = tokens[engineAt + 1]
+  if (equals === undefined || equals.kind !== 'punct' || equals.text !== '=') {
+    return tokens.length === engineAt + 1 ? 'number' : undefined
+  }
+  if (tokens.length === engineAt + 2) return 'engine'
+  return 'tableOptions'
+}
+
 /**
  * What a `SET ` statement expects. Session variables and literals are user
  * text, so the catalog has nothing to add here.
@@ -762,6 +795,23 @@ function duplicateKeyUpdate(tokens: readonly Token[]): boolean {
   return tail[0] === 'on' && tail[1] === 'duplicate' && tail[2] === 'key' && tail[3] === 'update'
 }
 
+/** `ON DUPLICATE KEY UPDATE col = ` assigns a value to that column. */
+function duplicateKeyValue(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'insert') return false
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const at = words.findIndex(
+    (word, index) =>
+      word === 'on' &&
+      words[index + 1] === 'duplicate' &&
+      words[index + 2] === 'key' &&
+      words[index + 3] === 'update',
+  )
+  if (at < 0) return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'punct' && last.text === '='
+}
+
 /**
  * True when an `INSERT ... VALUES (...)` tuple list is balanced and the caret
  * sits after the last closing parenthesis: only more tuples or the duplicate
@@ -816,6 +866,9 @@ function charsetValue(tokens: readonly Token[]): boolean {
   const previous = tokens[tokens.length - 2]
   if (last === undefined) return false
   if (last.text.toLowerCase() === 'charset') return true
+  if (last.kind === 'punct' && last.text === '=') {
+    return previous?.text.toLowerCase() === 'charset'
+  }
   return (
     last.kind === 'keyword' &&
     last.lower === 'set' &&
@@ -842,6 +895,30 @@ function tableOptionValue(tokens: readonly Token[]): CompletionExpectation | und
     return previous?.text.toLowerCase() === 'comment' ? 'name' : undefined
   }
   return undefined
+}
+
+/** `AUTO_INCREMENT = ` and `ROW_FORMAT = ` values in a CREATE TABLE tail. */
+function tableOptionAssignment(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'create') return undefined
+  if (!tokens.some((token) => token.text.toLowerCase() === 'table')) return undefined
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  if (last?.kind !== 'punct' || last.text !== '=' || previous === undefined) return undefined
+  const name = previous.text.toLowerCase()
+  if (name === 'auto_increment') return 'number'
+  return name === 'row_format' ? 'rowFormat' : undefined
+}
+
+/** `PARTITION BY ` names a partitioning method. */
+function partitionBy(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const previous = tokens[tokens.length - 2]
+  return (
+    last?.kind === 'keyword' &&
+    last.lower === 'by' &&
+    previous?.text.toLowerCase() === 'partition'
+  )
 }
 
 /** After `ENGINE = InnoDB `/`DEFAULT CHARSET utf8mb4 ` more table options follow. */
@@ -1119,6 +1196,10 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
       }
       return 'definition'
     }
+    // `RENAME INDEX old TO ` names the new index, which only the user knows.
+    if (action.lower === 'rename' && (object.lower === 'index' || object.lower === 'key')) {
+      return 'name'
+    }
     // `RENAME COLUMN old TO ` names the new column, which only the user knows.
     if (action.lower === 'rename' && object.lower === 'column') {
       const rest = tokens.slice(start + 2)
@@ -1168,6 +1249,7 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
       return object.lower === 'column' ? 'column' : undefined
     case 'rename':
       if (object.lower === 'column') return 'column'
+      if (object.lower === 'index' || object.lower === 'key') return 'name'
       // `RENAME TO ` names the *new* table, which only the user knows.
       return object.lower === 'to' ? 'name' : undefined
     default:
@@ -1516,6 +1598,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (indexUsingTail(tokens)) return 'indexMethod'
   const alter = alterExpectation(tokens)
   if (alter !== undefined) return alter
+  const alterEngine = alterTableEngine(tokens)
+  if (alterEngine !== undefined) return alterEngine
   const indexOn = createIndexOn(tokens)
   if (indexOn >= 0) {
     const target = parseRelationRef(tokens, indexOn + 1)
@@ -1544,6 +1628,11 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (ddlTableName(tokens)) return 'tableName'
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
+  // `INSERT ... ON DUPLICATE KEY UPDATE col = ` assigns a value, not a table.
+  if (duplicateKeyValue(tokens)) return 'value'
+  // `LOCK TABLES orders ` takes an access mode, not a table.
+  const lockTable = lockTableTail(tokens)
+  if (lockTable !== undefined) return lockTable
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'
   if (literalTail(tokens)) return 'number'
@@ -1572,7 +1661,10 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (limitCount(tokens)) return 'number'
   if (limitTail(tokens)) return 'number'
   if (createTableEngine(tokens)) return 'engine'
+  if (partitionBy(tokens)) return 'partition'
   if (charsetValue(tokens)) return 'charset'
+  const assignment = tableOptionAssignment(tokens)
+  if (assignment !== undefined) return assignment
   const optionValue = tableOptionValue(tokens)
   if (optionValue !== undefined) return optionValue
   if (afterTableOptionValue(tokens)) return 'tableOptions'

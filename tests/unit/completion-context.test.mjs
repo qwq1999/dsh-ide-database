@@ -1026,3 +1026,33 @@ describe('analyze relation name and literal tails', () => {
     )
   })
 })
+
+describe('analyze alter options, lock tables and insert updates', () => {
+  it('names the engine after ALTER TABLE ... ENGINE =', () => {
+    expect(caretAtEnd('ALTER TABLE orders ENGINE = ').expectation).toBe('engine')
+    expect(caretAtEnd('ALTER TABLE orders ENGINE = InnoDB ').expectation).toBe('tableOptions')
+  })
+
+  it('assigns a value in ON DUPLICATE KEY UPDATE', () => {
+    expect(
+      caretAtEnd('INSERT INTO orders VALUES (1) ON DUPLICATE KEY UPDATE total = ').expectation,
+    ).toBe('value')
+  })
+
+  it('names the new index in RENAME INDEX', () => {
+    expect(caretAtEnd('ALTER TABLE orders RENAME INDEX idx TO ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders RENAME KEY idx TO ').expectation).toBe('name')
+  })
+
+  it('takes access modes in LOCK TABLES', () => {
+    expect(caretAtEnd('LOCK TABLES orders ').expectation).toBe('lockTable')
+    expect(caretAtEnd('LOCK TABLES orders READ, ').expectation).toBe('tableName')
+  })
+
+  it('reads CREATE TABLE option assignments', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) DEFAULT CHARSET = ').expectation).toBe('charset')
+    expect(caretAtEnd('CREATE TABLE t (id INT) AUTO_INCREMENT = ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (id INT) ROW_FORMAT = ').expectation).toBe('rowFormat')
+    expect(caretAtEnd('CREATE TABLE t (id INT) PARTITION BY ').expectation).toBe('partition')
+  })
+})

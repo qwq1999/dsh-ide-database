@@ -654,6 +654,12 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
         candidates = [...keywordCompletions('lock', dialect)]
         break
       }
+      case 'lockTable':
+      case 'rowFormat':
+      case 'partition': {
+        candidates = [...keywordCompletions(expectation, dialect)]
+        break
+      }
       case 'database': {
         // A database name, with no DDL keywords mixed in.
         candidates = [...(await schemaNamesOf(request))]

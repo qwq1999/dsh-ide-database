@@ -328,3 +328,35 @@ describe('rollup tail words', () => {
     expect(names(keywordCompletions('rollupTail', 'generic'))).toEqual(['HAVING', 'ORDER', 'LIMIT'])
   })
 })
+
+describe('lock, row format and partition words', () => {
+  it('offers the LOCK TABLES access modes', () => {
+    expect(names(keywordCompletions('lockTable', 'generic'))).toEqual([
+      'READ',
+      'WRITE',
+      'LOW_PRIORITY',
+      'AS',
+    ])
+  })
+
+  it('offers ROW_FORMAT values in order', () => {
+    expect(names(keywordCompletions('rowFormat', 'generic'))).toEqual([
+      'DEFAULT',
+      'DYNAMIC',
+      'FIXED',
+      'COMPRESSED',
+      'REDUNDANT',
+      'COMPACT',
+    ])
+  })
+
+  it('offers partitioning methods in order', () => {
+    expect(names(keywordCompletions('partition', 'generic'))).toEqual([
+      'HASH',
+      'KEY',
+      'RANGE',
+      'LIST',
+      'LINEAR',
+    ])
+  })
+})
