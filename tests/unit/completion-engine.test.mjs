@@ -568,3 +568,33 @@ describe('complete values and column definitions', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete CREATE INDEX', () => {
+  it('offers tables after ON', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE INDEX idx ON ',
+      caret: 20,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('relation')
+    expect(names(result)).toContain('orders')
+    expect(result.items.some((item) => item.kind === 'table')).toBe(true)
+  })
+
+  it('offers the columns of the indexed table', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      statement: 'CREATE INDEX idx ON orders (',
+      caret: 28,
+      dialect: 'mysql',
+      schema: 'shop',
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result).slice(0, 3)).toEqual(['id', 'total', 'created_at'])
+    expect(catalog.calls.columns).toContain('shop.orders')
+  })
+})

@@ -126,6 +126,22 @@ describe('analyze expectation', () => {
   it('lets the typed ALTER action take over', () => {
     expect(caretAtEnd('ALTER TABLE orders ADD ').expectation).not.toBe('alter')
   })
+
+  it('expects a table after CREATE INDEX ON', () => {
+    const analysis = caretAtEnd('CREATE INDEX idx ON ')
+    expect(analysis.expectation).toBe('relation')
+    expect(analysis.relations).toEqual([])
+    expect(caretAtEnd('CREATE UNIQUE INDEX idx ON ').expectation).toBe('relation')
+  })
+
+  it('expects columns after the CREATE INDEX table', () => {
+    const analysis = caretAtEnd('CREATE INDEX idx ON orders (')
+    expect(analysis.expectation).toBe('column')
+    expect(analysis.relations).toEqual([{ table: 'orders' }])
+    expect(caretAtEnd('CREATE INDEX idx ON shop.orders ').relations).toEqual([
+      { schema: 'shop', table: 'orders' },
+    ])
+  })
 })
 
 describe('analyze statement bounds', () => {

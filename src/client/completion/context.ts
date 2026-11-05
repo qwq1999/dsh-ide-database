@@ -176,6 +176,29 @@ function insideCreateTableParen(tokens: readonly Token[]): boolean {
 }
 
 /**
+ * Index of the `ON` that introduces the table of a `CREATE INDEX` statement,
+ * or -1. That position names a relation, and its columns follow.
+ */
+function createIndexOn(tokens: readonly Token[]): number {
+  let create = false
+  let index = -1
+  for (let cursor = 0; cursor < tokens.length; cursor += 1) {
+    const token = tokens[cursor] as Token
+    if (token.kind !== 'keyword') continue
+    if (token.lower === 'create') {
+      create = true
+      continue
+    }
+    if (create && token.lower === 'index') {
+      index = cursor
+      continue
+    }
+    if (index >= 0 && token.lower === 'on') return cursor
+  }
+  return -1
+}
+
+/**
  * True when the caret sits right after the table named by `ALTER TABLE`, the
  * position where the alter action (`ADD`, `DROP`, `MODIFY`, ...) belongs.
  */
@@ -219,6 +242,10 @@ function alterTableAt(tokens: readonly Token[]): boolean {
 function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insideCreateTableParen(tokens)) return 'definition'
   if (alterTableAt(tokens)) return 'alter'
+  const indexOn = createIndexOn(tokens)
+  if (indexOn >= 0) {
+    return parseRelationRef(tokens, indexOn + 1) === null ? 'relation' : 'column'
+  }
   let sawOpenParen = false
   for (let index = tokens.length - 1; index >= 0; index -= 1) {
     const token = tokens[index] as Token
@@ -611,6 +638,14 @@ function collectRelations(
     if (seen.has(key)) return
     seen.add(key)
     relations.push(resolved)
+  }
+
+  // `CREATE INDEX idx ON orders (col, ...)`: the indexed table carries the
+  // columns the statement wants next.
+  const indexOn = createIndexOn(tokens)
+  if (indexOn >= 0) {
+    const target = parseRelationRef(tokens, indexOn + 1)
+    if (target !== null) push(target.relation)
   }
 
   let index = 0
