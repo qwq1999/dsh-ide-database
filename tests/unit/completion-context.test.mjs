@@ -695,3 +695,30 @@ describe('analyze grouping, insert and table tails', () => {
     expect(caretAtEnd('CREATE INDEX idx ON ').expectation).toBe('relation')
   })
 })
+
+describe('analyze literals, lock clauses and INSERT SET', () => {
+  it('finishes a comparison whose operand is a string literal', () => {
+    expect(caretAtEnd("SELECT * FROM orders WHERE status = 'paid' ").expectation).toBe('boolean')
+    expect(caretAtEnd("SELECT * FROM orders WHERE name LIKE 'a%' ").expectation).toBe('boolean')
+    expect(caretAtEnd("SELECT * FROM orders WHERE created_at > '2024-01-01' ").expectation).toBe(
+      'boolean',
+    )
+    expect(caretAtEnd("SELECT * FROM orders WHERE comment = 'it''s ok' ").expectation).toBe(
+      'boolean',
+    )
+    expect(caretAtEnd('SELECT * FROM orders WHERE status = ').expectation).toBe('column')
+  })
+
+  it('quiets trailing lock clauses', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders FOR SHARE ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT * FROM orders LOCK IN SHARE MODE ').expectation).toBe('number')
+  })
+
+  it('handles MySQL INSERT ... SET assignments', () => {
+    expect(caretAtEnd('INSERT INTO orders SET ').expectation).toBe('column')
+    expect(caretAtEnd('INSERT INTO orders SET total = ').expectation).toBe('value')
+    expect(caretAtEnd('INSERT INTO orders SET total = 1 ').expectation).toBe('number')
+    expect(caretAtEnd('INSERT INTO orders SET total = 1, ').expectation).toBe('column')
+  })
+})

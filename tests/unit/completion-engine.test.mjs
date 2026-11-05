@@ -1222,3 +1222,36 @@ describe('complete grouping and table tails', () => {
     expect(result.items).toEqual([])
   })
 })
+
+describe('complete literal comparisons and lock tails', () => {
+  it('offers connectors after a string comparison', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request("SELECT * FROM orders WHERE status = 'paid' "),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers connectors after a LIKE literal', async () => {
+    const result = await complete({
+      ...request("SELECT * FROM orders WHERE name LIKE 'a%' "),
+    })
+    expect(result.analysis.expectation).toBe('boolean')
+    expect(names(result)).toEqual(['AND', 'OR'])
+  })
+
+  it('quiets a trailing lock clause', async () => {
+    const result = await complete({ ...request('SELECT * FROM orders FOR UPDATE ') })
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+
+  it('offers values after INSERT ... SET col =', async () => {
+    const result = await complete({ ...request('INSERT INTO orders SET total = ') })
+    expect(result.analysis.expectation).toBe('value')
+    expect(names(result)).toContain('NULL')
+  })
+})

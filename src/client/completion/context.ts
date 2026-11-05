@@ -982,6 +982,35 @@ function groupByPosition(tokens: readonly Token[]): boolean {
   return false
 }
 
+/** `FOR UPDATE ` / `FOR SHARE ` / `LOCK IN SHARE MODE ` end the statement. */
+function lockClauseTail(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return false
+  const lower = last.text.toLowerCase()
+  if (lower === 'update' || lower === 'share') {
+    const previous = tokens[tokens.length - 2]
+    return previous !== undefined && previous.text.toLowerCase() === 'for'
+  }
+  if (lower !== 'mode' || tokens.length < 4) return false
+  const tail = tokens.slice(tokens.length - 4).map((token) => token.text.toLowerCase())
+  return tail[0] === 'lock' && tail[1] === 'in' && tail[2] === 'share' && tail[3] === 'mode'
+}
+
+/**
+ * `INSERT ... SET col = ` takes a value; once the value is written the
+ * statement is complete (`SET a = 1, ` still takes another column).
+ */
+function insertSetPosition(tokens: readonly Token[]): 'number' | 'value' | undefined {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'insert') return undefined
+  if (!tokens.some((token) => token.kind === 'keyword' && token.lower === 'set')) return undefined
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return undefined
+  if (last.kind === 'punct' && last.text === '=') return 'value'
+  if (last.kind === 'punct') return undefined
+  return endsOperand(last) ? 'number' : undefined
+}
+
 /**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
@@ -1019,6 +1048,9 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (trailingIfExists(tokens)) return 'relation'
   if (tableNameTail(tokens)) return 'number'
   if (renameTableTail(tokens)) return 'name'
+  if (lockClauseTail(tokens)) return 'number'
+  const insertSet = insertSetPosition(tokens)
+  if (insertSet !== undefined) return insertSet
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
@@ -1536,9 +1568,12 @@ export function analyze(text: string, caret: number): Analysis {
   }
   const qualifier = qualifierBefore(text, word.start)
 
-  // Tokens are relative to `masked`; the identifier under the caret is not part
-  // of the already-typed context, so it is excluded.
-  const tokens = tokenize(masked)
+  // Tokens are relative to the statement; the identifier under the caret is not
+  // part of the already-typed context, so it is excluded. Tokenising the raw
+  // statement keeps string literals as single `string` tokens (a comparison
+  // with a literal still ends an operand), while the tokenizer itself skips
+  // comments and never splits the contents of a string.
+  const tokens = tokenize(statement)
   const caretRelative = at - bounds.start
   const wordStartRelative = word.start - bounds.start
   const before = tokens.filter(
