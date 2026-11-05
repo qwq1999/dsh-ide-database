@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   schemas: vi.fn(),
   objects: vi.fn(),
   describe: vi.fn(),
+  completionMetadata: vi.fn(),
 }))
 
 vi.mock('../../src/client/api', () => ({
@@ -11,22 +12,31 @@ vi.mock('../../src/client/api', () => ({
     schemas: mocks.schemas,
     objects: mocks.objects,
     describe: mocks.describe,
+    completionMetadata: mocks.completionMetadata,
   },
 }))
 
-import { ConsoleCompletionCatalog } from '../../src/client/completion/catalog'
+import {
+  CATALOG_COLUMN_LIMIT,
+  CATALOG_TABLE_LIMIT,
+  ConsoleCompletionCatalog,
+} from '../../src/client/completion/catalog'
+
+const EMPTY_METADATA = { cached: false, schemas: [], tables: {}, columns: {} }
 
 const catalog = (known = []) => new ConsoleCompletionCatalog('mysql-1', () => known)
 
 describe('ConsoleCompletionCatalog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.completionMetadata.mockResolvedValue(EMPTY_METADATA)
   })
 
   it('uses the schemas the sidebar already loaded', async () => {
     const subject = catalog(['shop', 'audit'])
     await expect(subject.schemas()).resolves.toEqual(['shop', 'audit'])
     expect(mocks.schemas).not.toHaveBeenCalled()
+    expect(mocks.completionMetadata).not.toHaveBeenCalled()
   })
 
   it('falls back to the server for schemas and caches the result', async () => {
@@ -35,6 +45,30 @@ describe('ConsoleCompletionCatalog', () => {
     await expect(subject.schemas()).resolves.toEqual(['shop'])
     await expect(subject.schemas()).resolves.toEqual(['shop'])
     expect(mocks.schemas).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads schemas, relations and columns straight from the host cache', async () => {
+    mocks.completionMetadata
+      .mockResolvedValueOnce({ cached: true, schemas: [{ name: 'shop' }], tables: {}, columns: {} })
+      .mockResolvedValueOnce({
+        cached: true,
+        schemas: [],
+        tables: { shop: [{ name: 'orders', kind: 'table' }] },
+        columns: {},
+      })
+      .mockResolvedValueOnce({
+        cached: true,
+        schemas: [],
+        tables: {},
+        columns: { 'shop.orders': [{ name: 'id', typeName: 'INT' }] },
+      })
+    const subject = catalog()
+    await expect(subject.schemas()).resolves.toEqual(['shop'])
+    await expect(subject.tables('shop')).resolves.toEqual([{ name: 'orders', kind: 'table' }])
+    await expect(subject.columns('shop', 'orders')).resolves.toEqual([{ name: 'id', typeName: 'INT' }])
+    expect(mocks.schemas).not.toHaveBeenCalled()
+    expect(mocks.objects).not.toHaveBeenCalled()
+    expect(mocks.describe).not.toHaveBeenCalled()
   })
 
   it('caches relation lists per schema', async () => {
@@ -54,6 +88,42 @@ describe('ConsoleCompletionCatalog', () => {
     ])
     expect(second).toBe(first)
     expect(mocks.objects).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the object list when the host cache misses a schema', async () => {
+    mocks.completionMetadata.mockResolvedValue({
+      cached: true,
+      schemas: [],
+      tables: {},
+      columns: {},
+    })
+    mocks.objects.mockResolvedValue({ objects: [{ name: 'orders', kind: 'table' }] })
+    const subject = catalog(['shop'])
+    await expect(subject.tables('shop')).resolves.toEqual([{ name: 'orders', kind: 'table' }])
+    await expect(subject.tables('shop')).resolves.toEqual([{ name: 'orders', kind: 'table' }])
+    expect(mocks.objects).toHaveBeenCalledTimes(1)
+    expect(mocks.completionMetadata).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to /schema/describe when the host cache misses a column list', async () => {
+    mocks.describe.mockResolvedValue({ columns: [{ name: 'id', typeName: 'INT' }] })
+    const subject = catalog(['shop'])
+    await expect(subject.columns('shop', 'orders')).resolves.toEqual([{ name: 'id', typeName: 'INT' }])
+    expect(mocks.describe).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the old endpoints when the metadata read fails', async () => {
+    mocks.completionMetadata.mockRejectedValue(new Error('cache offline'))
+    mocks.schemas.mockResolvedValue({ schemas: [{ name: 'shop' }] })
+    mocks.objects.mockResolvedValue({ objects: [{ name: 'orders', kind: 'table' }] })
+    mocks.describe.mockResolvedValue({ columns: [{ name: 'id', typeName: 'INT' }] })
+    const subject = catalog()
+    await expect(subject.schemas()).resolves.toEqual(['shop'])
+    await expect(subject.tables('shop')).resolves.toEqual([{ name: 'orders', kind: 'table' }])
+    await expect(subject.columns('shop', 'orders')).resolves.toEqual([{ name: 'id', typeName: 'INT' }])
+    expect(mocks.schemas).toHaveBeenCalledTimes(1)
+    expect(mocks.objects).toHaveBeenCalledTimes(1)
+    expect(mocks.describe).toHaveBeenCalledTimes(1)
   })
 
   it('remembers a schema whose relation list failed instead of retrying every popup', async () => {
@@ -83,7 +153,8 @@ describe('ConsoleCompletionCatalog', () => {
     const subject = catalog(['shop'])
     const first = subject.tables('shop')
     const second = subject.tables('shop')
-    expect(mocks.objects).toHaveBeenCalledTimes(1)
+    // The host-cache probe is async, so the fallback read starts on a microtask.
+    await vi.waitFor(() => expect(mocks.objects).toHaveBeenCalledTimes(1))
     release?.({ objects: [{ name: 'orders', kind: 'table' }] })
     await expect(first).resolves.toEqual([{ name: 'orders', kind: 'table' }])
     await expect(second).resolves.toEqual([{ name: 'orders', kind: 'table' }])
@@ -98,5 +169,33 @@ describe('ConsoleCompletionCatalog', () => {
     subject.clear()
     await expect(subject.tables('shop')).resolves.toEqual([{ name: 'orders', kind: 'table' }])
     expect(mocks.objects).toHaveBeenCalledTimes(2)
+  })
+
+  it('evicts the least recently used schema from the relation cache', async () => {
+    mocks.objects.mockResolvedValue({ objects: [{ name: 'orders', kind: 'table' }] })
+    const subject = catalog(['shop'])
+    for (let index = 0; index < CATALOG_TABLE_LIMIT + 1; index += 1) {
+      await subject.tables(`schema_${index}`)
+    }
+    expect(mocks.objects).toHaveBeenCalledTimes(CATALOG_TABLE_LIMIT + 1)
+    // Still cached: `tables()` caches by name, not by the schema list.
+    await subject.tables(`schema_${CATALOG_TABLE_LIMIT}`)
+    expect(mocks.objects).toHaveBeenCalledTimes(CATALOG_TABLE_LIMIT + 1)
+    // Evicted by the LRU, so it is read again.
+    await subject.tables('schema_0')
+    expect(mocks.objects).toHaveBeenCalledTimes(CATALOG_TABLE_LIMIT + 2)
+  })
+
+  it('evicts the least recently used relation from the column cache', async () => {
+    mocks.describe.mockResolvedValue({ columns: [{ name: 'id', typeName: 'INT' }] })
+    const subject = catalog(['shop'])
+    for (let index = 0; index < CATALOG_COLUMN_LIMIT + 1; index += 1) {
+      await subject.columns('shop', `table_${index}`)
+    }
+    expect(mocks.describe).toHaveBeenCalledTimes(CATALOG_COLUMN_LIMIT + 1)
+    await subject.columns('shop', `table_${CATALOG_COLUMN_LIMIT}`)
+    expect(mocks.describe).toHaveBeenCalledTimes(CATALOG_COLUMN_LIMIT + 1)
+    await subject.columns('shop', 'table_0')
+    expect(mocks.describe).toHaveBeenCalledTimes(CATALOG_COLUMN_LIMIT + 2)
   })
 })
