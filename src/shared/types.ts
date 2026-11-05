@@ -312,6 +312,8 @@ export interface CachedStructure {
    * `schema.table` → described columns and indexes. The host keeps these in
    * per-connection logs and the tree snapshot no longer ships them, so this is
    * only present when a caller builds the shape itself.
+   *
+   * TODO(0.5.0): 旧版单文件缓存迁移（StructureStore.migrateDescriptions）移除后删除该字段。
    */
   descriptions?: Record<string, TableDescription>
   /** Redis key-space cache, per logical database. */

@@ -107,6 +107,12 @@ function normalizeIndexes(value: unknown): IndexInfo[] {
   return out
 }
 
+/**
+ * Normalization exists only to read the legacy single-file cache; new code never
+ * builds a `CachedStructure` with descriptions.
+ *
+ * TODO(0.5.0): 随 migrateDescriptions 一起删除。
+ */
 function normalizeDescriptions(value: unknown): Record<string, TableDescription> {
   const out: Record<string, TableDescription> = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
@@ -206,6 +212,7 @@ export class StructureStore {
           fetchedAt: typeof record.fetchedAt === 'string' ? record.fetchedAt : new Date(0).toISOString(),
           schemas: normalizeSchemas(record.schemas),
           objects: normalizeObjects(record.objects),
+          // TODO(0.5.0): 旧版缓存文件里的 descriptions 随迁移逻辑一起删除。
           descriptions: normalizeDescriptions(record.descriptions),
           ...(redis === undefined ? {} : { redis }),
         }

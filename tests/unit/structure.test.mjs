@@ -137,6 +137,7 @@ describe('StructureStore accessors', () => {
     expect(snapshot.c1.descriptions).toBeUndefined()
   })
 
+  // TODO(0.5.0): 旧版单文件缓存迁移移除后，连同下一条用例一起删除。
   it('splits a legacy single-file cache into a tree file and description logs', () => {
     const dir = mkdtempSync(join(tmpdir(), 'dshdb-structure-'))
     dirs.push(dir)
