@@ -131,6 +131,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   direction: KEYWORD_PRIORITY,
   orderTail: KEYWORD_PRIORITY,
   expressionTail: KEYWORD_PRIORITY,
+  groupTail: KEYWORD_PRIORITY,
+  insertTail: KEYWORD_PRIORITY,
 }
 
 /**

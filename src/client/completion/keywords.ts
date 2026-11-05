@@ -432,6 +432,12 @@ const EXPRESSION_TAIL_WORDS = [
   'OR',
 ] as const
 
+/** Clauses that may follow a grouped column (`GROUP BY status `). */
+const GROUP_TAIL_WORDS = ['HAVING', 'ORDER', 'LIMIT', 'WITH'] as const
+
+/** The only clause left after an INSERT values tuple list. */
+const INSERT_TAIL_WORDS = ['ON DUPLICATE KEY UPDATE'] as const
+
 function contextWords(context: CompletionExpectation): readonly string[] {
   switch (context) {
     case 'relation':
@@ -474,6 +480,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return ORDER_TAIL_WORDS
     case 'expressionTail':
       return EXPRESSION_TAIL_WORDS
+    case 'groupTail':
+      return GROUP_TAIL_WORDS
+    case 'insertTail':
+      return INSERT_TAIL_WORDS
     case 'name':
       // The user is typing a name only they know.
       return []

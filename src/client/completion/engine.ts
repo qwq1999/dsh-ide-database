@@ -581,7 +581,9 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'boolean':
       case 'direction':
       case 'orderTail':
-      case 'expressionTail': {
+      case 'expressionTail':
+      case 'groupTail':
+      case 'insertTail': {
         candidates = [...keywordCompletions(expectation, dialect)]
         break
       }

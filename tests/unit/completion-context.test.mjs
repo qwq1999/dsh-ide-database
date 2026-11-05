@@ -596,7 +596,7 @@ describe('analyze condition and ordering tails', () => {
     expect(caretAtEnd('SELECT * FROM orders ORDER BY total DESC, total ').expectation).toBe(
       'direction',
     )
-    expect(caretAtEnd('SELECT * FROM orders GROUP BY total ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY total ').expectation).toBe('groupTail')
   })
 
   it('expects the ORDER BY tail after a direction', () => {
@@ -647,5 +647,51 @@ describe('analyze finished expressions and parameters', () => {
     expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT ').expectation).toBe('definition')
     expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT COMMENT ').expectation).toBe('name')
     expect(caretAtEnd('ALTER TABLE orders ADD COLUMN x INT DEFAULT ').expectation).toBe('value')
+  })
+})
+
+describe('analyze grouping, insert and table tails', () => {
+  it('expects the GROUP BY tail after a grouped column', () => {
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status ').expectation).toBe('groupTail')
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status WITH ROLLUP ').expectation).toBe(
+      'groupTail',
+    )
+    expect(caretAtEnd('SELECT * FROM orders GROUP BY status, ').expectation).toBe('column')
+    expect(caretAtEnd('SELECT * FROM orders ORDER BY total ').expectation).toBe('direction')
+  })
+
+  it('expects the duplicate key clause after an INSERT values list', () => {
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2) ').expectation).toBe('insertTail')
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), (3, 4) ').expectation).toBe('insertTail')
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2), ').expectation).toBe('value')
+    expect(caretAtEnd('INSERT INTO orders VALUES (1, 2) ON DUPLICATE KEY UPDATE ').expectation).toBe(
+      'column',
+    )
+  })
+
+  it('starts a statement inside EXISTS parentheses', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE EXISTS (').expectation).toBe('keyword')
+    expect(caretAtEnd('SELECT * FROM orders WHERE NOT EXISTS (').expectation).toBe('keyword')
+  })
+
+  it('names the SHOW database and quiets completed SHOW tails', () => {
+    expect(caretAtEnd('SHOW TABLES IN ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW TABLES FROM ').expectation).toBe('schema')
+    expect(caretAtEnd('SHOW CREATE TABLE ').expectation).toBe('relation')
+    expect(caretAtEnd('SHOW CREATE TABLE orders ').expectation).toBe('name')
+  })
+
+  it('quiets completed table statement tails', () => {
+    expect(caretAtEnd('DROP TABLE orders ').expectation).toBe('number')
+    expect(caretAtEnd('TRUNCATE TABLE orders ').expectation).toBe('number')
+    expect(caretAtEnd('RENAME TABLE orders TO ').expectation).toBe('name')
+    expect(caretAtEnd('DROP TABLE IF EXISTS ').expectation).toBe('relation')
+    expect(caretAtEnd('DROP TABLE ').expectation).toBe('relation')
+  })
+
+  it('quiets a CREATE INDEX column list once it closes', () => {
+    expect(caretAtEnd('CREATE INDEX idx ON orders (id) ').expectation).toBe('number')
+    expect(caretAtEnd('CREATE INDEX idx ON orders (').expectation).toBe('column')
+    expect(caretAtEnd('CREATE INDEX idx ON ').expectation).toBe('relation')
   })
 })

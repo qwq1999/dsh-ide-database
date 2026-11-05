@@ -184,7 +184,7 @@ function startsSubquery(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   if (last === undefined || last.kind !== 'punct' || last.text !== '(') return false
   const before = previousKeyword(tokens, tokens.length - 1)
-  return before === 'as' || before === 'from'
+  return before === 'as' || before === 'from' || before === 'exists'
 }
 
 /**
@@ -234,6 +234,27 @@ function describeTableTail(tokens: readonly Token[]): boolean {
   if (first === undefined) return false
   const start = first.text.toLowerCase()
   return (start === 'describe' || start === 'desc') && tokens.length >= 2
+}
+
+/** `DROP TABLE orders ` / `TRUNCATE TABLE orders ` already named the object. */
+function tableNameTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const second = tokens[1]
+  if (first === undefined || second === undefined) return false
+  const start = first.text.toLowerCase()
+  if ((start !== 'drop' && start !== 'truncate') || second.text.toLowerCase() !== 'table') {
+    return false
+  }
+  return tokens.length >= 3
+}
+
+/** `RENAME TABLE orders TO ` names the new table, which only the user knows. */
+function renameTableTail(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  const last = tokens[tokens.length - 1]
+  if (first === undefined || last === undefined) return false
+  if (first.text.toLowerCase() !== 'rename' || tokens[1]?.text.toLowerCase() !== 'table') return false
+  return last.kind === 'keyword' && last.lower === 'to'
 }
 
 /** `DROP INDEX idx ON ` names the table that owns the index. */
@@ -372,6 +393,32 @@ function duplicateKeyUpdate(tokens: readonly Token[]): boolean {
   if (tokens.length < 4) return false
   const tail = tokens.slice(tokens.length - 4).map((token) => token.text.toLowerCase())
   return tail[0] === 'on' && tail[1] === 'duplicate' && tail[2] === 'key' && tail[3] === 'update'
+}
+
+/**
+ * True when an `INSERT ... VALUES (...)` tuple list is balanced and the caret
+ * sits after the last closing parenthesis: only more tuples or the duplicate
+ * key clause can follow.
+ */
+function valuesListComplete(tokens: readonly Token[]): boolean {
+  const first = tokens[0]
+  if (first === undefined || first.text.toLowerCase() !== 'insert') return false
+  const valuesAt = tokens.findIndex((token) => token.kind === 'keyword' && token.lower === 'values')
+  if (valuesAt < 0) return false
+  let depth = 0
+  let sawParen = false
+  for (let index = valuesAt + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      sawParen = true
+    } else if (token.text === ')' && depth > 0) {
+      depth -= 1
+    }
+  }
+  const last = tokens[tokens.length - 1]
+  return sawParen && depth === 0 && last?.kind === 'punct' && last.text === ')'
 }
 
 /** `DEFAULT CHARSET ` / `CHARACTER SET ` name a character set. */
@@ -515,17 +562,20 @@ function showTail(tokens: readonly Token[]): CompletionExpectation | undefined {
   if (second === 'create') {
     const object = words[2]
     if (object === 'database' || object === 'schema') return 'schema'
-    if (object === 'table' || object === 'view') return 'relation'
+    if (object === 'table' || object === 'view') return words.length > 3 ? 'name' : 'relation'
     return undefined
   }
   const from = words.indexOf('from')
+  const inDatabase = words.indexOf('in')
   if (second === 'tables') {
-    if (from < 0) return 'number'
-    return from === words.length - 1 ? 'schema' : 'number'
+    if (from < 0 && inDatabase < 0) return 'number'
+    if (from === words.length - 1 || inDatabase === words.length - 1) return 'schema'
+    return 'number'
   }
   if (second === 'full' && words[2] === 'tables') {
-    if (from < 0) return 'number'
-    return from === words.length - 1 ? 'schema' : 'number'
+    if (from < 0 && inDatabase < 0) return 'number'
+    if (from === words.length - 1 || inDatabase === words.length - 1) return 'schema'
+    return 'number'
   }
   if (second === 'table' && words[2] === 'status') {
     if (from < 0) return 'number'
@@ -895,6 +945,43 @@ function orderByPosition(tokens: readonly Token[]): 'direction' | 'orderTail' | 
   return undefined
 }
 
+/** `GROUP BY status ` takes HAVING/ORDER/LIMIT; `GROUP BY status, ` takes a column. */
+function groupByPosition(tokens: readonly Token[]): boolean {
+  const last = tokens[tokens.length - 1]
+  const finished =
+    last !== undefined &&
+    ((last.kind === 'keyword' && last.lower === 'rollup') || endsOperand(last))
+  if (!finished) return false
+  let depth = 0
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind === 'punct') {
+      if (token.text === ')') depth += 1
+      else if (token.text === '(') {
+        if (depth === 0) break
+        depth -= 1
+      }
+      continue
+    }
+    if (token.kind !== 'keyword' || depth > 0) continue
+    const previous = tokens[index - 1]
+    if (token.lower === 'by' && previous?.kind === 'keyword' && previous.lower === 'group') {
+      return true
+    }
+    // Another clause since GROUP BY means this operand belongs to it.
+    if (
+      token.lower === 'having' ||
+      token.lower === 'where' ||
+      token.lower === 'on' ||
+      token.lower === 'select'
+    ) {
+      return false
+    }
+    if (CONDITION_BREAKS.has(token.lower) || token.lower === 'by') return false
+  }
+  return false
+}
+
 /**
  * The kind of name the caret position expects, found by walking back to the
  * nearest clause word. Separators (`,`, `(`, `.`) are skipped on the way.
@@ -910,10 +997,28 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   if (alter !== undefined) return alter
   const indexOn = createIndexOn(tokens)
   if (indexOn >= 0) {
-    return parseRelationRef(tokens, indexOn + 1) === null ? 'relation' : 'column'
+    const target = parseRelationRef(tokens, indexOn + 1)
+    if (target === null) return 'relation'
+    // `... ON orders (` takes index columns; once that list closes there is
+    // nothing left for the catalog to offer.
+    let depth = 0
+    let sawParen = false
+    for (let cursor = target.next; cursor < tokens.length; cursor += 1) {
+      const token = tokens[cursor] as Token
+      if (token.kind !== 'punct') continue
+      if (token.text === '(') {
+        depth += 1
+        sawParen = true
+      } else if (token.text === ')' && depth > 0) {
+        depth -= 1
+      }
+    }
+    return sawParen && depth === 0 ? 'number' : 'column'
   }
   if (startsSubquery(tokens)) return 'keyword'
   if (trailingIfExists(tokens)) return 'relation'
+  if (tableNameTail(tokens)) return 'number'
+  if (renameTableTail(tokens)) return 'name'
   if (grantTarget(tokens)) return 'relation'
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
@@ -935,6 +1040,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   const set = setStatement(tokens)
   if (set !== undefined) return set
   if (duplicateKeyUpdate(tokens)) return 'column'
+  if (valuesListComplete(tokens)) return 'insertTail'
   if (castAs(tokens)) return 'type'
   const expression = expressionTail(tokens)
   if (expression !== undefined) return expression
@@ -951,6 +1057,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {  if (a
   }
   const order = orderByPosition(tokens)
   if (order !== undefined) return order
+  if (groupByPosition(tokens)) return 'groupTail'
   const operator = conditionOperator(tokens)
   if (operator !== undefined) return operator
   let sawOpenParen = false

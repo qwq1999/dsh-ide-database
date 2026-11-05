@@ -200,3 +200,20 @@ describe('functionCompletions', () => {
     }
   })
 })
+
+describe('keywordCompletions tails', () => {
+  it('offers the GROUP BY tail', () => {
+    expect(names(keywordCompletions('groupTail', 'mysql'))).toEqual([
+      'HAVING',
+      'ORDER',
+      'LIMIT',
+      'WITH',
+    ])
+  })
+
+  it('offers the INSERT duplicate key clause', () => {
+    expect(names(keywordCompletions('insertTail', 'mysql'))).toEqual([
+      'ON DUPLICATE KEY UPDATE',
+    ])
+  })
+})

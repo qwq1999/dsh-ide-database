@@ -1174,3 +1174,51 @@ describe('complete finished expressions and parameters', () => {
     expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 })
+
+describe('complete grouping and table tails', () => {
+  it('offers GROUP BY clauses after a grouped column', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('SELECT * FROM orders GROUP BY status '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('groupTail')
+    expect(names(result)).toEqual(['HAVING', 'ORDER', 'LIMIT', 'WITH'])
+    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers the duplicate key clause after an INSERT tuple', async () => {
+    const catalog = createCatalog()
+    const result = await complete({
+      ...request('INSERT INTO orders VALUES (1, 2) '),
+      catalog,
+    })
+    expect(result.analysis.expectation).toBe('insertTail')
+    expect(names(result)).toEqual(['ON DUPLICATE KEY UPDATE'])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
+  })
+
+  it('offers statement keywords inside EXISTS parentheses', async () => {
+    const result = await complete({
+      ...request('SELECT * FROM orders WHERE NOT EXISTS ('),
+    })
+    expect(result.analysis.expectation).toBe('keyword')
+    expect(names(result)).toContain('SELECT')
+  })
+
+  it('quiets completed table statements', async () => {
+    const dropped = await complete({ ...request('DROP TABLE orders ') })
+    expect(dropped.analysis.expectation).toBe('number')
+    expect(dropped.items).toEqual([])
+    const renamed = await complete({ ...request('RENAME TABLE orders TO ') })
+    expect(renamed.analysis.expectation).toBe('name')
+    expect(renamed.items).toEqual([])
+  })
+
+  it('quiets a closed CREATE INDEX column list', async () => {
+    const result = await complete({ ...request('CREATE INDEX idx ON orders (id) ') })
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})
