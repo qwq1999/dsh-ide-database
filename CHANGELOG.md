@@ -4,8 +4,81 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（187）
+## 新功能（260）
 
+- `850afc6` feat(client): 补齐锁模式链、维护语句与赋值子查询尾部
+- `00c6f94` feat(client): 补齐 ALTER 子句列表与字面量参数补全
+- `b55b604` feat(client): 补齐例程、游标与 FROM 别名尾部补全
+- `b3066b0` feat(client): 补齐物化视图、TABLESAMPLE 与 ON CONFLICT 补全
+- `bc99425` feat(client): 补齐 ALTER 列表、分区取值与 CTE 列名补全
+- `7098c13` feat(client): 补齐 JSON_TABLE 嵌套列与列定义尾部补全
+- `40daa98` feat(client): 补齐派生列别名与 INSERT 及比较补全
+- `ae73d3a` feat(client): 补齐类型转换、索引谓词与 UPDATE 赋值补全
+- `0308955` feat(client): 补齐 MERGE、LOCK TABLE 与实用语句补全
+- `f192e34` feat(client): 补齐 WITH ROLLUP、引用列与导出子句补全
+- `8bfab2c` feat(client): 补齐 JSON_TABLE 与多表 UPDATE 补全
+- `ccb5f06` feat(client): 补齐函数长度与 ALTER 列选项补全
+- `d6de940` feat(client): 补齐约束选项与分区列位置补全
+- `6185aa5` feat(client): 补齐例程体、JSON 箭头与管理员语句补全
+- `10be65e` feat(client): 补齐列选项、管理员语句与 UPDATE SET 补全
+- `e038e3b` feat(client): 补齐索引提示、锁与 LOAD DATA 尾部
+- `444d607` feat(client): 补齐 USE、约束列与 RETURN 尾部补全
+- `8781d02` feat(client): 补齐函数参数、INTO 与 ALTER 列位置补全
+- `d3b0ca2` feat(client): 补齐存储过程、视图与事件定义补全
+- `188fb55` feat(client): 补齐触发器与 SHOW 表名位置
+- `147380d` feat(client): 补齐 INSERT 源、列类型与表达式尾部补全
+- `6d4b08e` feat(client): 补齐事务控制、NULLS 与锁语句尾部补全
+- `8d8065e` feat(client): 补齐 ALTER 引擎、锁表与建表选项补全
+- `e17ee28` feat(client): 补齐表名与字面量尾部补全
+- `158b6b1` feat(client): 补齐索引方法、VALUES 续行与命名窗口尾部
+- `2d1f44a` feat(client): 补齐窗口帧、INTERVAL 与 SHOW FULL 位置
+- `81d516a` feat(client): 补齐建表视图与 ALTER 列尾部补全
+- `5b30a9c` feat(client): 数据库名位置只列库名并补齐索引排序规则
+- `32ebcb1` feat(client): 补齐排序规则、GRANT 选项与锁子句位置
+- `0be2cf9` feat(client): 补齐 USING、窗口与 GRANT 位置补全
+- `3e9ac1c` feat(client): 补齐 AS、窗口与 FROM 前置别名补全
+- `0ad6d33` feat(client): 补齐布尔、INSERT 与 USING 尾部补全
+- `9920fc4` feat(client): 补全支持 FROM 前书写的别名
+- `f80c0d6` feat(client): 字符串比较与锁子句尾部补全
+- `a60d485` feat(client): 补齐分组、INSERT 与表语句尾部
+- `1dec3cd` feat(client): 参数比较与完整表达式尾部补全
+- `d5925b3` feat(client): 条件与排序尾部补全更精准
+- `b3b3edd` feat(client): 补齐 DDL 注释、描述与语句尾部补全
+- `4f83c31` feat(client): 补齐 UNION、SHOW 与语句续写位置
+- `f8e8d24` feat(client): 补全补上名称、语句与 SHOW 位置
+- `00582e0` feat(client): SET 与 CAST 位置补全更精准
+- `4c9835a` feat(client): LIMIT/OFFSET 不再提示表名并补全引擎名
+- `bb1a01f` feat(client): GRANT/DESCRIBE/索引语句补全目标
+- `a556900` feat(client): CTE 作限定符时补全其列
+- `10e68c4` feat(client): IF EXISTS 与建表表选项补全
+- `8399ef2` feat(client): ALTER TABLE 动作后补全对象与列名
+- `b007bf9` feat(client): 子查询括号内提示 SELECT 等语句关键字
+- `b23e464` feat(client): CREATE INDEX 补全目标表与索引列
+- `bee8461` feat(client): ALTER TABLE 后补全 ALTER 动作
+- `8f87bab` feat(client): 级联 CTE 与派生表可补全列
+- `694a25f` feat(client): VALUES 与建表语句不再提示表名列名
+- `1cb1152` feat(client): CTE 与派生表的 SELECT * 可补全列
+- `6da7fd6` feat(console): 补全按使用频次排序
+- `f5a30f6` feat(console): 补全支持 SELECT * 展开与最近使用排序
+- `4f29ec5` feat(console): 新增批量补全元数据接口
+- `6ed2179` feat(console): 补全扩展方言关键字与内置函数
+- `f3c6cf2` feat(console): 补全支持 JOIN 推荐与语句片段
+- `bdd7078` feat(console): 补全支持 CTE 与派生表列推断
+- `4cbf035` feat(console): 补全重构为上下文感知引擎
+- `f1af22a` feat(console): 补全按上下文给出列、别名、函数与模糊匹配
+- `7eef48c` feat(cache): 结构缓存按可见 schema 增量维护
+- `331d6b2` feat(ui): 状态栏显示后台结构缓存进度
+- `4c3c6de` feat(host): 表结构描述改为后台增量缓存
+- `ffdc387` feat(ui): 导出菜单分组并支持复制已选行
+- `def16b7` feat(ui): 结果表格支持多选行与导出选中行
+- `499d712` feat(settings): 快捷键面板恢复全部默认按钮
+- `d2a7d0c` feat(ui): 数据源工具栏支持配置排序与「⋯」溢出菜单
+- `e9cd660` feat(ui): 状态栏显示连接 ID
+- `c2ce5e8` feat(console): 控制台支持输入字符后自动展开补全
+- `b208196` feat(settings): 快捷键面板去掉全部恢复默认按钮
+- `ffd4a3e` feat(ui): 控制台工具栏支持图标、排序与溢出菜单
+- `48d2505` feat(ui): 数据源列表支持拖动排序并持久化顺序
+- `010f51e` feat(ui): 数据源右键菜单新增复制连接ID
 - `56dc572` feat(settings): 设置面板可折叠，提示可跳转到设置
 - `02424d7` feat(settings): 新增下载 Java 运行环境按钮
 - `4520194` feat(connection): 新增回收站，删除默认移入回收站
@@ -194,8 +267,23 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（80）
+## 修复（95）
 
+- `634189d` fix(client): 自动补全不再空弹窗并保留引号
+- `8d72c10` fix(client): 字符串与注释内不再弹出补全候选
+- `6a0a8a7` fix(console): 补全候选按子句刷新并保留关键字
+- `7efc71c` fix(ui): 导出菜单子级按可视空间选择展开方向
+- `c2b2221` fix(ui): 修复 Oracle 时间列筛选的 ORA-01861
+- `ce71386` fix(ui): 导出菜单宽度自适应最宽项
+- `5feb802` fix(ui): 导出菜单二级默认右弹并精简整表脚本文案
+- `897499e` fix(ui): 控制台「⋯」菜单禁用项同步置灰
+- `9bc8fc5` fix(ui): 控制台「⋯」菜单宽度自适应内容
+- `d1e04b2` fix(ui): 修复控制台「⋯」菜单右侧被裁剪
+- `ecbc5e8` fix(ui): 修复控制台「⋯」菜单被溢出裁剪
+- `f712671` fix(sql): 去掉服务器 DDL 首行缩进
+- `4471251` fix(sql): 去掉服务器 DDL 首尾空行
+- `0bec13a` fix(ui): 筛选清空按钮去掉浏览器默认边框
+- `2ec41dc` fix(console): 执行语句去掉 Oracle 拒绝的结尾分号
 - `e97674f` fix(java): 下载 Java 优先走清华镜像，失败再回退官方 API
 - `6a192c1` fix(release): 老 tag 补发时把校验脚本还原到原位再执行
 - `3b08e0e` fix(release): 用 shallow fetch 取 main 上的版本校验脚本
@@ -277,8 +365,11 @@
 - `020ecc5` fix(sql): 只读校验识破 EXPLAIN ANALYZE 与 WITH 后的写语句
 - `b4e1530` fix(export): MySQL 字面量转义反斜杠，导出的 INSERT 还原原值
 
-## 性能（26）
+## 性能（29）
 
+- `d61a94b` perf(console): 补全目录接入批量元数据并限制缓存大小
+- `7ca94bf` perf(console): 补全元数据增加失败负缓存
+- `2a12edb` perf(cache): 描述改为追加式日志并瘦身结构快照
 - `0beed05` perf(console): 结果筛选复用预计算的每行文本
 - `f0c3e8c` perf(grid): 超长单元格只画前 400 字
 - `56e1455` perf(redis): 超大值只渲染前 64 KB
@@ -320,8 +411,9 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（34）
+## 测试（35）
 
+- `2407f02` test(console): 补全性能基准与专项测试脚本
 - `4a6089c` test: 列名提示用例等输入框挂载后再断言
 - `7415e23` test(console): 逻辑库回退用例等待记忆写入完成
 - `cbf7392` test(ui): 错误横幅用例之间清理 DOM
@@ -395,8 +487,11 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（16）
+## 杂项（19）
 
+- `98f6fed` chore(cache): 补全旧缓存迁移的 0.5.0 移除标记
+- `73dd463` chore(cache): 标记 0.5.0 移除旧缓存迁移
+- `b7e5ff8` chore(release): 发布 0.3.2
 - `9add839` chore: 忽略 .vscode 目录
 - `f59f3f3` chore: 补充仓库地址元信息
 - `e5d6057` chore(release): 发布 0.3.1
@@ -414,8 +509,9 @@
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 
-## 其它（9）
+## 其它（10）
 
+- `04a451a` build: 重新构建客户端 bundle
 - `5f91b56` ci(release): Release 附件补充无版本号副本
 - `15606ad` Merge branch 'main' of github.com:qwq1999/dsh-ide-database
 - `b91b6a3` ci(release): 只在 tag 为最高版本时标记 latest (#3)
