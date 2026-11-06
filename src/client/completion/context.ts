@@ -810,7 +810,12 @@ function lockTableTail(tokens: readonly Token[]): CompletionExpectation | undefi
   const words = tokens.slice(2).map((token) => token.text.toLowerCase())
   if (object === 'table') {
     // PostgreSQL: LOCK TABLE t [IN lockmode MODE].
-    if (words[words.length - 1] === 'in') return 'lockMode'
+    const lastWord = words[words.length - 1]
+    if (lastWord === 'in') return 'lockMode'
+    if (lastWord === 'access' || lastWord === 'row') return 'lockModePair'
+    if (lastWord === 'share' || lastWord === 'exclusive' || lastWord === 'update') {
+      return 'lockModeEnd'
+    }
     if (words.includes('in')) return 'number'
     return 'lockModeStart'
   }
@@ -1671,6 +1676,88 @@ function alterIndexTail(tokens: readonly Token[]): CompletionExpectation | undef
   const second = tokens[1]?.text.toLowerCase()
   if (first !== 'alter' || second !== 'index') return undefined
   return tokens.length <= 2 ? 'name' : 'number'
+}
+
+/**
+ * A closed `ALTER TABLE ... SET (storage parameter)` list ends the statement.
+ */
+function alterStorageDone(tokens: readonly Token[]): boolean {
+  const start = alterTableStart(tokens)
+  if (start < 0) return false
+  const rest = tokens.slice(start)
+  const setIndex = rest.findIndex((token) => token.text.toLowerCase() === 'set')
+  if (setIndex < 0) return false
+  const openIndex = rest.findIndex(
+    (token, index) => index > setIndex && token.kind === 'punct' && token.text === '(',
+  )
+  if (openIndex < 0) return false
+  return rest.some(
+    (token, index) => index > openIndex && token.kind === 'punct' && token.text === ')',
+  )
+}
+
+/** `ALTER COLUMN x TYPE t USING ` takes an expression over the table columns. */
+function alterTypeUsingTail(tokens: readonly Token[]): boolean {
+  if (alterTableStart(tokens) < 0) return false
+  const words = tokens.map((token) => token.text.toLowerCase())
+  return words[words.length - 1] === 'using' && words.includes('type')
+}
+
+/**
+ * `VACUUM [FULL|VERBOSE|ANALYZE] ` / a bare `ANALYZE ` may take one table
+ * (PostgreSQL), so the catalog table list belongs there.
+ */
+function maintenanceTableTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  const first = words[0]
+  const last = words[words.length - 1]
+  if (first === 'vacuum') {
+    if (tokens.length === 1) return 'tableName'
+    if (last === 'full' || last === 'freeze' || last === 'verbose' || last === 'analyze') {
+      return 'tableName'
+    }
+    if (last === ')' && words.includes('verbose')) return 'tableName'
+    return undefined
+  }
+  if (first === 'analyze') {
+    if (tokens.length === 1) return 'tableName'
+    if (last === 'verbose') return 'tableName'
+  }
+  return undefined
+}
+
+/**
+ * A closed subquery right after `SET col = ` already completed the assigned
+ * value; the next word is a clause keyword, not a relation.
+ */
+function assignmentSubqueryDone(tokens: readonly Token[]): boolean {
+  if (tokens.length < 4) return false
+  const last = tokens[tokens.length - 1]
+  if (last?.kind !== 'punct' || last.text !== ')') return false
+  let depth = 0
+  let openIndex = -1
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      depth -= 1
+      if (depth === 0) {
+        openIndex = index
+        break
+      }
+    }
+  }
+  if (openIndex < 1) return false
+  const bodyStart = tokens[openIndex + 1]
+  if (
+    bodyStart?.kind !== 'keyword' ||
+    (bodyStart.lower !== 'select' && bodyStart.lower !== 'with')
+  ) {
+    return false
+  }
+  const before = tokens[openIndex - 1]
+  return before?.kind === 'punct' && before.text === '='
 }
 
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
@@ -3389,6 +3476,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   // ALTER TABLE storage parameters and SET SCHEMA never name a column.
   if (setSchemaTail(tokens)) return 'database'
   if (alterStorageTail(tokens)) return 'number'
+  if (alterStorageDone(tokens)) return 'number'
+  if (alterTypeUsingTail(tokens)) return 'column'
   // CHARACTER SET names a charset wherever it appears, including column
   // definitions inside CREATE TABLE / routines.
   if (charsetValue(tokens)) return 'charset'
@@ -3508,6 +3597,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (mergeInsertBare(tokens)) return 'name'
   const call = callStart(tokens)
   if (call !== undefined) return call
+  const maintenance = maintenanceTableTail(tokens)
+  if (maintenance !== undefined) return maintenance
   if (ddlTableName(tokens)) return 'tableName'
   const truncate = truncateTail(tokens)
   if (truncate !== undefined) return truncate
@@ -3540,6 +3631,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (insertTargetTail(tokens)) return 'insertSource'
   if (insertOnTail(tokens)) return 'insertOn'
   if (insertSelectDone(tokens)) return 'insertTail'
+  if (assignmentSubqueryDone(tokens)) return 'number'
   if (fromListTail(tokens)) return 'fromTail'
   if (relationKeywordTail(tokens)) return 'relation'
   if (lockClauseTail(tokens)) return 'number'

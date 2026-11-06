@@ -2841,3 +2841,46 @@ describe('complete ALTER clause lists and literal tails', () => {
     expect(names(database)).toEqual(SCHEMAS)
   })
 })
+
+describe('complete maintenance, lock modes and assignment tails', () => {
+  it('offers SHARE/EXCLUSIVE after ACCESS or ROW in LOCK TABLE', async () => {
+    const pair = await complete(request('LOCK TABLE orders IN ACCESS '))
+    expect(pair.analysis.expectation).toBe('lockModePair')
+    expect(names(pair)).toEqual(['SHARE', 'EXCLUSIVE'])
+    expect(pair.items.every((item) => item.kind === 'keyword')).toBe(true)
+
+    const end = await complete(request('LOCK TABLE orders IN ACCESS SHARE '))
+    expect(end.analysis.expectation).toBe('lockModeEnd')
+    expect(names(end)).toEqual(['MODE'])
+  })
+
+  it('lists tables after VACUUM and a bare ANALYZE', async () => {
+    const vacuum = await complete(request('VACUUM '))
+    expect(vacuum.analysis.expectation).toBe('tableName')
+    expect(names(vacuum)).toContain('orders')
+
+    const analyze = await complete(request('ANALYZE '))
+    expect(analyze.analysis.expectation).toBe('tableName')
+    expect(names(analyze)).toContain('orders')
+  })
+
+  it('stays quiet after a closed storage parameter list', async () => {
+    const result = await complete(request('ALTER TABLE orders SET (fillfactor = 70) '))
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+
+  it('offers table columns for an ALTER COLUMN TYPE ... USING expression', async () => {
+    const result = await complete(request('ALTER TABLE orders ALTER COLUMN id TYPE INT USING '))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('total')
+  })
+
+  it('stays quiet after a subquery assigned in UPDATE SET', async () => {
+    const result = await complete(
+      request('UPDATE orders SET total = (SELECT MAX(total) FROM customers) '),
+    )
+    expect(result.analysis.expectation).toBe('number')
+    expect(result.items).toEqual([])
+  })
+})

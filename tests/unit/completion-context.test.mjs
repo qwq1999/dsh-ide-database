@@ -1959,3 +1959,30 @@ describe('analyze ALTER clause lists and literal argument tails', () => {
     expect(caretAtEnd('SET search_path = ').expectation).toBe('database')
   })
 })
+
+describe('analyze maintenance, lock modes and assignment tails', () => {
+  it('walks the PostgreSQL LOCK TABLE mode chain', () => {
+    expect(caretAtEnd('LOCK TABLE orders IN ').expectation).toBe('lockMode')
+    expect(caretAtEnd('LOCK TABLE orders IN ACCESS ').expectation).toBe('lockModePair')
+    expect(caretAtEnd('LOCK TABLE orders IN ROW ').expectation).toBe('lockModePair')
+    expect(caretAtEnd('LOCK TABLE orders IN ACCESS SHARE ').expectation).toBe('lockModeEnd')
+    expect(caretAtEnd('LOCK TABLE orders IN ACCESS EXCLUSIVE MODE ').expectation).toBe('number')
+  })
+
+  it('takes a table after VACUUM or a bare ANALYZE', () => {
+    expect(caretAtEnd('VACUUM ').expectation).toBe('tableName')
+    expect(caretAtEnd('VACUUM FULL ').expectation).toBe('tableName')
+    expect(caretAtEnd('VACUUM (VERBOSE) ').expectation).toBe('tableName')
+    expect(caretAtEnd('ANALYZE ').expectation).toBe('tableName')
+  })
+
+  it('ends a closed storage parameter list and starts an expression after USING', () => {
+    expect(caretAtEnd('ALTER TABLE orders SET (fillfactor = 70) ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders ALTER COLUMN id TYPE INT USING ').expectation).toBe('column')
+  })
+
+  it('stays quiet after a subquery assigned to a column', () => {
+    const text = 'UPDATE orders SET total = (SELECT MAX(total) FROM customers) '
+    expect(caretAtEnd(text).expectation).toBe('number')
+  })
+})

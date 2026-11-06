@@ -490,6 +490,12 @@ const LOCK_MODE_START_WORDS = ['IN'] as const
 /** PostgreSQL table lock modes after `LOCK TABLE t IN `. */
 const LOCK_MODE_WORDS = ['ACCESS', 'ROW', 'SHARE', 'EXCLUSIVE', 'UPDATE', 'KEY'] as const
 
+/** After `IN ACCESS `/`IN ROW ` PostgreSQL still needs SHARE or EXCLUSIVE. */
+const LOCK_MODE_PAIR_WORDS = ['SHARE', 'EXCLUSIVE'] as const
+
+/** A lock mode ends with the MODE keyword. */
+const LOCK_MODE_END_WORDS = ['MODE'] as const
+
 /** Actions on a user-defined type. */
 const TYPE_ALTER_WORDS = ['ADD', 'RENAME', 'ALTER', 'SET', 'OWNER'] as const
 
@@ -825,6 +831,10 @@ function contextWords(context: CompletionExpectation): readonly string[] {
       return LOCK_MODE_START_WORDS
     case 'lockMode':
       return LOCK_MODE_WORDS
+    case 'lockModePair':
+      return LOCK_MODE_PAIR_WORDS
+    case 'lockModeEnd':
+      return LOCK_MODE_END_WORDS
     case 'explainOption':
       return EXPLAIN_OPTION_WORDS
     case 'typeAlter':

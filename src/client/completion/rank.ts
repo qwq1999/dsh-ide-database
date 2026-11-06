@@ -139,6 +139,8 @@ const PRIORITIES: Record<CompletionExpectation, Record<CompletionKind, number>> 
   alterDatabase: KEYWORD_PRIORITY,
   lockModeStart: KEYWORD_PRIORITY,
   lockMode: KEYWORD_PRIORITY,
+  lockModePair: KEYWORD_PRIORITY,
+  lockModeEnd: KEYWORD_PRIORITY,
   explainOption: KEYWORD_PRIORITY,
   typeAlter: KEYWORD_PRIORITY,
   typeAdd: KEYWORD_PRIORITY,

@@ -620,6 +620,8 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
       case 'alterDatabase':
       case 'lockModeStart':
       case 'lockMode':
+      case 'lockModePair':
+      case 'lockModeEnd':
       case 'explainOption':
       case 'typeAlter':
       case 'typeAdd':

@@ -78,6 +78,8 @@ export type CompletionExpectation =
   | 'alterDatabase'
   | 'lockModeStart'
   | 'lockMode'
+  | 'lockModePair'
+  | 'lockModeEnd'
   | 'explainOption'
   | 'typeAlter'
   | 'typeAdd'
