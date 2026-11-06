@@ -630,7 +630,9 @@ function ddlTableName(tokens: readonly Token[]): boolean {
   const last = tokens[tokens.length - 1]
   const commaTail = last?.kind === 'punct' && last.text === ','
   const bare = tokens.length === 2 || commaTail
-  if (start === 'truncate' || start === 'rename') return object === 'table' && bare
+  if (start === 'truncate' || start === 'rename' || start === 'reindex') {
+    return object === 'table' && bare
+  }
   if (
     start === 'analyze' ||
     start === 'optimize' ||
@@ -944,7 +946,12 @@ function setStatement(tokens: readonly Token[]): CompletionExpectation | undefin
   if (first === undefined || first.kind !== 'keyword' || first.lower !== 'set') return undefined
   const last = tokens[tokens.length - 1]
   if (last === undefined || (first === last && tokens.length === 1)) return 'set'
-  if (last.kind === 'punct' && last.text === '=') return 'value'
+  if (last.kind === 'punct' && last.text === '=') {
+    const variable = tokens[tokens.length - 2]?.text.toLowerCase()
+    // `SET search_path = ` takes schema names, not a literal default.
+    if (variable === 'search_path' || variable === 'schema') return 'database'
+    return 'value'
+  }
   const lower = last.text.toLowerCase()
   if (lower === 'names' || lower === 'charset') return 'charset'
   if (tokens.length === 2 && last.kind === 'ident') {
@@ -1168,7 +1175,7 @@ function objectName(tokens: readonly Token[]): boolean {
   if (start !== 'create') return false
   return next === 'database' || next === 'schema' || next === 'user' || next === 'role'
     || next === 'sequence' || next === 'trigger' || next === 'type' || next === 'extension'
-    || next === 'domain'
+    || next === 'domain' || next === 'tablespace'
 }
 
 /** `CREATE TABLE `/`CREATE VIEW ` still need a name only the user knows. */
@@ -1567,6 +1574,105 @@ function orderUsingTail(tokens: readonly Token[]): boolean {
   return words.includes('order')
 }
 
+const JSON_LITERAL_ARGUMENTS = new Set([
+  'json_object',
+  'json_array',
+  'json_set',
+  'json_insert',
+  'json_replace',
+])
+
+/**
+ * JSON builders take literal keys and values; the path arguments of
+ * JSON_EXTRACT/JSON_VALUE/JSON_QUERY are literal paths too. None of them are
+ * catalog names, so the catalog stays quiet here.
+ */
+function jsonArgumentTail(tokens: readonly Token[]): boolean {
+  if (tokens.length < 3) return false
+  let depth = 0
+  let openIndex = -1
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        openIndex = index
+        break
+      }
+      depth -= 1
+    }
+  }
+  if (openIndex < 1) return false
+  const owner = tokens[openIndex - 1]?.text.toLowerCase() ?? ''
+  if (JSON_LITERAL_ARGUMENTS.has(owner)) return true
+  if (owner === 'json_extract' || owner === 'json_value' || owner === 'json_query') {
+    const inner = tokens.slice(openIndex + 1)
+    return inner.some((token) => token.kind === 'punct' && token.text === ',')
+  }
+  return false
+}
+
+/** `IN (1, ` continues a literal list; catalog columns do not belong here. */
+function inListTail(tokens: readonly Token[]): boolean {
+  if (tokens.length < 3) return false
+  let depth = 0
+  let openIndex = -1
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === ')') depth += 1
+    else if (token.text === '(') {
+      if (depth === 0) {
+        openIndex = index
+        break
+      }
+      depth -= 1
+    }
+  }
+  if (openIndex < 1) return false
+  const owner = tokens[openIndex - 1]?.text.toLowerCase()
+  if (owner !== 'in') return false
+  const last = tokens[tokens.length - 1]
+  return last?.kind === 'punct' && last.text === ','
+}
+
+/** `CREATE TABLE ... WITH (storage parameter` is user text, not DDL words. */
+function createWithTail(tokens: readonly Token[]): boolean {
+  const words = tokens.map((token) => token.text.toLowerCase())
+  if (words[0] !== 'create' || !words.includes('table')) return false
+  const withIndex = words.indexOf('with')
+  if (withIndex < 0) return false
+  let depth = 0
+  let sawParen = false
+  for (let index = withIndex + 1; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') {
+      depth += 1
+      sawParen = true
+    } else if (token.text === ')') {
+      depth -= 1
+      if (sawParen && depth === 0) return false
+    }
+  }
+  return sawParen && depth > 0
+}
+
+/** A bare `ALTER DATABASE ` names an existing database. */
+function alterDatabaseStart(tokens: readonly Token[]): boolean {
+  if (tokens.length !== 2) return false
+  return tokens[0]?.text.toLowerCase() === 'alter' && tokens[1]?.text.toLowerCase() === 'database'
+}
+
+/** `ALTER INDEX ` names an index; once named nothing catalog-bound follows. */
+function alterIndexTail(tokens: readonly Token[]): CompletionExpectation | undefined {
+  const first = tokens[0]?.text.toLowerCase()
+  const second = tokens[1]?.text.toLowerCase()
+  if (first !== 'alter' || second !== 'index') return undefined
+  return tokens.length <= 2 ? 'name' : 'number'
+}
+
 const ALTER_ACTIONS = new Set(['add', 'drop', 'modify', 'change', 'rename', 'alter'])
 
 /**
@@ -1614,9 +1720,33 @@ function alterTableStart(tokens: readonly Token[]): number {
 function alterExpectation(tokens: readonly Token[]): CompletionExpectation | undefined {
   const start = alterTableStart(tokens)
   if (start < 0) return undefined
-  // A comma closes one ALTER clause; the next word starts another action.
-  const trailingComma = tokens[tokens.length - 1]
-  if (trailingComma?.kind === 'punct' && trailingComma.text === ',') return 'alter'
+  // A finished ALTER clause ends at a top-level comma; only the clause after
+  // the last comma can still be completed.
+  const comma = lastClauseComma(tokens, start)
+  if (comma < 0) return alterActionExpectation(tokens, start)
+  const clause = tokens.slice(comma + 1)
+  return clause.length === 0 ? 'alter' : alterActionExpectation(clause, 0)
+}
+
+/** Index of the last top-level ALTER TABLE comma after `start`; -1 if none. */
+function lastClauseComma(tokens: readonly Token[], start: number): number {
+  let depth = 0
+  let last = -1
+  for (let index = start; index < tokens.length; index += 1) {
+    const token = tokens[index] as Token
+    if (token.kind !== 'punct') continue
+    if (token.text === '(') depth += 1
+    else if (token.text === ')') depth -= 1
+    else if (token.text === ',' && depth === 0) last = index
+  }
+  return last
+}
+
+/** One ALTER TABLE clause, starting at its action word. */
+function alterActionExpectation(
+  tokens: readonly Token[],
+  start: number,
+): CompletionExpectation | undefined {
   const action = tokens[start]
   if (action === undefined) return 'alter'
   if (action.kind !== 'keyword' || !ALTER_ACTIONS.has(action.lower)) return undefined
@@ -1710,12 +1840,13 @@ function alterExpectation(tokens: readonly Token[]): CompletionExpectation | und
   }
   switch (action.lower) {
     case 'add':
-      if (object.lower === 'column') return 'definition'
+      if (object.lower === 'column') return 'name'
       if (object.lower === 'index' || object.lower === 'key' || object.lower === 'unique') {
         return 'name'
       }
-      return object.lower === 'constraint' ? 'name' : undefined
+      return object.lower === 'constraint' ? 'constraintType' : undefined
     case 'drop':
+      if (object.lower === 'index' || object.lower === 'key') return 'name'
       return object.lower === 'column' ? 'column' : undefined
     case 'modify':
     case 'change':
@@ -1939,6 +2070,8 @@ function alterDropColumnTail(tokens: readonly Token[]): boolean {
   if (start < 0) return false
   if (tokens[start]?.text.toLowerCase() !== 'drop') return false
   if (tokens[start + 1]?.text.toLowerCase() !== 'column') return false
+  // A later ALTER clause (after a top-level comma) is judged on its own.
+  if (lastClauseComma(tokens, start) >= 0) return false
   return tokens.length > start + 2
 }
 
@@ -2761,9 +2894,12 @@ function forLockTail(tokens: readonly Token[]): CompletionExpectation | undefine
   if (last === undefined) return undefined
   const tail = last.text.toLowerCase()
   if (tail === 'update' || tail === 'share') return 'number'
-  if (tail === 'of') return 'tableName'
-  if (words[words.length - 2] === 'of') return 'number'
-  return undefined
+  const ofIndex = words.indexOf('of')
+  if (ofIndex < 0) return undefined
+  const list = tokens.slice(ofIndex + 1)
+  if (list.length === 0) return 'tableName'
+  const listLast = list[list.length - 1]
+  return listLast?.kind === 'punct' && listLast.text === ',' ? 'tableName' : 'number'
 }
 
 /** `FETCH FIRST ` and `OFFSET n ROWS ` take numbers only. */
@@ -3296,6 +3432,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (referencesTail(tokens)) return 'tableName'
   if (fkReferenceTail(tokens)) return 'number'
   if (inheritsTail(tokens)) return 'tableName'
+  if (createWithTail(tokens)) return 'number'
   if (insideCreateTableParen(tokens)) return 'definition'
   const tableTail = createTableBodyTail(tokens)
   if (tableTail !== undefined) return tableTail
@@ -3381,6 +3518,7 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   const renamedUser = renameUserTail(tokens)
   if (renamedUser !== undefined) return renamedUser
   if (alterDatabaseTail(tokens)) return 'alterDatabase'
+  if (alterDatabaseStart(tokens)) return 'database'
   const alterType = alterTypeTail(tokens)
   if (alterType !== undefined) return alterType
   const load = loadDataTail(tokens)
@@ -3396,6 +3534,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (lockTable !== undefined) return lockTable
   if (updateAssignmentValue(tokens)) return 'value'
   if (updateTail(tokens)) return 'assignment'
+  // JSON builders take literal keys/values, not catalog names.
+  if (jsonArgumentTail(tokens)) return 'number'
   if (functionArgumentFrom(tokens)) return 'column'
   if (insertTargetTail(tokens)) return 'insertSource'
   if (insertOnTail(tokens)) return 'insertOn'
@@ -3420,6 +3560,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (describesTable(tokens)) return 'relation'
   if (describeTableTail(tokens)) return 'name'
   if (dropIndexOn(tokens)) return 'relation'
+  const alterIndex = alterIndexTail(tokens)
+  if (alterIndex !== undefined) return alterIndex
   if (objectName(tokens)) return 'name'
   if (dropDatabase(tokens)) return 'database'
   if (grantee(tokens)) return 'name'
@@ -3518,6 +3660,8 @@ function expectationAt(tokens: readonly Token[]): CompletionExpectation {
   if (groupWithRollup(tokens)) return 'withRollup'
   const group = groupByPosition(tokens)
   if (group !== undefined) return group
+  // `IN (1, ` continues a literal list; catalog columns do not belong here.
+  if (inListTail(tokens)) return 'value'
   const operator = conditionOperator(tokens)
   if (operator !== undefined) return operator
   let sawOpenParen = false

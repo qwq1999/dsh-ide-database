@@ -600,7 +600,7 @@ describe('complete ALTER TABLE objects', () => {
     expect(catalog.calls.columns).toContain('shop.orders')
   })
 
-  it('offers a definition for an added column', async () => {
+  it('waits for the new column name after ADD COLUMN', async () => {
     const catalog = createCatalog()
     const result = await complete({
       statement: 'ALTER TABLE orders ADD COLUMN ',
@@ -609,10 +609,9 @@ describe('complete ALTER TABLE objects', () => {
       schema: 'shop',
       catalog,
     })
-    expect(result.analysis.expectation).toBe('definition')
-    expect(names(result)).toContain('NOT')
-    expect(names(result)).toContain('DEFAULT')
-    expect(result.items.every((item) => item.kind === 'keyword')).toBe(true)
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+    expect(catalog.calls).toEqual({ schemas: 0, tables: [], columns: [] })
   })
 
   it('offers columns to modify or change', async () => {
@@ -1497,8 +1496,8 @@ describe('complete CREATE names and ALTER column tails', () => {
     expect(rename.items).toEqual([])
 
     const constraint = await complete(request('ALTER TABLE orders ADD CONSTRAINT '))
-    expect(constraint.analysis.expectation).toBe('name')
-    expect(constraint.items).toEqual([])
+    expect(constraint.analysis.expectation).toBe('constraintType')
+    expect(names(constraint)).toEqual(['FOREIGN', 'PRIMARY', 'UNIQUE', 'CHECK'])
 
     const change = await complete(request('ALTER TABLE orders CHANGE COLUMN id new_id INT NOT '))
     expect(change.analysis.expectation).toBe('definition')
@@ -2799,5 +2798,46 @@ describe('complete relation-name and routine tails', () => {
     expect(truncate.analysis.expectation).toBe('tableName')
     expect(names(truncate)).toContain('orders')
     expect(names(truncate)).not.toContain('WHERE')
+  })
+})
+
+describe('complete ALTER clause lists and literal tails', () => {
+  it('offers columns of the table for a later DROP/MODIFY COLUMN clause', async () => {
+    const result = await complete(request('ALTER TABLE orders DROP COLUMN a, MODIFY COLUMN '))
+    expect(result.analysis.expectation).toBe('column')
+    expect(names(result)).toContain('total')
+    expect(result.analysis.relations).toEqual([{ table: 'orders' }])
+  })
+
+  it('stays quiet for a later ADD COLUMN name', async () => {
+    const result = await complete(request('ALTER TABLE orders ADD COLUMN a INT, ADD COLUMN '))
+    expect(result.analysis.expectation).toBe('name')
+    expect(result.items).toEqual([])
+  })
+
+  it('stays quiet for an IN list continuation and JSON arguments', async () => {
+    const inList = await complete(request('SELECT * FROM orders WHERE id IN (1, '))
+    expect(inList.analysis.expectation).toBe('value')
+    expect(names(inList)).toContain('DEFAULT')
+
+    const json = await complete(request('SELECT JSON_OBJECT('))
+    expect(json.analysis.expectation).toBe('number')
+    expect(json.items).toEqual([])
+  })
+
+  it('names tables in FOR UPDATE OF lists', async () => {
+    const result = await complete(request('SELECT * FROM orders FOR UPDATE OF orders, '))
+    expect(result.analysis.expectation).toBe('tableName')
+    expect(names(result)).toContain('customers')
+  })
+
+  it('lists tables for REINDEX TABLE and databases for ALTER DATABASE', async () => {
+    const reindex = await complete(request('REINDEX TABLE '))
+    expect(reindex.analysis.expectation).toBe('tableName')
+    expect(names(reindex)).toContain('orders')
+
+    const database = await complete(request('ALTER DATABASE '))
+    expect(database.analysis.expectation).toBe('database')
+    expect(names(database)).toEqual(SCHEMAS)
   })
 })

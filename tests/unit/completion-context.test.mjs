@@ -137,7 +137,7 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('ALTER TABLE orders MODIFY ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN ').expectation).toBe('column')
-    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('name')
     expect(caretAtEnd('ALTER TABLE orders RENAME TO ').expectation).toBe('name')
   })
 
@@ -178,7 +178,7 @@ describe('analyze expectation', () => {
     expect(caretAtEnd('ALTER TABLE orders ADD INDEX idx (').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders ADD UNIQUE KEY idx (id, ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders ADD PRIMARY KEY (').expectation).toBe('column')
-    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('definition')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN ').expectation).toBe('name')
   })
 
   it('starts a statement inside subquery parentheses', () => {
@@ -903,7 +903,7 @@ describe('analyze CREATE names and ALTER column tails', () => {
 
   it('follows ALTER TABLE column renames and changes', () => {
     expect(caretAtEnd('ALTER TABLE orders RENAME COLUMN id TO ').expectation).toBe('name')
-    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('constraintType')
     expect(caretAtEnd('ALTER TABLE orders CHANGE COLUMN id new_id ').expectation).toBe('columnType')
     expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id ').expectation).toBe('columnType')
     expect(caretAtEnd('ALTER TABLE orders MODIFY COLUMN id INT NOT ').expectation).toBe('definition')
@@ -1309,7 +1309,7 @@ describe('analyze USE, constraints and routine tails', () => {
 
   it('offers constraint kinds after ADD CONSTRAINT name', () => {
     expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT fk ').expectation).toBe('constraintType')
-    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders ADD CONSTRAINT ').expectation).toBe('constraintType')
   })
 
   it('stays quiet for inline constraint column lists', () => {
@@ -1541,7 +1541,7 @@ describe('analyze JSON_TABLE columns and multi-table UPDATE', () => {
   it('stays quiet after a dropped column name', () => {
     expect(caretAtEnd('ALTER TABLE orders DROP COLUMN ').expectation).toBe('column')
     expect(caretAtEnd('ALTER TABLE orders DROP COLUMN total ').expectation).toBe('number')
-    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN total, ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN total, ').expectation).toBe('alter')
   })
 
   it('collects both tables of a comma UPDATE', () => {
@@ -1917,5 +1917,45 @@ describe('analyze relation-name and routine tails', () => {
 describe('analyze prepared statement tails', () => {
   it('starts the statement after a parameter list', () => {
     expect(caretAtEnd('PREPARE stmt (int) AS ').expectation).toBe('statement')
+  })
+})
+
+describe('analyze ALTER clause lists and literal argument tails', () => {
+  it('reads the last ALTER clause after a top-level comma', () => {
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN a INT, DROP COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD COLUMN a INT, ADD COLUMN ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER TABLE orders DROP COLUMN a, MODIFY COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders RENAME COLUMN a TO b, RENAME COLUMN ').expectation).toBe('column')
+    expect(caretAtEnd('ALTER TABLE orders ADD INDEX idx (id), DROP INDEX ').expectation).toBe('name')
+  })
+
+  it('asks for a constraint kind in a later ADD CONSTRAINT clause', () => {
+    const text = 'ALTER TABLE orders ADD CONSTRAINT pk PRIMARY KEY (id), ADD CONSTRAINT '
+    expect(caretAtEnd(text).expectation).toBe('constraintType')
+  })
+
+  it('keeps the OF table list going after a comma', () => {
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE OF orders, ').expectation).toBe('tableName')
+    expect(caretAtEnd('SELECT * FROM orders FOR UPDATE OF orders ').expectation).toBe('number')
+  })
+
+  it('takes literals in IN lists and JSON arguments', () => {
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (1, ').expectation).toBe('value')
+    expect(caretAtEnd('SELECT * FROM orders WHERE id IN (1, 2, ').expectation).toBe('value')
+    expect(caretAtEnd('SELECT JSON_EXTRACT(data, ').expectation).toBe('number')
+    expect(caretAtEnd('SELECT JSON_OBJECT(').expectation).toBe('number')
+  })
+
+  it('takes storage parameters after CREATE TABLE ... WITH (', () => {
+    expect(caretAtEnd('CREATE TABLE t (id INT) WITH (').expectation).toBe('number')
+    expect(caretAtEnd('CREATE TABLE t (id INT) WITH (fillfactor = ').expectation).toBe('number')
+  })
+
+  it('names DDL objects that are not tables', () => {
+    expect(caretAtEnd('REINDEX TABLE ').expectation).toBe('tableName')
+    expect(caretAtEnd('CREATE TABLESPACE ').expectation).toBe('name')
+    expect(caretAtEnd('ALTER INDEX idx ').expectation).toBe('number')
+    expect(caretAtEnd('ALTER DATABASE ').expectation).toBe('database')
+    expect(caretAtEnd('SET search_path = ').expectation).toBe('database')
   })
 })
