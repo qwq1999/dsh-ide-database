@@ -29,6 +29,22 @@ describe('splitStatements', () => {
     ])
   })
 
+  it('keeps Oracle alternative-quoted literals in one statement', () => {
+    const quoted = "insert into t values (q'[it's; fine]')"
+    expect(splitStatements(`${quoted}; select 2`, 'oracle')).toEqual([quoted, 'select 2'])
+    expect(splitStatements("select q'{a;b}', q'<c;d>', q'!e;f!' from dual; select 2", 'oracle')).toEqual([
+      "select q'{a;b}', q'<c;d>', q'!e;f!' from dual",
+      'select 2',
+    ])
+    expect(splitStatements("select nq'[中文;值]' from dual; select 2", 'oracle')).toEqual([
+      "select nq'[中文;值]' from dual",
+      'select 2',
+    ])
+    // Other dialects do not know the q prefix, so the inner quote still ends
+    // the literal and the trailing statement is not separated cleanly.
+    expect(splitStatements(`${quoted}; select 2`, 'mssql')).not.toEqual(splitStatements(`${quoted}; select 2`, 'oracle'))
+  })
+
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
     expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])

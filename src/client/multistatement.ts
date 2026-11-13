@@ -98,6 +98,18 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       continue
     }
 
+    // Oracle alternative quoting (`q'[it's; fine]'`) is one literal even when
+    // the text contains a quote of its own, so it has to be consumed before the
+    // generic string scanner sees that inner quote.
+    if ((char === 'q' || char === 'Q') && (dialect === 'oracle' || dialect === 'oceanbase-oracle')) {
+      const end = oracleQuotedLiteralEnd(input, index)
+      if (end !== null) {
+        current += input.slice(index, end)
+        index = end
+        continue
+      }
+    }
+
     if (char === ';') {
       flush()
       index += 1
@@ -125,6 +137,29 @@ function backslashEscapes(input: string, quoteIndex: number, quote: string, dial
   if (prefix !== 'e' && prefix !== 'E') return false
   const before = input[quoteIndex - 2]
   return before === undefined || !/[A-Za-z0-9_$]/u.test(before)
+}
+
+/**
+ * The end (exclusive) of the Oracle alternative-quoted literal starting at
+ * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
+ * bracket pairs have their own closing character, and anything else closes with
+ * the same character it opened with. A missing terminator is left to the normal
+ * scanner so malformed input still reaches the server.
+ */
+function oracleQuotedLiteralEnd(input: string, index: number): number | null {
+  const previous = input[index - 1]
+  if (previous === 'n' || previous === 'N') {
+    const before = input[index - 2]
+    if (before !== undefined && /[A-Za-z0-9_$]/u.test(before)) return null
+  } else if (previous !== undefined && /[A-Za-z0-9_$]/u.test(previous)) {
+    return null
+  }
+  if (input[index + 1] !== "'") return null
+  const open = input[index + 2]
+  if (open === undefined) return null
+  const close = open === '[' ? ']' : open === '{' ? '}' : open === '<' ? '>' : open === '(' ? ')' : open
+  const end = input.indexOf(`${close}'`, index + 3)
+  return end === -1 ? null : end + 2
 }
 
 /**
