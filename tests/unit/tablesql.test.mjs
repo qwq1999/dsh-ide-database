@@ -31,6 +31,13 @@ describe('tablesql quoting', () => {
     expect(qualifiedName('oracle', '', 'orders')).toBe('"orders"')
   })
 
+  it('escapes the dialect quote character inside identifiers', () => {
+    expect(quoteIdent('mysql', 'a`b')).toBe('`a``b`')
+    expect(quoteIdent('mssql', 'a]b')).toBe('[a]]b]')
+    expect(quoteIdent('postgres', 'a"b')).toBe('"a""b"')
+    expect(quoteIdent('oracle', 'a"b')).toBe('"a""b"')
+  })
+
   it('escapes single quotes in literals', () => {
     expect(quoteLiteral("O'Brien")).toBe("'O''Brien'")
   })

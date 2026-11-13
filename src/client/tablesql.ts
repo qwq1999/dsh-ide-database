@@ -15,9 +15,9 @@ export interface ColumnFilter {
 export type ColumnFilters = Record<string, ColumnFilter>
 
 export function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
-  if (dialect === 'mysql') return `\`${name}\``
+  if (dialect === 'mysql') return `\`${name.replaceAll('`', '``')}\``
   if (dialect === 'mssql') return `[${name.replaceAll(']', ']]')}]`
-  return `"${name}"`
+  return `"${name.replaceAll('"', '""')}"`
 }
 
 export function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
