@@ -96,6 +96,24 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS (SELECT 1')).toBe(false)
   })
 
+  it('rejects a select that creates a table', () => {
+    // PostgreSQL: SELECT ... INTO [TEMP | UNLOGGED] [TABLE] name
+    expect(isReadOnlySql('SELECT * INTO backup FROM users')).toBe(false)
+    expect(isReadOnlySql('select 1 into new_table')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO TEMP TABLE backup FROM users')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO UNLOGGED TABLE backup FROM users')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO "backup" FROM users')).toBe(false)
+    // SQL Server: SELECT ... INTO #tmp
+    expect(isReadOnlySql('SELECT * INTO #tmp FROM users')).toBe(false)
+    // The same clause hidden inside a CTE body must not pass either.
+    expect(isReadOnlySql('WITH c AS (SELECT * INTO backup FROM t) SELECT 1')).toBe(false)
+    // Session variables and mentions in strings/comments stay reads.
+    expect(isReadOnlySql('SELECT count(*) INTO @total FROM users')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 INTO @a, @b')).toBe(true)
+    expect(isReadOnlySql("SELECT 'INTO backup' AS note")).toBe(true)
+    expect(isReadOnlySql('SELECT 1 /* into backup */')).toBe(true)
+  })
+
   it('refuses a select that writes a file on the server', () => {
     expect(isReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/users.txt'")).toBe(false)
     expect(isReadOnlySql("select 1 into dumpfile '/tmp/dump.bin'")).toBe(false)

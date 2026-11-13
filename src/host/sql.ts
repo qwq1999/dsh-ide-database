@@ -193,6 +193,37 @@ function withoutLiterals(text: string): string {
   return out
 }
 
+/**
+ * True when a top-level `INTO` creates a table rather than reading into a session
+ * variable or writing a server-side file. PostgreSQL spells it
+ * `SELECT ... INTO [TEMP] [TABLE] name`; SQL Server uses `SELECT ... INTO #tmp`.
+ */
+function selectsIntoTable(text: string): boolean {
+  const plain = withoutLiterals(text)
+  let depth = 0
+  for (let index = 0; index < plain.length; index += 1) {
+    const char = plain[index] ?? ''
+    if (char === '(') {
+      depth += 1
+      continue
+    }
+    if (char === ')') {
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (depth !== 0 || !plain.startsWith('into', index)) continue
+    if (isWordChar(plain[index - 1] ?? '') || isWordChar(plain[index + 4] ?? '')) continue
+    const target = skipSpace(plain, index + 4)
+    // `INTO @total` fills a session variable; only reads the source table.
+    if ((plain[target] ?? '') === '@') continue
+    const word = readWord(plain, target).word
+    // File writes are rejected separately by FILE_WRITE.
+    if (word === 'outfile' || word === 'dumpfile') continue
+    return true
+  }
+  return false
+}
+
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
 export function isReadOnlySql(sql: string): boolean {
   let text = sql.trim()
@@ -250,6 +281,8 @@ export function isReadOnlySql(sql: string): boolean {
     }
     return rest !== '' && isReadOnlySql(rest)
   }
+  // `SELECT ... INTO <table>` creates a table on PostgreSQL and SQL Server.
+  if (head === 'select' && selectsIntoTable(withoutTrailing)) return false
   // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
   if (FILE_WRITE.test(withoutLiterals(withoutTrailing))) return false
   return true
