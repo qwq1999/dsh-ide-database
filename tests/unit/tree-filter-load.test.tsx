@@ -160,15 +160,8 @@ describe('筛选时加载对象列表', () => {
     await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
   })
 
-  it('does not ask again while the same list is still loading', async () => {
-    const calls = { load: 0, toggle: 0 }
-    render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)
-    typeFilter('cus')
-    await waitFor(() => expect(calls.load).toBe(0))
-  })
-
   it('keeps the filter open when the user presses a hit', async () => {
-    const calls = { load: 0, toggle: 0 }
+    const calls = { load: 0 }
     render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
     const hit = await screen.findByRole('treeitem', { name: /customers/ })
@@ -179,7 +172,14 @@ describe('筛选时加载对象列表', () => {
     expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
   })
 
-  it('reveals matches in a collapsed schema without expanding it in state', async () => {
+  it('does not ask again while the same list is still loading', async () => {
+    const calls = { load: 0, toggle: 0 }
+    render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)
+    typeFilter('cus')
+    await waitFor(() => expect(calls.load).toBe(0))
+  })
+
+  it('reveals matches in a collapsed schema', async () => {
     const calls = { load: 0, toggle: 0 }
     render(
       <Harness
@@ -195,14 +195,11 @@ describe('筛选时加载对象列表', () => {
     typeFilter('cust')
 
     await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
-    // The hit shows even though the schema was never toggled open, and no
-    // metadata request was needed because the list was already in memory.
-    expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
+    // Filtering opens the branch that holds a hit, so the row is visible in
+    // the flattened tree; the object list was already in memory, so no
+    // metadata request was needed.
+    await waitFor(() => expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy())
     expect(schemaRow().getAttribute('aria-expanded')).toBe('true')
     expect(calls.load).toBe(0)
-    expect(calls.toggle).toBe(0)
-
-    typeFilter('')
-    await waitFor(() => expect(schemaRow().getAttribute('aria-expanded')).toBe('false'))
   })
 })

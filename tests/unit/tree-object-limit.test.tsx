@@ -83,6 +83,11 @@ afterEach(() => cleanup())
 describe('tree object folding', () => {
   it('shows one page of objects and unfolds the rest on demand', () => {
     render(<DataView {...props()} />)
+    // Only the visible window is mounted; scroll to the end of the first page
+    // to reach the folded-tail row.
+    const tree = screen.getByRole('tree', { name: '数据源' })
+    tree.scrollTop = 100000
+    fireEvent.scroll(tree)
     expect(screen.getByText('t200')).toBeTruthy()
     expect(screen.queryByText('t201')).toBeNull()
     const more = screen.getByText('显示剩余 1 个')

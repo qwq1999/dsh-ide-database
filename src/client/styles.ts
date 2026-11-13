@@ -204,6 +204,29 @@ export const CSS = `
   min-height: 0;
   overflow: auto;
   flex: 1;
+  position: relative;
+  overflow-anchor: none;
+}
+/* The virtual list: one tall spacer gives the scrollbar its real length, and
+   absolutely positioned slots hold only the rows inside the viewport. */
+.dshdb-tree-body {
+  position: relative;
+  flex: none;
+  width: 100%;
+}
+.dshdb-tree-slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26px;
+}
+.dshdb-tree-slot > .dshdb-row {
+  height: 26px;
+  min-height: 26px;
+}
+.dshdb-tree:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
 }
 .dshdb-row {
   display: flex;

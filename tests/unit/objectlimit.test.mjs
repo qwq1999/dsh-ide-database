@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { OBJECT_PAGE, MAX_TREE_ROWS, objectWindow, treeRowBudget } from '../../src/client/views/objectlimit'
+import { OBJECT_PAGE, objectWindow } from '../../src/client/views/objectlimit'
 
 describe('objectWindow', () => {
   it('shows the first page and folds the rest', () => {
@@ -22,26 +22,5 @@ describe('objectWindow', () => {
   it('treats a broken counter as zero', () => {
     expect(objectWindow(OBJECT_PAGE + 1, Number.NaN)).toEqual({ visible: OBJECT_PAGE, hidden: 1 })
     expect(objectWindow(OBJECT_PAGE + 1, -50)).toEqual({ visible: OBJECT_PAGE, hidden: 1 })
-  })
-})
-
-describe('treeRowBudget', () => {
-  it('hands out the whole tree budget by default', () => {
-    const budget = treeRowBudget()
-    expect(budget.take(MAX_TREE_ROWS)).toBe(MAX_TREE_ROWS)
-    expect(budget.shown).toBe(MAX_TREE_ROWS)
-    expect(budget.left).toBe(0)
-    expect(budget.truncated).toBe(false)
-    expect(budget.take(1)).toBe(0)
-    expect(budget.truncated).toBe(true)
-  })
-
-  it('clips the last request instead of overflowing', () => {
-    const budget = treeRowBudget(10)
-    expect(budget.take(8)).toBe(8)
-    expect(budget.take(5)).toBe(2)
-    expect(budget.left).toBe(0)
-    expect(budget.truncated).toBe(true)
-    expect(budget.shown).toBe(10)
   })
 })
