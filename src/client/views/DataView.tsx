@@ -517,50 +517,53 @@ export function DataView(props: DataViewProps): ReactElement {
 
   return (
     <div className="dshdb-view" style={{ gap: 8 }}>
-      {saysFilter ? (
-        <div className="dshdb-tree-filter-float" ref={filterFloatRef} role="search">
-          <FilterIcon size={13} />
-          <TextInput
-            ref={filterRef}
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                // Skip the pause that normally follows typing: Enter means "now".
-                event.preventDefault()
-                setSettledFilter(filter)
-              }
-            }}
-            onBlur={(event) => {
-              if (event.currentTarget.value === '') setFilterOpen(false)
-            }}
-            placeholder={`筛选${treeFilterLabel}…`}
-            aria-label={`筛选${treeFilterLabel}`}
-            autoFocus
-          />
-          {filter !== '' ? (
-            <button
-              type="button"
-              className="dshdb-row-action"
-              title="清空筛选"
-              aria-label="清空筛选"
-              onClick={() => {
-                setFilter('')
-                setSettledFilter('')
-              }}
-            >
-              ×
-            </button>
+      {/* Floats sit above the tree instead of in a toolbar row: a row that
+          appears and disappears would shove the whole tree up and down while
+          the user is clicking through tables. */}
+      {saysFilter || loadingDetail ? (
+        <div className="dshdb-tree-floats">
+          {saysFilter ? (
+            <div className="dshdb-tree-filter-float" ref={filterFloatRef} role="search">
+              <FilterIcon size={13} />
+              <TextInput
+                ref={filterRef}
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    // Skip the pause that normally follows typing: Enter means "now".
+                    event.preventDefault()
+                    setSettledFilter(filter)
+                  }
+                }}
+                onBlur={(event) => {
+                  if (event.currentTarget.value === '') setFilterOpen(false)
+                }}
+                placeholder={`筛选${treeFilterLabel}…`}
+                aria-label={`筛选${treeFilterLabel}`}
+                autoFocus
+              />
+              {filter !== '' ? (
+                <button
+                  type="button"
+                  className="dshdb-row-action"
+                  title="清空筛选"
+                  aria-label="清空筛选"
+                  onClick={() => {
+                    setFilter('')
+                    setSettledFilter('')
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
           ) : null}
-        </div>
-      ) : null}
-
-      {loadingDetail ? (
-        <div className="dshdb-toolbar">
-          <span className="dshdb-toolbar-spacer" />
-          <span className="dshdb-muted dshdb-inline">
-            <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
-          </span>
+          {loadingDetail ? (
+            <span className="dshdb-tree-loading" role="status">
+              <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
+            </span>
+          ) : null}
         </div>
       ) : null}
 

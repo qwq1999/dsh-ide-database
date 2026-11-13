@@ -479,14 +479,22 @@ export const CSS = `
 }
 .dshdb-toolbar-spacer { flex: 1; }
 
-/* The tree filter floats over the top-right corner of the tree instead of
-   living in the toolbar, so it costs no layout height and can be dismissed
-   with Escape (or a press outside it). */
-.dshdb-tree-filter-float {
+/* Floats over the top-right corner of the tree instead of living in a toolbar
+   row, so the filter and the detail spinner cost no layout height and never
+   shove the tree up or down. */
+.dshdb-tree-floats {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.dshdb-tree-floats > * { pointer-events: auto; }
+.dshdb-tree-filter-float {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -498,6 +506,19 @@ export const CSS = `
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .dshdb-tree-filter-float .dshdb-input { width: 168px; }
+.dshdb-tree-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
 
 .dshdb-editor-wrap {
   display: flex;
