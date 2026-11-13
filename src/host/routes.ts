@@ -436,8 +436,37 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       const kind = typeof data.kind === 'string' ? (data.kind as ObjectKind) : 'table'
       const connection = sqlConnection(deps, id)
       if (connection.dialect === 'redis') throw new DbError('unsupported', 'Redis 连接没有 DDL')
-      const result: DdlResult = await deps.sql.ddl(id, connection.dialect, schema, table, kind)
-      sendJson(response, 200, { ok: true, data: result })
+      // Routines, sequences and triggers have no structure to cache, so their
+      // definition is what makes them browsable again after disconnecting.
+      const structureLess = kind !== 'table' && kind !== 'view'
+      try {
+        const result: DdlResult = await deps.sql.ddl(id, connection.dialect, schema, table, kind)
+        if (structureLess && result.source === 'server') {
+          deps.structure.putDescription(id, schema, table, {
+            schema,
+            table,
+            kind,
+            columns: [],
+            indexes: [],
+            ddl: result.ddl,
+            ddlSource: result.source,
+            ddlWarnings: result.warnings,
+          })
+        }
+        sendJson(response, 200, { ok: true, data: result })
+      } catch (error) {
+        const cached = structureLess ? deps.structure.getDescription(id, schema, table) : undefined
+        if (cached?.ddl === undefined) throw error
+        const data: DdlResult = {
+          schema,
+          table,
+          kind,
+          ddl: cached.ddl,
+          source: cached.ddlSource ?? 'server',
+          warnings: [...(cached.ddlWarnings ?? []), '显示的是上次读取的缓存定义'],
+        }
+        sendJson(response, 200, { ok: true, data })
+      }
       return
     }
     case '/explain': {

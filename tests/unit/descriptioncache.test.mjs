@@ -54,13 +54,13 @@ describe('DescriptionCache', () => {
     expect(reloaded.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
   })
 
-  it('persists pruned relations as tombstones', () => {
+  it('persists pruned objects as tombstones', () => {
     const { dir, instance } = cache()
     instance.put('c1', 'app', 'a', description('app', 'a'))
     instance.put('c1', 'app', 'b', description('app', 'b'))
     instance.flush()
 
-    instance.pruneRelations('c1', 'app', new Set(['app.b']))
+    instance.pruneObjects('c1', 'app', new Set(['app.b']))
     instance.flush()
     expect(instance.has('c1', 'app', 'a')).toBe(false)
 

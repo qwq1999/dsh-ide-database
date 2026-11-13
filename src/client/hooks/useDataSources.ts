@@ -683,14 +683,9 @@ export function useDataSources(notify: Notify): DataSources {
         return
       }
       // Routines, sequences and triggers have no column structure; their
-      // definition is what the panel shows instead.
+      // definition is what the panel shows instead. The host keeps the last
+      // definition it read, so an offline source can still answer this.
       if (object.kind !== 'table' && object.kind !== 'view') {
-        if (!servers[connectionId]) {
-          setDetailLoading(false)
-          setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
-          notify(`数据源未连接，连接后可查看${objectKindLabel(object.kind)}定义`, 'info')
-          return
-        }
         setDetailLoading(true)
         setLoadingDescriptions((previous) => ({ ...previous, [key]: true }))
         try {
@@ -710,7 +705,8 @@ export function useDataSources(notify: Notify): DataSources {
         } catch (error) {
           if (detailRequest.current === request) {
             setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
-            notify(`读取${objectKindLabel(object.kind)}定义失败：${errorText(error)}`, 'error')
+            if (!servers[connectionId]) notify(`数据源未连接，连接后可查看${objectKindLabel(object.kind)}定义`, 'info')
+            else notify(`读取${objectKindLabel(object.kind)}定义失败：${errorText(error)}`, 'error')
           }
         } finally {
           if (detailRequest.current === request) setDetailLoading(false)

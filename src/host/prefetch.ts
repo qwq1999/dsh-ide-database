@@ -1,10 +1,16 @@
 import { DbError } from './errors.js'
 import type { SqlService } from './sql.js'
 import type { StructureStore } from './structure.js'
-import type { ObjectKind, PrefetchProgress } from '../shared/types.js'
+import type { ObjectKind, PrefetchProgress, SqlDialect, TableDescription } from '../shared/types.js'
 
 /** Keep the background walk gentle: metadata reads share the JDBC bridge. */
 export const DESCRIPTION_CONCURRENCY = 2
+
+/**
+ * Relations are cached with their columns and indexes; the other object kinds
+ * have no structure to read, so their definition is what the cache keeps.
+ */
+const PREFETCH_KINDS: ReadonlySet<ObjectKind> = new Set(['table', 'view', 'procedure', 'function', 'sequence', 'trigger'])
 
 interface PrefetchTarget {
   schema: string
@@ -26,14 +32,16 @@ interface PrefetchSession extends PrefetchProgress {
 }
 
 interface PrefetchDeps {
-  sql: Pick<SqlService, 'describe'>
+  sql: Pick<SqlService, 'describe' | 'ddl'>
   structure: Pick<StructureStore, 'get' | 'hasDescription' | 'putDescription'>
+  /** Dialect of a connection; needed to ask the server for an object's definition. */
+  dialect?: (connectionId: string) => SqlDialect | undefined
   log: (message: string) => void
 }
 
 /**
  * Walks a connection's cached object list in the background. Opening a
- * connection only fills the relations that have never been read, while an
+ * connection only fills the entries that have never been read, while an
  * explicit refresh re-reads everything the user can see. `schedule` never
  * blocks connecting: it returns immediately, and cancelling a connection stops
  * the walk at the next item.
@@ -80,12 +88,38 @@ export class DescriptionPrefetcher {
     for (const [schema, objects] of Object.entries(entry.objects)) {
       if (session.schemas !== undefined && !session.schemas.has(schema)) continue
       for (const object of objects) {
-        if (object.kind !== 'table' && object.kind !== 'view') continue
+        if (!PREFETCH_KINDS.has(object.kind)) continue
         if (!session.refreshAll && this.deps.structure.hasDescription(connectionId, schema, object.name)) continue
         targets.push({ schema, table: object.name, kind: object.kind })
       }
     }
     return targets
+  }
+
+  /**
+   * Read one cache entry: a relation's columns and indexes, or the definition
+   * of a routine, sequence or trigger (they have no structure to describe).
+   */
+  private async read(connectionId: string, target: PrefetchTarget): Promise<TableDescription | undefined> {
+    const { schema, table, kind } = target
+    if (kind === 'table' || kind === 'view') {
+      return this.deps.sql.describe(connectionId, schema, table, kind)
+    }
+    const dialect = this.deps.dialect?.(connectionId)
+    // Only SQL connections list these objects; without a dialect there is
+    // nothing to ask the server for.
+    if (dialect === undefined) return undefined
+    const result = await this.deps.sql.ddl(connectionId, dialect, schema, table, kind)
+    return {
+      schema,
+      table,
+      kind,
+      columns: [],
+      indexes: [],
+      ddl: result.ddl,
+      ddlSource: result.source,
+      ddlWarnings: result.warnings,
+    }
   }
 
   private async run(connectionId: string): Promise<void> {
@@ -101,16 +135,24 @@ export class DescriptionPrefetcher {
           next += 1
           if (target === undefined) return
           try {
-            const description = await this.deps.sql.describe(connectionId, target.schema, target.table, target.kind)
-            this.deps.structure.putDescription(connectionId, target.schema, target.table, description)
+            const description = await this.read(connectionId, target)
+            if (description !== undefined) {
+              this.deps.structure.putDescription(connectionId, target.schema, target.table, description)
+            }
           } catch (error) {
             if (error instanceof DbError && error.code === 'not-connected') {
               // Closing the connection ends the walk silently.
               this.active.delete(connectionId)
               return
             }
-            const message = error instanceof Error ? error.message : String(error)
-            this.deps.log(`后台结构缓存失败（${target.schema}.${target.table}）：${message}`)
+            // Objects whose definition the server will not hand out stay
+            // uncached; they are read on demand and reported there instead.
+            if (error instanceof DbError && error.code === 'unsupported') {
+              // skip
+            } else {
+              const message = error instanceof Error ? error.message : String(error)
+              this.deps.log(`后台结构缓存失败（${target.schema}.${target.table}）：${message}`)
+            }
           }
           const current = this.active.get(connectionId)
           if (current !== undefined) current.done += 1

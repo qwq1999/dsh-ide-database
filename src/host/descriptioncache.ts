@@ -111,9 +111,9 @@ export class DescriptionCache {
     this.prune(connectionId, (key, description) => keep.has(description.schema))
   }
 
-  /** Drop descriptions of relations that disappeared from one schema's object list. */
-  pruneRelations(connectionId: string, schema: string, relations: ReadonlySet<string>): void {
-    this.prune(connectionId, (key, description) => description.schema !== schema || relations.has(key))
+  /** Drop descriptions of objects that disappeared from one schema's object list. */
+  pruneObjects(connectionId: string, schema: string, keys: ReadonlySet<string>): void {
+    this.prune(connectionId, (key, description) => description.schema !== schema || keys.has(key))
   }
 
   private prune(connectionId: string, keep: (key: string, description: TableDescription) => boolean): void {

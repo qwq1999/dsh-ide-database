@@ -54,8 +54,10 @@ describe('DescriptionPrefetcher', () => {
 
     prefetch.schedule('c1')
 
-    await vi.waitFor(() => expect(calls).toEqual(['app.orders']))
-    expect(state.puts).toEqual(['app.orders'])
+    // Wait on the write, not the read: the cache is what makes the definition
+    // available offline.
+    await vi.waitFor(() => expect(state.puts).toEqual(['app.orders']))
+    expect(calls).toEqual(['app.orders'])
     expect(state.descriptions['app.orders'].describedAt).toBeDefined()
   })
 
@@ -105,8 +107,47 @@ describe('DescriptionPrefetcher', () => {
 
     prefetch.schedule('c1', { refreshAll: true })
 
-    await vi.waitFor(() => expect(calls.sort()).toEqual(['items', 'orders']))
-    expect(state.puts.sort()).toEqual(['app.items', 'app.orders'])
+    await vi.waitFor(() => expect([...state.puts].sort()).toEqual(['app.items', 'app.orders']))
+    expect(calls.sort()).toEqual(['items', 'orders'])
+  })
+
+  it('caches the definition of routines, sequences and triggers', async () => {
+    const { structure, state } = fakeStructure({
+      objects: {
+        app: [
+          { name: 'p_migrate', kind: 'procedure' },
+          { name: 'fn_total', kind: 'function' },
+          { name: 'orders_seq', kind: 'sequence' },
+          { name: 'orders_trg', kind: 'trigger' },
+          { name: 'orders', kind: 'table' },
+        ],
+      },
+    })
+    const read = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      dialect: () => 'mysql',
+      sql: {
+        describe: async (id, schema, table, kind) => {
+          read.push(`${schema}.${table}`)
+          return description({ schema, table, kind })
+        },
+        ddl: async (id, dialect, schema, table, kind) => {
+          read.push(`${schema}.${table}:${kind}:${dialect}`)
+          return { ddl: `CREATE ${kind.toUpperCase()} ${table}()`, source: 'server', warnings: [] }
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+
+    await vi.waitFor(() =>
+      expect(state.puts.sort()).toEqual(['app.fn_total', 'app.orders', 'app.orders_seq', 'app.orders_trg', 'app.p_migrate']),
+    )
+    expect(state.descriptions['app.p_migrate'].ddl).toBe('CREATE PROCEDURE p_migrate()')
+    expect(state.descriptions['app.p_migrate'].columns).toEqual([])
+    expect(read).toContain('app.p_migrate:procedure:mysql')
   })
 
   it('walks only the schemas the user made visible', async () => {

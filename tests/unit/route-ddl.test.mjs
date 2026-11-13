@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServer, request as httpRequest } from 'node:http'
 
+import { DbError } from '../../lib/host/errors.js'
 import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
 
 const servers = []
 const calls = { ddl: [] }
+const descriptions = new Map()
+let ddlMode = 'online'
 
 const mysql = {
   id: 'm1',
@@ -45,6 +48,8 @@ afterEach(async () => {
     ),
   )
   calls.ddl.length = 0
+  descriptions.clear()
+  ddlMode = 'online'
 })
 
 function deps() {
@@ -62,11 +67,16 @@ function deps() {
     sql: {
       ddl: async (...args) => {
         calls.ddl.push(args)
+        if (ddlMode === 'offline') throw new DbError('not-connected', '连接尚未打开')
         return { schema: args[2], table: args[3], kind: args[4], ddl: 'CREATE VIEW v AS SELECT 1', source: 'server', warnings: [] }
       },
     },
     redis: {},
-    structure: { snapshotJson: () => '{}' },
+    structure: {
+      snapshotJson: () => '{}',
+      getDescription: (id, schema, table) => descriptions.get(`${id}|${schema}|${table}`),
+      putDescription: (id, schema, table, value) => descriptions.set(`${id}|${schema}|${table}`, value),
+    },
     log: () => undefined,
   }
 }
@@ -131,5 +141,30 @@ describe('POST /schema/ddl over HTTP', () => {
     expect(result.status).toBe(400)
     expect(result.body).toMatchObject({ ok: false, error: { code: 'unsupported' } })
     expect(calls.ddl).toHaveLength(0)
+  })
+
+  it('keeps the definition of a routine so it stays readable offline', async () => {
+    const url = await start()
+
+    const first = await post(url, { id: 'm1', schema: 'shop', table: 'P_MIGRATE', kind: 'procedure' })
+    expect(first.status).toBe(200)
+    expect(first.body).toMatchObject({ ok: true, data: { kind: 'procedure', source: 'server' } })
+    expect(descriptions.get('m1|shop|P_MIGRATE')).toMatchObject({
+      schema: 'shop',
+      table: 'P_MIGRATE',
+      kind: 'procedure',
+      ddl: 'CREATE VIEW v AS SELECT 1',
+      columns: [],
+    })
+
+    ddlMode = 'offline'
+    const second = await post(url, { id: 'm1', schema: 'shop', table: 'P_MIGRATE', kind: 'procedure' })
+
+    expect(second.status).toBe(200)
+    expect(second.body).toMatchObject({
+      ok: true,
+      data: { ddl: 'CREATE VIEW v AS SELECT 1', source: 'server' },
+    })
+    expect(second.body.data.warnings).toContain('显示的是上次读取的缓存定义')
   })
 })
