@@ -18,7 +18,7 @@ import { CONSOLE_ACTION_LABEL, consoleActionIcon } from '../consoleactions'
 import { orderConsoleActions, type ConsoleActionId } from '../../shared/consoleactions'
 import { TOOLBAR_ACTION_LABEL, toolbarActionIcon } from '../toolbaractions'
 import { orderToolbarActions, type ToolbarActionId } from '../../shared/toolbaractions'
-import { Banner, Button, Field, Panel, Select, Spinner, Switch, Tag, TextInput } from '../ui'
+import { Banner, Button, Field, Loading, Panel, Select, Switch, Tag, TextInput } from '../ui'
 
 /** Panel order: the editor first, then everything the user reaches with a mouse. */
 const SHORTCUT_SCOPES: ShortcutScope[] = ['console', 'result', 'table', 'tree', 'redis']
@@ -635,9 +635,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
       </Panel>
 
       {props.downloading !== '' ? (
-        <div className="dshdb-muted dshdb-inline" style={{ fontSize: 11 }}>
-          <Spinner /> 正在下载驱动依赖…
-        </div>
+        <Loading label="正在下载驱动依赖…" />
       ) : null}
     </div>
   )

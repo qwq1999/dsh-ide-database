@@ -67,8 +67,8 @@ import {
   Button,
   ConfirmDialog,
   EmptyState,
+  Loading,
   SearchSelect,
-  Spinner,
   Tag,
   type ConfirmRequest,
 } from './ui'
@@ -1911,7 +1911,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
           />
         )}
         <span className="dshdb-qbar-spacer" />
-        {running || scanning || commandRunning ? <Spinner /> : null}
+        {running || scanning || commandRunning ? <Loading bare /> : null}
         {result !== null && !running ? <span className="dshdb-qmeta">{formatMs(result.elapsedMs)}</span> : null}
       </div>
 
@@ -2101,8 +2101,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             {scan === null || (visibleKeys.length === 0 && !ttlOnly && keyFilter.trim() === '') ? (
               scanning ? (
                 <div className="dshdb-empty">
-                  <Spinner size={16} />
-                  <span className="dshdb-muted">正在扫描键…</span>
+                  <Loading size={16} label="正在扫描键…" />
                 </div>
               ) : (
                 <EmptyState icon={<DatabaseIcon size={22} />} title="没有匹配的键" description={scanType === '' ? pattern : `${pattern} · 类型 ${scanType}`} />
@@ -2503,9 +2502,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               </button>
             ) : null}
             {multiProgress !== null ? (
-              <span className="dshdb-qmeta">
-                正在执行 {multiProgress.index}/{multiProgress.total}…
-              </span>
+              <Loading
+                bare
+                className="dshdb-qmeta"
+                label={`正在执行 ${multiProgress.index}/${multiProgress.total}…`}
+              />
             ) : null}
             {multiNote !== '' ? <Tag tone="business">{multiNote}</Tag> : null}
             {selectedRun ? <span className="dshdb-qmeta">已执行选中内容</span> : null}

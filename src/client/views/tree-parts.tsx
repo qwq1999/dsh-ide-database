@@ -15,7 +15,7 @@ import {
   TriggerIcon,
   ViewIcon,
 } from '../icons'
-import { Spinner } from '../ui'
+import { Loading } from '../ui'
 
 export function objectIcon(kind: ObjectKind): ReactNode {
   if (kind === 'table') return <TableIcon size={13} />
@@ -221,14 +221,14 @@ export const ObjectRow = memo(function ObjectRow({
         <span className="dshdb-row-label">
           <Highlight text={object.name} query={query} />
         </span>
-        {loading ? <Spinner /> : null}
+        {loading ? <Loading bare /> : null}
       </button>
 
       {open ? (
         <div role="group">
           {loading && description === undefined ? (
             <div className="dshdb-muted" style={{ padding: '4px 6px 4px 52px' }}>
-              正在读取结构…
+              <Loading bare label="正在读取结构…" />
             </div>
           ) : null}
           {!loading && description === undefined ? (

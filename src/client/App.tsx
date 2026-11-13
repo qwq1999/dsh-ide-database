@@ -36,8 +36,8 @@ import {
   Banner,
   Button,
   ConfirmDialog,
+  Loading,
   Modal,
-  Spinner,
   StateDot,
   Toast,
   nextToast,
@@ -630,8 +630,7 @@ export function App(props: AppProps): ReactElement {
 
         {!snapshot && !loadError ? (
           <div className="dshdb-empty">
-            <Spinner size={18} />
-            <span className="dshdb-muted">正在加载数据源…</span>
+            <Loading size={18} label="正在加载数据源…" />
           </div>
         ) : null}
 
@@ -773,12 +772,15 @@ export function App(props: AppProps): ReactElement {
             className="dshdb-statusbar-prefetch"
             title={`后台正在缓存 ${selected?.name ?? '该数据源'} 的表结构描述`}
           >
-            <Spinner size={11} />
-            <span className="dshdb-muted">
-              {prefetchEntry.total > 0
-                ? `缓存结构 ${prefetchEntry.done.toLocaleString()}/${prefetchEntry.total.toLocaleString()}`
-                : '正在缓存结构…'}
-            </span>
+            <Loading
+              bare
+              size={11}
+              label={
+                prefetchEntry.total > 0
+                  ? `缓存结构 ${prefetchEntry.done.toLocaleString()}/${prefetchEntry.total.toLocaleString()}`
+                  : '正在缓存结构…'
+              }
+            />
           </span>
         ) : null}
         {snapshot ? (
@@ -872,8 +874,7 @@ export function App(props: AppProps): ReactElement {
       >
         {ddlModal.loading ? (
           <div className="dshdb-empty">
-            <Spinner size={16} />
-            <span className="dshdb-muted">正在读取 DDL…</span>
+            <Loading size={16} label="正在读取 DDL…" />
           </div>
         ) : (
           <>

@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import type { ClientConnection, RedisKeyInfo } from '../../shared/types'
 import { DatabaseIcon, KeyIcon } from '../icons'
 import { redisTtlLabel } from '../redisvalue'
-import { Spinner, Tag } from '../ui'
+import { Loading, Tag } from '../ui'
 import { DEPTH_ONE, DEPTH_TWO, Highlight, RowToggle } from './tree-parts'
 
 export function RedisDatabases({
@@ -75,7 +75,7 @@ export function RedisDatabases({
               </span>
               <span className="dshdb-row-label dshdb-mono">db{db}</span>
               {db === connection.redisDb ? <span className="dshdb-row-meta">默认</span> : null}
-              {loading ? <Spinner /> : null}
+              {loading ? <Loading bare /> : null}
               {!loading && keys !== undefined ? <span className="dshdb-row-meta">{keys.length} 个键</span> : null}
             </button>
 
@@ -83,7 +83,7 @@ export function RedisDatabases({
               <>
                 {keys === undefined && loading ? (
                   <div className="dshdb-muted dshdb-inline" style={{ padding: '4px 6px 4px 26px' }}>
-                    <Spinner /> 正在扫描键…
+                    <Loading label="正在扫描键…" />
                   </div>
                 ) : null}
                 {keys === undefined && !loading ? (

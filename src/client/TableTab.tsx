@@ -25,7 +25,7 @@ import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sort
 import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { shortcutHit, shortcutLabel } from './keymap'
-import { Banner, Button, EmptyState, Spinner, Tag } from './ui'
+import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { DdlModal } from './DdlModal'
 import { cellValueView, type CellValueView } from './cellvalue'
@@ -906,7 +906,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           </Tag>
         ) : null}
         <span className="dshdb-qbar-spacer" />
-        {loading ? <Spinner /> : null}
+        {loading ? <Loading bare /> : null}
         {elapsed !== undefined && !loading ? <span className="dshdb-qmeta">{formatMs(elapsed)}</span> : null}
         {exportNote !== '' ? <Tag tone="business" role="status">{exportNote}</Tag> : null}
         {exporting ? (

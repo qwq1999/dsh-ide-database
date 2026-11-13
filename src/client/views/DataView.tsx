@@ -32,7 +32,7 @@ import { buildTreeRows, folderOf, type TreeRow } from './tree-rows'
 import { TreeRowView, type TreeRowActions } from './tree-row-view'
 import { TREE_ROW_HEIGHT, useWindow } from '../useWindow'
 import { DatabaseIcon, FilterIcon, KeyIcon, PlusIcon } from '../icons'
-import { Button, EmptyState, Panel, Spinner, Tag, TextInput } from '../ui'
+import { Button, EmptyState, Loading, Panel, Tag, TextInput } from '../ui'
 import { usePopoverDismiss } from '../popover'
 
 export { relativeTime } from '../relativetime'
@@ -826,11 +826,7 @@ export function DataView(props: DataViewProps): ReactElement {
               ) : null}
             </div>
           ) : null}
-          {loadingDetail ? (
-            <span className="dshdb-tree-loading" role="status">
-              <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
-            </span>
-          ) : null}
+          {loadingDetail ? <Loading label={props.redisDetailLoading ? '读取键值' : '读取结构'} /> : null}
         </div>
       ) : null}
 

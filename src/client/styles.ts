@@ -529,7 +529,7 @@ export const CSS = `
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .dshdb-tree-filter-float .dshdb-input { width: 168px; }
-.dshdb-tree-loading {
+.dshdb-loading {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -540,7 +540,14 @@ export const CSS = `
   color: var(--dsw-alias-label-secondary);
   font-size: 11px;
   line-height: 1.4;
+  white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+.dshdb-loading-bare {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .dshdb-editor-wrap {

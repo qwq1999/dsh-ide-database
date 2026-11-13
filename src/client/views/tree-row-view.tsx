@@ -14,7 +14,7 @@ import {
   TriggerIcon,
   ViewIcon,
 } from '../icons'
-import { Spinner, StateDot, Tag } from '../ui'
+import { Loading, StateDot, Tag } from '../ui'
 import { RowPicker } from './row-picker'
 import { Highlight, RowToggle } from './tree-parts'
 import type { TreeRow, TreeRowKind } from './tree-rows'
@@ -204,7 +204,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
       return (
         <>
           <span className="dshdb-row-toggle" />
-          <span className="dshdb-row-icon">{row.loading === true ? <Spinner /> : <DatabaseIcon size={13} />}</span>
+          <span className="dshdb-row-icon">{row.loading === true ? <Loading bare /> : <DatabaseIcon size={13} />}</span>
           <span className="dshdb-row-label dshdb-muted">{row.label}</span>
         </>
       )
@@ -217,7 +217,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
           </span>
           {drawLabel(row)}
           {row.system === true ? <Tag>系统</Tag> : null}
-          {row.loading === true ? <Spinner /> : null}
+          {row.loading === true ? <Loading bare /> : null}
           {drawMeta(row)}
         </>
       )
@@ -244,7 +244,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
           )}
           <span className="dshdb-row-icon">{rowIcon(row)}</span>
           {drawLabel(row)}
-          {row.loading === true ? <Spinner /> : null}
+          {row.loading === true ? <Loading bare /> : null}
         </>
       )
     case 'detail-folder':
@@ -289,7 +289,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
           </span>
           {drawLabel(row)}
           {row.defaultDb === true ? <span className="dshdb-row-meta">默认</span> : null}
-          {row.loading === true ? <Spinner /> : null}
+          {row.loading === true ? <Loading bare /> : null}
           {drawMeta(row)}
         </>
       )
@@ -309,7 +309,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
       return (
         <>
           <span className="dshdb-row-toggle" />
-          {row.loading === true ? <Spinner /> : null}
+          {row.loading === true ? <Loading bare /> : null}
           <span className="dshdb-row-label dshdb-muted">{row.label}</span>
         </>
       )
@@ -350,7 +350,7 @@ export const TreeRowView = memo(function TreeRowView({
   if (row.kind === 'note') {
     return (
       <div className="dshdb-row dshdb-muted" role="none" style={style} data-index={index}>
-        {row.loading === true ? <Spinner /> : null}
+        {row.loading === true ? <Loading bare /> : null}
         <span className="dshdb-row-label">{row.label}</span>
       </div>
     )

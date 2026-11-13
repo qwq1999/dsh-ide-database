@@ -362,6 +362,36 @@ export function Spinner({ size }: { size?: number }) {
   return <span className="dshdb-spinner" style={size ? { width: size, height: size } : undefined} aria-hidden="true" />
 }
 
+/**
+ * Shared inline status for anything that is waiting on the host or the server.
+ *
+ * A label renders next to the spinner and marks the element as a status region;
+ * `bare` keeps the same layout without the pill chrome, for rows and toolbars
+ * where a bordered box would change the height. Without a label the element is
+ * purely decorative, so it does not compete with the real status regions.
+ */
+export function Loading({
+  label,
+  size,
+  bare = false,
+  className,
+}: {
+  label?: string
+  size?: number
+  bare?: boolean
+  className?: string
+}) {
+  return (
+    <span
+      className={`dshdb-loading${bare ? ' dshdb-loading-bare' : ''}${className ? ` ${className}` : ''}`}
+      role={label === undefined ? undefined : 'status'}
+    >
+      <Spinner size={size} />
+      {label === undefined ? null : <span className="dshdb-loading-label">{label}</span>}
+    </span>
+  )
+}
+
 export function Banner({
   tone = 'info',
   children,
