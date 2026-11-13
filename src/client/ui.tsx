@@ -281,6 +281,9 @@ export function EmptyState({
   )
 }
 
+/** Modals opened from another modal must sit above it; the stack order decides. */
+const modalStack: symbol[] = []
+
 export function Modal({
   open,
   title,
@@ -297,6 +300,25 @@ export function Modal({
   width?: number
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null)
+  // Nested dialogs (e.g. "新增自定义驱动" opened from the settings dialog) share
+  // the same overlay z-index, so the later one has to be lifted above its host.
+  const tokenRef = useRef<symbol | null>(null)
+  const [layer, setLayer] = useState(0)
+  useEffect(() => {
+    if (!open) return
+    const token = Symbol('dshdb-modal')
+    tokenRef.current = token
+    modalStack.push(token)
+    setLayer(modalStack.length - 1)
+    return () => {
+      tokenRef.current = null
+      const index = modalStack.indexOf(token)
+      if (index !== -1) modalStack.splice(index, 1)
+      setLayer(0)
+    }
+  }, [open])
+  const isTopmost = (): boolean =>
+    tokenRef.current !== null && modalStack[modalStack.length - 1] === tokenRef.current
   // A caller usually passes an inline arrow, so keeping the latest handler in a
   // ref stops the effect from re-focusing the dialog on every parent render.
   const latestClose = useRef(onClose)
@@ -316,6 +338,9 @@ export function Modal({
       )
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      // Only the dialog on top owns Escape and the focus trap; the host dialog
+      // underneath must stay open while a nested one is up.
+      if (!isTopmost()) return
       if (event.key === 'Escape') {
         event.stopPropagation()
         latestClose.current()
@@ -355,6 +380,7 @@ export function Modal({
   return (
     <div
       className="dshdb-modal-overlay"
+      style={{ zIndex: 1200 + layer * 10 }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
