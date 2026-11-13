@@ -469,6 +469,82 @@ export function App(props: AppProps): ReactElement {
     minHeight: 0,
   }
 
+  // The tree hands these callbacks to memoized object rows, so they must keep
+  // one identity across renders. `useDataSources` already stabilizes the hook
+  // side; these wrappers only adapt its promise-returning API for the view.
+  const openAddConnection = useCallback((): void => setConnModal({ open: true, editing: null }), [])
+  const connectTree = useCallback((id: string): void => void connect(id), [connect])
+  const refreshTree = useCallback((): void => void refreshSelected(), [refreshSelected])
+  const toggleTreeSchema = useCallback(
+    (connectionId: string, schema: string): void => void toggleSchema(connectionId, schema),
+    [toggleSchema],
+  )
+  const loadTreeObjects = useCallback(
+    (connectionId: string, schema: string): void => void loadObjects(connectionId, schema),
+    [loadObjects],
+  )
+  const selectTreeObject = useCallback(
+    (...args: Parameters<typeof selectObject>): void => void selectObject(...args),
+    [selectObject],
+  )
+  const selectTreeRedisKey = useCallback(
+    (...args: Parameters<typeof selectRedisKey>): void => void selectRedisKey(...args),
+    [selectRedisKey],
+  )
+  const loadTreeRedisKeys = useCallback(
+    (...args: Parameters<typeof loadRedisKeys>): void => void loadRedisKeys(...args),
+    [loadRedisKeys],
+  )
+  const showDdlTree = useCallback(
+    (...args: Parameters<typeof showDdl>): void => void showDdl(...args),
+    [showDdl],
+  )
+  const readDdlTree = useCallback(
+    async (
+      connectionId: string,
+      schema: string,
+      table: string,
+      kind: Parameters<typeof showDdl>[3],
+    ): Promise<string | null> => {
+      try {
+        return (await api.ddl(connectionId, schema, table, kind)).ddl
+      } catch {
+        return null
+      }
+    },
+    [],
+  )
+  const downloadTreeScript = useCallback(
+    (filename: string, text: string): void => {
+      downloadText(filename, 'application/sql', text)
+      notify(`已导出 ${filename}`, 'success')
+    },
+    [notify],
+  )
+  const openTableFromTree = useCallback(
+    (connectionId: string, schema: string, object: { name: string; kind: string }): void => {
+      selectConnection(connectionId)
+      openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })
+    },
+    [selectConnection],
+  )
+  const openConsoleTabFromTree = useCallback(
+    (connectionId: string): void => {
+      selectConnection(connectionId)
+      openConsoleTab({ connectionId })
+    },
+    [selectConnection],
+  )
+  const openConsoleFromTree = useCallback(
+    (connectionId: string, schema: string, table: string): void => {
+      const connection = connections.find((item) => item.id === connectionId)
+      if (connection === undefined) return
+      selectConnection(connectionId)
+      openConsoleTab({ connectionId, sql: tableSelectSql(connection.dialect, schema, table, '', '', 500) })
+    },
+    [connections, selectConnection],
+  )
+
   return (
     <div className="dshdb-root" style={rootStyle} data-plugin-route={ROUTE_PREFIX}>
       {/* IDEA 风格工具窗口：工具栏左对齐，下面是数据源列表 */}
@@ -623,53 +699,33 @@ export function App(props: AppProps): ReactElement {
               redisDetail={redisDetail}
               redisDetailDb={redisDetailDb}
               redisDetailLoading={redisDetailLoading}
-              onAddConnection={() => setConnModal({ open: true, editing: null })}
+              onAddConnection={openAddConnection}
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
               onReorderConnections={reorderConnections}
-              onConnect={(id) => void connect(id)}
-              onRefresh={() => void refreshSelected()}
-              onToggleSchema={(connectionId, schema) => void toggleSchema(connectionId, schema)}
-              onLoadObjects={(connectionId, schema) => void loadObjects(connectionId, schema)}
+              onConnect={connectTree}
+              onRefresh={refreshTree}
+              onToggleSchema={toggleTreeSchema}
+              onLoadObjects={loadTreeObjects}
               onToggleFolder={toggleFolder}
               onToggleKey={toggleKey}
-              onSelectObject={(connectionId, schema, object) => void selectObject(connectionId, schema, object)}
+              onSelectObject={selectTreeObject}
               onSelectSchema={selectSchema}
               onSelectFolder={selectFolder}
               onSelectRedisDb={selectRedisDb}
-              onSelectRedisKey={(connectionId, db, key) => void selectRedisKey(connectionId, db, key)}
+              onSelectRedisKey={selectTreeRedisKey}
               onToggleRedisDb={toggleRedisDb}
-              onLoadRedisKeys={(connectionId, db, more) => void loadRedisKeys(connectionId, db, more)}
+              onLoadRedisKeys={loadTreeRedisKeys}
               onToggleSchemaVisible={toggleSchemaVisible}
               onToggleAllSchemasVisible={toggleAllSchemasVisible}
               onToggleRedisDbVisible={toggleRedisDbVisible}
               onToggleAllRedisDbsVisible={toggleAllRedisDbsVisible}
-              onShowDdl={(connectionId, schema, table, kind) => void showDdl(connectionId, schema, table, kind)}
-              onReadDdl={async (connectionId, schema, table, kind) => {
-                try {
-                  return (await api.ddl(connectionId, schema, table, kind)).ddl
-                } catch {
-                  return null
-                }
-              }}
-              onDownloadScript={(filename, text) => {
-                downloadText(filename, 'application/sql', text)
-                notify(`已导出 ${filename}`, 'success')
-              }}
-              onOpenTable={(connectionId, schema, object) => {
-                selectConnection(connectionId)
-                openTableTab({ connectionId, schema, table: object.name, kind: object.kind === 'view' ? 'view' : 'table' })
-              }}
-              onOpenConsoleTab={(connectionId) => {
-              selectConnection(connectionId)
-              openConsoleTab({ connectionId })
-            }}
-            onOpenConsole={(connectionId, schema, table) => {
-                const connection = connections.find((item) => item.id === connectionId)
-                if (connection === undefined) return
-                selectConnection(connectionId)
-                openConsoleTab({ connectionId, sql: tableSelectSql(connection.dialect, schema, table, '', '', 500) })
-              }}
+              onShowDdl={showDdlTree}
+              onReadDdl={readDdlTree}
+              onDownloadScript={downloadTreeScript}
+              onOpenTable={openTableFromTree}
+              onOpenConsoleTab={openConsoleTabFromTree}
+              onOpenConsole={openConsoleFromTree}
             />
           </div>
         ) : null}

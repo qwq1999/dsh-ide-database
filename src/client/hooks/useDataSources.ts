@@ -352,6 +352,16 @@ export function useDataSources(notify: Notify): DataSources {
   visibleSchemasRef.current = visibleSchemas
   const expandedRef = useRef(expanded)
   expandedRef.current = expanded
+  // Read by the tree callbacks below. Keeping these behind refs lets the
+  // callbacks keep one identity, which is what keeps memoized rows memoized.
+  const objectsRef = useRef(objects)
+  objectsRef.current = objects
+  const loadingObjectsRef = useRef(loadingObjects)
+  loadingObjectsRef.current = loadingObjects
+  const descriptionsRef = useRef(descriptions)
+  descriptionsRef.current = descriptions
+  const serversRef = useRef(servers)
+  serversRef.current = servers
 
   /**
    * Ask the host to keep table descriptions warm for the schemas that are
@@ -438,7 +448,7 @@ export function useDataSources(notify: Notify): DataSources {
   }, [])
 
   const loadSchemas = useCallback(
-    async (connectionId: string): Promise<void> => {
+    async (connectionId: string, refreshObjects = false): Promise<void> => {
       setLoadingSchemas((previous) => ({ ...previous, [connectionId]: true }))
       try {
         const result = await api.schemas(connectionId)
@@ -477,15 +487,17 @@ export function useDataSources(notify: Notify): DataSources {
           if (hash === -1 && value === true && schema !== 'redis') open.push(schema)
         }
         setExpanded(kept)
-        // Cached lists of collapsed schemas go away so expanding them later
-        // reads fresh data; the open ones keep their rows until the refresh
-        // below replaces them, so nothing flashes empty.
+        // A plain connect or background refresh keeps every cached list: the
+        // tree already has the rows, and dropping them would make a filter
+        // re-read schemas the user cannot see expanded. Only an explicit
+        // refresh prunes the lists of schemas that are closed, and schemas
+        // that no longer exist go either way.
         setObjects((previous) => {
           const next = { ...previous }
           for (const key of Object.keys(next)) {
-            if (key.startsWith(`${connectionId}:`) && !open.includes(key.slice(connectionId.length + 1))) {
-              delete next[key]
-            }
+            if (!key.startsWith(`${connectionId}:`)) continue
+            const schema = key.slice(connectionId.length + 1)
+            if (!listed.has(schema) || (refreshObjects && !open.includes(schema))) delete next[key]
           }
           return next
         })
@@ -670,9 +682,9 @@ export function useDataSources(notify: Notify): DataSources {
   const toggleSchema = useCallback(
     async (connectionId: string, schema: string): Promise<void> => {
       const key = `${connectionId}:${schema}`
-      const isExpanded = expanded[key] === true
+      const isExpanded = expandedRef.current[key] === true
       setExpanded((previous) => ({ ...previous, [key]: !isExpanded }))
-      if (isExpanded || objects[key] !== undefined) return
+      if (isExpanded || objectsRef.current[key] !== undefined) return
       setLoadingObjects((previous) => ({ ...previous, [key]: true }))
       try {
         const result = await api.objects(connectionId, schema)
@@ -687,7 +699,7 @@ export function useDataSources(notify: Notify): DataSources {
         setLoadingObjects((previous) => ({ ...previous, [key]: false }))
       }
     },
-    [expanded, objects, notify],
+    [notify],
   )
 
   // Load a schema's objects without touching its expansion state: the tree
@@ -696,7 +708,7 @@ export function useDataSources(notify: Notify): DataSources {
   const loadObjects = useCallback(
     async (connectionId: string, schema: string): Promise<void> => {
       const key = `${connectionId}:${schema}`
-      if (objects[key] !== undefined || loadingObjects[key] === true) return
+      if (objectsRef.current[key] !== undefined || loadingObjectsRef.current[key] === true) return
       setLoadingObjects((previous) => ({ ...previous, [key]: true }))
       try {
         const result = await api.objects(connectionId, schema)
@@ -711,7 +723,7 @@ export function useDataSources(notify: Notify): DataSources {
         setLoadingObjects((previous) => ({ ...previous, [key]: false }))
       }
     },
-    [objects, loadingObjects],
+    [],
   )
 
   const selectObject = useCallback(
@@ -724,7 +736,7 @@ export function useDataSources(notify: Notify): DataSources {
       setRedisDetailDb(-1)
       setSelectedKey(key)
       setSelectedSchema(schema)
-      const known = descriptions[key]
+      const known = descriptionsRef.current[key]
       if (known !== undefined) {
         setDetailLoading(false)
         setDetail(known)
@@ -753,7 +765,7 @@ export function useDataSources(notify: Notify): DataSources {
         } catch (error) {
           if (detailRequest.current === request) {
             setDetail({ schema, table: object.name, kind: object.kind, columns: [], indexes: [] })
-            if (!servers[connectionId]) notify(`数据源未连接，连接后可查看${objectKindLabel(object.kind)}定义`, 'info')
+            if (!serversRef.current[connectionId]) notify(`数据源未连接，连接后可查看${objectKindLabel(object.kind)}定义`, 'info')
             else notify(`读取${objectKindLabel(object.kind)}定义失败：${errorText(error)}`, 'error')
           }
         } finally {
@@ -772,14 +784,14 @@ export function useDataSources(notify: Notify): DataSources {
         if (detailRequest.current === request) setDetail(description)
       } catch (error) {
         if (detailRequest.current === request) setDetail(null)
-        if (!servers[connectionId]) notify('数据源未连接，连接后可查看表结构', 'info')
+        if (!serversRef.current[connectionId]) notify('数据源未连接，连接后可查看表结构', 'info')
         else notify(`读取表结构失败：${errorText(error)}`, 'error')
       } finally {
         if (detailRequest.current === request) setDetailLoading(false)
         setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))
       }
     },
-    [descriptions, servers, notify],
+    [notify],
   )
 
   const toggleKey = useCallback((key: string): void => {
@@ -958,7 +970,7 @@ export function useDataSources(notify: Notify): DataSources {
       await refresh()
       return
     }
-    await loadSchemas(selected.id)
+    await loadSchemas(selected.id, true)
     // Refresh means "re-read every cached description", not just fill the gaps.
     schedulePrefetch(selected.id, true)
     await refresh()

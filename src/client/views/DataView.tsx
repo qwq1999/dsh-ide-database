@@ -15,7 +15,7 @@ import {
 import type { ClientConnection, ObjectKind, RedisKeyInfo, RedisValue, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
 import { DIALECT_LABEL } from '../../shared/presets'
 import { objectKindLabel } from '../format'
-import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
+import { matchTree } from '../treefilter'
 import { nextRowIndex } from '../treekeys'
 import { shortcutHit } from '../keymap'
 import { highlightParts } from '../highlight'
@@ -25,7 +25,7 @@ import { copyText } from '../colmenu'
 import { selectColumnsSql } from '../tablesql'
 import { tableSelectSql } from '../tablesql'
 import { RedisDatabases } from './redis-databases'
-import { OBJECT_PAGE, objectWindow } from './objectlimit'
+import { MAX_TREE_ROWS, OBJECT_PAGE, objectWindow, treeRowBudget } from './objectlimit'
 import { TreeMenu, placeMenu, type TreeMenuState } from './tree-menu'
 import { RowPicker } from './row-picker'
 import {
@@ -390,8 +390,56 @@ export function DataView(props: DataViewProps): ReactElement {
     setObjectExtra({})
   }, [normalizedFilter])
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
-  // `库.表` narrows the object list by schema; the schema row then stays visible through its buckets.
-  const filterQuery = useMemo(() => parseFilter(settledFilter), [settledFilter])
+  // One pass over the loaded object lists feeds the counters, the row filter
+  // and the derived expansion; every object name is lowered once per term.
+  const treeMatch = useMemo(
+    () => matchTree(settledFilter, connections, schemas, objects),
+    [settledFilter, connections, schemas, objects],
+  )
+  const filterQuery = treeMatch.query
+
+  // While filtering, branches that contain a match are derived open instead of
+  // being written into `expanded`: one expansion per branch no longer costs a
+  // state update (and a full app re-render) per schema, and clearing the filter
+  // restores exactly what the user had folded.
+  const derivedOpen = useMemo(() => {
+    const open = new Set<string>()
+    if (normalizedFilter === '') return open
+    for (const connectionId of treeMatch.connectionHits) open.add(connectionId)
+    for (const schemaKey of treeMatch.schemaHits) open.add(schemaKey)
+    for (const [schemaKey, list] of Object.entries(treeMatch.objectsBySchema)) {
+      open.add(schemaKey)
+      for (const object of list) open.add(`${schemaKey}#${folderOf(object.kind)}`)
+    }
+    // Redis keys live outside the schema/object maps: a key hit opens its data
+    // source and its database just like the old toggle-based effect did.
+    for (const connection of connections) {
+      if (connection.dialect !== 'redis') continue
+      const keysByDb = props.redisKeys[connection.id]
+      if (keysByDb === undefined) continue
+      for (const [db, keys] of Object.entries(keysByDb)) {
+        if (!keys.some((key) => matches(key.key))) continue
+        open.add(connection.id)
+        open.add(`${connection.id}:redis:db${db}`)
+      }
+    }
+    return open
+    // `matches` only depends on normalizedFilter, already listed below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedFilter, treeMatch, connections, props.redisKeys])
+
+  // The Redis subtree reads the expanded record directly, so hand it a copy
+  // whose matching databases are forced open (they may be explicitly closed).
+  const redisExpanded = useMemo(() => {
+    if (normalizedFilter === '') return expanded
+    let next: Record<string, boolean> | undefined
+    for (const key of derivedOpen) {
+      if (!key.includes(':redis:db')) continue
+      if (next === undefined) next = { ...expanded }
+      next[key] = true
+    }
+    return next ?? expanded
+  }, [expanded, normalizedFilter, derivedOpen])
 
   // Search inside collapsed schemas: fetch their object lists once per filter
   // so matches can be found even when the branch was never opened before.
@@ -436,84 +484,30 @@ export function DataView(props: DataViewProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFilter, connections, schemas, servers])
 
-  // A filtered tree needs a quick answer to "did anything match": count the
-  // connections and objects that survived the filter.
-  const filterSummary = useMemo(() => {
-    if (normalizedFilter === '') return null
-    const summary = { connections: 0, objects: 0 }
-    for (const connection of connections) {
-      const schemaNames = schemas[connection.id] ?? []
-      if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) summary.connections += 1
-      for (const [key, list] of Object.entries(objects)) {
-        if (!key.startsWith(`${connection.id}:`)) continue
-        const schemaName = key.slice(connection.id.length + 1)
-        const matched = list.filter((object) => matchesFilteredObject(filterQuery, schemaName, object.name))
-        summary.objects += matched.length
-      }
-    }
-    summary.connections = Math.max(summary.connections, summary.objects > 0 ? 1 : 0)
-    return summary
-  }, [normalizedFilter, connections, schemas, objects, filterQuery])
-
-  // While filtering, open the branches that contain a match so hits are not
-  // hidden inside collapsed data sources or schemas.
-  useEffect(() => {
-    if (normalizedFilter === '') return
-    const timer = window.setTimeout(() => {
-      const targets = filterTargets(filter, connections, schemas, objects, expanded)
-      for (const id of targets.connections) props.onToggleConnection(id)
-      for (const key of targets.schemas) {
-        const separator = key.indexOf(':')
-        void props.onToggleSchema(key.slice(0, separator), key.slice(separator + 1))
-      }
-      // Folders inside a matching schema open too, so the hit is one click away.
-      for (const [key, list] of Object.entries(objects)) {
-        const hits = list.filter((object) => matches(object.name))
-        if (hits.length === 0) continue
-        const separator = key.indexOf(':')
-        const connectionId = key.slice(0, separator)
-        const schema = key.slice(separator + 1)
-        for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
-          if (expanded[`${key}#${folder}`] === true) continue
-          props.onToggleFolder(connectionId, schema, folder)
-        }
-      }
-      // A Redis key hit opens its data source (and database) so the key rows show.
-      for (const connection of connections) {
-        if (connection.dialect !== 'redis') continue
-        const keysByDb = props.redisKeys[connection.id]
-        if (keysByDb === undefined) continue
-        for (const [db, keys] of Object.entries(keysByDb)) {
-          if (!keys.some((key) => matches(key.key))) continue
-          if (expanded[connection.id] !== true) props.onToggleConnection(connection.id)
-          if (expanded[`${connection.id}:redis:db${db}`] === false) props.onToggleRedisDb(connection.id, Number(db))
-        }
-      }
-    }, 300)
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedFilter, connections, schemas, objects, expanded, props.redisKeys])
+  // "Did anything match" comes from the same index, so a filter term costs one
+  // traversal instead of a separate summary pass.
+  const filterSummary = normalizedFilter === '' ? null : treeMatch.counts
 
   const grouped = useMemo(() => {
     const cache: Record<string, Record<FolderId, SchemaObject[]>> = {}
-    for (const [key, list] of Object.entries(objects)) {
+    const source = normalizedFilter === '' ? objects : treeMatch.objectsBySchema
+    for (const [key, list] of Object.entries(source)) {
       const buckets = {} as Record<FolderId, SchemaObject[]>
       for (const folder of FOLDERS) buckets[folder.id] = []
-      const schemaName = key.slice(key.indexOf(':') + 1)
-      for (const object of list) {
-        if (normalizedFilter !== '' && !matchesFilteredObject(filterQuery, schemaName, object.name)) continue
-        buckets[folderOf(object.kind)].push(object)
-      }
+      for (const object of list) buckets[folderOf(object.kind)].push(object)
       cache[key] = buckets
     }
     return cache
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objects, normalizedFilter])
+  }, [objects, normalizedFilter, treeMatch])
 
   // The detail spinner keeps a thin strip at the top; the filter itself is a
   // floating box pinned to the top-right corner of the tree, opened by Ctrl+F.
   const loadingDetail = props.detailLoading || props.redisDetailLoading
   const saysFilter = filterOpen || filter !== ''
+  // Expanding everything can surface tens of thousands of rows; stop at a fixed
+  // budget (with one hint line) instead of rendering the whole tree.
+  const rowBudget = treeRowBudget(MAX_TREE_ROWS)
+  const takeRows = (count: number): number => rowBudget.take(count)
 
   return (
     <div className="dshdb-view" style={{ gap: 8 }}>
@@ -594,7 +588,7 @@ export function DataView(props: DataViewProps): ReactElement {
             ) : null}
             {connections.map((connection) => {
               const isSelected = connection.id === selectedId
-              const isExpanded = expanded[connection.id] === true
+              const isExpanded = expanded[connection.id] === true || derivedOpen.has(connection.id)
               const server = servers[connection.id]
               const connecting = props.connectingId === connection.id
               const loading = props.loadingSchemas[connection.id] === true
@@ -627,6 +621,7 @@ export function DataView(props: DataViewProps): ReactElement {
                 (allSchemas.length === 0 && server === undefined && !loading)
 
               if (!visible) return null
+              if (takeRows(1) === 0) return null
 
               const schemaItems = allSchemas.map((schema) => ({ id: schema.name, label: schema.name }))
               const dbItems = Array.from({ length: props.redisDatabases[connection.id] ?? 16 }, (_, index) => ({
@@ -754,7 +749,7 @@ export function DataView(props: DataViewProps): ReactElement {
                           cursors={props.redisCursor[connection.id]}
                           loadingByDb={props.loadingRedisKeys[connection.id]}
                           visibleDbs={redisDbs}
-                          expanded={expanded}
+                          expanded={redisExpanded}
                           selectedKey={props.selectedKey}
                           query={normalizedFilter}
                           onToggleDb={(db) => props.onToggleRedisDb(connection.id, db)}
@@ -785,8 +780,9 @@ export function DataView(props: DataViewProps): ReactElement {
                             </div>
                           ) : null}
                           {list.map((schema) => {
+                            if (takeRows(1) === 0) return null
                             const key = `${connection.id}:${schema.name}`
-                            const schemaExpanded = expanded[key] === true
+                            const schemaExpanded = expanded[key] === true || derivedOpen.has(key)
                             const objectList = objects[key]
                             const objectLoading = props.loadingObjects[key] === true
                             const buckets = grouped[key]
@@ -848,9 +844,11 @@ export function DataView(props: DataViewProps): ReactElement {
                                     {objectList !== undefined
                                       ? FOLDERS.filter((folder) => (buckets?.[folder.id].length ?? 0) > 0).map((folder) => {
                                           const folderKey = `${connection.id}:${schema.name}#${folder.id}`
-                                          const folderExpanded = expanded[folderKey] === true
+                                          const folderExpanded = expanded[folderKey] === true || derivedOpen.has(folderKey)
                                           const items = buckets?.[folder.id] ?? []
                                           const pageWindow = objectWindow(items.length, objectExtra[folderKey] ?? 0)
+                                          if (takeRows(1) === 0) return null
+                                          const shownRows = takeRows(pageWindow.visible)
                                           return (
                                             <div key={folder.id}>
                                               <button
@@ -885,33 +883,40 @@ export function DataView(props: DataViewProps): ReactElement {
                                               </button>
                                               {folderExpanded ? (
                                                 <div role="group">
-                                                  {items.slice(0, pageWindow.visible).map((object) => (
-                                                    <ObjectRow
-                                                      key={object.name}
-                                                      connectionId={connection.id}
-                                                      schema={schema.name}
-                                                      object={object}
-                                                      selected={
-                                                        props.selectedKey ===
-                                                        `${connection.id}|${schema.name}.${object.name}`
-                                                      }
-                                                      expanded={expanded}
-                                                      description={
-                                                        props.descriptions[`${connection.id}|${schema.name}.${object.name}`]
-                                                      }
-                                                      loading={
-                                                        props.loadingDescriptions[
-                                                          `${connection.id}|${schema.name}.${object.name}`
-                                                        ] === true
-                                                      }
-                                                      onSelect={props.onSelectObject}
-                                                      onOpen={props.onOpenTable}
-                                                      onToggleKey={props.onToggleKey}
-                                                      onMenu={openObjectMenu}
-                                                      query={filterQuery.schema === '' ? normalizedFilter : filterQuery.name}
-                                                    />
-                                                  ))}
-                                                  {pageWindow.hidden > 0 ? (
+                                                  {items.slice(0, shownRows).map((object) => {
+                                                    const objectKey = `${connection.id}|${schema.name}.${object.name}`
+                                                    const columnKey = `${objectKey}#columns`
+                                                    const keyFolderKey = `${objectKey}#keys`
+                                                    const indexKey = `${objectKey}#indexes`
+                                                    return (
+                                                      <ObjectRow
+                                                        key={object.name}
+                                                        connectionId={connection.id}
+                                                        schema={schema.name}
+                                                        object={object}
+                                                        selected={props.selectedKey === objectKey}
+                                                        open={expanded[objectKey] === true || derivedOpen.has(objectKey)}
+                                                        columnOpen={
+                                                          expanded[columnKey] === true || derivedOpen.has(columnKey)
+                                                        }
+                                                        keyOpen={
+                                                          expanded[keyFolderKey] === true ||
+                                                          derivedOpen.has(keyFolderKey)
+                                                        }
+                                                        indexOpen={
+                                                          expanded[indexKey] === true || derivedOpen.has(indexKey)
+                                                        }
+                                                        description={props.descriptions[objectKey]}
+                                                        loading={props.loadingDescriptions[objectKey] === true}
+                                                        onSelect={props.onSelectObject}
+                                                        onOpen={props.onOpenTable}
+                                                        onToggleKey={props.onToggleKey}
+                                                        onMenu={openObjectMenu}
+                                                        query={filterQuery.schema === '' ? normalizedFilter : filterQuery.name}
+                                                      />
+                                                    )
+                                                  })}
+                                                  {pageWindow.hidden > 0 && shownRows === pageWindow.visible ? (
                                                     <button
                                                       type="button"
                                                       className="dshdb-row dshdb-muted"
@@ -948,6 +953,11 @@ export function DataView(props: DataViewProps): ReactElement {
                 </div>
               )
             })}
+            {rowBudget.truncated ? (
+              <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px', fontSize: 11 }}>
+                已显示前 {rowBudget.shown} 行，请缩小筛选范围
+              </div>
+            ) : null}
           </div>
         </Panel>
       )}

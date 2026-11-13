@@ -49,6 +49,104 @@ interface ConnectionLike {
 
 interface ObjectLike {
   name: string
+  kind?: string
+}
+
+export interface TreeMatchCounts {
+  /** Connections worth showing: schema-label hits, or one when objects match. */
+  connections: number
+  /** Objects that survive the filter across every loaded schema list. */
+  objects: number
+}
+
+/**
+ * Everything the filtered tree needs, computed in one pass over the loaded
+ * object lists. `schemaHits` uses the schema half of the query (the whole
+ * term for unqualified filters), matching `filterTargets`; `objectsBySchema`
+ * keeps the surviving objects in list order so the folder buckets can be
+ * rebuilt without scanning `objects` again.
+ */
+export interface TreeMatches<T extends ObjectLike = ObjectLike> {
+  query: FilterQuery
+  /** `${connectionId}|${schema}.${objectName}` for every match. */
+  objectHits: Set<string>
+  /** `${connectionId}:${schema}` for every schema whose name matches. */
+  schemaHits: Set<string>
+  connectionHits: Set<string>
+  objectsBySchema: Record<string, T[]>
+  counts: TreeMatchCounts
+}
+
+/**
+ * Index the matches of one filter term. This replaces the separate summary
+ * pass, the branch-opening pass and the per-schema bucket filtering: each
+ * object name is lowered and compared once, and the result feeds the tree,
+ * the counters and the derived expansion.
+ */
+export function matchTree<T extends ObjectLike>(
+  filter: string | FilterQuery,
+  connections: ConnectionLike[],
+  schemas: Record<string, Array<{ name: string }>>,
+  objects: Record<string, T[]>,
+): TreeMatches<T> {
+  const query = typeof filter === 'string' ? parseFilter(filter) : filter
+  const matches: TreeMatches<T> = {
+    query,
+    objectHits: new Set(),
+    schemaHits: new Set(),
+    connectionHits: new Set(),
+    objectsBySchema: {},
+    counts: { connections: 0, objects: 0 },
+  }
+  if (query.schema === '' && query.name === '') return matches
+
+  const schemaNeedle = query.schema === '' ? query.name : query.schema
+  const schemaHitConnections = new Set<string>()
+  const objectHitConnections = new Set<string>()
+  const connectionIds = new Set(connections.map((connection) => connection.id))
+
+  for (const connection of connections) {
+    for (const schema of schemas[connection.id] ?? []) {
+      if (!schema.name.toLowerCase().includes(schemaNeedle)) continue
+      matches.schemaHits.add(`${connection.id}:${schema.name}`)
+      schemaHitConnections.add(connection.id)
+    }
+    // `库.` (trailing dot) counts the data source once, even when several of
+    // its schemas match, mirroring `matchesFilteredObject(query, schema, '')`.
+    if (query.schema !== '' && query.name === '' && schemaHitConnections.has(connection.id)) {
+      matches.counts.connections += 1
+    }
+  }
+
+  for (const [key, list] of Object.entries(objects)) {
+    const separator = key.indexOf(':')
+    if (separator <= 0) continue
+    const connectionId = key.slice(0, separator)
+    if (!connectionIds.has(connectionId)) continue
+    const schemaName = key.slice(separator + 1)
+    if (query.schema !== '' && !schemaName.toLowerCase().includes(query.schema)) continue
+    const hits: T[] = []
+    for (const object of list) {
+      if (query.name !== '' ? object.name.toLowerCase().includes(query.name) : query.schema !== '') {
+        hits.push(object)
+      }
+    }
+    if (hits.length === 0) continue
+    matches.objectsBySchema[key] = hits
+    objectHitConnections.add(connectionId)
+    matches.counts.objects += hits.length
+    for (const object of hits) {
+      matches.objectHits.add(`${connectionId}|${schemaName}.${object.name}`)
+    }
+  }
+
+  for (const connection of connections) {
+    const nameHit = query.name !== '' && connection.name.toLowerCase().includes(query.name)
+    if (!nameHit && !schemaHitConnections.has(connection.id) && !objectHitConnections.has(connection.id)) continue
+    matches.connectionHits.add(connection.id)
+  }
+  matches.counts.connections = Math.max(matches.counts.connections, matches.counts.objects > 0 ? 1 : 0)
+  return matches
 }
 
 export function filterTargets(

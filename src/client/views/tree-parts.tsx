@@ -128,7 +128,10 @@ export const ObjectRow = memo(function ObjectRow({
   schema,
   object,
   selected,
-  expanded,
+  open: openProp,
+  columnOpen,
+  keyOpen,
+  indexOpen,
   description,
   loading,
   onSelect,
@@ -141,7 +144,10 @@ export const ObjectRow = memo(function ObjectRow({
   schema: string
   object: SchemaObject
   selected: boolean
-  expanded: Record<string, boolean>
+  open: boolean
+  columnOpen: boolean
+  keyOpen: boolean
+  indexOpen: boolean
   description: TableDescription | undefined
   loading: boolean
   onSelect: (connectionId: string, schema: string, object: SchemaObject) => void
@@ -157,7 +163,7 @@ export const ObjectRow = memo(function ObjectRow({
 }): ReactElement {
   const isRelation = object.kind === 'table' || object.kind === 'view'
   const key = `${connectionId}|${schema}.${object.name}`
-  const open = isRelation && expanded[key] === true
+  const open = isRelation && openProp
   const keys = description?.indexes.filter((index) => index.primary === true || index.unique === true) ?? []
   const indexes = description?.indexes ?? []
   const columnFolderKey = `${key}#columns`
@@ -238,7 +244,7 @@ export const ObjectRow = memo(function ObjectRow({
                 icon={<ColumnIcon size={13} />}
                 count={description.columns.length}
                 depth={DEPTH_FOUR}
-                open={expanded[columnFolderKey] === true}
+                open={columnOpen}
                 onToggle={() => onToggleKey(columnFolderKey)}
                 onSelect={() => onSelect(connectionId, schema, object)}
               >
@@ -262,7 +268,7 @@ export const ObjectRow = memo(function ObjectRow({
                   icon={<KeyIcon size={13} />}
                   count={keys.length}
                   depth={DEPTH_FOUR}
-                  open={expanded[keyFolderKey] === true}
+                  open={keyOpen}
                   onToggle={() => onToggleKey(keyFolderKey)}
                   onSelect={() => onSelect(connectionId, schema, object)}
                 >
@@ -286,7 +292,7 @@ export const ObjectRow = memo(function ObjectRow({
                   icon={<IndexIcon size={13} />}
                   count={indexes.length}
                   depth={DEPTH_FOUR}
-                  open={expanded[indexFolderKey] === true}
+                  open={indexOpen}
                   onToggle={() => onToggleKey(indexFolderKey)}
                   onSelect={() => onSelect(connectionId, schema, object)}
                 >
