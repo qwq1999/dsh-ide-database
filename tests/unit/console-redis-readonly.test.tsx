@@ -111,6 +111,7 @@ describe('read-only Redis connection', () => {
   it('marks the read-only source in the picker', async () => {
     render(consoleTab())
     await waitForConsoleSource(mocks)
+    fireEvent.click(screen.getByLabelText('数据源'))
     expect(screen.getByRole('option', { name: /本地 Redis · redis · 只读/ })).toBeTruthy()
   })
 })

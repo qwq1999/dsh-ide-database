@@ -106,9 +106,8 @@ describe('console database target', () => {
     await waitForConsoleSource(mocks)
     expect(source).toBeTruthy()
     const target = await screen.findByLabelText('数据库')
-    await screen.findByRole('option', { name: /crm/ })
-
-    fireEvent.change(target, { target: { value: 'crm' } })
+    fireEvent.click(target)
+    fireEvent.click(await screen.findByRole('option', { name: /crm/ }))
     const editor = document.querySelector('textarea')
     if (editor === null) throw new Error('missing SQL editor')
     fireEvent.change(editor, { target: { value: 'SELECT * FROM customers' } })
@@ -144,7 +143,8 @@ describe('console database target', () => {
     render(<ConsoleTab />)
     const source = await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
-    fireEvent.change(source, { target: { value: 'redis-1' } })
+    fireEvent.click(source)
+    fireEvent.click(await screen.findByRole('option', { name: /redis/i }))
 
     const db = await screen.findByLabelText('Redis 逻辑库', {}, { timeout: 3000 })
     await waitFor(() => expect(mocks.redisScan).toHaveBeenCalled())

@@ -122,7 +122,8 @@ describe('console stale plans', () => {
     fireEvent.click(await screen.findByRole('button', { name: '执行计划' }))
     await waitFor(() => expect(mocks.explain).toHaveBeenCalledTimes(1))
 
-    fireEvent.change(screen.getByLabelText('数据源'), { target: { value: 'mysql-2' } })
+    fireEvent.click(screen.getByLabelText('数据源'))
+    fireEvent.click(await screen.findByRole('option', { name: /备用 MySQL/ }))
     // Switching sources asks for the new schema list; the plan must be dropped by then.
     await waitFor(() => expect(mocks.schemas.mock.calls.length).toBeGreaterThan(1))
 

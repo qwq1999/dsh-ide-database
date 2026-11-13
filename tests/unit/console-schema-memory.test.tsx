@@ -82,15 +82,16 @@ describe('console schema memory', () => {
     render(consoleTab())
     await waitForConsoleSource(mocks)
     const picker = screen.getByLabelText('数据库')
-    await waitFor(() => expect(picker).toHaveProperty('value', 'shop'))
+    await waitFor(() => expect(picker.textContent).toBe('默认（shop）'))
 
-    fireEvent.change(picker, { target: { value: 'other' } })
+    fireEvent.click(picker)
+    fireEvent.click(await screen.findByRole('option', { name: 'other' }))
     // The picker writes through an effect, so wait instead of reading straight away.
     await waitFor(() => expect(window.localStorage.getItem(KEY)).toBe('other'))
 
     cleanup()
     render(consoleTab())
     await waitForConsoleSource(mocks)
-    await waitFor(() => expect(screen.getByLabelText('数据库')).toHaveProperty('value', 'other'))
+    await waitFor(() => expect(screen.getByLabelText('数据库').textContent).toBe('other'))
   })
 })

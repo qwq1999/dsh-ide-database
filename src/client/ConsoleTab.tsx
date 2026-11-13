@@ -62,7 +62,16 @@ import { fitActionCount } from './toolbaroverflow'
 import { MenuGroupList, type MenuGroupSpec } from './menugroups'
 import type { ConsoleActionId } from '../shared/consoleactions'
 import { openTableTab, readConsoleTabParams } from './tab-open'
-import { Banner, Button, ConfirmDialog, EmptyState, Spinner, Tag, type ConfirmRequest } from './ui'
+import {
+  Banner,
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  SearchSelect,
+  Spinner,
+  Tag,
+  type ConfirmRequest,
+} from './ui'
 import { HistoryPanel, KeyGrid, PagerButton, formatCount } from './console-view'
 import { redisValueText } from './redisvalue'
 import { CellValueModal } from './CellValueModal'
@@ -1832,12 +1841,12 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   return (
     <div className="dshdb-qtab" onKeyDown={panelShortcuts}>
       <div className="dshdb-qbar">
-        <select
-          className="dshdb-select dshdb-select-inline dshdb-console-select"
-          aria-label="数据源"
+        <SearchSelect
+          label="数据源"
+          title="控制台执行 SQL 的连接"
+          className="dshdb-console-select"
           value={selectedId}
-          onChange={(event) => {
-            const next = event.target.value
+          onChange={(next) => {
             // Drop whatever the old source is still running; its result is not this source's.
             invalidateRun()
             if (tx === 'open' && selectedId !== '') {
@@ -1847,14 +1856,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             setTxNote('')
             setSelectedId(next)
           }}
-        >
-          {connections.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · {item.dialect}
-              {item.readOnly ? ' · 只读' : ''}
-            </option>
-          ))}
-        </select>
+          options={connections.map((item) => ({
+            value: item.id,
+            label: `${item.name} · ${item.dialect}${item.readOnly ? ' · 只读' : ''}`,
+          }))}
+        />
         {connection === undefined ? null : isRedis ? (
           <select
             className="dshdb-select dshdb-select-inline dshdb-console-select"
@@ -1876,32 +1882,33 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             ))}
           </select>
         ) : (
-          <select
-            className="dshdb-select dshdb-select-inline dshdb-console-select"
-            aria-label="数据库"
+          <SearchSelect
+            label="数据库"
             title="控制台执行的默认数据库/Schema；选了它就不用给表名加库名前缀"
-            value={schema}
-            onChange={(event) => {
+            className="dshdb-console-select"
+            // An empty schema means "whatever the connection logs in as"; show
+            // the default entry as the current choice instead of a blank trigger.
+            value={schema === '' ? defaultSchema : schema}
+            onChange={(next) => {
               invalidateRun()
-              setSchema(event.target.value)
-              writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, event.target.value)
+              setSchema(next)
+              writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, next)
             }}
-          >
-            <option value={defaultSchema}>默认{defaultSchema === '' ? '' : `（${defaultSchema}）`}</option>
-            {schema !== '' && schema !== defaultSchema && !schemas.some((item) => item.name === schema) ? (
-              // A schema carried over from the tree shows before the list arrives,
-              // and keeps the picker honest if the server no longer reports it.
-              <option value={schema}>{schema}</option>
-            ) : null}
-            {schemas
-              .filter((item) => item.name !== defaultSchema)
-              .map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name}
-                  {item.system === true ? '（系统）' : ''}
-                </option>
-              ))}
-          </select>
+            options={[
+              { value: defaultSchema, label: `默认${defaultSchema === '' ? '' : `（${defaultSchema}）`}` },
+              ...(schema !== '' && schema !== defaultSchema && !schemas.some((item) => item.name === schema)
+                ? // A schema carried over from the tree shows before the list arrives,
+                  // and keeps the picker honest if the server no longer reports it.
+                  [{ value: schema, label: schema }]
+                : []),
+              ...schemas
+                .filter((item) => item.name !== defaultSchema)
+                .map((item) => ({
+                  value: item.name,
+                  label: `${item.name}${item.system === true ? '（系统）' : ''}`,
+                })),
+            ]}
+          />
         )}
         <span className="dshdb-qbar-spacer" />
         {running || scanning || commandRunning ? <Spinner /> : null}

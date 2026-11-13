@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import {
 } from 'react'
 import { IconWarningOutlineRegular, Toast as PrimitiveToast } from '@deepseek-ai/dsh-client-ui-primitives'
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
+import { usePopoverDismiss } from './popover'
 
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger'
 export type BannerTone = 'info' | 'success' | 'warn' | 'error'
@@ -94,6 +96,132 @@ export function Select({ options, onValueChange, inline = false, className = '',
         </option>
       ))}
     </select>
+  )
+}
+
+export interface SearchSelectOption {
+  value: string
+  label: string
+}
+
+export interface SearchSelectProps {
+  label: string
+  title?: string
+  value: string
+  options: SearchSelectOption[]
+  onChange: (value: string) => void
+  placeholder?: string
+  className?: string
+}
+
+/**
+ * A select the user can type into. The trigger keeps the look (and the
+ * accessible name) of the panel's native selects, while the menu adds a filter
+ * box - something a native `<select>` cannot offer.
+ */
+export function SearchSelect({
+  label,
+  title,
+  value,
+  options,
+  onChange,
+  placeholder = '',
+  className = '',
+}: SearchSelectProps) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const anchor = useRef<HTMLSpanElement | null>(null)
+  const close = useCallback(() => {
+    setOpen(false)
+    setQuery('')
+  }, [])
+  usePopoverDismiss(open, close, anchor)
+  const current = options.find((option) => option.value === value)
+  const needle = query.trim().toLowerCase()
+  const shown =
+    needle === ''
+      ? options
+      : options.filter(
+          (option) =>
+            option.label.toLowerCase().includes(needle) || option.value.toLowerCase().includes(needle),
+        )
+  const pick = (next: string): void => {
+    close()
+    onChange(next)
+  }
+  return (
+    <span className="dshdb-search-select" ref={anchor}>
+      <button
+        type="button"
+        className={`dshdb-select dshdb-select-inline dshdb-search-trigger ${className}`.trim()}
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={title}
+        onClick={() => {
+          setQuery('')
+          setActive(0)
+          setOpen((value) => !value)
+        }}
+      >
+        <span className="dshdb-search-value">{current?.label ?? placeholder}</span>
+        <ChevronDownIcon size={12} />
+      </button>
+      {open ? (
+        <div className="dshdb-search-pop">
+          <input
+            className="dshdb-input dshdb-search-input"
+            type="search"
+            value={query}
+            placeholder={`查找${label}…`}
+            aria-label={`查找${label}`}
+            autoFocus
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setActive(0)
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                setActive((index) => Math.min(index + 1, shown.length - 1))
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                setActive((index) => Math.max(index - 1, 0))
+              } else if (event.key === 'Enter') {
+                event.preventDefault()
+                const option = shown[active]
+                if (option !== undefined) pick(option.value)
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                close()
+              }
+            }}
+          />
+          <div className="dshdb-search-list" role="listbox" aria-label={label}>
+            {shown.length === 0 ? (
+              <div className="dshdb-picker-empty">没有匹配项</div>
+            ) : (
+              shown.map((option, index) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  className={`dshdb-search-option${index === active ? ' is-active' : ''}`}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => pick(option.value)}
+                >
+                  <span className="dshdb-search-option-label">{option.label}</span>
+                  {option.value === value ? <CheckIcon size={12} /> : null}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </span>
   )
 }
 

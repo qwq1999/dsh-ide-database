@@ -85,7 +85,8 @@ describe('console page fallback after a data source switch', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     await waitFor(() => expect(screen.getByText(/这一页没有数据，已回到第一页/)).toBeTruthy(), { timeout: 10000 })
 
-    fireEvent.change(screen.getByLabelText('数据源'), { target: { value: 'mysql-2' } })
+    fireEvent.click(screen.getByLabelText('数据源'))
+    fireEvent.click(await screen.findByRole('option', { name: /备份 MySQL/ }))
     await waitFor(() => expect(screen.queryByText(/这一页没有数据，已回到第一页/)).toBeNull())
   })
 })

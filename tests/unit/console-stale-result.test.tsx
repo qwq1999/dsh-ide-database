@@ -106,7 +106,8 @@ describe('console source switching', () => {
     const executeButton = screen.getByRole('button', { name: '执行' }) as HTMLButtonElement
     await waitFor(() => expect(executeButton.disabled).toBe(true))
 
-    fireEvent.change(screen.getByLabelText('数据源'), { target: { value: 'mysql-2' } })
+    fireEvent.click(screen.getByLabelText('数据源'))
+    fireEvent.click(await screen.findByRole('option', { name: /CRM/ }))
     await waitFor(() => expect(executeButton.disabled).toBe(false))
     expect(mocks.cancel).toHaveBeenCalledWith(expect.stringMatching(/^console-/))
 

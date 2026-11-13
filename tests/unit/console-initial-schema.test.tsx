@@ -103,8 +103,8 @@ describe('the console opens in the schema picked in the tree', () => {
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
 
-    const picker = (await screen.findByLabelText('数据库')) as HTMLSelectElement
-    await waitFor(() => expect(picker.value).toBe('ihive_sdgy_cmocr_cmocr'))
+    const picker = await screen.findByLabelText('数据库')
+    await waitFor(() => expect(picker.textContent).toBe('ihive_sdgy_cmocr_cmocr'))
     // The pick survives the tab, so the next console opens there too.
     expect(window.localStorage.getItem(SCHEMA_KEY)).toBe('ihive_sdgy_cmocr_cmocr')
 
@@ -123,7 +123,7 @@ describe('the console opens in the schema picked in the tree', () => {
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
 
-    const picker = (await screen.findByLabelText('数据库')) as HTMLSelectElement
-    await waitFor(() => expect(picker.value).toBe('ihive_sdgy_cmocr_cmocr'))
+    const picker = await screen.findByLabelText('数据库')
+    await waitFor(() => expect(picker.textContent).toBe('ihive_sdgy_cmocr_cmocr'))
   })
 })

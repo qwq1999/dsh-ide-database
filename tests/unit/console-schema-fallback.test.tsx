@@ -74,8 +74,8 @@ describe('remembered schema', () => {
     )
     await waitForConsoleSource(mocks)
 
-    const select = (await screen.findByLabelText('数据库')) as HTMLSelectElement
-    await waitFor(() => expect(select.value).toBe('shop'))
+    const picker = await screen.findByLabelText('数据库')
+    await waitFor(() => expect(picker.textContent).toBe('默认（shop）'))
     expect(localStorage.getItem(SCHEMA_KEY)).toBe('shop')
   })
 })
