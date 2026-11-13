@@ -71,12 +71,15 @@ function codeOnly(text: string): string {
 /** A bare single SELECT can be wrapped into a page; anything else runs whole. */
 export function pageable(statement: string): boolean {
   const text = statement.trim().replace(/;+\s*$/u, '')
-  if (!/^select\b/iu.test(text)) return false
-  if (/;\s*select/iu.test(text)) return false
-  if (/\blimit\b/iu.test(text) || /\brownum\b/iu.test(text) || /\bfetch\s+(first|next)\b/iu.test(text)) return false
+  // Judge the code, not the text: a literal `'limit'`, a comment, or a leading
+  // comment must not decide whether the console can page the query.
+  const code = codeOnly(text).trim().toLowerCase()
+  if (!/^select\b/u.test(code)) return false
+  if (code.includes(';')) return false
+  if (/\blimit\b/u.test(code) || /\brownum\b/u.test(code) || /\bfetch\s+(first|next)\b/u.test(code)) return false
   // INTO assigns a variable or writes a file, FOR UPDATE ... takes locks:
   // wrapping those in SELECT * FROM (...) changes what they do.
-  if (NOT_PAGEABLE.test(codeOnly(text).toLowerCase())) return false
+  if (NOT_PAGEABLE.test(code)) return false
   return true
 }
 
