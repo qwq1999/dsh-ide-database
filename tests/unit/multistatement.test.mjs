@@ -21,6 +21,22 @@ describe('splitStatements', () => {
     expect(splitStatements('/* a; b */ select 1; /* c; d */')).toEqual(['/* a; b */ select 1', '/* c; d */'])
   })
 
+  it('keeps PostgreSQL dollar-quoted bodies in one statement', () => {
+    const body = 'create function bump() returns int as $$ begin; return 1; end $$ language plpgsql;'
+    expect(splitStatements(`${body}\nselect bump()`)).toEqual([body.slice(0, -1), 'select bump()'])
+    expect(splitStatements('select $tag$a;b$tag$; select 2')).toEqual(['select $tag$a;b$tag$', 'select 2'])
+    expect(splitStatements('select $outer$ $inner$; $inner$ $outer$; select 2')).toEqual([
+      'select $outer$ $inner$; $inner$ $outer$',
+      'select 2',
+    ])
+  })
+
+  it('leaves an unmatched dollar delimiter and dollar identifiers alone', () => {
+    expect(splitStatements('select 1 as $$; select 2')).toEqual(['select 1 as $$', 'select 2'])
+    expect(splitStatements('select foo$bar$baz; select 2')).toEqual(['select foo$bar$baz', 'select 2'])
+    expect(splitStatements('select $1$; select 2')).toEqual(['select $1$', 'select 2'])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
