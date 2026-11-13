@@ -41,4 +41,14 @@ describe('statementAtCaret', () => {
     const blank = ['   ', String.fromCharCode(9, 32)].join('')
     expect(statementAtCaret(blank, 2)).toEqual({ statement: '', index: -1 })
   })
+
+  it('splits with the connection dialect', () => {
+    const script = 'select 5--3; select 2'
+    expect(statementAtCaret(script, script.indexOf('select 2'), 'mysql')).toEqual({
+      statement: 'select 2',
+      index: 1,
+    })
+    const temp = 'select * from #tmp; select 2'
+    expect(statementAtCaret(temp, temp.indexOf('select 2'), 'mssql')).toEqual({ statement: 'select 2', index: 1 })
+  })
 })

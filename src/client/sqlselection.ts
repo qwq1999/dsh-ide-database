@@ -1,3 +1,4 @@
+import type { SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
 
 /** Pick what "run" should execute: the selection when there is one, else everything. */
@@ -19,8 +20,8 @@ export interface CaretStatement {
  * blanks after it) belongs to that statement; one above the first belongs to the
  * first. Returns an empty statement when the editor has nothing to run.
  */
-export function statementAtCaret(value: string, caret: number): CaretStatement {
-  const parts = splitStatements(value)
+export function statementAtCaret(value: string, caret: number, dialect: SqlDialect = 'generic'): CaretStatement {
+  const parts = splitStatements(value, dialect)
   if (parts.length === 0) return { statement: '', index: -1 }
   let cursor = 0
   let picked: CaretStatement = { statement: parts[0]!, index: 0 }

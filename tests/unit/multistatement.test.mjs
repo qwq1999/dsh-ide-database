@@ -17,8 +17,18 @@ describe('splitStatements', () => {
 
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
-    expect(splitStatements('select 1 # hash; comment\n; select 2')).toEqual(['select 1 # hash; comment', 'select 2'])
+    expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])
     expect(splitStatements('/* a; b */ select 1; /* c; d */')).toEqual(['/* a; b */ select 1', '/* c; d */'])
+  })
+
+  it('applies MySQL comment rules only to MySQL', () => {
+    // Without whitespace after `--`, MySQL reads arithmetic, not a comment.
+    expect(splitStatements('select 5--3; select 2', 'mysql')).toEqual(['select 5--3', 'select 2'])
+    // `#` is a MySQL comment, not a SQL Server temp-table prefix.
+    expect(splitStatements('select * from #tmp; select 2', 'mssql')).toEqual(['select * from #tmp', 'select 2'])
+    expect(splitStatements('select * from #tmp; select 2', 'generic')).toEqual(['select * from #tmp', 'select 2'])
+    // The standard `-- ` comment still works on MySQL.
+    expect(splitStatements('select 1 -- note; x\n; select 2', 'mysql')).toEqual(['select 1 -- note; x', 'select 2'])
   })
 
   it('keeps PostgreSQL dollar-quoted bodies in one statement', () => {

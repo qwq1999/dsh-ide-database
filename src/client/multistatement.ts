@@ -1,3 +1,5 @@
+import type { SqlDialect } from '../shared/types'
+
 /**
  * Split a SQL script into individual statements.
  *
@@ -5,9 +7,11 @@
  * top-level semicolons. Semicolons inside strings, quoted identifiers and
  * comments are part of the statement, not separators. MySQL's `#` comment and
  * `--` line comments are recognised so a trailing comment does not swallow the
- * following statement.
+ * following statement; both rules are dialect-specific: only MySQL treats `#`
+ * as a comment, and only MySQL needs whitespace after `--` (without it the
+ * dashes are arithmetic, as in `select 5--3`).
  */
-export function splitStatements(input: string): string[] {
+export function splitStatements(input: string, dialect: SqlDialect = 'generic'): string[] {
   const statements: string[] = []
   let current = ''
   let index = 0
@@ -37,7 +41,8 @@ export function splitStatements(input: string): string[] {
     }
 
     // Line comments run to the end of the line and may contain semicolons.
-    if (char === '-' && input[index + 1] === '-') {
+    // MySQL only starts one after whitespace, so `5--3` stays arithmetic.
+    if (char === '-' && input[index + 1] === '-' && dashStartsComment(input, index + 2, dialect)) {
       const end = input.indexOf('\n', index)
       const stop = end === -1 ? input.length : end
       current += input.slice(index, stop)
@@ -45,7 +50,7 @@ export function splitStatements(input: string): string[] {
       continue
     }
 
-    if (char === '#') {
+    if (char === '#' && dialect === 'mysql') {
       const end = input.indexOf('\n', index)
       const stop = end === -1 ? input.length : end
       current += input.slice(index, stop)
@@ -101,6 +106,17 @@ export function splitStatements(input: string): string[] {
 
   flush()
   return statements
+}
+
+/**
+ * Whether the `--` at `index - 2` opens a comment. Standard SQL always does;
+ * MySQL additionally requires whitespace (or the end of the text) after it,
+ * which keeps expressions such as `select 5--3` intact.
+ */
+function dashStartsComment(input: string, next: number, dialect: SqlDialect): boolean {
+  if (dialect !== 'mysql') return true
+  const char = input[next]
+  return char === undefined || /\s/u.test(char)
 }
 
 /**

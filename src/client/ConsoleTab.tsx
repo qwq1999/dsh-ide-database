@@ -801,7 +801,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportOpen(false)
     const body = text.trim()
     if (body === '') return
-    const parts = splitStatements(body)
+    const parts = splitStatements(body, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
     if (parts.length === 0) return
     const isWrite = parts.some((part) => looksLikeWrite(part))
     if (isWrite && settings?.confirmDestructive === true) {
@@ -848,7 +848,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
 
   const runCaret = async (): Promise<void> => {
     const area = inputRef.current
-    const found = statementAtCaret(statement, area?.selectionStart ?? caretPos)
+    const found = statementAtCaret(
+      statement,
+      area?.selectionStart ?? caretPos,
+      connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+    )
     if (found.statement === '') return
     setSelectedRun(false)
     await runText(found.statement)
@@ -1143,7 +1147,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     const area = inputRef.current
     const picked =
       area === null || area.selectionStart === area.selectionEnd
-        ? statementAtCaret(statement, area?.selectionStart ?? caretPos).statement
+        ? statementAtCaret(
+            statement,
+            area?.selectionStart ?? caretPos,
+            connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+          ).statement
         : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
     if (picked.trim() === '') return
     void copyText(picked).then((ok) => {
