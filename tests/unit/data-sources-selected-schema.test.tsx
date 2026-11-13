@@ -114,3 +114,45 @@ describe('the tree reports the schema its selection belongs to', () => {
     expect(hook.result.current.selectedSchema).toBe('')
   })
 })
+
+describe('connecting keeps the tree the user opened', () => {
+  it('leaves an expanded schema open and refreshes its objects in place', async () => {
+    mocks.objects
+      .mockResolvedValueOnce({ objects: [{ name: 'cached', kind: 'table' }] })
+      .mockResolvedValueOnce({ objects: [{ name: 'fresh', kind: 'table' }] })
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+
+    await act(async () => {
+      await hook.result.current.toggleSchema('a', 'shop')
+    })
+    expect(hook.result.current.expanded['a:shop']).toBe(true)
+    expect(hook.result.current.objects['a:shop']?.[0]?.name).toBe('cached')
+
+    await act(async () => {
+      await hook.result.current.connect('a')
+    })
+
+    expect(hook.result.current.expanded['a:shop']).toBe(true)
+    expect(hook.result.current.objects['a:shop']?.[0]?.name).toBe('fresh')
+    expect(hook.result.current.loadingObjects['a:shop']).toBeUndefined()
+  })
+
+  it('forgets the expansion of a schema the server no longer lists', async () => {
+    mocks.schemas.mockResolvedValue({ schemas: [{ name: 'audit' }] })
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+
+    await act(async () => {
+      await hook.result.current.toggleSchema('a', 'shop')
+    })
+    expect(hook.result.current.expanded['a:shop']).toBe(true)
+
+    await act(async () => {
+      await hook.result.current.connect('a')
+    })
+
+    expect(hook.result.current.expanded['a:shop']).toBeUndefined()
+    expect(hook.result.current.expanded['a']).toBeUndefined()
+  })
+})

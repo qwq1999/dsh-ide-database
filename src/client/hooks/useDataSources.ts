@@ -350,6 +350,8 @@ export function useDataSources(notify: Notify): DataSources {
   schemasRef.current = schemas
   const visibleSchemasRef = useRef(visibleSchemas)
   visibleSchemasRef.current = visibleSchemas
+  const expandedRef = useRef(expanded)
+  expandedRef.current = expanded
 
   /**
    * Ask the host to keep table descriptions warm for the schemas that are
@@ -456,10 +458,34 @@ export function useDataSources(notify: Notify): DataSources {
           setVisibleSchemas((previous) => ({ ...previous, [connectionId]: selection ?? null }))
         }
         schedulePrefetch(connectionId, false, selection)
+        // Connecting (or refreshing) must not fold the tree back up: keep the
+        // expansion of every schema that still exists and re-read the object
+        // lists of the schemas that are open right now, in place.
+        const listed = new Set(result.schemas.map((schema) => schema.name))
+        const kept: Record<string, boolean> = {}
+        const open: string[] = []
+        for (const [key, value] of Object.entries(expandedRef.current)) {
+          if (!key.startsWith(`${connectionId}:`)) {
+            kept[key] = value
+            continue
+          }
+          const rest = key.slice(connectionId.length + 1)
+          const hash = rest.indexOf('#')
+          const schema = hash === -1 ? rest : rest.slice(0, hash)
+          if (!listed.has(schema)) continue
+          kept[key] = value
+          if (hash === -1 && value === true && schema !== 'redis') open.push(schema)
+        }
+        setExpanded(kept)
+        // Cached lists of collapsed schemas go away so expanding them later
+        // reads fresh data; the open ones keep their rows until the refresh
+        // below replaces them, so nothing flashes empty.
         setObjects((previous) => {
           const next = { ...previous }
           for (const key of Object.keys(next)) {
-            if (key.startsWith(`${connectionId}:`)) delete next[key]
+            if (key.startsWith(`${connectionId}:`) && !open.includes(key.slice(connectionId.length + 1))) {
+              delete next[key]
+            }
           }
           return next
         })
@@ -470,13 +496,35 @@ export function useDataSources(notify: Notify): DataSources {
           }
           return next
         })
-        setExpanded((previous) => {
-          const next = { ...previous }
-          for (const key of Object.keys(next)) {
-            if (key.startsWith(`${connectionId}:`)) delete next[key]
-          }
-          return next
-        })
+        if (open.length > 0) {
+          setLoadingObjects((previous) => {
+            const next = { ...previous }
+            for (const schema of open) next[`${connectionId}:${schema}`] = true
+            return next
+          })
+          const refreshed = await Promise.all(
+            open.map(async (schema) => {
+              try {
+                return [schema, await api.objects(connectionId, schema)] as const
+              } catch {
+                // Keep the list we already had; the next expand retries.
+                return undefined
+              }
+            }),
+          )
+          setObjects((previous) => {
+            const next = { ...previous }
+            for (const entry of refreshed) {
+              if (entry !== undefined) next[`${connectionId}:${entry[0]}`] = entry[1].objects
+            }
+            return next
+          })
+          setLoadingObjects((previous) => {
+            const next = { ...previous }
+            for (const schema of open) delete next[`${connectionId}:${schema}`]
+            return next
+          })
+        }
       } catch (error) {
         notify(`加载 schema 失败：${errorText(error)}`, 'error')
       } finally {
