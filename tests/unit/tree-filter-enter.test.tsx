@@ -90,9 +90,11 @@ function Harness({ calls }: { calls: { load: number } }): JSX.Element {
   return <DataView {...props} />
 }
 
-/** The box is collapsed behind a funnel button until Ctrl+F or a click. */
+/** The box is not rendered at all until Ctrl+F asks for it. */
 function openFilter(): HTMLInputElement {
-  if (screen.queryByLabelText('筛选库表') === null) fireEvent.click(screen.getByLabelText('筛选'))
+  if (screen.queryByLabelText('筛选库表') === null) {
+    fireEvent.keyDown(screen.getByRole('tree', { name: '数据源' }), { key: 'f', ctrlKey: true })
+  }
   return screen.getByLabelText('筛选库表') as HTMLInputElement
 }
 
@@ -129,11 +131,9 @@ describe('tree filter keys', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('筛选库表'))
   })
 
-  it('reveals the box from the funnel button and hides it again when emptied', async () => {
+  it('hides the box again when it is emptied and left', async () => {
     render(<Harness calls={{ load: 0 }} />)
-    expect(screen.queryByLabelText('筛选库表')).toBeNull()
-    fireEvent.click(screen.getByLabelText('筛选'))
-    const box = screen.getByLabelText('筛选库表')
+    const box = openFilter()
     await act(async () => {})
     expect(document.activeElement).toBe(box)
     fireEvent.blur(box)
@@ -169,7 +169,6 @@ describe('tree filter keys', () => {
     // Escape clears and collapses the box in one step...
     expect(screen.queryByLabelText('筛选库表')).toBeNull()
     // ...so it reopens empty instead of remembering the old term.
-    fireEvent.click(screen.getByLabelText('筛选'))
-    expect((screen.getByLabelText('筛选库表') as HTMLInputElement).value).toBe('')
+    expect(openFilter().value).toBe('')
   })
 })

@@ -545,17 +545,7 @@ export function DataView(props: DataViewProps): ReactElement {
               </button>
             ) : null}
           </div>
-        ) : (
-          <button
-            type="button"
-            className="dshdb-row-action dshdb-filter-toggle"
-            title={`筛选${treeFilterLabel}（Ctrl+F）`}
-            aria-label="筛选"
-            onClick={focusTreeFilter}
-          >
-            <FilterIcon size={13} />
-          </button>
-        )}
+        ) : null}
         <span className="dshdb-toolbar-spacer" />
         {props.detailLoading || props.redisDetailLoading ? (
           <span className="dshdb-muted dshdb-inline">
