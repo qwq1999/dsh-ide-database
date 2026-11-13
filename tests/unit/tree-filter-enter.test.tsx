@@ -141,6 +141,16 @@ describe('tree filter keys', () => {
     expect(screen.queryByLabelText('筛选库表')).toBeNull()
   })
 
+  it('closes the floating box on Escape from anywhere', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    const box = openFilter()
+    expect(screen.getByRole('search').contains(box)).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await act(async () => {})
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
+    expect(screen.queryByRole('search')).toBeNull()
+  })
+
   it('re-reads the tree on Ctrl+R instead of reloading the app', () => {
     const calls = { load: 0 }
     render(<Harness calls={calls} />)

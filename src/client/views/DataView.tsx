@@ -53,6 +53,7 @@ import {
   ViewIcon,
 } from '../icons'
 import { Button, EmptyState, Panel, Spinner, StateDot, Tag, TextInput } from '../ui'
+import { usePopoverDismiss } from '../popover'
 
 export interface DataViewProps {
   connections: ClientConnection[]
@@ -222,6 +223,18 @@ export function DataView(props: DataViewProps): ReactElement {
     setFilterOpen(true)
     setFilterFocus((count) => count + 1)
   }, [])
+
+  const filterFloatRef = useRef<HTMLDivElement | null>(null)
+
+  /** Put the floating filter away and stop it from filtering behind the user's back. */
+  const closeTreeFilter = useCallback((): void => {
+    setFilterOpen(false)
+    setFilter('')
+    setSettledFilter('')
+  }, [])
+
+  // Escape (from anywhere) or a press outside the floating box closes it.
+  usePopoverDismiss(filterOpen, closeTreeFilter, filterFloatRef)
 
   // Focus after the box has been committed to the DOM, so Ctrl+F works from
   // the first press even though the input did not exist a moment earlier. The
@@ -497,67 +510,57 @@ export function DataView(props: DataViewProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objects, normalizedFilter])
 
-  // The toolbar only carries the filter and the detail spinner; with neither
-  // showing it would just be a blank strip above the tree.
+  // The detail spinner keeps a thin strip at the top; the filter itself is a
+  // floating box pinned to the top-right corner of the tree, opened by Ctrl+F.
   const loadingDetail = props.detailLoading || props.redisDetailLoading
   const saysFilter = filterOpen || filter !== ''
 
   return (
     <div className="dshdb-view" style={{ gap: 8 }}>
-      {saysFilter || loadingDetail ? (
+      {saysFilter ? (
+        <div className="dshdb-tree-filter-float" ref={filterFloatRef} role="search">
+          <FilterIcon size={13} />
+          <TextInput
+            ref={filterRef}
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                // Skip the pause that normally follows typing: Enter means "now".
+                event.preventDefault()
+                setSettledFilter(filter)
+              }
+            }}
+            onBlur={(event) => {
+              if (event.currentTarget.value === '') setFilterOpen(false)
+            }}
+            placeholder={`筛选${treeFilterLabel}…`}
+            aria-label={`筛选${treeFilterLabel}`}
+            autoFocus
+          />
+          {filter !== '' ? (
+            <button
+              type="button"
+              className="dshdb-row-action"
+              title="清空筛选"
+              aria-label="清空筛选"
+              onClick={() => {
+                setFilter('')
+                setSettledFilter('')
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loadingDetail ? (
         <div className="dshdb-toolbar">
-          {saysFilter ? (
-            <div className="dshdb-tree-filter">
-              <FilterIcon size={13} />
-              <TextInput
-                ref={filterRef}
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    // Skip the pause that normally follows typing: Enter means "now".
-                    event.preventDefault()
-                    setSettledFilter(filter)
-                    return
-                  }
-                  if (event.key === 'Escape') {
-                    event.stopPropagation()
-                    setFilter('')
-                    setSettledFilter('')
-                    setFilterOpen(false)
-                  }
-                }}
-                // Clicking anywhere else with nothing typed in it puts the box
-                // away again, so the tree gets the full width back.
-                onBlur={(event) => {
-                  if (event.currentTarget.value === '') setFilterOpen(false)
-                }}
-                placeholder={`筛选${treeFilterLabel}…`}
-                aria-label={`筛选${treeFilterLabel}`}
-                style={{ width: 132 }}
-              />
-              {filter !== '' ? (
-                <button
-                  type="button"
-                  className="dshdb-row-action"
-                  title="清空筛选"
-                  aria-label="清空筛选"
-                  onClick={() => {
-                    setFilter('')
-                    setSettledFilter('')
-                  }}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          ) : null}
           <span className="dshdb-toolbar-spacer" />
-          {loadingDetail ? (
-            <span className="dshdb-muted dshdb-inline">
-              <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
-            </span>
-          ) : null}
+          <span className="dshdb-muted dshdb-inline">
+            <Spinner /> {props.redisDetailLoading ? '读取键值' : '读取结构'}
+          </span>
         </div>
       ) : null}
 
