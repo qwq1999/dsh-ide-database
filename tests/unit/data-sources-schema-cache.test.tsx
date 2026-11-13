@@ -139,4 +139,39 @@ describe('data sources cache only visible schemas', () => {
 
     expect(mocks.prefetchConnection).toHaveBeenCalledWith('a', { refresh: true, schemas: ['shop'] })
   })
+
+  it('keeps cached objects across a plain connect and prunes them on refresh', async () => {
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+    await act(async () => {
+      await hook.result.current.connect('a')
+    })
+
+    // Expanding a schema reads its list once.
+    await act(async () => {
+      await hook.result.current.toggleSchema('a', 'shop')
+    })
+    await waitFor(() => expect(hook.result.current.objects['a:shop']).toEqual([]))
+
+    // Collapsing it keeps the rows, so a filter can still search them.
+    await act(async () => {
+      await hook.result.current.toggleSchema('a', 'shop')
+    })
+    await waitFor(() => expect(hook.result.current.expanded['a:shop']).toBe(false))
+    expect(hook.result.current.objects['a:shop']).toEqual([])
+
+    mocks.objects.mockClear()
+    await act(async () => {
+      await hook.result.current.connect('a')
+    })
+    // No branch is open, so a plain connect must not re-read or drop anything.
+    expect(mocks.objects).not.toHaveBeenCalled()
+    expect(hook.result.current.objects['a:shop']).toEqual([])
+
+    // An explicit refresh is the only thing that drops closed cached lists.
+    await act(async () => {
+      await hook.result.current.refreshSelected()
+    })
+    await waitFor(() => expect(hook.result.current.objects['a:shop']).toBeUndefined())
+  })
 })

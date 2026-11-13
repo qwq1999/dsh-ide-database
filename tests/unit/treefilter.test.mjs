@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterTargets, matchesFilteredObject, parseFilter } from '../../src/client/treefilter.ts'
+import { filterTargets, matchTree, matchesFilteredObject, parseFilter } from '../../src/client/treefilter.ts'
 
 const connections = [
   { id: 'demo-mysql', name: '演示 MySQL' },
@@ -74,5 +74,53 @@ describe('qualified filters', () => {
       connections: ['demo-mysql'],
       schemas: ['demo-mysql:crm'],
     })
+  })
+})
+
+describe('matchTree', () => {
+  it('collects every hit key and count in one pass', () => {
+    const result = matchTree('ord', connections, schemas, objects)
+    expect(result.query).toEqual({ schema: '', name: 'ord' })
+    expect([...result.objectHits]).toEqual(['demo-mysql|shop.orders'])
+    expect([...result.schemaHits]).toEqual([])
+    expect([...result.connectionHits]).toEqual(['demo-mysql'])
+    expect(Object.keys(result.objectsBySchema)).toEqual(['demo-mysql:shop'])
+    expect(result.objectsBySchema['demo-mysql:shop'].map((item) => item.name)).toEqual(['orders'])
+    expect(result.counts).toEqual({ connections: 1, objects: 1 })
+  })
+
+  it('matches qualified filters case-insensitively without touching other schemas', () => {
+    const result = matchTree('SHOP.ORD', connections, schemas, objects)
+    expect([...result.objectHits]).toEqual(['demo-mysql|shop.orders'])
+    expect([...result.schemaHits]).toEqual(['demo-mysql:shop'])
+    expect(result.counts).toEqual({ connections: 1, objects: 1 })
+    expect(matchTree('crm.', connections, schemas, objects).counts).toEqual({ connections: 1, objects: 1 })
+    expect([...matchTree('crm.', connections, schemas, objects).objectHits]).toEqual([
+      'demo-mysql|crm.companies',
+    ])
+  })
+
+  it('treats an empty or blank filter as no match', () => {
+    for (const filter of ['', '   ', ' . ']) {
+      const result = matchTree(filter, connections, schemas, objects)
+      expect(result.objectHits.size).toBe(0)
+      expect(result.schemaHits.size).toBe(0)
+      expect(result.connectionHits.size).toBe(0)
+      expect(result.counts).toEqual({ connections: 0, objects: 0 })
+    }
+  })
+
+  it('records a schema hit for the object half of a qualified filter', () => {
+    const result = matchTree('shop.orders', connections, schemas, objects)
+    expect([...result.schemaHits]).toEqual(['demo-mysql:shop'])
+    expect([...result.connectionHits]).toEqual(['demo-mysql'])
+    expect(result.counts).toEqual({ connections: 1, objects: 1 })
+  })
+
+  it('counts a data source once when several of its schemas match', () => {
+    const manySchemas = { 'demo-mysql': [{ name: 'shop' }, { name: 'shop_archive' }] }
+    const result = matchTree('shop.', connections, manySchemas, {})
+    expect([...result.schemaHits]).toEqual(['demo-mysql:shop', 'demo-mysql:shop_archive'])
+    expect(result.counts).toEqual({ connections: 1, objects: 0 })
   })
 })

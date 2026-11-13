@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
+import { useCallback, useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DataView, type DataViewProps } from '../../src/client/views/DataView'
-import type { ClientConnection, SchemaObject } from '../../src/shared/types'
+import type { ClientConnection, SchemaObject, TableDescription } from '../../src/shared/types'
 
 const format = vi.hoisted(() => ({ calls: 0 }))
 vi.mock('../../src/client/format', async (importOriginal) => {
@@ -109,5 +110,50 @@ describe('tree rows', () => {
     // Selecting t02 repaints the old and the new selected row only; without
     // memo every one of the 30 rows would be formatted again.
     expect(repainted).toBeLessThan(6)
+  })
+
+  it('leaves the other rows alone when one row opens a detail folder', () => {
+    const description: TableDescription = {
+      schema: 'shop',
+      table: 't02',
+      kind: 'table',
+      columns: [{ name: 'id', typeName: 'int', primaryKey: true }],
+      indexes: [],
+    }
+
+    function Harness(): JSX.Element {
+      const [expanded, setExpanded] = useState<Record<string, boolean>>({
+        c1: true,
+        'c1:shop': true,
+        'c1:shop#table': true,
+        'c1|shop.t02': true,
+      })
+      // Keep the static half of the props stable: rebuilding `connections`
+      // would invalidate the match index and repaint every row for real.
+      const base = useState(() => props())[0]
+      const toggleKey = useCallback((key: string) => {
+        setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
+      }, [])
+      return (
+        <DataView
+          {...base}
+          expanded={expanded}
+          descriptions={{ 'c1|shop.t02': description }}
+          onToggleKey={toggleKey}
+        />
+      )
+    }
+
+    render(<Harness />)
+    const before = format.calls
+    expect(before).toBe(30)
+
+    fireEvent.click(screen.getByTitle('展开列'))
+
+    // The folder really opened...
+    expect(screen.getByText('id')).toBeTruthy()
+    // ...and only t02 itself was formatted again. The old shared `expanded`
+    // record would repaint all 30 rows here.
+    expect(format.calls - before).toBeLessThan(3)
   })
 })

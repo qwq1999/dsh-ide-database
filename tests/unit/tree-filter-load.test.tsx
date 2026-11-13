@@ -35,16 +35,20 @@ function Harness({
   objects,
   loadingObjects,
   calls,
+  initialExpanded,
 }: {
   objects: DataViewProps['objects']
   loadingObjects: Record<string, boolean>
-  calls: { load: number }
+  calls: { load: number; toggle: number }
+  initialExpanded?: Record<string, boolean>
 }): JSX.Element {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    c1: true,
-    'c1:crm': true,
-    'c1:crm#table': true,
-  })
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(
+    initialExpanded ?? {
+      c1: true,
+      'c1:crm': true,
+      'c1:crm#table': true,
+    },
+  )
   const toggle = (key: string): void => setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   const props: DataViewProps = {
     connections: [connection],
@@ -75,11 +79,17 @@ function Harness({
     onSelectConnection: nothing,
     onToggleConnection: (id) => toggle(id),
     onConnect: nothing,
-    onToggleSchema: (connectionId, schema) => toggle(`${connectionId}:${schema}`),
+    onToggleSchema: (connectionId, schema) => {
+      calls.toggle += 1
+      toggle(`${connectionId}:${schema}`)
+    },
     onLoadObjects: () => {
       calls.load += 1
     },
-    onToggleFolder: (connectionId, schema, folder) => toggle(`${connectionId}:${schema}#${folder}`),
+    onToggleFolder: (connectionId, schema, folder) => {
+      calls.toggle += 1
+      toggle(`${connectionId}:${schema}#${folder}`)
+    },
     onToggleKey: (key) => toggle(key),
     onSelectObject: nothing,
     onSelectSchema: nothing,
@@ -112,7 +122,7 @@ afterEach(() => {
 
 describe('筛选时加载对象列表', () => {
   it('does not reload a schema whose objects are already in memory', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
     typeFilter('cust')
@@ -120,14 +130,14 @@ describe('筛选时加载对象列表', () => {
   })
 
   it('loads an untouched schema once per filter term', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{}} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
     await waitFor(() => expect(calls.load).toBe(1))
   })
 
   it('waits for a pause before matching a burst of keystrokes', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{}} loadingObjects={{}} calls={calls} />)
     typeFilter('c')
     typeFilter('cu')
@@ -137,23 +147,50 @@ describe('筛选时加载对象列表', () => {
   })
 
   it('says nothing matched instead of leaving an empty tree', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
     typeFilter('zzz')
     await waitFor(() => expect(screen.getByText('没有匹配的对象')).toBeTruthy())
   })
 
   it('reports how many objects matched', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
     typeFilter('cus')
     await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
   })
 
   it('does not ask again while the same list is still loading', async () => {
-    const calls = { load: 0 }
+    const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)
     typeFilter('cus')
     await waitFor(() => expect(calls.load).toBe(0))
+  })
+
+  it('reveals matches in a collapsed schema without expanding it in state', async () => {
+    const calls = { load: 0, toggle: 0 }
+    render(
+      <Harness
+        objects={{ 'c1:crm': [customers] }}
+        loadingObjects={{}}
+        calls={calls}
+        initialExpanded={{ c1: true }}
+      />,
+    )
+    const schemaRow = (): HTMLElement => screen.getByRole('treeitem', { name: /crm/ })
+    expect(schemaRow().getAttribute('aria-expanded')).toBe('false')
+
+    typeFilter('cust')
+
+    await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
+    // The hit shows even though the schema was never toggled open, and no
+    // metadata request was needed because the list was already in memory.
+    expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
+    expect(schemaRow().getAttribute('aria-expanded')).toBe('true')
+    expect(calls.load).toBe(0)
+    expect(calls.toggle).toBe(0)
+
+    typeFilter('')
+    await waitFor(() => expect(schemaRow().getAttribute('aria-expanded')).toBe('false'))
   })
 })
