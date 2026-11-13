@@ -48,6 +48,7 @@ DeepSeek Harness（DSH）的 JetBrains Database 风格数据源插件：右侧�
 - **DDL**：详情面板右上角「DDL」按钮展示建表/建视图语句；MySQL 走 `SHOW CREATE`，Oracle/达梦走 `DBMS_METADATA.GET_DDL`，PostgreSQL 的视图走 `pg_get_viewdef`（表没有内置的取 DDL 函数，按结构重建并在弹窗里说明）、SQL Server 没有内置取 DDL 的方式同样按结构重建，服务器取不到时按缓存的列与索引重建，并在弹窗底部注明来源。函数、存储过程、触发器、序列没有列结构，选中后直接在详情面板展示服务器返回的定义（MySQL `SHOW CREATE FUNCTION/PROCEDURE/TRIGGER/SEQUENCE`，Oracle/达梦 `DBMS_METADATA.GET_DDL`，PostgreSQL 的视图走 `pg_get_viewdef`、触发器走 `pg_get_triggerdef`、序列由 `pg_sequences` 拼出 `CREATE SEQUENCE`，SQL Server 的例程与触发器读 `OBJECT_DEFINITION`、序列由 `sys.sequences` 拼出，SQLite 的视图与触发器来自 `sqlite_master`）；取不到时提示去 SQL 控制台查看，不会拼假 DDL。
 - **Agent 工具**：16 个 `db_*` 工具，Agent 可新增 / 编辑 / 删除 / 刷新数据源，列出连接、测试连通性、浏览 Schema、查看表结构、执行 SQL/EXPLAIN、读取 Redis 键与执行命令、下载缺失驱动。写操作默认关闭，需显式开启 `allowAgentWrites`；删除数据源默认移入回收站（可恢复），传 `permanent: true` 才彻底删除密码与结构缓存，并且必须显式 `confirm: true`。
 - **密码不进配置文件**：密码单独存放在插件数据目录的 `secrets.json`（base64 + 0600 权限，Windows 下继承 profile ACL），API 与日志只返回 `hasPassword` 和秘密名。
+- **只读标记只在新增时设置**：「新增连接」里可以打开「只读连接」，之后面板与 Agent 都拒绝写操作；该标记创建后不可修改（编辑弹窗里的开关置灰，`db_update_connection` 传不同值会直接报错），需要变更时请新建一个连接。
 - **遵循 DSH 官方视觉规范**：只消费 `--dsw-alias-*` / `--dsw-radius-*` 等语义 token，自动适配深色主题；布局使用标准面板、标签、开关与模态组件。
 
 ### 键盘操作
@@ -186,7 +187,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | --- | --- |
 | `db_list_connections` | 列出已配置连接、设置与驱动状态；Agent 可用连接 id 或名称引用 |
 | `db_create_connection` | 新增数据源（密码写入 secret store）；默认值来自预设，可不带 host/port |
-| `db_update_connection` | 编辑已保存的数据源；只改传入的字段，`clearPassword` 清空密码 |
+| `db_update_connection` | 编辑已保存的数据源；只改传入的字段，`clearPassword` 清空密码；只读标记在新增时确定，这里传不同值会被拒绝 |
 | `db_delete_connection` | 删除数据源并断开连接；默认移入回收站，`permanent: true` 彻底删除并清理密码与结构缓存；必须显式 `confirm: true` |
 | `db_refresh_connection` | 重连并重新拉取 Schema 到结构缓存（Redis 为重连） |
 | `db_test_connection` | 测试保存的连接或临时草稿（不落盘） |
@@ -235,7 +236,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 - 密码只存储在插件私有文件中，HTTP API 永不回传；同名环境变量优先于存储值（变量名见 `secrets.json` 的键，形如 `DSH_IDE_DB_<连接ID>`）。
 - 本地 HTTP 接口只接受 POST，并校验 DSH 的会话 cookie / Origin / `sec-fetch-site`，跨站请求会被拒绝。
 - 所有 SQL 经 JDBC 桥接进程执行，驱动以独立的 `URLClassLoader` 加载；桥接进程与 Node 宿主通过 JSON-lines 通信，取消查询使用 `Statement.cancel()`。
-- Agent 写操作默认关闭；建议生产库使用只读账号或开启「只读连接」。
+- Agent 写操作默认关闭；建议生产库使用只读账号或开启「只读连接」（新增连接时开启，创建后不可关闭）。
 
 ## 限制
 

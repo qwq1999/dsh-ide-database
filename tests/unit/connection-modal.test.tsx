@@ -29,11 +29,11 @@ const existing = {
   createdAt: '2026-01-01T00:00:00.000Z',
 }
 
-function renderModal(): void {
+function renderModal(editing: typeof existing | null = existing): void {
   render(
     <ConnectionModal
       open
-      editing={existing}
+      editing={editing}
       drivers={[]}
       onClose={() => undefined}
       onSaved={() => undefined}
@@ -93,5 +93,51 @@ describe('connection modal editing', () => {
     const draft = mocks.saveConnection.mock.calls[0][0]
     expect(draft.clearPassword).toBe(true)
     expect(draft.password).toBeUndefined()
+  })
+})
+
+describe('read-only flag', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.saveConnection.mockResolvedValue({ connection: existing })
+  })
+
+  it('locks the switch when editing and saves the stored value', async () => {
+    renderModal({ ...existing, readOnly: true })
+
+    const toggle = screen.getByRole('switch', { name: /只读连接/ }) as HTMLButtonElement
+    expect(toggle.disabled).toBe(true)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(mocks.saveConnection).toHaveBeenCalledTimes(1))
+    expect(mocks.saveConnection.mock.calls[0][0].readOnly).toBe(true)
+  })
+
+  it('lets a new connection be created read-only', async () => {
+    renderModal(null)
+
+    const toggle = screen.getByRole('switch', { name: /只读连接/ }) as HTMLButtonElement
+    expect(toggle.disabled).toBe(false)
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '只读库' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(mocks.saveConnection).toHaveBeenCalledTimes(1))
+    const draft = mocks.saveConnection.mock.calls[0][0]
+    expect(draft.readOnly).toBe(true)
+    expect(draft.id).toBeUndefined()
   })
 })

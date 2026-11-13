@@ -209,7 +209,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           password: { type: 'string', description: 'Password; stored in the secret store, never echo it back to the user.' },
           database: { type: 'string', description: 'Default database/schema; may be empty.' },
           redisDb: { type: 'number', description: 'Redis logical database index (default 0).' },
-          readOnly: { type: 'boolean', description: 'Mark the connection read-only (default false).' },
+          readOnly: {
+            type: 'boolean',
+            description: 'Mark the connection read-only (default false). Fixed when the connection is created; it cannot be changed later.',
+          },
           params: { type: 'object', additionalProperties: true, description: 'Extra JDBC parameters.' },
           customDriverId: { type: 'string', description: 'Custom driver id to use when driver=custom.' },
         },
@@ -247,7 +250,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
     tool({
       name: 'db_update_connection',
       description:
-        'Update a saved connection by id or name. Only the given fields change; pass password to replace the stored secret, or clearPassword=true to remove it. The cached session is disconnected so the next call reconnects with the new settings.',
+        'Update a saved connection by id or name. Only the given fields change; pass password to replace the stored secret, or clearPassword=true to remove it. The cached session is disconnected so the next call reconnects with the new settings. The read-only flag is fixed when the connection is created and cannot be changed here.',
       parameters: {
         type: 'object',
         properties: {
@@ -260,7 +263,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           clearPassword: { type: 'boolean', description: 'Remove the stored password.' },
           database: { type: 'string', description: 'New default database/schema.' },
           redisDb: { type: 'number', description: 'New Redis logical database index.' },
-          readOnly: { type: 'boolean', description: 'New read-only flag.' },
+          readOnly: {
+            type: 'boolean',
+            description: 'Read-only flag. It is fixed when the connection was created; passing a different value is rejected.',
+          },
           params: { type: 'object', additionalProperties: true, description: 'Replacement JDBC parameters.' },
         },
         required: ['connection'],
@@ -269,6 +275,10 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
       execute: async (args) => {
         try {
           const existing = resolveConnection(deps.config, text(args, 'connection'))
+          // The read-only flag is decided at creation time; nothing may flip it later.
+          if (args.readOnly !== undefined && (args.readOnly === true) !== existing.readOnly) {
+            throw new DbError('invalid', '只读属性只在新增连接时设置，创建后不能修改；如需变更请新建一个连接')
+          }
           const draft: Record<string, unknown> = {
             id: existing.id,
             name: maybeText(args, 'name') ?? existing.name,
@@ -278,7 +288,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
             user: maybeText(args, 'user') ?? existing.user,
             database: maybeText(args, 'database') ?? existing.database,
             redisDb: args.redisDb === undefined ? existing.redisDb : integer(args, 'redisDb', existing.redisDb, 0, 255),
-            readOnly: args.readOnly === undefined ? existing.readOnly : args.readOnly === true,
+            readOnly: existing.readOnly,
             params: objectArg(args, 'params') ?? existing.params,
           }
           if (existing.customDriverId !== undefined) draft.customDriverId = existing.customDriverId

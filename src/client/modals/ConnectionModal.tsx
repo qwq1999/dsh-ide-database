@@ -140,7 +140,9 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     database: isRedis ? '' : database.trim(),
     redisDb: Number.parseInt(redisDb, 10) || 0,
     params: isRedis ? {} : parseParamsText(paramsText),
-    readOnly,
+    // The read-only flag is chosen once, when the connection is created; an edit
+    // always keeps the stored value (the switch is disabled for existing rows).
+    readOnly: editing ? editing.readOnly : readOnly,
   })
 
   const validate = (draft: ConnectionDraft): string => {
@@ -305,7 +307,16 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
             </Field>
           ) : null}
           <div className="dshdb-span-2 dshdb-list">
-            <Switch checked={readOnly} onChange={setReadOnly} label="只读连接（面板与 Agent 均拒绝写操作）" />
+            <Switch
+              checked={readOnly}
+              onChange={setReadOnly}
+              disabled={editing != null}
+              label={
+                editing == null
+                  ? '只读连接（面板与 Agent 均拒绝写操作）'
+                  : '只读连接（仅新建时设置，创建后不能修改；需变更请新建连接）'
+              }
+            />
           </div>
         </div>
 

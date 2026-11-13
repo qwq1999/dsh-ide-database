@@ -66,6 +66,27 @@ describe('ConfigStore', () => {
     expect(secrets.has(saved.secretName)).toBe(false)
   })
 
+  it('fixes the read-only flag when the connection is created', () => {
+    const { config } = store()
+    const readOnly = config.saveConnection({
+      name: 'Report', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'ro', database: 'app', readOnly: true,
+    })
+    expect(readOnly.readOnly).toBe(true)
+
+    const renamed = config.saveConnection({
+      id: readOnly.id, name: 'Report 2', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'ro', database: 'app', readOnly: false,
+    })
+    expect(renamed.name).toBe('Report 2')
+    expect(renamed.readOnly).toBe(true)
+
+    const writable = config.saveConnection({ name: 'Writable', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'rw', database: 'app' })
+    expect(writable.readOnly).toBe(false)
+    const later = config.saveConnection({
+      id: writable.id, name: 'Writable', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'rw', database: 'app', readOnly: true,
+    })
+    expect(later.readOnly).toBe(false)
+  })
+
   it('rejects invalid ports and oversized row limits', () => {
     const { config } = store()
     expect(() =>

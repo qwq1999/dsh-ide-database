@@ -215,6 +215,24 @@ describe('createDatabaseTools', () => {
     expect(draft.password).toBeUndefined()
   })
 
+  it('can create a read-only connection but never flips the flag later', async () => {
+    const { byName, saveConnection } = harness()
+    await byName('db_create_connection').execute({
+      name: 'Report', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'ro', readOnly: true,
+    })
+    expect(saveConnection.mock.calls[0][0].readOnly).toBe(true)
+
+    saveConnection.mockClear()
+    await expect(
+      byName('db_update_connection').execute({ connection: 'c1', readOnly: true }),
+    ).rejects.toThrow(/只读属性只在新增连接时设置/)
+    expect(saveConnection).not.toHaveBeenCalled()
+
+    // Repeating the current value is accepted, so a full draft can be resent.
+    await byName('db_update_connection').execute({ connection: 'c1', readOnly: false, port: 3307 })
+    expect(saveConnection.mock.calls[0][0]).toMatchObject({ id: 'c1', port: 3307, readOnly: false })
+  })
+
   it('asks for confirmation before moving a connection to the recycle bin', async () => {
     const { byName, trashConnection, purgeConnection, deps } = harness()
     await expect(byName('db_delete_connection').execute({ connection: 'c1' })).rejects.toThrow(/confirm: true/)
