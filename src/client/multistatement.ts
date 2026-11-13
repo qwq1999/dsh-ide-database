@@ -9,7 +9,10 @@ import type { SqlDialect } from '../shared/types'
  * `--` line comments are recognised so a trailing comment does not swallow the
  * following statement; both rules are dialect-specific: only MySQL treats `#`
  * as a comment, and only MySQL needs whitespace after `--` (without it the
- * dashes are arithmetic, as in `select 5--3`).
+ * dashes are arithmetic, as in `select 5--3`). Backslash escapes are also a
+ * MySQL rule; standard SQL treats it as an ordinary character, so `'C:\'` ends
+ * at the quote instead of swallowing the rest of the script. PostgreSQL is the
+ * exception among the standard dialects: its `E'...'` string does escape.
  */
 export function splitStatements(input: string, dialect: SqlDialect = 'generic'): string[] {
   const statements: string[] = []
@@ -70,13 +73,14 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     // Strings and quoted identifiers: semicolons inside them are literal.
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
+      const escapes = backslashEscapes(input, index, quote, dialect)
       current += char
       index += 1
       while (index < input.length) {
         const next = input[index] ?? ''
         current += next
         index += 1
-        if (next === '\\' && quote !== '`' && index < input.length) {
+        if (next === '\\' && quote !== '`' && escapes) {
           current += input[index] ?? ''
           index += 1
           continue
@@ -106,6 +110,21 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
   flush()
   return statements
+}
+
+/**
+ * Whether a backslash inside the literal starting at `quoteIndex` escapes the
+ * next character. MySQL always does; standard SQL treats it as data. The
+ * PostgreSQL `E'...'` form is the one standard-dialect exception.
+ */
+function backslashEscapes(input: string, quoteIndex: number, quote: string, dialect: SqlDialect): boolean {
+  if (quote === '`') return false
+  if (dialect === 'mysql') return true
+  if (dialect !== 'postgres' || quote !== "'") return false
+  const prefix = input[quoteIndex - 1]
+  if (prefix !== 'e' && prefix !== 'E') return false
+  const before = input[quoteIndex - 2]
+  return before === undefined || !/[A-Za-z0-9_$]/u.test(before)
 }
 
 /**

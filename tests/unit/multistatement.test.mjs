@@ -15,6 +15,20 @@ describe('splitStatements', () => {
     expect(splitStatements("select 'back\\\\'; select 2")).toEqual(["select 'back\\\\'", 'select 2'])
   })
 
+  it('treats backslash as an ordinary character outside MySQL', () => {
+    const windowsPath = "select 'C:\\'; select 2"
+    for (const dialect of ['generic', 'postgres', 'sqlite', 'mssql', 'oracle', 'dameng', 'oceanbase-oracle']) {
+      expect(splitStatements(windowsPath, dialect)).toEqual(["select 'C:\\'", 'select 2'])
+    }
+    // MySQL reads `\'` as an escaped quote, so the rest stays inside the literal.
+    expect(splitStatements(windowsPath, 'mysql')).toEqual(["select 'C:\\'; select 2"])
+    // PostgreSQL E'' strings do escape, including the quote and the semicolon.
+    expect(splitStatements("select E'it\\'s; ok'; select 2", 'postgres')).toEqual([
+      "select E'it\\'s; ok'",
+      'select 2',
+    ])
+  })
+
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
     expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])
