@@ -24,10 +24,27 @@ export function RowPicker({
   onToggleAll: (all: boolean) => void
 }): ReactElement {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const anchor = useRef<HTMLSpanElement>(null)
-  const close = useCallback(() => setOpen(false), [])
+  const close = useCallback(() => {
+    setOpen(false)
+    setQuery('')
+  }, [])
+  const toggle = useCallback(() => {
+    setOpen((value) => !value)
+    setQuery('')
+  }, [])
   usePopoverDismiss(open, close, anchor)
   const allVisible = visible === null || (items.length > 0 && items.every((item) => visible.includes(item.id)))
+  const noun = allLabel.replace(/^所有/, '')
+  const needle = query.trim().toLowerCase()
+  const shown =
+    needle === ''
+      ? items
+      : items.filter(
+          (item) =>
+            item.label.toLowerCase().includes(needle) || item.id.toLowerCase().includes(needle),
+        )
   return (
     <span className="dshdb-picker-anchor" ref={anchor}>
       <span
@@ -39,14 +56,14 @@ export function RowPicker({
         aria-expanded={open}
         onClick={(event) => {
           event.stopPropagation()
-          setOpen((value) => !value)
+          toggle()
         }}
         onDoubleClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
           event.stopPropagation()
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
-            setOpen((value) => !value)
+            toggle()
           }
           if (event.key === 'Escape') setOpen(false)
         }}
@@ -60,17 +77,36 @@ export function RowPicker({
             <span>{allLabel}</span>
             <em>添加模式</em>
           </label>
+          {items.length > 5 ? (
+            <input
+              className="dshdb-input dshdb-picker-search"
+              type="search"
+              value={query}
+              placeholder={`查找${noun}…`}
+              aria-label={`查找${noun}`}
+              autoFocus
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === 'Escape') close()
+              }}
+            />
+          ) : null}
           <div className="dshdb-picker-scroll">
-            {items.map((item) => (
-              <label key={item.id} className="dshdb-picker-item">
-                <input
-                  type="checkbox"
-                  checked={visible === null || visible.includes(item.id)}
-                  onChange={() => onToggle(item.id)}
-                />
-                <span>{item.label}</span>
-              </label>
-            ))}
+            {shown.length === 0 ? (
+              <div className="dshdb-picker-empty">没有匹配的{noun}</div>
+            ) : (
+              shown.map((item) => (
+                <label key={item.id} className="dshdb-picker-item">
+                  <input
+                    type="checkbox"
+                    checked={visible === null || visible.includes(item.id)}
+                    onChange={() => onToggle(item.id)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))
+            )}
           </div>
           <div className="dshdb-picker-hint">勾选即生效，点击空白处关闭</div>
         </div>

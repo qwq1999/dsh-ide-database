@@ -373,6 +373,12 @@ export const CSS = `
   color: var(--dsw-alias-label-tertiary);
 }
 .dshdb-picker-scroll { overflow: auto; min-height: 0; }
+.dshdb-picker-search { flex: none; margin: 2px 2px 4px; height: 24px; }
+.dshdb-picker-empty {
+  padding: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
 .dshdb-picker-hint {
   margin-top: 2px;
   padding: 4px 6px;
