@@ -70,6 +70,14 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS (SELECT id FROM t) DELETE FROM t')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1) UPDATE t SET a = 1')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1) INSERT INTO t VALUES (1)')).toBe(false)
+    // PostgreSQL data-modifying CTE bodies run as part of a plain outer SELECT.
+    expect(isReadOnlySql('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(false)
+    expect(isReadOnlySql('WITH u AS (UPDATE t SET a = 1 RETURNING *) SELECT 1')).toBe(false)
+    expect(isReadOnlySql('WITH i AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM i')).toBe(false)
+    expect(isReadOnlySql('WITH a AS (SELECT 1), d AS (DELETE FROM t RETURNING id) SELECT * FROM a, d')).toBe(false)
+    expect(isReadOnlySql('WITH outer AS (WITH inner AS (DELETE FROM t RETURNING *) SELECT * FROM inner) SELECT * FROM outer')).toBe(false)
+    expect(isReadOnlySql("WITH c AS (SELECT * FROM t INTO OUTFILE '/tmp/x') SELECT 1")).toBe(false)
+    expect(isReadOnlySql('WITH a AS (SELECT 1), b AS (SELECT * FROM a) SELECT * FROM b')).toBe(true)
   })
 
   it('is not fooled by strings, comments or nesting inside the CTE', () => {

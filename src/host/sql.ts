@@ -106,15 +106,22 @@ function matchingParen(text: string, open: number): number {
   return -1
 }
 
+interface WithClause {
+  /** The parenthesised body of every CTE, in source order. */
+  bodies: string[]
+  /** The statement the CTE list runs. */
+  statement: string
+}
+
 /**
- * The statement that follows a `WITH cte AS (...), ...` clause. Returns null
- * when the CTE list cannot be parsed, which the read-only guard treats as a
- * write.
+ * Parse a `WITH cte AS (...), ...` clause. Returns null when the list cannot
+ * be parsed, which the read-only guard treats as a write.
  */
-function statementAfterWith(text: string): string | null {
+function parseWithClause(text: string): WithClause | null {
   let cursor = skipSpace(text, 'with'.length)
   const recursive = readWord(text, cursor)
   if (recursive.word === 'recursive') cursor = skipSpace(text, recursive.end)
+  const bodies: string[] = []
   for (;;) {
     const name = readWord(text, cursor)
     if (name.word === '') return null
@@ -135,11 +142,12 @@ function statementAfterWith(text: string): string | null {
     if (text[cursor] !== '(') return null
     const close = matchingParen(text, cursor)
     if (close < 0) return null
+    bodies.push(text.slice(cursor + 1, close))
     cursor = skipSpace(text, close + 1)
     if (text[cursor] !== ',') break
     cursor = skipSpace(text, cursor + 1)
   }
-  return text.slice(cursor)
+  return { bodies, statement: text.slice(cursor) }
 }
 
 /** Statements that write files on the server; a read-only connection must refuse them. */
@@ -212,8 +220,11 @@ export function isReadOnlySql(sql: string): boolean {
   if (!READ_ONLY_STARTERS.has(head)) return false
   if (head === 'with') {
     // A CTE list can front any statement, including DELETE; judge what it runs.
-    const inner = statementAfterWith(withoutTrailing)
-    return inner !== null && isReadOnlySql(inner)
+    const clause = parseWithClause(withoutTrailing)
+    if (clause === null) return false
+    // PostgreSQL also allows data-modifying CTE bodies
+    // (`WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d`); judge them too.
+    return clause.bodies.every((body) => isReadOnlySql(body)) && isReadOnlySql(clause.statement)
   }
   if (head === 'explain') {
     // `EXPLAIN ANALYZE <statement>` and the parenthesised `EXPLAIN (ANALYZE, ...)`
