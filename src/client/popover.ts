@@ -10,13 +10,15 @@ import { useEffect, type RefObject } from 'react'
 export function usePopoverDismiss(
   open: boolean,
   onClose: () => void,
-  ref: RefObject<HTMLElement | null>,
+  ref: RefObject<HTMLElement | null> | ReadonlyArray<RefObject<HTMLElement | null>>,
 ): void {
   useEffect(() => {
     if (!open) return undefined
+    // A floating filter often pairs with the panel it filters: pressing a row
+    // inside that panel must not count as "outside" and dismiss the box.
+    const anchors = Array.isArray(ref) ? ref : [ref]
     const onPointerDown = (event: PointerEvent): void => {
-      const element = ref.current
-      if (element !== null && !element.contains(event.target as Node)) onClose()
+      if (!anchors.some((anchor) => anchor.current?.contains(event.target as Node))) onClose()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()

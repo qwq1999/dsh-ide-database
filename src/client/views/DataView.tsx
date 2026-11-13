@@ -225,6 +225,10 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [])
 
   const filterFloatRef = useRef<HTMLDivElement | null>(null)
+  const treeRef = useRef<HTMLDivElement | null>(null)
+  // Pressing a row is part of using the filter, not leaving it: only presses
+  // outside both the box and the tree dismiss the search.
+  const filterAnchors = useMemo(() => [filterFloatRef, treeRef], [])
 
   /** Put the floating filter away and stop it from filtering behind the user's back. */
   const closeTreeFilter = useCallback((): void => {
@@ -234,7 +238,7 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [])
 
   // Escape (from anywhere) or a press outside the floating box closes it.
-  usePopoverDismiss(filterOpen, closeTreeFilter, filterFloatRef)
+  usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
 
   // Focus after the box has been committed to the DOM, so Ctrl+F works from
   // the first press even though the input did not exist a moment earlier. The
@@ -578,6 +582,7 @@ export function DataView(props: DataViewProps): ReactElement {
             className="dshdb-tree dshdb-scroll-thin"
             role="tree"
             aria-label="数据源"
+            ref={treeRef}
             onKeyDown={handleTreeKey}
           >
             {filterSummary !== null && filterSummary.connections === 0 ? (

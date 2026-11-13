@@ -167,6 +167,18 @@ describe('筛选时加载对象列表', () => {
     await waitFor(() => expect(calls.load).toBe(0))
   })
 
+  it('keeps the filter open when the user presses a hit', async () => {
+    const calls = { load: 0, toggle: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('cus')
+    const hit = await screen.findByRole('treeitem', { name: /customers/ })
+    // Pressing a row used to count as an outside press, which cleared the
+    // filter and collapsed the branches the hits were showing in.
+    fireEvent.pointerDown(hit)
+    expect(screen.getByLabelText('筛选库表')).toHaveProperty('value', 'cus')
+    expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
+  })
+
   it('reveals matches in a collapsed schema without expanding it in state', async () => {
     const calls = { load: 0, toggle: 0 }
     render(
