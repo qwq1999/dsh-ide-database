@@ -90,6 +90,12 @@ function Harness({ calls }: { calls: { load: number } }): JSX.Element {
   return <DataView {...props} />
 }
 
+/** The box is collapsed behind a funnel button until Ctrl+F or a click. */
+function openFilter(): HTMLInputElement {
+  if (screen.queryByLabelText('筛选库表') === null) fireEvent.click(screen.getByLabelText('筛选'))
+  return screen.getByLabelText('筛选库表') as HTMLInputElement
+}
+
 describe('tree filter keys', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -103,7 +109,7 @@ describe('tree filter keys', () => {
   it('matches as soon as Enter is pressed', async () => {
     const calls = { load: 0 }
     render(<Harness calls={calls} />)
-    const box = screen.getByLabelText('筛选库表')
+    const box = openFilter()
     fireEvent.change(box, { target: { value: 'cus' } })
     expect(calls.load).toBe(0)
 
@@ -116,10 +122,23 @@ describe('tree filter keys', () => {
   it('focuses the filter box from Ctrl+F inside the tree', async () => {
     render(<Harness calls={{ load: 0 }} />)
     const tree = screen.getByRole('tree', { name: '数据源' })
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
     const row = screen.getAllByRole('treeitem')[0]
     row.focus()
     fireEvent.keyDown(tree, { key: 'f', ctrlKey: true })
     expect(document.activeElement).toBe(screen.getByLabelText('筛选库表'))
+  })
+
+  it('reveals the box from the funnel button and hides it again when emptied', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
+    fireEvent.click(screen.getByLabelText('筛选'))
+    const box = screen.getByLabelText('筛选库表')
+    await act(async () => {})
+    expect(document.activeElement).toBe(box)
+    fireEvent.blur(box)
+    await act(async () => {})
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
   })
 
   it('re-reads the tree on Ctrl+R instead of reloading the app', () => {
@@ -134,7 +153,7 @@ describe('tree filter keys', () => {
 
   it('clears the box from the small clear button', async () => {
     render(<Harness calls={{ load: 0 }} />)
-    const box = screen.getByLabelText('筛选库表') as HTMLInputElement
+    const box = openFilter()
     fireEvent.change(box, { target: { value: 'cus' } })
     fireEvent.click(screen.getByLabelText('清空筛选'))
     await act(async () => {})
@@ -144,9 +163,13 @@ describe('tree filter keys', () => {
 
   it('clears the box and the matches with Escape', async () => {
     render(<Harness calls={{ load: 0 }} />)
-    const box = screen.getByLabelText('筛选库表') as HTMLInputElement
+    const box = openFilter()
     fireEvent.change(box, { target: { value: 'cus' } })
     fireEvent.keyDown(box, { key: 'Escape' })
-    expect(box.value).toBe('')
+    // Escape clears and collapses the box in one step...
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
+    // ...so it reopens empty instead of remembering the old term.
+    fireEvent.click(screen.getByLabelText('筛选'))
+    expect((screen.getByLabelText('筛选库表') as HTMLInputElement).value).toBe('')
   })
 })

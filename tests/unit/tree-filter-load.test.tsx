@@ -99,6 +99,8 @@ function Harness({
 }
 
 function typeFilter(value: string): void {
+  // The box is hidden until the funnel button (or Ctrl+F) reveals it.
+  if (screen.queryByLabelText('筛选库表') === null) fireEvent.click(screen.getByLabelText('筛选'))
   fireEvent.change(screen.getByLabelText('筛选库表'), { target: { value } })
 }
 

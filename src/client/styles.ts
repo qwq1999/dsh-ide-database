@@ -478,6 +478,28 @@ export const CSS = `
 }
 .dshdb-toolbar-spacer { flex: 1; }
 
+/* The tree filter stays collapsed to a funnel button until Ctrl+F (or the
+   button itself) reveals the box, so the toolbar is quiet by default. */
+.dshdb-tree-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.dshdb-tree-filter .dshdb-input { width: 132px; }
+.dshdb-filter-toggle {
+  height: 22px;
+  min-width: 22px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  opacity: 1;
+}
+.dshdb-filter-toggle:hover {
+  border-color: var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-primary);
+}
+
 .dshdb-editor-wrap {
   display: flex;
   flex-direction: column;

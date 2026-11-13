@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useRef,
@@ -62,9 +63,12 @@ export function IconButton({ label, icon, ...rest }: IconButtonProps) {
 
 export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {}
 
-export function TextInput({ className = '', ...rest }: TextInputProps) {
-  return <input {...rest} className={`dshdb-input ${className}`.trim()} />
-}
+export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
+  { className = '', ...rest },
+  ref,
+) {
+  return <input {...rest} ref={ref} className={`dshdb-input ${className}`.trim()} />
+})
 
 export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {}
 

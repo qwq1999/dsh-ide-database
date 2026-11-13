@@ -42,6 +42,7 @@ import {
 } from './tree-parts'
 import {
   DatabaseIcon,
+  FilterIcon,
   FolderIcon,
   FunctionIcon,
   KeyIcon,
@@ -144,6 +145,11 @@ export function relativeTime(iso: string): string {
 
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
+  // The filter box starts hidden so the toolbar stays quiet; Ctrl+F (or the
+  // funnel button) reveals it, and it closes again once emptied.
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [filterFocus, setFilterFocus] = useState(0)
+  const filterRef = useRef<HTMLInputElement | null>(null)
   const [objectExtra, setObjectExtra] = useState<Record<string, number>>({})
   const [objectMenu, setObjectMenu] = useState<TreeMenuState | null>(null)
   const [schemaMenu, setSchemaMenu] = useState<TreeMenuState | null>(null)
@@ -161,6 +167,8 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [filter, settledFilter])
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
+  /** What the tree filter searches, for the placeholder and the aria label. */
+  const treeFilterLabel = selected?.dialect === 'redis' ? '键' : '库表'
 
   const handleRowDragStart = (event: DragEvent<HTMLElement>, id: string): void => {
     if (props.onReorderConnections === undefined) return
@@ -209,10 +217,23 @@ export function DataView(props: DataViewProps): ReactElement {
     setDragging(null)
   }
 
-  /** Put the caret in the tree filter, by name because the input is rendered further down. */
+  /** Reveal the tree filter and put the caret in it. */
   const focusTreeFilter = useCallback((): void => {
-    document.querySelector<HTMLInputElement>('input[aria-label="筛选库表"], input[aria-label="筛选键"]')?.focus()
+    setFilterOpen(true)
+    setFilterFocus((count) => count + 1)
   }, [])
+
+  // Focus after the box has been committed to the DOM, so Ctrl+F works from
+  // the first press even though the input did not exist a moment earlier. The
+  // caret goes to the end, so a term written by the context menus can be
+  // extended instead of retyped.
+  useEffect(() => {
+    if (!filterOpen) return
+    const input = filterRef.current
+    if (input === null) return
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
+  }, [filterOpen, filterFocus])
 
   // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
   // edges, and Left/Right collapse/expand the focused row.
@@ -479,40 +500,62 @@ export function DataView(props: DataViewProps): ReactElement {
   return (
     <div className="dshdb-view" style={{ gap: 8 }}>
       <div className="dshdb-toolbar">
-        <TextInput
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              // Skip the pause that normally follows typing: Enter means "now".
-              event.preventDefault()
-              setSettledFilter(filter)
-              return
-            }
-            if (event.key === 'Escape') {
-              event.stopPropagation()
-              setFilter('')
-              setSettledFilter('')
-            }
-          }}
-          placeholder={selected?.dialect === 'redis' ? '筛选键…' : '筛选库表…'}
-          aria-label={selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}
-          style={{ width: 132 }}
-        />
-        {filter !== '' ? (
+        {filterOpen || filter !== '' ? (
+          <div className="dshdb-tree-filter">
+            <FilterIcon size={13} />
+            <TextInput
+              ref={filterRef}
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  // Skip the pause that normally follows typing: Enter means "now".
+                  event.preventDefault()
+                  setSettledFilter(filter)
+                  return
+                }
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  setFilter('')
+                  setSettledFilter('')
+                  setFilterOpen(false)
+                }
+              }}
+              // Clicking anywhere else with nothing typed in it puts the box
+              // away again, so the tree gets the full width back.
+              onBlur={(event) => {
+                if (event.currentTarget.value === '') setFilterOpen(false)
+              }}
+              placeholder={`筛选${treeFilterLabel}…`}
+              aria-label={`筛选${treeFilterLabel}`}
+              style={{ width: 132 }}
+            />
+            {filter !== '' ? (
+              <button
+                type="button"
+                className="dshdb-row-action"
+                title="清空筛选"
+                aria-label="清空筛选"
+                onClick={() => {
+                  setFilter('')
+                  setSettledFilter('')
+                }}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        ) : (
           <button
             type="button"
-            className="dshdb-row-action"
-            title="清空筛选"
-            aria-label="清空筛选"
-            onClick={() => {
-              setFilter('')
-              setSettledFilter('')
-            }}
+            className="dshdb-row-action dshdb-filter-toggle"
+            title={`筛选${treeFilterLabel}（Ctrl+F）`}
+            aria-label="筛选"
+            onClick={focusTreeFilter}
           >
-            ×
+            <FilterIcon size={13} />
           </button>
-        ) : null}
+        )}
         <span className="dshdb-toolbar-spacer" />
         {props.detailLoading || props.redisDetailLoading ? (
           <span className="dshdb-muted dshdb-inline">
