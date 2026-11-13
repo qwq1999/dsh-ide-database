@@ -150,6 +150,18 @@ describe('筛选时加载对象列表', () => {
     await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
   })
 
+  it('keeps the filter open when the user presses a hit', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('cus')
+    const hit = await screen.findByRole('treeitem', { name: /customers/ })
+    // Pressing a row used to count as an outside press, which cleared the
+    // filter and collapsed the branches the hits were showing in.
+    fireEvent.pointerDown(hit)
+    expect(screen.getByLabelText('筛选库表')).toHaveProperty('value', 'cus')
+    expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
+  })
+
   it('does not ask again while the same list is still loading', async () => {
     const calls = { load: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)

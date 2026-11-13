@@ -209,9 +209,6 @@ export function DataView(props: DataViewProps): ReactElement {
     setSettledFilter('')
   }, [])
 
-  // Escape (from anywhere) or a press outside the floating box closes it.
-  usePopoverDismiss(filterOpen, closeTreeFilter, filterFloatRef)
-
   // Focus after the box has been committed to the DOM, so Ctrl+F works from
   // the first press even though the input did not exist a moment earlier. The
   // caret goes to the end, so a term written by the context menus can be
@@ -488,6 +485,11 @@ export function DataView(props: DataViewProps): ReactElement {
   )
 
   const { containerRef, range, totalHeight, viewportHeight, onScroll, scrollToIndex } = useWindow(rows.length)
+
+  // Pressing a row is part of using the filter, not leaving it: only presses
+  // outside both the box and the tree dismiss the search.
+  const filterAnchors = useMemo(() => [filterFloatRef, containerRef], [containerRef])
+  usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
 
   // A shrinking tree (collapsed branch, narrower filter) may leave the active
   // index past the end; keep the roving focus valid.
