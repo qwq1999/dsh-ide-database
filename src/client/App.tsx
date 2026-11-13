@@ -149,6 +149,7 @@ export function App(props: AppProps): ReactElement {
     detail,
     detailLoading,
     selectedKey,
+    selectedSchema,
     redisKeys,
     redisCursor,
     loadingRedisKeys,
@@ -432,8 +433,9 @@ export function App(props: AppProps): ReactElement {
     {
       id: 'console',
       label: '控制台',
-      title: '查询控制台',
-      onClick: () => openConsoleTab({ connectionId: selected?.id }),
+      title: selectedSchema === '' ? '查询控制台' : `查询控制台（${selectedSchema}）`,
+      onClick: () =>
+        openConsoleTab({ connectionId: selected?.id, ...(selectedSchema === '' ? {} : { schema: selectedSchema }) }),
     },
     {
       id: 'trash',

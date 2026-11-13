@@ -82,6 +82,8 @@ export interface DataSources {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
+  /** Schema of the highlighted tree row ('' when a connection or nothing is selected). */
+  selectedSchema: string
   /** Keys scanned per connection and logical database. */
   redisKeys: Record<string, Record<string, RedisKeyInfo[]>>
   /** Scan cursor still pending per connection and database; `0`/missing means done. */
@@ -204,6 +206,7 @@ export function useDataSources(notify: Notify): DataSources {
   const [detail, setDetail] = useState<TableDescription | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
+  const [selectedSchema, setSelectedSchema] = useState('')
 
   const [redisKeys, setRedisKeys] = useState<Record<string, Record<string, RedisKeyInfo[]>>>({})
   const [redisCursor, setRedisCursor] = useState<Record<string, Record<string, string>>>({})
@@ -425,6 +428,7 @@ export function useDataSources(notify: Notify): DataSources {
       setDetail(null)
       setRedisDetail(null)
       setSelectedKey('')
+      setSelectedSchema('')
     }
     selectedRef.current = id
     setSelectedId(id)
@@ -671,6 +675,7 @@ export function useDataSources(notify: Notify): DataSources {
       setRedisDetail(null)
       setRedisDetailDb(-1)
       setSelectedKey(key)
+      setSelectedSchema(schema)
       const known = descriptions[key]
       if (known !== undefined) {
         setDetailLoading(false)
@@ -748,6 +753,7 @@ export function useDataSources(notify: Notify): DataSources {
     setRedisDetail(null)
     setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|schema:${schema}`)
+    setSelectedSchema(schema)
   }, [])
 
   const selectFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
@@ -757,6 +763,7 @@ export function useDataSources(notify: Notify): DataSources {
     setRedisDetail(null)
     setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|${schema}#${folder}`)
+    setSelectedSchema(schema)
   }, [])
 
   const selectRedisDb = useCallback((connectionId: string, db: number): void => {
@@ -766,6 +773,7 @@ export function useDataSources(notify: Notify): DataSources {
     setRedisDetail(null)
     setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|redisdb:${db}`)
+    setSelectedSchema('')
   }, [])
 
   const toggleRedisDb = useCallback(
@@ -790,6 +798,7 @@ export function useDataSources(notify: Notify): DataSources {
       setRedisDetail(null)
       setRedisDetailDb(db)
       setSelectedKey(`${connectionId}|redis:${db}:${key}`)
+      setSelectedSchema('')
       if (!servers[connectionId]) {
         setRedisDetailLoading(false)
         notify('数据源未连接，连接后可查看键值', 'info')
@@ -946,6 +955,7 @@ export function useDataSources(notify: Notify): DataSources {
     detail,
     detailLoading,
     selectedKey,
+    selectedSchema,
     redisKeys,
     redisCursor,
     loadingRedisKeys,

@@ -18,6 +18,15 @@ describe('readConsoleTabParams', () => {
     expect(readConsoleTabParams({ connectionId: 7, sql: 42 })).toEqual({})
   })
 
+  it('keeps the schema the tree selection carried over', () => {
+    expect(readConsoleTabParams({ connectionId: 'mysql-1', schema: 'ihive_sdgy_cmocr_cmocr' })).toEqual({
+      connectionId: 'mysql-1',
+      schema: 'ihive_sdgy_cmocr_cmocr',
+    })
+    expect(readConsoleTabParams({ connectionId: 'mysql-1', schema: '' })).toEqual({ connectionId: 'mysql-1' })
+    expect(readConsoleTabParams({ connectionId: 'mysql-1', schema: 7 })).toEqual({ connectionId: 'mysql-1' })
+  })
+
   it('has no parameters for a restored tab', () => {
     expect(readConsoleTabParams(undefined)).toBeUndefined()
     expect(readConsoleTabParams(null)).toBeUndefined()

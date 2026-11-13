@@ -161,14 +161,14 @@ async function queryWithRetry(id: string, sql: string, maxRows: number, allowWri
 }
 
 /** One console body: SQL editor + pager, or Redis key grid + command box. */
-function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?: string; initialSql?: string }): ReactElement {
+function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initialConnectionId?: string; initialSchema?: string; initialSql?: string }): ReactElement {
   const [connections, setConnections] = useState<ClientConnection[]>([])
   const [settings, setSettings] = useState<DbSettings | null>(null)
   const [selectedId, setSelectedId] = useState(initialConnectionId ?? '')
   const [loadError, setLoadError] = useState('')
 
   /** The SQL schema (MySQL database) the console runs in; '' keeps the login default. */
-  const [schema, setSchema] = useState('')
+  const [schema, setSchema] = useState(initialSchema ?? '')
   const [schemas, setSchemas] = useState<SchemaInfo[]>([])
   /** Redis logical database; null keeps the data source's configured db. */
   const [redisDb, setRedisDb] = useState<number | null>(null)
@@ -1218,7 +1218,17 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
           ? connection.database
           : connection.user
     // Per connection, so a schema picked once survives switching tabs around.
-    setSchema(selectedId === '' ? fallbackSchema : readText(`${SCHEMA_KEY_PREFIX}${selectedId}`, fallbackSchema))
+    // Opening from a tree selection seeds that schema: it wins over the remembered
+    // one and becomes the remembered choice for this source.
+    const remembered =
+      selectedId === '' ? fallbackSchema : readText(`${SCHEMA_KEY_PREFIX}${selectedId}`, fallbackSchema)
+    const seeded = selectedId !== '' && selectedId === initialConnectionId ? initialSchema : undefined
+    if (seeded === undefined || seeded === '') {
+      setSchema(remembered)
+    } else {
+      setSchema(seeded)
+      writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, seeded)
+    }
     setSchemas([])
     setRedisDb(null)
     setRedisDatabases(null)
@@ -1878,6 +1888,11 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
             }}
           >
             <option value={defaultSchema}>默认{defaultSchema === '' ? '' : `（${defaultSchema}）`}</option>
+            {schema !== '' && schema !== defaultSchema && !schemas.some((item) => item.name === schema) ? (
+              // A schema carried over from the tree shows before the list arrives,
+              // and keeps the picker honest if the server no longer reports it.
+              <option value={schema}>{schema}</option>
+            ) : null}
             {schemas
               .filter((item) => item.name !== defaultSchema)
               .map((item) => (
@@ -2751,7 +2766,7 @@ function ConsoleBody({ initialConnectionId, initialSql }: { initialConnectionId?
 export function ConsoleTab(props: ConsoleTabProps): ReactElement {
   const info = (props.useTabInfo ?? noTabInfo)()
   const params = readConsoleTabParams(info?.tab?.navigation?.params) ?? {}
-  return <ConsoleBody initialConnectionId={params.connectionId} initialSql={params.sql} />
+  return <ConsoleBody initialConnectionId={params.connectionId} initialSchema={params.schema} initialSql={params.sql} />
 }
 
 /** The chip text of a console tab. */

@@ -40,9 +40,11 @@ export function readTableTabParams(params: unknown): TableTabParams | undefined 
   return { connectionId, schema, table, ...(value.kind === 'view' ? { kind: 'view' as const } : {}) }
 }
 
-/** What one query console tab starts with (both parts are optional). */
+/** What one query console tab starts with (every part is optional). */
 export interface ConsoleTabParams {
   connectionId?: string
+  /** Schema (MySQL database) the console should run in, e.g. the tree selection. */
+  schema?: string
   /** Editor text to start from, e.g. the SELECT a table tab builds. */
   sql?: string
 }
@@ -65,11 +67,13 @@ export function openConsoleTab(params: ConsoleTabParams = {}): void {
 export function readConsoleTabParams(params: unknown): ConsoleTabParams | undefined {
   if (typeof params !== 'object' || params === null) return undefined
   const value = params as Record<string, unknown>
-  const { connectionId, sql } = value
+  const { connectionId, schema, sql } = value
   const connection = typeof connectionId === 'string' && connectionId !== '' ? connectionId : undefined
+  const target = typeof schema === 'string' && schema !== '' ? schema : undefined
   const statement = typeof sql === 'string' && sql.trim() !== '' ? sql : undefined
   return {
     ...(connection === undefined ? {} : { connectionId: connection }),
+    ...(target === undefined ? {} : { schema: target }),
     ...(statement === undefined ? {} : { sql: statement }),
   }
 }
