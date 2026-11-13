@@ -91,6 +91,14 @@ function tokenize(sql: string): Atom[] {
       i += 1
       continue
     }
+    // Multi-character operators must stay one atom; splitting them would print
+    // '>=' as '> =' (and '||' as '| |'), which changes the statement's meaning.
+    const multi = MULTI_CHAR_OPS.find((op) => sql.startsWith(op, i))
+    if (multi !== undefined) {
+      push('op', multi)
+      i += multi.length
+      continue
+    }
     if ('=<>!+-*/%|&^~'.includes(ch)) {
       push('op', ch)
       i += 1
@@ -101,6 +109,10 @@ function tokenize(sql: string): Atom[] {
   }
   return atoms
 }
+
+const MULTI_CHAR_OPS = [
+  '<=>', '!~*', '->>', '<=', '>=', '<>', '!=', '<<', '>>', '||', '&&', '::', ':=', '=>', '->', '!~', '~*',
+]
 
 const noSpaceBefore = new Set([',', ';', '.'])
 const noSpaceAfter = new Set(['(', '.'])

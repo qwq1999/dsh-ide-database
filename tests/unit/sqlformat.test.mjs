@@ -49,6 +49,24 @@ describe('formatSql', () => {
     expect(formatSql(formatSql(sql))).toBe(formatSql(sql))
   })
 
+  it('多字符运算符保持连写', () => {
+    const sql = "select * from t where a>=1 and b<=2 and c<>3 and d!=4 and e||f='x'"
+    expect(formatSql(sql)).toBe(
+      ['SELECT *', 'FROM t', "WHERE a >= 1 AND b <= 2 AND c <> 3 AND d != 4 AND e || f = 'x'"].join('\n'),
+    )
+    expect(formatSql('select * from t where a<=>b')).toBe('SELECT *\nFROM t\nWHERE a <=> b')
+  })
+
+  it('日期区间条件排版后仍可执行', () => {
+    const sql =
+      "select orgid, SUM(succcount) from moc_orctrans where createtime>='2026-11-01 00:00:00' and createtime<'2026-11-30 00:00:00' group by orgid"
+    const once = formatSql(sql)
+    expect(once).toContain("createtime >= '2026-11-01 00:00:00'")
+    expect(once).toContain("createtime < '2026-11-30 00:00:00'")
+    expect(once).not.toContain('> =')
+    expect(formatSql(once)).toBe(once)
+  })
+
   it('多条语句各占一行', () => {
     expect(formatSql('select 1; select 2')).toBe('SELECT 1;\nSELECT 2')
   })
