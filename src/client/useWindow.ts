@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type UIEvent } from 'react'
+import { flushSync } from 'react-dom'
 
 /**
  * Fixed-row-height windowing for the object tree.
@@ -11,7 +12,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type
  */
 
 export const TREE_ROW_HEIGHT = 26
-export const TREE_OVERSCAN = 8
+/**
+ * Rows kept mounted above and below the viewport. A trackpad fling or a
+ * scrollbar drag can move further than one screenful between two scroll
+ * events; anything outside the overscan would paint as a blank band until the
+ * next commit, so the buffer is deliberately generous.
+ */
+export const TREE_OVERSCAN = 24
 
 /**
  * Viewport used when the browser cannot measure the container yet. jsdom
@@ -68,6 +75,7 @@ export function useWindow(
 ): WindowState {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
+  const scrollTopRef = useRef(0)
   const [viewportHeight, setViewportHeight] = useState(TREE_DEFAULT_VIEWPORT)
   // scrollToIndex stays identity-stable so the memoized row actions do not
   // change on every resize (that would repaint every mounted row).
@@ -97,7 +105,13 @@ export function useWindow(
   )
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
-    setScrollTop(event.currentTarget.scrollTop)
+    const next = event.currentTarget.scrollTop
+    if (next === scrollTopRef.current) return
+    scrollTopRef.current = next
+    // Commit inside the scroll event: a passive update lands after the browser
+    // has already painted the new scroll position, which is exactly the blank
+    // band that appears when the tree is flung quickly.
+    flushSync(() => setScrollTop(next))
   }, [])
 
   const scrollToIndex = useCallback(
@@ -115,6 +129,7 @@ export function useWindow(
       next = Math.min(Math.max(0, next), maxTop)
       if (Math.abs(next - current) < 1) return
       node.scrollTop = next
+      scrollTopRef.current = next
       setScrollTop(next)
     },
     [rowHeight],

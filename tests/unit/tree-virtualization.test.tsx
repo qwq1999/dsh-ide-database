@@ -121,7 +121,7 @@ describe('virtualized object tree', () => {
     expect(mounted).toBeGreaterThan(10)
     // 500 tables, one 200-object page, three ancestor rows and the "more" row:
     // the flat list is 204 rows, and only the viewport + overscan may be mounted.
-    expect(mounted).toBeLessThan(60)
+    expect(mounted).toBeLessThan(120)
     expect(mounted * 5).toBeLessThan(500)
     expect(screen.getByText('t001')).toBeTruthy()
   })
@@ -137,7 +137,7 @@ describe('virtualized object tree', () => {
     fireEvent.scroll(element)
     expect(screen.getByText('t200')).toBeTruthy()
     expect(screen.queryByText('t001')).toBeNull()
-    expect(screen.getAllByRole('treeitem').length).toBeLessThan(60)
+    expect(screen.getAllByRole('treeitem').length).toBeLessThan(120)
   })
 
   it('键盘移动到窗口外的行会自动滚动', () => {
