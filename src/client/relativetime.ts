@@ -14,3 +14,10 @@ export function agoText(seconds: number): string {
   if (hours < 24) return `${hours} 小时前`
   return `${Math.floor(hours / 24)} 天前`
 }
+
+/** Cached-structure age shown under a data source; '' when the stamp is unusable. */
+export function relativeTime(iso: string): string {
+  const stamp = Date.parse(iso)
+  if (Number.isNaN(stamp)) return ''
+  return agoText((Date.now() - stamp) / 1000)
+}

@@ -1,4 +1,3 @@
-import { agoText } from '../relativetime'
 import { moveId } from '../dragorder'
 import {
   useCallback,
@@ -6,54 +5,37 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactElement,
-  type ReactNode,
 } from 'react'
-import type { ClientConnection, ObjectKind, RedisKeyInfo, RedisValue, SchemaInfo, SchemaObject, ServerInfo, TableDescription } from '../../shared/types'
-import { DIALECT_LABEL } from '../../shared/presets'
+import type {
+  ClientConnection,
+  RedisKeyInfo,
+  RedisValue,
+  SchemaInfo,
+  SchemaObject,
+  ServerInfo,
+  TableDescription,
+} from '../../shared/types'
 import { objectKindLabel } from '../format'
 import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
-import { nextRowIndex } from '../treekeys'
 import { shortcutHit } from '../keymap'
-import { highlightParts } from '../highlight'
-import { redisTtlLabel } from '../redisvalue'
 import { RedisValuePanel } from '../redisview'
 import { copyText } from '../colmenu'
 import { selectColumnsSql } from '../tablesql'
 import { tableSelectSql } from '../tablesql'
-import { RedisDatabases } from './redis-databases'
-import { OBJECT_PAGE, objectWindow } from './objectlimit'
 import { TreeMenu, placeMenu, type TreeMenuState } from './tree-menu'
-import { RowPicker } from './row-picker'
-import {
-  DEPTH_FIVE,
-  DEPTH_FOUR,
-  DEPTH_ONE,
-  DEPTH_THREE,
-  DEPTH_TWO,
-  DetailFolder,
-  Highlight,
-  ObjectRow,
-  RowToggle,
-  objectIcon,
-} from './tree-parts'
-import {
-  DatabaseIcon,
-  FilterIcon,
-  FolderIcon,
-  FunctionIcon,
-  KeyIcon,
-  PlusIcon,
-  SequenceIcon,
-  TableIcon,
-  TriggerIcon,
-  ViewIcon,
-} from '../icons'
-import { Button, EmptyState, Panel, Spinner, StateDot, Tag, TextInput } from '../ui'
+import { objectIcon } from './tree-parts'
+import { buildTreeRows, folderOf, type TreeRow } from './tree-rows'
+import { TreeRowView, type TreeRowActions } from './tree-row-view'
+import { TREE_ROW_HEIGHT, useWindow } from '../useWindow'
+import { DatabaseIcon, FilterIcon, KeyIcon, PlusIcon } from '../icons'
+import { Button, EmptyState, Panel, Spinner, Tag, TextInput } from '../ui'
 import { usePopoverDismiss } from '../popover'
+
+export { relativeTime } from '../relativetime'
 
 export interface DataViewProps {
   connections: ClientConnection[]
@@ -115,34 +97,7 @@ export interface DataViewProps {
   onOpenConsoleTab?: (connectionId: string) => void
 }
 
-type FolderId = 'table' | 'view' | 'routine' | 'sequence' | 'trigger' | 'other'
-
-interface FolderDefinition {
-  id: FolderId
-  label: string
-  icon: ReactNode
-}
-
-const FOLDERS: FolderDefinition[] = [
-  { id: 'table', label: '表', icon: <TableIcon size={13} /> },
-  { id: 'view', label: '视图', icon: <ViewIcon size={13} /> },
-  { id: 'routine', label: '例程', icon: <FunctionIcon size={13} /> },
-  { id: 'sequence', label: '序列', icon: <SequenceIcon size={13} /> },
-  { id: 'trigger', label: '触发器', icon: <TriggerIcon size={13} /> },
-  { id: 'other', label: '其他', icon: <FolderIcon size={13} /> },
-]
-
-function folderOf(kind: ObjectKind): FolderId {
-  if (kind === 'procedure' || kind === 'function') return 'routine'
-  if (kind === 'sequence' || kind === 'trigger' || kind === 'view' || kind === 'table') return kind
-  return 'other'
-}
-
-export function relativeTime(iso: string): string {
-  const stamp = Date.parse(iso)
-  if (Number.isNaN(stamp)) return ''
-  return agoText((Date.now() - stamp) / 1000)
-}
+const rowDomId = (index: number): string => `dshdb-tree-row-${index}`
 
 export function DataView(props: DataViewProps): ReactElement {
   const [filter, setFilter] = useState('')
@@ -166,6 +121,15 @@ export function DataView(props: DataViewProps): ReactElement {
     const timer = setTimeout(() => setSettledFilter(filter), 200)
     return () => clearTimeout(timer)
   }, [filter, settledFilter])
+  // Keyboard focus lives on the container; this index is the row the arrow keys
+  // currently sit on. It is deliberately absent from the row data, so selecting
+  // a table never rebuilds the flat row array.
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const activeIndexRef = useRef(-1)
+  activeIndexRef.current = activeIndex
+  const propsRef = useRef(props)
+  propsRef.current = props
+
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
   /** What the tree filter searches, for the placeholder and the aria label. */
@@ -218,6 +182,18 @@ export function DataView(props: DataViewProps): ReactElement {
     setDragging(null)
   }
 
+  // The memoized row actions read these through refs: re-creating the handlers
+  // on every render would hand every mounted row a fresh `actions` object and
+  // defeat the memo around TreeRowView.
+  const dragHandlers = useRef({ start: handleRowDragStart, over: handleRowDragOver, leave: handleRowDragLeave, drop: handleRowDrop, end: handleRowDragEnd })
+  dragHandlers.current = {
+    start: handleRowDragStart,
+    over: handleRowDragOver,
+    leave: handleRowDragLeave,
+    drop: handleRowDrop,
+    end: handleRowDragEnd,
+  }
+
   /** Reveal the tree filter and put the caret in it. */
   const focusTreeFilter = useCallback((): void => {
     setFilterOpen(true)
@@ -247,43 +223,6 @@ export function DataView(props: DataViewProps): ReactElement {
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)
   }, [filterOpen, filterFocus])
-
-  // Roving keyboard focus: arrow keys move between rows, Home/End jump to the
-  // edges, and Left/Right collapse/expand the focused row.
-  const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (shortcutHit(event, 'tree.filter')) {
-      event.preventDefault()
-      focusTreeFilter()
-      return
-    }
-    if (shortcutHit(event, 'tree.refresh')) {
-      // 浏览器默认会把组合键当成刷新整页，这里只重读树。
-      event.preventDefault()
-      props.onRefresh?.()
-      return
-    }
-    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button.dshdb-row'))
-    if (rows.length === 0) return
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const current = active === null ? -1 : rows.indexOf(active as HTMLButtonElement)
-    const target = nextRowIndex(current, rows.length, event.key)
-    if (target !== null) {
-      event.preventDefault()
-      rows[target].focus()
-      return
-    }
-    if (active === null || !rows.includes(active as HTMLButtonElement)) return
-    const expandedAttr = active.getAttribute('aria-expanded')
-    const expanding = event.key === 'ArrowRight' && expandedAttr === 'false'
-    const collapsing = event.key === 'ArrowLeft' && expandedAttr === 'true'
-    if (expanding || collapsing) {
-      // Expansion belongs to the chevron; clicking the row itself only selects.
-      const toggle = active.querySelector<HTMLElement>('.dshdb-row-toggle-action')
-      if (toggle === null) return
-      event.preventDefault()
-      toggle.click()
-    }
-  }
 
   const openObjectMenu = useCallback(
     (
@@ -384,10 +323,15 @@ export function DataView(props: DataViewProps): ReactElement {
     [props.onConnect, props.onOpenConsoleTab],
   )
 
+  const menuHandlers = useRef({ openObjectMenu, openSchemaMenu, openConnectionMenu })
+  menuHandlers.current = { openObjectMenu, openSchemaMenu, openConnectionMenu }
+
   const normalizedFilter = settledFilter.trim().toLowerCase()
   // Folding is per filter term: a new search gets the first page again.
   useEffect(() => {
-    setObjectExtra({})
+    // Keep the same empty object when nothing was paged in: swapping in a
+    // fresh {} would rebuild every row and repaint the whole window.
+    setObjectExtra((current) => (Object.keys(current).length === 0 ? current : {}))
   }, [normalizedFilter])
   const matches = (text: string): boolean => normalizedFilter === '' || text.toLowerCase().includes(normalizedFilter)
   // `库.表` narrows the object list by schema; the schema row then stays visible through its buckets.
@@ -494,26 +438,347 @@ export function DataView(props: DataViewProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFilter, connections, schemas, objects, expanded, props.redisKeys])
 
-  const grouped = useMemo(() => {
-    const cache: Record<string, Record<FolderId, SchemaObject[]>> = {}
-    for (const [key, list] of Object.entries(objects)) {
-      const buckets = {} as Record<FolderId, SchemaObject[]>
-      for (const folder of FOLDERS) buckets[folder.id] = []
-      const schemaName = key.slice(key.indexOf(':') + 1)
-      for (const object of list) {
-        if (normalizedFilter !== '' && !matchesFilteredObject(filterQuery, schemaName, object.name)) continue
-        buckets[folderOf(object.kind)].push(object)
-      }
-      cache[key] = buckets
+  // The flat tree is rebuilt only when tree data or the settled filter changes.
+  // Scrolling, hovering, dragging and selecting are view state and must not
+  // invalidate this array.
+  const rows = useMemo(
+    () =>
+      buildTreeRows({
+        connections,
+        servers,
+        connectingId: props.connectingId,
+        schemas,
+        objects,
+        expanded,
+        loadingSchemas: props.loadingSchemas,
+        loadingObjects: props.loadingObjects,
+        cachedAt,
+        descriptions: props.descriptions,
+        loadingDescriptions: props.loadingDescriptions,
+        redisKeys: props.redisKeys,
+        redisCursor: props.redisCursor,
+        loadingRedisKeys: props.loadingRedisKeys,
+        redisDatabases: props.redisDatabases,
+        redisDbs: props.redisDbs,
+        visibleSchemas: props.visibleSchemas,
+        filter: settledFilter,
+        objectExtra,
+      }),
+    [
+      connections,
+      servers,
+      props.connectingId,
+      schemas,
+      objects,
+      expanded,
+      props.loadingSchemas,
+      props.loadingObjects,
+      cachedAt,
+      props.descriptions,
+      props.loadingDescriptions,
+      props.redisKeys,
+      props.redisCursor,
+      props.loadingRedisKeys,
+      props.redisDatabases,
+      props.redisDbs,
+      props.visibleSchemas,
+      settledFilter,
+      objectExtra,
+    ],
+  )
+
+  const { containerRef, range, totalHeight, viewportHeight, onScroll, scrollToIndex } = useWindow(rows.length)
+
+  // A shrinking tree (collapsed branch, narrower filter) may leave the active
+  // index past the end; keep the roving focus valid.
+  useEffect(() => {
+    setActiveIndex((current) => {
+      if (rows.length === 0) return -1
+      return current >= rows.length ? rows.length - 1 : current
+    })
+  }, [rows])
+
+  const focusIndex = (index: number): void => {
+    setActiveIndex(index)
+    containerRef.current?.focus()
+    scrollToIndex(index)
+  }
+
+  /** Expansion semantics of the chevron: selecting the branch too, like JetBrains. */
+  const toggleRow = useCallback((row: TreeRow): void => {
+    const current = propsRef.current
+    switch (row.kind) {
+      case 'connection':
+        if (row.connectionId !== undefined) {
+          current.onSelectConnection(row.connectionId)
+          current.onToggleConnection(row.connectionId)
+        }
+        return
+      case 'schema':
+        if (row.connectionId !== undefined && row.schema !== undefined) {
+          current.onSelectSchema(row.connectionId, row.schema)
+          current.onToggleSchema(row.connectionId, row.schema)
+        }
+        return
+      case 'folder':
+        if (row.connectionId !== undefined && row.schema !== undefined && row.folder !== undefined) {
+          current.onSelectFolder(row.connectionId, row.schema, row.folder)
+          current.onToggleFolder(row.connectionId, row.schema, row.folder)
+        }
+        return
+      case 'object':
+        if (row.connectionId !== undefined && row.schema !== undefined && row.object !== undefined) {
+          current.onSelectObject(row.connectionId, row.schema, row.object)
+          if (row.toggleKey !== undefined) current.onToggleKey(row.toggleKey)
+        }
+        return
+      case 'detail-folder':
+        if (row.toggleKey !== undefined) current.onToggleKey(row.toggleKey)
+        return
+      case 'redis-db':
+        if (row.connectionId !== undefined && row.db !== undefined) current.onToggleRedisDb(row.connectionId, row.db)
+        return
+      default:
+        return
     }
-    return cache
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objects, normalizedFilter])
+  }, [])
+
+  // openRow needs the same stable toggle; the ref keeps both callbacks
+  // identity-stable without depending on each other.
+  const toggleRowRef = useRef(toggleRow)
+  toggleRowRef.current = toggleRow
+
+  const activateRow = useCallback((row: TreeRow, event?: MouseEvent<HTMLElement>): void => {
+    const current = propsRef.current
+    switch (row.kind) {
+      case 'connection':
+        if (row.connectionId !== undefined) current.onSelectConnection(row.connectionId)
+        return
+      case 'schema':
+        if (row.connectionId !== undefined && row.schema !== undefined) current.onSelectSchema(row.connectionId, row.schema)
+        return
+      case 'folder':
+        if (row.connectionId !== undefined && row.schema !== undefined && row.folder !== undefined) {
+          current.onSelectFolder(row.connectionId, row.schema, row.folder)
+        }
+        return
+      case 'object':
+        if (event !== undefined && event.detail > 1) return
+        if (row.connectionId !== undefined && row.schema !== undefined && row.object !== undefined) {
+          current.onSelectObject(row.connectionId, row.schema, row.object)
+        }
+        return
+      case 'detail-folder':
+        if (row.connectionId !== undefined && row.schema !== undefined && row.object !== undefined) {
+          current.onSelectObject(row.connectionId, row.schema, row.object)
+        }
+        return
+      case 'redis-db':
+        if (row.connectionId !== undefined && row.db !== undefined) current.onSelectRedisDb(row.connectionId, row.db)
+        return
+      case 'redis-key':
+        if (row.connectionId !== undefined && row.db !== undefined && row.redisKey !== undefined) {
+          current.onSelectRedisKey(row.connectionId, row.db, row.redisKey.key)
+        }
+        return
+      case 'more':
+        if (row.pageKey !== undefined) {
+          setObjectExtra((currentExtra) => ({
+            ...currentExtra,
+            [row.pageKey as string]: (currentExtra[row.pageKey as string] ?? 0) + 200,
+          }))
+        }
+        return
+      case 'connect':
+        if (row.connectionId !== undefined) current.onConnect(row.connectionId)
+        return
+      case 'redis-action':
+        if (row.connectionId !== undefined && row.db !== undefined) {
+          current.onLoadRedisKeys(row.connectionId, row.db, true)
+        }
+        return
+      default:
+        return
+    }
+  }, [])
+
+  const openRow = useCallback((row: TreeRow): void => {
+    const current = propsRef.current
+    if (row.kind === 'object') {
+      if (row.expandable && row.connectionId !== undefined && row.schema !== undefined && row.object !== undefined) {
+        current.onSelectObject(row.connectionId, row.schema, row.object)
+        current.onOpenTable(row.connectionId, row.schema, { name: row.object.name, kind: row.object.kind })
+      }
+      return
+    }
+    if (row.kind === 'detail-folder') {
+      if (row.toggleKey !== undefined) current.onToggleKey(row.toggleKey)
+      return
+    }
+    if (row.expandable) toggleRowRef.current(row)
+  }, [])
+
+  const actions = useMemo<TreeRowActions>(
+    () => ({
+      activate: (row, event) => activateRow(row, event),
+      toggle: (row) => toggleRow(row),
+      open: (row) => openRow(row),
+      menu: (row, event) => {
+        if (row.kind === 'connection') {
+          const connection = propsRef.current.connections.find((item) => item.id === row.connectionId)
+          if (connection !== undefined) {
+            menuHandlers.current.openConnectionMenu(event as MouseEvent<HTMLButtonElement>, connection)
+          }
+        } else if (row.kind === 'schema' && row.connectionId !== undefined && row.schema !== undefined) {
+          menuHandlers.current.openSchemaMenu(event as MouseEvent<HTMLButtonElement>, row.connectionId, row.schema)
+        } else if (row.kind === 'object' && row.connectionId !== undefined && row.schema !== undefined && row.object !== undefined) {
+          menuHandlers.current.openObjectMenu(event as MouseEvent<HTMLButtonElement>, row.connectionId, row.schema, row.object)
+        }
+      },
+      connect: (connectionId) => propsRef.current.onConnect(connectionId),
+      toggleSchemaVisible: (connectionId, schema) => propsRef.current.onToggleSchemaVisible(connectionId, schema),
+      toggleAllSchemasVisible: (connectionId, all) => propsRef.current.onToggleAllSchemasVisible(connectionId, all),
+      toggleRedisDbVisible: (connectionId, db) => propsRef.current.onToggleRedisDbVisible(connectionId, db),
+      toggleAllRedisDbsVisible: (connectionId, all) => propsRef.current.onToggleAllRedisDbsVisible(connectionId, all),
+      dragStart: (id, event) => dragHandlers.current.start(event, id),
+      dragOver: (id, event) => dragHandlers.current.over(event, id),
+      dragLeave: (event) => dragHandlers.current.leave(event),
+      drop: (id, event) => dragHandlers.current.drop(event, id),
+      dragEnd: () => dragHandlers.current.end(),
+    }),
+    [activateRow, openRow, toggleRow],
+  )
+
+  const navigable = useMemo(() => {
+    const list: number[] = []
+    rows.forEach((row, index) => {
+      if (row.navigable) list.push(index)
+    })
+    return list
+  }, [rows])
+
+  // Roving keyboard focus over the flat array: Up/Down/PageUp/PageDown/Home/End
+  // move between navigable rows, Left/Right collapse/expand or step to the
+  // parent/child, and every move scrolls the target into the window.
+  const handleTreeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (shortcutHit(event, 'tree.filter')) {
+      event.preventDefault()
+      focusTreeFilter()
+      return
+    }
+    if (shortcutHit(event, 'tree.refresh')) {
+      // 浏览器默认会把组合键当成刷新整页，这里只重读树。
+      event.preventDefault()
+      props.onRefresh?.()
+      return
+    }
+    if (rows.length === 0) return
+    const targetElement = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-index]') : null
+    const domIndex = targetElement === null ? -1 : Number(targetElement.dataset.index)
+    const current = Number.isInteger(domIndex) && domIndex >= 0 ? domIndex : activeIndexRef.current
+    const position = navigable.indexOf(current)
+    const last = navigable[navigable.length - 1]
+
+    if (event.key === 'ArrowDown') {
+      const next = position >= 0 ? navigable[position + 1] : navigable.find((index) => index > current)
+      if (next !== undefined) {
+        event.preventDefault()
+        focusIndex(next)
+      }
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      const next = position >= 0 ? navigable[position - 1] : [...navigable].reverse().find((index) => index < current)
+      if (next !== undefined) {
+        event.preventDefault()
+        focusIndex(next)
+      }
+      return
+    }
+    if (event.key === 'Home') {
+      if (navigable[0] !== undefined) {
+        event.preventDefault()
+        focusIndex(navigable[0])
+      }
+      return
+    }
+    if (event.key === 'End') {
+      if (last !== undefined) {
+        event.preventDefault()
+        focusIndex(last)
+      }
+      return
+    }
+    if (event.key === 'PageDown' || event.key === 'PageUp') {
+      const step = Math.max(1, Math.floor(viewportHeight / TREE_ROW_HEIGHT) - 1)
+      const pool = event.key === 'PageDown' ? navigable.filter((index) => index > current) : navigable.filter((index) => index < current).reverse()
+      const next = pool[Math.min(step, pool.length) - 1]
+      if (next !== undefined) {
+        event.preventDefault()
+        focusIndex(next)
+      }
+      return
+    }
+
+    const row = current >= 0 && current < rows.length ? rows[current] : undefined
+    if (row === undefined) return
+    if (event.key === 'ArrowLeft') {
+      if (row.expandable && row.open) {
+        event.preventDefault()
+        toggleRow(row)
+        return
+      }
+      for (let index = current - 1; index >= 0; index -= 1) {
+        if (rows[index].depth < row.depth) {
+          event.preventDefault()
+          focusIndex(index)
+          return
+        }
+      }
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      if (row.expandable && !row.open) {
+        event.preventDefault()
+        toggleRow(row)
+        return
+      }
+      const child = current + 1
+      if (child < rows.length && rows[child].depth > row.depth) {
+        event.preventDefault()
+        focusIndex(child)
+      }
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (row.kind === 'object' && row.expandable) {
+        openRow(row)
+        return
+      }
+      if (row.kind === 'connect') {
+        activateRow(row)
+        return
+      }
+      if (row.expandable) {
+        toggleRow(row)
+        return
+      }
+      activateRow(row)
+    }
+  }
+
+  const isSelected = (row: TreeRow): boolean =>
+    row.kind === 'connection'
+      ? row.connectionId === selectedId
+      : row.selectedKey !== undefined && row.selectedKey === props.selectedKey
 
   // The detail spinner keeps a thin strip at the top; the filter itself is a
   // floating box pinned to the top-right corner of the tree, opened by Ctrl+F.
   const loadingDetail = props.detailLoading || props.redisDetailLoading
   const saysFilter = filterOpen || filter !== ''
+  const activeRow = activeIndex >= 0 && activeIndex < rows.length ? rows[activeIndex] : undefined
+  const activeVisible = activeRow !== undefined && activeIndex >= range.start && activeIndex < range.end
 
   return (
     <div className="dshdb-view" style={{ gap: 8 }}>
@@ -580,374 +845,48 @@ export function DataView(props: DataViewProps): ReactElement {
         />
       ) : (
         <Panel className="dshdb-grow" bodyClassName="dshdb-panel-body-pad">
+          {filterSummary !== null && filterSummary.connections === 0 ? (
+            <span className="dshdb-filter-empty">没有匹配的对象</span>
+          ) : null}
+          {filterSummary !== null && filterSummary.objects > 0 ? (
+            <span className="dshdb-filter-empty">{filterSummary.objects} 个对象匹配</span>
+          ) : null}
           <div
+            ref={containerRef}
             className="dshdb-tree dshdb-scroll-thin"
             role="tree"
             aria-label="数据源"
+            tabIndex={0}
+            aria-activedescendant={activeVisible && activeRow?.navigable === true ? rowDomId(activeIndex) : undefined}
             onKeyDown={handleTreeKey}
+            onScroll={onScroll}
           >
-            {filterSummary !== null && filterSummary.connections === 0 ? (
-              <span className="dshdb-filter-empty">没有匹配的对象</span>
-            ) : null}
-            {filterSummary !== null && filterSummary.objects > 0 ? (
-              <span className="dshdb-filter-empty">{filterSummary.objects} 个对象匹配</span>
-            ) : null}
-            {connections.map((connection) => {
-              const isSelected = connection.id === selectedId
-              const isExpanded = expanded[connection.id] === true
-              const server = servers[connection.id]
-              const connecting = props.connectingId === connection.id
-              const loading = props.loadingSchemas[connection.id] === true
-              const cachedStamp = cachedAt[connection.id]
-              const allSchemas = schemas[connection.id] ?? []
-              const shownSchemas = props.visibleSchemas[connection.id] ?? null
-              const redisKeys = connection.dialect === 'redis' ? props.redisKeys[connection.id] : undefined
-              const redisDbs = props.redisDbs[connection.id] ?? [connection.redisDb]
-              // A schema stays visible when it or any of its loaded objects matches.
-              const list = allSchemas
-                .filter((schema) => shownSchemas === null || shownSchemas.includes(schema.name))
-                .filter((schema) => {
-                  if (matches(schema.name)) return true
-                  const buckets = grouped[`${connection.id}:${schema.name}`]
-                  return buckets !== undefined && FOLDERS.some((folder) => buckets[folder.id].length > 0)
-                })
-              const hasCachedStructure =
-                allSchemas.length > 0 ||
-                redisKeys !== undefined ||
-                (connection.dialect === 'redis' && props.redisDatabases[connection.id] !== undefined)
-              const redisMatches =
-                connection.dialect === 'redis' &&
-                (redisKeys === undefined ||
-                  Object.values(redisKeys).some((keys) => keys.some((key) => matches(key.key))))
-              const visible =
-                normalizedFilter === '' ||
-                matches(connection.name) ||
-                list.length > 0 ||
-                redisMatches ||
-                (allSchemas.length === 0 && server === undefined && !loading)
-
-              if (!visible) return null
-
-              const schemaItems = allSchemas.map((schema) => ({ id: schema.name, label: schema.name }))
-              const dbItems = Array.from({ length: props.redisDatabases[connection.id] ?? 16 }, (_, index) => ({
-                id: String(index),
-                label: index === connection.redisDb ? `db${index}（默认）` : `db${index}`,
-              }))
-
-              return (
-                <div key={connection.id}>
-                  <button
-                    type="button"
-                    className={`dshdb-row${dragging?.id === connection.id ? ' dshdb-row-dragging' : ''}${
-                      dragging?.overId === connection.id
-                        ? dragging.after
-                          ? ' dshdb-row-drop-after'
-                          : ' dshdb-row-drop-before'
-                        : ''
-                    }`}
-                    role="treeitem"
-                    aria-level={1}
-                    aria-expanded={isExpanded}
-                    data-active={isSelected}
-                    data-kind="datasource"
-                    title={`${connection.name} · ${connection.host}:${connection.port}${
-                      connection.dialect === 'redis' ? ` · db${connection.redisDb}` : ''
-                    }${cachedStamp ? `\n离线可用 · 结构更新于 ${relativeTime(cachedStamp)}` : ''}`}
-                    onClick={() => props.onSelectConnection(connection.id)}
-                    onDoubleClick={() => props.onToggleConnection(connection.id)}
-                    onContextMenu={(event) => openConnectionMenu(event, connection)}
-                    draggable={props.onReorderConnections !== undefined}
-                    onDragStart={(event) => handleRowDragStart(event, connection.id)}
-                    onDragOver={(event) => handleRowDragOver(event, connection.id)}
-                    onDragLeave={handleRowDragLeave}
-                    onDrop={(event) => handleRowDrop(event, connection.id)}
-                    onDragEnd={handleRowDragEnd}
-                  >
-                    <RowToggle
-                      open={isExpanded}
-                      title={isExpanded ? '收起数据源' : '展开数据源'}
-                      onToggle={() => {
-                        props.onSelectConnection(connection.id)
-                        props.onToggleConnection(connection.id)
-                      }}
+            <div className="dshdb-tree-body" style={{ height: totalHeight }}>
+              {rows.slice(range.start, range.end).map((row, offset) => {
+                const index = range.start + offset
+                return (
+                  <div className="dshdb-tree-slot" key={row.key} style={{ top: index * TREE_ROW_HEIGHT }}>
+                    <TreeRowView
+                      row={row}
+                      index={index}
+                      domId={rowDomId(index)}
+                      selected={isSelected(row)}
+                      active={index === activeIndex}
+                      dragging={dragging !== null && dragging.id === row.key}
+                      dragEnabled={props.onReorderConnections !== undefined}
+                      drop={
+                        dragging !== null && dragging.overId === row.key
+                          ? dragging.after
+                            ? 'after'
+                            : 'before'
+                          : ''
+                      }
+                      actions={actions}
                     />
-                    <span className="dshdb-row-icon">
-                      <DatabaseIcon size={13} />
-                    </span>
-                    <span className="dshdb-row-label">
-                      <Highlight text={connection.name} query={normalizedFilter} />
-                    </span>
-                    <Tag>{DIALECT_LABEL[connection.dialect]}</Tag>
-                    {connection.readOnly ? <Tag tone="warn">只读</Tag> : null}
-                    {!server && cachedStamp && hasCachedStructure ? (
-                      <span className="dshdb-row-meta">缓存 {relativeTime(cachedStamp)}</span>
-                    ) : null}
-                    {connection.dialect === 'redis' ? (
-                      <RowPicker
-                        title="选择要展示的数据库"
-                        allLabel="所有数据库"
-                        items={dbItems}
-                        visible={redisDbs.map(String)}
-                        onToggle={(id) => props.onToggleRedisDbVisible(connection.id, Number(id))}
-                        onToggleAll={(all) => props.onToggleAllRedisDbsVisible(connection.id, all)}
-                      />
-                    ) : (
-                      <RowPicker
-                        title="选择要展示的架构"
-                        allLabel="所有架构"
-                        items={schemaItems}
-                        visible={shownSchemas}
-                        onToggle={(name) => props.onToggleSchemaVisible(connection.id, name)}
-                        onToggleAll={(all) => props.onToggleAllSchemasVisible(connection.id, all)}
-                      />
-                    )}
-                    {!server && !connecting ? (
-                      <span
-                        className="dshdb-row-action dshdb-connect-action"
-                        role="button"
-                        tabIndex={0}
-                        title={`连接 ${connection.host}:${connection.port}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          props.onConnect(connection.id)
-                        }}
-                        onDoubleClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            props.onConnect(connection.id)
-                          }
-                        }}
-                      >
-                        连接
-                      </span>
-                    ) : null}
-                    <StateDot
-                      tone={server ? 'success' : connecting ? 'warn' : connection.dialect === 'redis' ? 'business' : 'idle'}
-                    />
-                  </button>
-
-                  {isExpanded ? (
-                    <div role="group">
-                      {!server && !hasCachedStructure ? (
-                        <button
-                          type="button"
-                          className="dshdb-row"
-                          style={DEPTH_ONE}
-                          data-kind="schema"
-                          disabled={connecting}
-                          onClick={() => props.onConnect(connection.id)}
-                        >
-                          <span className="dshdb-row-toggle" />
-                          <span className="dshdb-row-icon">
-                            {connecting ? <Spinner /> : <DatabaseIcon size={13} />}
-                          </span>
-                          <span className="dshdb-row-label dshdb-muted">
-                            {connecting ? '正在连接…' : `连接到 ${connection.host}:${connection.port}`}
-                          </span>
-                        </button>
-                      ) : connection.dialect === 'redis' ? (
-                        <RedisDatabases
-                          connection={connection}
-                          keysByDb={props.redisKeys[connection.id]}
-                          cursors={props.redisCursor[connection.id]}
-                          loadingByDb={props.loadingRedisKeys[connection.id]}
-                          visibleDbs={redisDbs}
-                          expanded={expanded}
-                          selectedKey={props.selectedKey}
-                          query={normalizedFilter}
-                          onToggleDb={(db) => props.onToggleRedisDb(connection.id, db)}
-                          onLoadMore={(db) => props.onLoadRedisKeys(connection.id, db, true)}
-                          onSelectDb={(db) => props.onSelectRedisDb(connection.id, db)}
-                          onSelectKey={(db, key) => props.onSelectRedisKey(connection.id, db, key)}
-                        />
-                      ) : (
-                        <>
-                          {loading ? (
-                            <div className="dshdb-muted dshdb-inline" style={{ padding: '4px 6px 4px 26px' }}>
-                              <Spinner /> 正在加载 schema…
-                            </div>
-                          ) : null}
-                          {!loading && !server && hasCachedStructure ? (
-                            <div className="dshdb-muted" style={{ padding: '2px 6px 4px 26px', fontSize: 11 }}>
-                              离线缓存 · {relativeTime(cachedStamp ?? '')}，连接后自动更新
-                            </div>
-                          ) : null}
-                          {!loading && shownSchemas !== null && list.length === 0 ? (
-                            <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px' }}>
-                              全部 Schema 已隐藏，使用行尾按钮选择显示的架构
-                            </div>
-                          ) : null}
-                          {!loading && list.length === 0 && (shownSchemas === null || allSchemas.length === 0) ? (
-                            <div className="dshdb-muted" style={{ padding: '4px 6px 4px 26px' }}>
-                              {normalizedFilter ? '没有匹配的 schema' : '没有 schema'}
-                            </div>
-                          ) : null}
-                          {list.map((schema) => {
-                            const key = `${connection.id}:${schema.name}`
-                            const schemaExpanded = expanded[key] === true
-                            const objectList = objects[key]
-                            const objectLoading = props.loadingObjects[key] === true
-                            const buckets = grouped[key]
-                            const total = objectList === undefined ? undefined : FOLDERS.reduce(
-                              (sum, folder) => sum + (buckets?.[folder.id].length ?? 0),
-                              0,
-                            )
-
-                            return (
-                              <div key={schema.name}>
-                                <button
-                                  type="button"
-                                  className="dshdb-row"
-                                  role="treeitem"
-                                  aria-level={2}
-                                  aria-expanded={schemaExpanded}
-                                  data-active={props.selectedKey === `${connection.id}|schema:${schema.name}`}
-                                  data-kind="schema"
-                                  style={DEPTH_ONE}
-                                  onClick={() => props.onSelectSchema(connection.id, schema.name)}
-                                  onDoubleClick={() => void props.onToggleSchema(connection.id, schema.name)}
-                                  onContextMenu={(event) => openSchemaMenu(event, connection.id, schema.name)}
-                                >
-                                  <RowToggle
-                                    open={schemaExpanded}
-                                    title={schemaExpanded ? '收起 Schema' : '展开 Schema'}
-                                    onToggle={() => {
-                                      props.onSelectSchema(connection.id, schema.name)
-                                      void props.onToggleSchema(connection.id, schema.name)
-                                    }}
-                                  />
-                                  <span className="dshdb-row-icon">
-                                    <DatabaseIcon size={13} />
-                                  </span>
-                                  <span className="dshdb-row-label">
-                                    <Highlight text={schema.name} query={filterQuery.schema === '' ? normalizedFilter : filterQuery.schema} />
-                                  </span>
-                                  {schema.system ? <Tag>系统</Tag> : null}
-                                  {objectLoading ? <Spinner /> : null}
-                                  {!objectLoading && total !== undefined ? (
-                                    <span className="dshdb-row-meta">{total}</span>
-                                  ) : null}
-                                </button>
-
-                                {schemaExpanded ? (
-                                  <div role="group">
-                                    {objectLoading && objectList === undefined ? (
-                                      <div className="dshdb-muted" style={{ padding: '4px 6px 4px 40px' }}>
-                                        正在加载对象…
-                                      </div>
-                                    ) : null}
-                                    {!objectLoading &&
-                                    objectList !== undefined &&
-                                    FOLDERS.every((folder) => (buckets?.[folder.id].length ?? 0) === 0) ? (
-                                      <div className="dshdb-muted" style={{ padding: '4px 6px 4px 40px' }}>
-                                        {normalizedFilter ? '没有匹配的对象' : '没有表或视图'}
-                                      </div>
-                                    ) : null}
-                                    {objectList !== undefined
-                                      ? FOLDERS.filter((folder) => (buckets?.[folder.id].length ?? 0) > 0).map((folder) => {
-                                          const folderKey = `${connection.id}:${schema.name}#${folder.id}`
-                                          const folderExpanded = expanded[folderKey] === true
-                                          const items = buckets?.[folder.id] ?? []
-                                          const pageWindow = objectWindow(items.length, objectExtra[folderKey] ?? 0)
-                                          return (
-                                            <div key={folder.id}>
-                                              <button
-                                                type="button"
-                                                className="dshdb-row"
-                                                role="treeitem"
-                                                aria-level={3}
-                                                aria-expanded={folderExpanded}
-                                                data-active={
-                                                  props.selectedKey === `${connection.id}|${schema.name}#${folder.id}`
-                                                }
-                                                data-kind="folder"
-                                                style={DEPTH_TWO}
-                                                onClick={() =>
-                                                  props.onSelectFolder(connection.id, schema.name, folder.id)
-                                                }
-                                                onDoubleClick={() =>
-                                                  props.onToggleFolder(connection.id, schema.name, folder.id)
-                                                }
-                                              >
-                                                <RowToggle
-                                                  open={folderExpanded}
-                                                  title={folderExpanded ? `收起${folder.label}` : `展开${folder.label}`}
-                                                  onToggle={() => {
-                                                    props.onSelectFolder(connection.id, schema.name, folder.id)
-                                                    props.onToggleFolder(connection.id, schema.name, folder.id)
-                                                  }}
-                                                />
-                                                <span className="dshdb-row-icon">{folder.icon}</span>
-                                                <span className="dshdb-row-label">{folder.label}</span>
-                                                <span className="dshdb-row-meta">{items.length}</span>
-                                              </button>
-                                              {folderExpanded ? (
-                                                <div role="group">
-                                                  {items.slice(0, pageWindow.visible).map((object) => (
-                                                    <ObjectRow
-                                                      key={object.name}
-                                                      connectionId={connection.id}
-                                                      schema={schema.name}
-                                                      object={object}
-                                                      selected={
-                                                        props.selectedKey ===
-                                                        `${connection.id}|${schema.name}.${object.name}`
-                                                      }
-                                                      expanded={expanded}
-                                                      description={
-                                                        props.descriptions[`${connection.id}|${schema.name}.${object.name}`]
-                                                      }
-                                                      loading={
-                                                        props.loadingDescriptions[
-                                                          `${connection.id}|${schema.name}.${object.name}`
-                                                        ] === true
-                                                      }
-                                                      onSelect={props.onSelectObject}
-                                                      onOpen={props.onOpenTable}
-                                                      onToggleKey={props.onToggleKey}
-                                                      onMenu={openObjectMenu}
-                                                      query={filterQuery.schema === '' ? normalizedFilter : filterQuery.name}
-                                                    />
-                                                  ))}
-                                                  {pageWindow.hidden > 0 ? (
-                                                    <button
-                                                      type="button"
-                                                      className="dshdb-row dshdb-muted"
-                                                      style={DEPTH_THREE}
-                                                      onClick={() =>
-                                                        setObjectExtra((current) => ({
-                                                          ...current,
-                                                          [folderKey]: (current[folderKey] ?? 0) + OBJECT_PAGE,
-                                                        }))
-                                                      }
-                                                    >
-                                                      <span className="dshdb-row-label">
-                                                        {pageWindow.hidden > OBJECT_PAGE
-                                                          ? `再显示 ${OBJECT_PAGE} 个（还有 ${pageWindow.hidden} 个）`
-                                                          : `显示剩余 ${pageWindow.hidden} 个`}
-                                                      </span>
-                                                    </button>
-                                                  ) : null}
-                                                </div>
-                                              ) : null}
-                                            </div>
-                                          )
-                                        })
-                                      : null}
-                                  </div>
-                                ) : null}
-                              </div>
-                            )
-                          })}
-                        </>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </Panel>
       )}
