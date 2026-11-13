@@ -157,6 +157,17 @@ describe('insertStatement', () => {
     )
     expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [])).toBe('')
   })
+
+  it('leaves server-generated columns out while keeping value positions aligned', () => {
+    const generated = [
+      { ...column('total', 'int'), generated: true },
+      column('id', 'int'),
+      column('name', 'varchar(20)'),
+    ]
+    expect(insertStatement('mysql', 'shop', 'orders', generated, [99, 7, "O'Brien"])).toBe(
+      "INSERT INTO `shop`.`orders` (`id`, `name`) VALUES (7, 'O''Brien');",
+    )
+  })
 })
 
 describe('insert fidelity', () => {

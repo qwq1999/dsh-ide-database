@@ -142,6 +142,7 @@ export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] 
  * One row as an INSERT statement for the table tab's context menu. Numeric
  * columns keep the exact text the driver returned (decimals arrive as strings
  * to avoid float rounding), everything else is quoted; NULL stays NULL.
+ * Server-generated columns are left out: the database rejects a value for them.
  */
 export function insertStatement(
   dialect: ClientConnection['dialect'],
@@ -150,8 +151,13 @@ export function insertStatement(
   columns: ColumnInfo[],
   row: CellValue[],
 ): string {
-  const names = columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
-  const values = columns.map((column, index) => insertLiteral(dialect, column, row[index] ?? null)).join(', ')
+  const selected = columns
+    .map((column, index) => ({ column, index }))
+    .filter((entry) => entry.column.generated !== true)
+  const names = selected.map((entry) => quoteIdent(dialect, entry.column.name)).join(', ')
+  const values = selected
+    .map((entry) => insertLiteral(dialect, entry.column, row[entry.index] ?? null))
+    .join(', ')
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
 }
 
