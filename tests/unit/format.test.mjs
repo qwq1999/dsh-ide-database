@@ -277,6 +277,9 @@ describe('format helpers', () => {
   it('groups counts with thousands separators', () => {
     expect(formatCount(999)).toBe('999')
     expect(formatCount(1234567)).toBe('1,234,567')
+    expect(formatCount(Number.NaN)).toBe('—')
+    expect(formatCount(Number.POSITIVE_INFINITY)).toBe('—')
+    expect(formatCount(-1)).toBe('—')
   })
 
   it('shortens remaining TTL to the largest whole unit', () => {

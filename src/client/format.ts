@@ -375,5 +375,6 @@ const COUNT_FORMAT = new Intl.NumberFormat('en-US')
 
 /** Group digits so counts read the same everywhere they are shown. */
 export function formatCount(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—'
   return COUNT_FORMAT.format(value)
 }
