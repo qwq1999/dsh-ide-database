@@ -416,8 +416,12 @@ function quoteIdent(dialect: SqlDialect, name: string): string {
   return `"${name.replace(/"/g, '""')}"`
 }
 
-function quoteLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`
+function quoteLiteral(value: string, dialect: SqlDialect = 'generic'): string {
+  // MySQL treats backslash as an escape character inside string literals, so a
+  // Windows path or a regexp must be doubled there. Leaving it alone can even
+  // swallow the closing quote when the comment ends with a backslash.
+  const escaped = dialect === 'mysql' ? value.replace(/\\/g, '\\\\') : value
+  return `'${escaped.replace(/'/g, "''")}'`
 }
 
 function qualifies(schema: string, table: string): string {
@@ -472,7 +476,7 @@ function generateDdl(dialect: SqlDialect, description: TableDescription): string
     if (column.nullable === false) parts.push('NOT NULL')
     const fallback = column.defaultValue?.trim() ?? ''
     if (fallback !== '') parts.push(`DEFAULT ${fallback}`)
-    if (commentSupported && column.comment !== undefined && column.comment !== '') parts.push(`COMMENT ${quoteLiteral(column.comment)}`)
+    if (commentSupported && column.comment !== undefined && column.comment !== '') parts.push(`COMMENT ${quoteLiteral(column.comment, dialect)}`)
     lines.push(`  ${parts.join(' ')}`)
   }
   const primary = description.indexes.find((index) => index.primary)
