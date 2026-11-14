@@ -244,15 +244,17 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }, [hiddenColumns, hiddenStorageKey])
   const displayColumns = useMemo(() => orderColumns(columns, order), [columns, order])
   const displayRows = useMemo(() => orderRows(rows, order), [rows, order])
-  const widthStorageKey = useMemo(
-    () => migrateWidths(gridStorageKey, legacyGridStorageKey, displayColumns.length),
-    [gridStorageKey, legacyGridStorageKey, displayColumns.length],
-  )
   // Hiding only narrows what the grid renders; positions map back for drag order.
   const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   const hiddenCount = displayColumns.length - shownColumns.length
+  // Widths are indexed by the columns the grid actually paints, so use the
+  // visible count both for migration and for the DataGrid storage key.
+  const widthStorageKey = useMemo(
+    () => migrateWidths(gridStorageKey, legacyGridStorageKey, shownColumns.length),
+    [gridStorageKey, legacyGridStorageKey, shownColumns.length],
+  )
 
   // A reload, page change or filter shows different rows; old checkboxes would point nowhere.
   useEffect(() => {
