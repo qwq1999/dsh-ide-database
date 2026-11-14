@@ -95,6 +95,19 @@ function bracketIdentifierEnd(text: string, index: number): number | null {
   return null
 }
 
+/**
+ * True when `--` at `index` starts a line comment. MySQL requires whitespace
+ * (or end of input) after the dashes; every other dialect accepts any `--`.
+ * Applying MySQL's rule everywhere would make `--'` in Oracle/SQLite/SQL Server
+ * start a string literal and hide a later `; DELETE` from the guard.
+ */
+function startsLineComment(text: string, index: number, dialect: SqlDialect): boolean {
+  if (text[index] !== '-' || text[index + 1] !== '-') return false
+  if (!isMysqlDialect(dialect)) return true
+  const after = text[index + 2]
+  return after === undefined || /\s/u.test(after)
+}
+
 function matchingParen(text: string, open: number, dialect: SqlDialect = 'generic'): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
@@ -155,7 +168,7 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
       }
       continue
     }
-    if (char === '-' && text[index + 1] === '-') {
+    if (startsLineComment(text, index, dialect)) {
       const newline = text.indexOf('\n', index)
       if (newline < 0) return -1
       index = newline
@@ -331,8 +344,8 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
     }
     // MySQL only starts a `--` comment when the next character is whitespace;
     // `SELECT 1--3` is arithmetic, so `--3 INTO OUTFILE ...` must stay visible.
-    const afterDashes = text[index + 2]
-    if (char === '-' && text[index + 1] === '-' && (afterDashes === undefined || /\s/u.test(afterDashes))) {
+    // Every other dialect accepts any `--`.
+    if (startsLineComment(text, index, dialect)) {
       const newline = text.indexOf('\n', index)
       if (newline < 0) return out
       index = newline
@@ -401,7 +414,7 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
       rest = rest.slice(newline + 1).trim()
       continue
     }
-    if (rest.startsWith('--')) {
+    if (startsLineComment(rest, 0, dialect)) {
       const newline = rest.indexOf('\n')
       if (newline < 0) return null
       rest = rest.slice(newline + 1).trim()

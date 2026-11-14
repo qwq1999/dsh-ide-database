@@ -169,6 +169,19 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql(sql)).toBe(false)
   })
 
+  it('treats any -- as a comment outside MySQL', () => {
+    // Oracle/SQLite/SQL Server/PostgreSQL all start a comment at `--` even
+    // when the next character is a quote; treating the quote as a string
+    // would hide the DELETE below.
+    const sql = "SELECT 1 --'\n; DELETE FROM t; --'"
+    for (const dialect of ['oracle', 'oceanbase-oracle', 'postgres', 'mssql', 'sqlite', 'dameng']) {
+      expect(isReadOnlySql(sql, dialect)).toBe(false)
+    }
+    // MySQL requires whitespace after `--`; this is one SELECT with a string,
+    // not a second statement.
+    expect(isReadOnlySql(sql, 'mysql')).toBe(true)
+  })
+
   it('refuses a select that writes a file on the server', () => {
     expect(isReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/users.txt'")).toBe(false)
     expect(isReadOnlySql("select 1 into dumpfile '/tmp/dump.bin'")).toBe(false)
@@ -192,12 +205,12 @@ describe('isReadOnlySql', () => {
   })
 
   it('does not treat MySQL arithmetic minus minus as a line comment', () => {
-    expect(isReadOnlySql('SELECT 1--3')).toBe(true)
-    expect(isReadOnlySql("SELECT 1--3 INTO OUTFILE '/tmp/x'")).toBe(false)
-    expect(isReadOnlySql('SELECT 1--3; DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('SELECT 1--3', 'mysql')).toBe(true)
+    expect(isReadOnlySql("SELECT 1--3 INTO OUTFILE '/tmp/x'", 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1--3; DELETE FROM t', 'mysql')).toBe(false)
     // A real `--` comment still hides its content.
-    expect(isReadOnlySql('SELECT 1 -- comment; delete from t\n')).toBe(true)
-    expect(isReadOnlySql('SELECT 1 -- comment\n; delete from t')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 -- comment; delete from t\n', 'mysql')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 -- comment\n; delete from t', 'mysql')).toBe(false)
   })
 
   it('honours MySQL backslash escapes before a quote', () => {
