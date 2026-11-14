@@ -193,7 +193,6 @@ function parseWithClause(text: string): WithClause | null {
 /** Statements that write files on the server; a read-only connection must refuse them. */
 const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
 
-/** Lowercase copy of `text` with quoted strings and comments blanked out. */
 /**
  * The end (exclusive) of the Oracle alternative-quoted literal starting at
  * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
@@ -234,6 +233,7 @@ function dollarQuotedLiteralEnd(input: string, index: number): number | null {
   return close === -1 ? null : close + delimiter.length
 }
 
+/** Lowercase copy of `text` with quoted strings and comments blanked out. */
 function withoutLiterals(text: string): string {
   let out = ''
   for (let index = 0; index < text.length; index += 1) {

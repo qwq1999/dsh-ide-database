@@ -446,7 +446,6 @@ export function groupCountSql(
   return `SELECT ${name}, COUNT(*) AS ${count} FROM ${qualifiedName(dialect, schema, table)} GROUP BY ${name} ORDER BY ${count} DESC`
 }
 
-/** Manual WHERE (optional) AND every column filter, joined for one query. */
 /**
  * The values of one column as a parenthesised `IN` list: `(1, 2, 'x')`.
  * Handy for turning a result grid back into a `WHERE id IN (...)` filter.
@@ -470,6 +469,7 @@ export function inListOf(
   return `(${literals.join(', ')})`
 }
 
+/** Manual WHERE (optional) AND every column filter, joined for one query. */
 export function composeWhere(
   dialect: ClientConnection['dialect'],
   base: string,
