@@ -33,6 +33,17 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('set @a = 1')).toBe(false)
   })
 
+  it('accepts semicolons inside literals and comments', () => {
+    expect(isReadOnlySql("select ';' as semi")).toBe(true)
+    expect(isReadOnlySql("select 'a;b' from dual")).toBe(true)
+    expect(isReadOnlySql('select "a;b" from t')).toBe(true)
+    expect(isReadOnlySql('select 1 /* ; */ from dual')).toBe(true)
+    expect(isReadOnlySql("select q'[it's; fine]' from dual")).toBe(true)
+    expect(isReadOnlySql("select nq'[中文;值]' from dual")).toBe(true)
+    expect(isReadOnlySql("select 'a;b'; delete from t")).toBe(false)
+    expect(isReadOnlySql("select q'[it's; fine]' from dual; delete from t")).toBe(false)
+  })
+
   it('rejects a second statement after a semicolon', () => {
     expect(isReadOnlySql('SELECT 1; DELETE FROM t')).toBe(false)
     expect(isReadOnlySql('select 1; select 2')).toBe(false)
@@ -86,6 +97,7 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS (SELECT count(*) FROM (SELECT 1 AS a) x) SELECT 1')).toBe(true)
     expect(isReadOnlySql('WITH c AS (-- delete from t\nSELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('WITH c AS (/* delete */ SELECT 1) SELECT * FROM c')).toBe(true)
+    expect(isReadOnlySql("WITH c AS (SELECT q'[it's; fine]' AS x FROM dual) SELECT * FROM c")).toBe(true)
   })
 
   it('rejects a CTE list it cannot parse', () => {
@@ -111,6 +123,7 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT count(*) INTO @total FROM users')).toBe(true)
     expect(isReadOnlySql('SELECT 1 INTO @a, @b')).toBe(true)
     expect(isReadOnlySql("SELECT 'INTO backup' AS note")).toBe(true)
+    expect(isReadOnlySql("SELECT q'[INTO backup it's]' AS note FROM dual")).toBe(true)
     expect(isReadOnlySql('SELECT 1 /* into backup */')).toBe(true)
   })
 

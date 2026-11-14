@@ -70,6 +70,14 @@ function matchingParen(text: string, open: number): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
     const char = text[index]
+    // Oracle alternative quoting hides its inner quote from the generic scanner.
+    if (char === 'q' || char === 'Q') {
+      const end = oracleQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
+    }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
       index += 1
@@ -154,10 +162,43 @@ function parseWithClause(text: string): WithClause | null {
 const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
 
 /** Lowercase copy of `text` with quoted strings and comments blanked out. */
+/**
+ * The end (exclusive) of the Oracle alternative-quoted literal starting at
+ * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
+ * bracket pairs have their own closing character, and anything else closes with
+ * the same character it opened with. A missing terminator is left to the normal
+ * scanner so malformed input still reaches the server.
+ */
+function oracleQuotedLiteralEnd(input: string, index: number): number | null {
+  const previous = input[index - 1]
+  if (previous === 'n' || previous === 'N') {
+    const before = input[index - 2]
+    if (before !== undefined && /[A-Za-z0-9_$]/u.test(before)) return null
+  } else if (previous !== undefined && /[A-Za-z0-9_$]/u.test(previous)) {
+    return null
+  }
+  if (input[index + 1] !== "'") return null
+  const open = input[index + 2]
+  if (open === undefined) return null
+  const close = open === '[' ? ']' : open === '{' ? '}' : open === '<' ? '>' : open === '(' ? ')' : open
+  const end = input.indexOf(`${close}'`, index + 3)
+  return end === -1 ? null : end + 2
+}
+
 function withoutLiterals(text: string): string {
   let out = ''
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] ?? ''
+    // Oracle alternative quoting can contain the quote character and semicolons;
+    // skip the whole literal before the generic `'...'` scanner sees its inner quote.
+    if (char === 'q' || char === 'Q') {
+      const end = oracleQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        out += ' '
+        continue
+      }
+    }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
       index += 1
@@ -244,7 +285,9 @@ export function isReadOnlySql(sql: string): boolean {
     break
   }
   const withoutTrailing = text.replace(/;+\s*$/, '')
-  if (withoutTrailing.includes(';')) return false
+  // A semicolon inside a string, quoted identifier or comment is data, not a
+  // second statement; only one left in the code part makes the script unsafe.
+  if (withoutLiterals(withoutTrailing).includes(';')) return false
   const first = /^[A-Za-z]+/.exec(withoutTrailing)
   if (first === null) return false
   const head = first[0].toLowerCase()
