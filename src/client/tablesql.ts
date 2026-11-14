@@ -583,6 +583,10 @@ export function composeWhere(
   const manual = stripWhere(base)
   if (manual !== '') parts.push(`(${manual})`)
   for (const column of columns) {
+    // A column may legitimately be named `constructor`, `toString`, or
+    // `__proto__`; reading a missing filter through the prototype chain would
+    // hand `filterExpression` an inherited object instead of "not filtered".
+    if (!Object.hasOwn(filters, column.name)) continue
     const filter = filters[column.name]
     if (filter === undefined) continue
     const expression = filterExpression(dialect, column, filter)

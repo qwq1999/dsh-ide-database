@@ -209,6 +209,14 @@ describe('composeWhere', () => {
   it('returns an empty string when nothing is set', () => {
     expect(composeWhere('mysql', '', columns, {})).toBe('')
   })
+
+  it('does not read inherited properties for oddly named columns', () => {
+    const odd = [column('constructor', 'text'), column('toString', 'text'), column('__proto__', 'text')]
+    expect(composeWhere('mysql', '', odd, {})).toBe('')
+    expect(composeWhere('mysql', '', odd, { constructor: { op: 'eq', text: 'x' } })).toBe(
+      "`constructor` = 'x'",
+    )
+  })
 })
 
 describe('isNumericType', () => {
