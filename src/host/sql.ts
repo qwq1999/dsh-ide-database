@@ -123,8 +123,15 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
     }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
+      // MySQL backslash-escapes quotes inside strings; treating `\'` as a
+      // closing quote would hide a later `; DELETE` from the guard.
+      const escapes = dialect === 'mysql' && quote !== '`'
       index += 1
       while (index < text.length) {
+        if (escapes && text[index] === '\\') {
+          index += 2
+          continue
+        }
         if (text[index] === quote) {
           if (text[index + 1] === quote) {
             index += 2
@@ -280,8 +287,13 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
     }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
+      const escapes = dialect === 'mysql' && quote !== '`'
       index += 1
       while (index < text.length) {
+        if (escapes && text[index] === '\\') {
+          index += 2
+          continue
+        }
         if (text[index] === quote) {
           if (text[index + 1] === quote) {
             index += 2
