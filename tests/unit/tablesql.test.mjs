@@ -137,7 +137,30 @@ describe('filterExpression', () => {
         text: '17:54:33.123 Asia/Shanghai',
       }),
     ).toBe(
-      `INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), '\\. ([^ ]+)$', '.0 \\1')) LIKE '%17:54:33.123 Asia/Shanghai%' ESCAPE '!'`,
+      `UPPER(INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), '\\. ([^ ]+)$', '.0 \\1'))) LIKE UPPER('%17:54:33.123 Asia/Shanghai%') ESCAPE '!'`,
+    )
+  })
+
+  it('keeps an Oracle local time zone region when writing or filtering', () => {
+    const ltz = 'TIMESTAMP(6) WITH LOCAL TIME ZONE'
+    const at = column('AT', ltz)
+    expect(temporalLiteral('oracle', ltz, '2024-11-11 17:54:33.123 Asia/Shanghai')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 17:54:33.123 Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(temporalLiteral('oracle', ltz, '2023-12-31 19:00:00.0 US/Eastern')).toBe(
+      `TO_TIMESTAMP_TZ('2023-12-31 19:00:00.0 US/Eastern', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(temporalLiteral('oracle', ltz, '2023-12-31 16:00:00.0 Etc/GMT+8')).toBe(
+      `TO_TIMESTAMP_TZ('2023-12-31 16:00:00.0 Etc/GMT+8', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(cellWhere('oracle', at, '2023-12-31 19:00:00.0 US/Eastern')).toBe(
+      `"AT" = TO_TIMESTAMP_TZ('2023-12-31 19:00:00.0 US/Eastern', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(insertStatement('oracle', 'SHOP', 'EVENTS', [column('ID', 'NUMBER'), at], ['1', '2024-11-11 17:54:33.123 Asia/Shanghai'])).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "AT") VALUES (1, TO_TIMESTAMP_TZ('2024-11-11 17:54:33.123 Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS.FF TZR'));`,
+    )
+    expect(filterExpression('oracle', at, { op: 'like', text: '19:00:00.0 US/Eastern' })).toContain(
+      `UPPER('%19:00:00.0 US/Eastern%')`,
     )
   })
 })

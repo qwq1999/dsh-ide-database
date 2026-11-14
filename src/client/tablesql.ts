@@ -184,6 +184,7 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
   if (!isTemporalType(typeName)) return literal
   if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
   if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
+  const type = typeName.toLowerCase()
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
   const escaped = text.replace(/'/gu, "''")
   // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
@@ -198,6 +199,13 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
   const hasFraction = hasSeconds && /\.\d+/u.test(local)
   const timeFormat = hasTime ? (hasSeconds ? ' HH24:MI:SS' : ' HH24:MI') : ''
   if (base.startsWith('timestamp')) {
+    // A `TIMESTAMP WITH LOCAL TIME ZONE` is shown with its region name, which
+    // `TO_TIMESTAMP` cannot parse. `TZR` accepts the displayed name and keeps
+    // the instant when the value goes back into the column.
+    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(text)) {
+      const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZR`
+      return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
+    }
     if (hasZone) {
       const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZH:TZM`
       return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
@@ -393,7 +401,17 @@ export function filterExpression(
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  return `${target} LIKE ${quoteLiteral(`%${escapeLikeText(text)}%`, dialect)} ESCAPE '!'`
+  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect)
+  // Oracle prints a region as ASIA/SHANGHAI while the bridge shows
+  // Asia/Shanghai; compare case-insensitively so both spellings match.
+  if (
+    (dialect === 'oracle' || dialect === 'oceanbase-oracle') &&
+    column.typeName !== undefined &&
+    column.typeName.toLowerCase().includes('local time zone')
+  ) {
+    return `UPPER(${target}) LIKE UPPER(${pattern}) ESCAPE '!'`
+  }
+  return `${target} LIKE ${pattern} ESCAPE '!'`
 }
 
 /**
