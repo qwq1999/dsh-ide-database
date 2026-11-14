@@ -223,6 +223,21 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('begin')).toBeNull()
   })
 
+  it('prefers the outer table over a subquery in the select list', () => {
+    expect(tableFromStatement('select (select count(*) from logs) as n from users')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+    expect(tableFromStatement('with recent as (select * from logs) select * from users')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+    expect(tableFromStatement('select * from users where exists (select 1 from logs)')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+  })
+
   it('ignores literals and comments that mention another table', () => {
     expect(tableFromStatement("select 'from users' as note, id from orders")).toEqual({ schema: '', table: 'orders' })
     expect(tableFromStatement('select 1 -- from users\nfrom orders')).toEqual({ schema: '', table: 'orders' })

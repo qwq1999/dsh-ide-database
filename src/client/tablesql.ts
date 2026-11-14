@@ -299,25 +299,41 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
   // original statement, which is where the actual name is read.
   const code = maskNonCode(statement, dialect, true)
   const keyword = /\b(?:from|join|update|into)\b/giu
-  let match: RegExpExecArray | null
-  while ((match = keyword.exec(code)) !== null) {
-    const parts: string[] = []
-    let token = readTableIdentifier(statement, keyword.lastIndex)
-    while (token !== null) {
-      parts.push(token.value)
-      const dot = skipSpaces(statement, token.end)
-      if (statement[dot] !== '.') break
-      token = readTableIdentifier(statement, dot + 1)
-    }
-    if (parts.length === 0) continue
-    // SQL Server accepts a three-part `database.schema.table` (and a four-part
-    // server name); the console only needs the last two parts.
-    return {
-      schema: parts.length >= 2 ? parts[parts.length - 2] ?? '' : '',
-      table: parts[parts.length - 1] ?? '',
-    }
+  // A subquery in the select list or in a CTE can mention a table before the
+  // statement's own FROM; only top-level keywords name the table being read or
+  // written. Fall back to nested keywords when the outer query selects from a
+  // derived table, whose real source is one level down.
+  const depthAt = new Int32Array(code.length)
+  let depth = 0
+  for (let index = 0; index < code.length; index += 1) {
+    depthAt[index] = depth
+    if (code[index] === '(') depth += 1
+    else if (code[index] === ')') depth = Math.max(0, depth - 1)
   }
-  return null
+  const readAt = (topLevelOnly: boolean): { schema: string; table: string } | null => {
+    keyword.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = keyword.exec(code)) !== null) {
+      if (topLevelOnly && depthAt[match.index] !== 0) continue
+      const parts: string[] = []
+      let token = readTableIdentifier(statement, keyword.lastIndex)
+      while (token !== null) {
+        parts.push(token.value)
+        const dot = skipSpaces(statement, token.end)
+        if (statement[dot] !== '.') break
+        token = readTableIdentifier(statement, dot + 1)
+      }
+      if (parts.length === 0) continue
+      // SQL Server accepts a three-part `database.schema.table` (and a four-part
+      // server name); the console only needs the last two parts.
+      return {
+        schema: parts.length >= 2 ? parts[parts.length - 2] ?? '' : '',
+        table: parts[parts.length - 1] ?? '',
+      }
+    }
+    return null
+  }
+  return readAt(true) ?? readAt(false)
 }
 
 /** Escape LIKE metacharacters so a contains filter matches the typed text literally. */
