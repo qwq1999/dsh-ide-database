@@ -252,6 +252,17 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
   ) {
     return true
   }
+  // T-SQL `BEGIN ... END` is a block, not only a transaction. Its statements
+  // may not use semicolons, so a DML keyword inside the same statement would
+  // otherwise be missed. `BEGIN TRY ... END TRY` blocks without writes stay
+  // read-only.
+  if (
+    head.word === 'begin' &&
+    dialect === 'mssql' &&
+    /\b(?:insert|update|delete|merge|truncate|create|alter|drop|exec(?:ute)?|backup|restore|bulk)\b/iu.test(head.rest)
+  ) {
+    return true
+  }
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)
   }

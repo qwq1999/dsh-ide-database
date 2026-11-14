@@ -112,6 +112,12 @@ describe('format helpers', () => {
     expect(looksLikeWrite('BEGIN TRANSACTION', 'mssql')).toBe(false)
   })
 
+  it('recognizes SQL Server BEGIN blocks that contain writes', () => {
+    expect(looksLikeWrite('BEGIN\n  DELETE FROM users\nEND', 'mssql')).toBe(true)
+    expect(looksLikeWrite('BEGIN TRANSACTION\nDELETE FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH', 'mssql')).toBe(false)
+  })
+
   it('recognizes bulk-load statements as writes', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
