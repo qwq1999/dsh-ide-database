@@ -90,7 +90,10 @@ export function selectColumnsSql(
 }
 
 export function isNumericType(typeName: string): boolean {
-  const base = typeName.replace(/[\s(].*$/u, '').trim().toLowerCase()
+  const withoutParams = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  // Keep trailing `[]` visible: `decimal(10,2)[]` is an array, not a number.
+  if (withoutParams.endsWith('[]')) return false
+  const base = withoutParams.split(/\s+/u, 1)[0] ?? ''
   // Anchor the whole name: the old leading `int` alternative also matched
   // `interval`, and an array like `integer[]` is not a scalar number.
   return /^(?:(?:tiny|small|medium|big)?int[248]?|integer|int[248]|(?:big|small)?serial[248]?|decimal|numeric|float[48]?|double|number|real)$/u.test(
