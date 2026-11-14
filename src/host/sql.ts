@@ -175,6 +175,13 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
       continue
     }
     if (char === '/' && text[index + 1] === '*') {
+      // MySQL executes `/*! ... */` bodies, so their parentheses and quotes
+      // must participate in matching. Other dialects treat `/*!` as a normal
+      // comment and skip it.
+      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
+        index += 2
+        continue
+      }
       const end = text.indexOf('*/', index + 2)
       if (end < 0) return -1
       index = end + 1
@@ -357,7 +364,7 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       // inert comments. Keeping the body visible makes the INTO checks below
       // reject `SELECT ... /*!50000 INTO OUTFILE ... */` while still allowing
       // harmless hints such as `/*!50000 SQL_NO_CACHE */`.
-      if (text[index + 2] === '!') {
+      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
         out += '/*!'
         index += 2
         continue
@@ -420,7 +427,7 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
       rest = rest.slice(newline + 1).trim()
       continue
     }
-    if (rest.startsWith('/*!')) {
+    if (isMysqlDialect(dialect) && rest.startsWith('/*!')) {
       // Executable comments are MySQL code, not a leading comment. Leaving them
       // in place makes a read-only guard reject a statement that starts inside
       // one instead of skipping the write the server would run.

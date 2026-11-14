@@ -182,6 +182,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql(sql, 'mysql')).toBe(true)
   })
 
+  it('does not treat MySQL executable comments as code outside MySQL', () => {
+    // `/*!` is a normal block comment for every other dialect. Treating its
+    // body as code lets a quote inside it start a string and hide the DELETE.
+    const sql = "SELECT 1 /*! ' */; DELETE FROM t; SELECT 'x'"
+    for (const dialect of ['oracle', 'oceanbase-oracle', 'postgres', 'mssql', 'sqlite', 'dameng']) {
+      expect(isReadOnlySql(sql, dialect)).toBe(false)
+    }
+  })
+
   it('refuses a select that writes a file on the server', () => {
     expect(isReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/users.txt'")).toBe(false)
     expect(isReadOnlySql("select 1 into dumpfile '/tmp/dump.bin'")).toBe(false)
@@ -195,13 +204,13 @@ describe('isReadOnlySql', () => {
 
   it('rejects writes hidden in MySQL executable comments', () => {
     // MySQL runs `/*! ... */` bodies, so they are not inert comments.
-    expect(isReadOnlySql("SELECT * FROM users /*!50000 INTO OUTFILE '/tmp/users.txt' */")).toBe(false)
-    expect(isReadOnlySql("select 1 /*!50000 into dumpfile '/tmp/dump.bin' */")).toBe(false)
-    expect(isReadOnlySql('/*!50000 delete from t */')).toBe(false)
-    expect(isReadOnlySql('/*!50000 delete from t */ select 1')).toBe(false)
+    expect(isReadOnlySql("SELECT * FROM users /*!50000 INTO OUTFILE '/tmp/users.txt' */", 'mysql')).toBe(false)
+    expect(isReadOnlySql("select 1 /*!50000 into dumpfile '/tmp/dump.bin' */", 'mysql')).toBe(false)
+    expect(isReadOnlySql('/*!50000 delete from t */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('/*!50000 delete from t */ select 1', 'mysql')).toBe(false)
     // Ordinary executable hints and session variables remain reads.
-    expect(isReadOnlySql('SELECT 1 /*!50000 SQL_NO_CACHE */')).toBe(true)
-    expect(isReadOnlySql('SELECT count(*) /*!50000 INTO @total */ FROM users')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 /*!50000 SQL_NO_CACHE */', 'mysql')).toBe(true)
+    expect(isReadOnlySql('SELECT count(*) /*!50000 INTO @total */ FROM users', 'mysql')).toBe(true)
   })
 
   it('does not treat MySQL arithmetic minus minus as a line comment', () => {
