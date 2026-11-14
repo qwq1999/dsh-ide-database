@@ -204,7 +204,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 
 写保护规则：
 
-1. 只读连接永远拒绝写语句/写命令；`SELECT … INTO OUTFILE/DUMPFILE` 这类会在服务器上落盘写文件的语句同样算写，`SELECT … INTO <新表>`（PostgreSQL / SQL Server）会建表，也按写处理（读取到会话变量 `INTO @var` 仍允许）。
+1. 只读连接永远拒绝写语句/写命令；`SELECT … INTO OUTFILE/DUMPFILE` 这类会在服务器上落盘写文件的语句同样算写，`SELECT … INTO <新表>`（PostgreSQL / SQL Server）会建表，也按写处理（读取到会话变量 `INTO @var` 仍允许）；MySQL 的 `/*! … */` 可执行注释按代码检查，不会因为看起来像注释而漏掉里面的 `INTO OUTFILE` 或建表。
 2. 非只读连接默认也只允许读；必须在「设置」中打开 `allowAgentWrites`。
 3. Redis 危险命令（`FLUSHALL`/`FLUSHDB`/`SHUTDOWN` 等）始终拒绝。
 4. 面板里的写操作需要二次确认（`confirmDestructive` 默认开启）。

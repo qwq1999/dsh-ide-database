@@ -171,4 +171,15 @@ describe('isReadOnlySql', () => {
     // Selecting into a session variable stays a read.
     expect(isReadOnlySql('SELECT count(*) INTO @total FROM users')).toBe(true)
   })
+
+  it('rejects writes hidden in MySQL executable comments', () => {
+    // MySQL runs `/*! ... */` bodies, so they are not inert comments.
+    expect(isReadOnlySql("SELECT * FROM users /*!50000 INTO OUTFILE '/tmp/users.txt' */")).toBe(false)
+    expect(isReadOnlySql("select 1 /*!50000 into dumpfile '/tmp/dump.bin' */")).toBe(false)
+    expect(isReadOnlySql('/*!50000 delete from t */')).toBe(false)
+    expect(isReadOnlySql('/*!50000 delete from t */ select 1')).toBe(false)
+    // Ordinary executable hints and session variables remain reads.
+    expect(isReadOnlySql('SELECT 1 /*!50000 SQL_NO_CACHE */')).toBe(true)
+    expect(isReadOnlySql('SELECT count(*) /*!50000 INTO @total */ FROM users')).toBe(true)
+  })
 })
