@@ -1443,8 +1443,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         run: () => {
           const target = tableTarget()
           if (target === null) return
+          const full = displayRows[cell.rowIndex] ?? cell.row
           void copyText(
-            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, shownColumns, cell.row),
+            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, full),
           ).then(noteCopied('INSERT'))
         },
       },
@@ -1453,10 +1454,13 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         disabled: binary,
         run: () => void copyText(`WHERE ${cellWhere(connection?.dialect ?? 'mysql', cell.column, cell.value)}`).then(noteCopied('WHERE 条件')),
       },
-      { label: `复制整行（${shownColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(shownColumns, cell.row)).then(noteCopied('整行')) },
+      {
+        label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
+        run: () => void copyText(rowToTsv(displayColumns, displayRows[cell.rowIndex] ?? cell.row)).then(noteCopied('整行')),
+      },
     ]
     },
-    [base, connection?.dialect, shownColumns, schema, sourceSql],
+    [base, connection?.dialect, displayColumns, displayRows, schema, sourceSql],
   )
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))
@@ -1547,7 +1551,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   /** Save only the checked rows of the current page. */
   const exportSelected = (format: ExportFormat): void => {
     setExportOpen(false)
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns stay in exports; only the grid omits them. Rows keep
+    // their positions, so the selection indexes map straight onto displayRows.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
     if (format === 'sql' && target === null) {
@@ -1558,7 +1564,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       dialect: connection?.dialect ?? 'mysql',
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
-      columns: shownColumns,
+      columns: displayColumns,
       rows: picked,
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
@@ -1751,7 +1757,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
 
   /** Copy the checked rows in the same formats the page copies offer. */
   const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
     if (format === 'sql' && target === null) {
@@ -1760,18 +1766,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     }
     const text =
       format === 'csv'
-        ? toCsv(shownColumns, picked)
+        ? toCsv(displayColumns, picked)
         : format === 'tsv'
-          ? toTsv(shownColumns, picked)
+          ? toTsv(displayColumns, picked)
           : format === 'json'
-            ? toJson(shownColumns, picked)
+            ? toJson(displayColumns, picked)
             : format === 'md'
-              ? toMarkdown(shownColumns, picked)
+              ? toMarkdown(displayColumns, picked)
               : insertStatements(
                   connection?.dialect ?? 'mysql',
                   target!.schema,
                   target!.table,
-                  shownColumns,
+                  displayColumns,
                   picked,
                 )
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))

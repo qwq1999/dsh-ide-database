@@ -124,7 +124,7 @@ describe('console column select copy', () => {
     expect(copies).toHaveBeenCalledWith('SELECT `id`, `name`, `total` FROM `shop`.`orders`')
   })
 
-  it('copies a row INSERT using only the visible columns', async () => {
+  it('copies a row INSERT with hidden columns and keeps values aligned', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')
     await waitForConsoleSource(mocks)
@@ -140,7 +140,7 @@ describe('console column select copy', () => {
     fireEvent.contextMenu(screen.getByText('手机'))
     fireEvent.click(await screen.findByRole('menuitem', { name: '复制 INSERT 语句' }))
 
-    expect(copies).toHaveBeenCalledWith("INSERT INTO `shop`.`orders` (`name`, `total`) VALUES ('手机', 638.00);")
+    expect(copies).toHaveBeenCalledWith("INSERT INTO `shop`.`orders` (`id`, `name`, `total`) VALUES (1, '手机', 638.00);")
   })
 
   it('restores a remembered hidden column once the result arrives', async () => {

@@ -525,14 +525,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')),
             },
             {
-              label: `复制整行（${shownColumns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(shownColumns, cell.row)).then(noteCopied('整行')),
+              label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
+              run: () => void copyText(rowToTsv(displayColumns, displayRows[cell.rowIndex] ?? cell.row)).then(noteCopied('整行')),
             },
             {
               label: '复制 INSERT 语句',
               run: () => {
                 if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, shownColumns, cell.row)).then(noteCopied('INSERT'))
+                const full = displayRows[cell.rowIndex] ?? cell.row
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, full)).then(noteCopied('INSERT'))
               },
             },
             {
@@ -586,7 +587,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
       ]
     },
-    [connection, shownColumns, filters, pageSize, params.schema, params.table],
+    [connection, displayColumns, displayRows, filters, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
@@ -866,18 +867,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   /** Copy the checked rows in the same formats the page copies offer. */
   const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns are a view setting; exports and row copies keep them.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const text =
       format === 'csv'
-        ? toCsv(shownColumns, picked)
+        ? toCsv(displayColumns, picked)
         : format === 'tsv'
-          ? toTsv(shownColumns, picked)
+          ? toTsv(displayColumns, picked)
           : format === 'json'
-            ? toJson(shownColumns, picked)
+            ? toJson(displayColumns, picked)
             : format === 'md'
-              ? toMarkdown(shownColumns, picked)
-              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, shownColumns, picked)
+              ? toMarkdown(displayColumns, picked)
+              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, picked)
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
 
