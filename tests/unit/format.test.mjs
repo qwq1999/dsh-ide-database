@@ -201,6 +201,12 @@ describe('format helpers', () => {
     expect(looksLikeWrite("RESTORE DATABASE app FROM DISK = 'app.bak'", 'mssql')).toBe(true)
   })
 
+  it('recognizes a write hidden in a MySQL executable comment', () => {
+    expect(looksLikeWrite("/*!50000 SELECT * FROM users INTO OUTFILE '/tmp/users.csv' */", 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000 SELECT * INTO new_users FROM users */', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000 SELECT * INTO @total FROM users */', 'mysql')).toBe(false)
+  })
+
   it('checks every batch separated by GO or DELIMITER', () => {
     expect(looksLikeWrite('select 1\nGO\ndelete from t', 'mssql')).toBe(true)
     expect(looksLikeWrite('select 1\nGO\nselect 2', 'mssql')).toBe(false)

@@ -196,6 +196,10 @@ const MYSQL_EXECUTABLE_WRITE =
 const MYSQL_EXECUTABLE_DDL = /\/\*![\s\S]*?(?:create|alter|drop|rename|truncate)\b/iu
 const SELECT_INTO_TABLE =
   /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
+// MySQL runs the body of `/*! ... */`; INTO OUTFILE/new_table there is still a
+// write even though the statement begins with a comment marker.
+const MYSQL_EXECUTABLE_INTO =
+  /\/\*![\s\S]*?\binto\s+(?:(?:outfile|dumpfile)\b|(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*))/iu
 
 /** The statement after `EXPLAIN ANALYZE`, or null when EXPLAIN does not execute. */
 /** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
@@ -235,7 +239,7 @@ function explainAnalyzeBody(code: string): string | null {
  * because the server runs them.
  */
 function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
-  if (dialect === 'mysql' && MYSQL_EXECUTABLE_WRITE.test(code)) return true
+  if (dialect === 'mysql' && (MYSQL_EXECUTABLE_WRITE.test(code) || MYSQL_EXECUTABLE_INTO.test(code))) return true
   // PostgreSQL accepts `COPY(SELECT ...)` without a space; firstWord would see
   // `copy(select` and skip the COPY rules entirely.
   const copy = /^\s*copy\b/iu.exec(code)
