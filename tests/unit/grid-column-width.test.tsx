@@ -49,6 +49,44 @@ describe('column width measuring', () => {
     })
   })
 
+
+  it('does not overwrite stored widths while a column is hidden', async () => {
+    window.localStorage.setItem('dsh-ide-database.colwidths.v1', JSON.stringify({ 'hidden-resize': [100, 200, 300] }))
+    const { rerender } = render(
+      <DataGrid
+        columns={columns}
+        rows={[[1, '手机', '638.00']]}
+        offset={0}
+        storageKey="hidden-resize"
+        widthColumnCount={3}
+      />,
+    )
+    rerender(
+      <DataGrid
+        columns={[columns[0]!, columns[2]!]}
+        rows={[[1, '638.00']]}
+        offset={0}
+        storageKey="hidden-resize"
+        widthColumnCount={3}
+      />,
+    )
+
+    const dataHeaders = [...document.querySelectorAll('th[data-column-index]')]
+    dataHeaders.forEach((cell, index) => {
+      cell.getBoundingClientRect = () => ({ width: [100, 300][index] ?? 0 } as DOMRect)
+    })
+    const grip = dataHeaders[0]?.querySelector('.dshdb-grip')
+    if (!(grip instanceof HTMLElement)) throw new Error('missing resize grip')
+    fireEvent.mouseDown(grip, { clientX: 0 })
+    fireEvent.mouseMove(document, { clientX: 20 })
+    fireEvent.mouseUp(document)
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('dsh-ide-database.colwidths.v1') ?? '{}')
+      expect(stored['hidden-resize']).toEqual([100, 200, 300])
+    })
+  })
+
   it('measures the data headers even when the selection column is present', () => {
     render(
       <DataGrid

@@ -2620,6 +2620,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
                 offset={offset}
                 rowNumbers={rowNumbers}
                 storageKey="console:sql"
+                widthColumnCount={displayColumns.length}
                 sort={rowSort}
                 sortColumn={rowSort?.index !== undefined ? (columns[rowSort.index] ?? null) : null}
                 onSort={gridSort}

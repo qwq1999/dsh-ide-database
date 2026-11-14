@@ -58,6 +58,8 @@ export interface DataGridProps {
   onCellOpen?: (column: ColumnInfo, value: CellValue) => void
   /** Remember user-dragged column widths under this key. */
   storageKey?: string
+  /** Full column count before hidden columns were removed; widths persist only when all are shown. */
+  widthColumnCount?: number
   /** Active sort; the matching header shows an arrow. */
   sort?: { column: string; direction: 'asc' | 'desc' } | null
   /** Exact column whose header owns the sort; distinguishes duplicate labels. */
@@ -172,6 +174,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     selectedRows,
     onToggleRow,
     onToggleAllRows,
+    widthColumnCount = columns.length,
   } = props
   const selectable = onToggleRow !== undefined
   const selectedCount = selectedRows?.size ?? 0
@@ -268,7 +271,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         document.removeEventListener('mouseleave', up)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        if (storageKey !== undefined) writeWidths(storageKey, current)
+        if (storageKey !== undefined && columns.length === widthColumnCount) writeWidths(storageKey, current)
       }
       document.addEventListener('mousemove', move)
       document.addEventListener('mouseup', up)
@@ -278,7 +281,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [columns, storageKey, widths],
+    [columns, storageKey, widthColumnCount, widths],
   )
 
   const resetWidths = useCallback(() => {
