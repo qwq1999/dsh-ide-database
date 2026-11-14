@@ -59,6 +59,11 @@ function skipSpace(text: string, index: number): number {
   return cursor
 }
 
+/** MySQL treats # as a line comment; SQL Server uses # for temp tables. */
+function isMysqlDialect(dialect: SqlDialect): boolean {
+  return dialect === 'mysql'
+}
+
 function readWord(text: string, index: number): { word: string; end: number } {
   let end = index
   while (end < text.length && isWordChar(text[end] ?? '')) end += 1
@@ -82,10 +87,16 @@ function bracketIdentifierEnd(text: string, index: number): number | null {
   return null
 }
 
-function matchingParen(text: string, open: number): number {
+function matchingParen(text: string, open: number, dialect: SqlDialect = 'generic'): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
     const char = text[index]
+    if (isMysqlDialect(dialect) && char === '#') {
+      const newline = text.indexOf('\n', index)
+      if (newline < 0) return -1
+      index = newline
+      continue
+    }
     // SQL Server bracket identifiers may contain parentheses and semicolons.
     if (char === '[') {
       const end = bracketIdentifierEnd(text, index)
@@ -157,7 +168,7 @@ interface WithClause {
  * Parse a `WITH cte AS (...), ...` clause. Returns null when the list cannot
  * be parsed, which the read-only guard treats as a write.
  */
-function parseWithClause(text: string): WithClause | null {
+function parseWithClause(text: string, dialect: SqlDialect = 'generic'): WithClause | null {
   let cursor = skipSpace(text, 'with'.length)
   const recursive = readWord(text, cursor)
   if (recursive.word === 'recursive') cursor = skipSpace(text, recursive.end)
@@ -167,7 +178,7 @@ function parseWithClause(text: string): WithClause | null {
     if (name.word === '') return null
     cursor = skipSpace(text, name.end)
     if (text[cursor] === '(') {
-      const close = matchingParen(text, cursor)
+      const close = matchingParen(text, cursor, dialect)
       if (close < 0) return null
       cursor = skipSpace(text, close + 1)
     }
@@ -180,7 +191,7 @@ function parseWithClause(text: string): WithClause | null {
       cursor = skipSpace(text, modifier.end)
     }
     if (text[cursor] !== '(') return null
-    const close = matchingParen(text, cursor)
+    const close = matchingParen(text, cursor, dialect)
     if (close < 0) return null
     bodies.push(text.slice(cursor + 1, close))
     cursor = skipSpace(text, close + 1)
@@ -234,7 +245,7 @@ function dollarQuotedLiteralEnd(input: string, index: number): number | null {
 }
 
 /** Lowercase copy of `text` with quoted strings and comments blanked out. */
-function withoutLiterals(text: string): string {
+function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string {
   let out = ''
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] ?? ''
@@ -283,6 +294,13 @@ function withoutLiterals(text: string): string {
       out += ' '
       continue
     }
+    if (isMysqlDialect(dialect) && char === '#') {
+      const newline = text.indexOf('\n', index)
+      if (newline < 0) return out
+      index = newline
+      out += ' '
+      continue
+    }
     // MySQL only starts a `--` comment when the next character is whitespace;
     // `SELECT 1--3` is arithmetic, so `--3 INTO OUTFILE ...` must stay visible.
     const afterDashes = text[index + 2]
@@ -319,8 +337,8 @@ function withoutLiterals(text: string): string {
  * variable or writing a server-side file. PostgreSQL spells it
  * `SELECT ... INTO [TEMP] [TABLE] name`; SQL Server uses `SELECT ... INTO #tmp`.
  */
-function selectsIntoTable(text: string): boolean {
-  const plain = withoutLiterals(text)
+function selectsIntoTable(text: string, dialect: SqlDialect = 'generic'): boolean {
+  const plain = withoutLiterals(text, dialect)
   let depth = 0
   for (let index = 0; index < plain.length; index += 1) {
     const char = plain[index] ?? ''
@@ -346,9 +364,15 @@ function selectsIntoTable(text: string): boolean {
 }
 
 /** Strip leading comments; null means the text ends inside an unterminated comment. */
-function stripLeadingComments(text: string): string | null {
+function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): string | null {
   let rest = text.trim()
   for (;;) {
+    if (isMysqlDialect(dialect) && rest.startsWith('#')) {
+      const newline = rest.indexOf('\n')
+      if (newline < 0) return null
+      rest = rest.slice(newline + 1).trim()
+      continue
+    }
     if (rest.startsWith('--')) {
       const newline = rest.indexOf('\n')
       if (newline < 0) return null
@@ -372,41 +396,43 @@ function stripLeadingComments(text: string): string | null {
 }
 
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
-export function isReadOnlySql(sql: string): boolean {
-  const text = stripLeadingComments(sql)
+export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {
+  const text = stripLeadingComments(sql, dialect)
   if (text === null) return false
   const withoutTrailing = text.replace(/;+\s*$/, '')
   // A semicolon inside a string, quoted identifier or comment is data, not a
   // second statement; only one left in the code part makes the script unsafe.
-  if (withoutLiterals(withoutTrailing).includes(';')) return false
+  if (withoutLiterals(withoutTrailing, dialect).includes(';')) return false
   const first = /^[A-Za-z]+/.exec(withoutTrailing)
   if (first === null) return false
   const head = first[0].toLowerCase()
   if (!READ_ONLY_STARTERS.has(head)) return false
   if (head === 'with') {
     // A CTE list can front any statement, including DELETE; judge what it runs.
-    const clause = parseWithClause(withoutTrailing)
+    const clause = parseWithClause(withoutTrailing, dialect)
     if (clause === null) return false
     // PostgreSQL also allows data-modifying CTE bodies
     // (`WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d`); judge them too.
-    return clause.bodies.every((body) => isReadOnlySql(body)) && isReadOnlySql(clause.statement)
+    return (
+      clause.bodies.every((body) => isReadOnlySql(body, dialect)) && isReadOnlySql(clause.statement, dialect)
+    )
   }
   if (head === 'explain') {
     // `EXPLAIN ANALYZE <statement>` and the parenthesised `EXPLAIN (ANALYZE, ...)`
     // form run <statement>; plain EXPLAIN only plans. Comments between the
     // keywords are whitespace, so `EXPLAIN /*x*/ ANALYZE DELETE` still runs.
-    let rest = stripLeadingComments(withoutTrailing.slice(first[0].length))
+    let rest = stripLeadingComments(withoutTrailing.slice(first[0].length), dialect)
     if (rest === null || rest === '') return false
     if (rest.startsWith('(')) {
-      const close = matchingParen(rest, 0)
+      const close = matchingParen(rest, 0, dialect)
       if (close < 0) return false
-      if (!/\banalyze\b/.test(withoutLiterals(rest.slice(1, close)))) return true
-      const statement = stripLeadingComments(rest.slice(close + 1))
-      return statement !== null && statement !== '' && isReadOnlySql(statement)
+      if (!/\banalyze\b/.test(withoutLiterals(rest.slice(1, close), dialect))) return true
+      const statement = stripLeadingComments(rest.slice(close + 1), dialect)
+      return statement !== null && statement !== '' && isReadOnlySql(statement, dialect)
     }
     const analyze = readWord(rest, 0)
     if (analyze.word !== 'analyze') return true
-    rest = stripLeadingComments(rest.slice(analyze.end)) ?? ''
+    rest = stripLeadingComments(rest.slice(analyze.end), dialect) ?? ''
     if (rest === '') return false
     const format = readWord(rest, 0)
     if (format.word === 'format') {
@@ -414,14 +440,14 @@ export function isReadOnlySql(sql: string): boolean {
       if (equals < 0) return false
       const value = readWord(rest, skipSpace(rest, equals + 1))
       if (value.word === '') return false
-      rest = stripLeadingComments(rest.slice(value.end)) ?? ''
+      rest = stripLeadingComments(rest.slice(value.end), dialect) ?? ''
     }
-    return rest !== '' && isReadOnlySql(rest)
+    return rest !== '' && isReadOnlySql(rest, dialect)
   }
   // `SELECT ... INTO <table>` creates a table on PostgreSQL and SQL Server.
-  if (head === 'select' && selectsIntoTable(withoutTrailing)) return false
+  if (head === 'select' && selectsIntoTable(withoutTrailing, dialect)) return false
   // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
-  if (FILE_WRITE.test(withoutLiterals(withoutTrailing))) return false
+  if (FILE_WRITE.test(withoutLiterals(withoutTrailing, dialect))) return false
   return true
 }
 
@@ -973,9 +999,11 @@ export class SqlService {
 
   async query(connId: string, sql: string, options: QueryOptions = {}): Promise<QueryResult> {
     this.requireConnected(connId)
+    const connection = this.requireConnection(connId)
+    const dialect: SqlDialect = connection.dialect === 'redis' ? 'generic' : connection.dialect
     const statement = sql.trim()
     if (statement === '') throw new DbError('invalid', 'SQL 不能为空')
-    if (options.allowWrite !== true && !isReadOnlySql(statement)) {
+    if (options.allowWrite !== true && !isReadOnlySql(statement, dialect)) {
       throw new DbError('read-only', '该操作只允许只读语句（SELECT/SHOW/DESCRIBE/EXPLAIN 等）', '请打开连接或先在面板中确认执行。')
     }
     const bridge = await this.ensureBridge()

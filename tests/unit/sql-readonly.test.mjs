@@ -191,4 +191,18 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT 1 -- comment; delete from t\n')).toBe(true)
     expect(isReadOnlySql('SELECT 1 -- comment\n; delete from t')).toBe(false)
   })
+
+  it('treats # as a comment only in MySQL-family dialects', () => {
+    expect(isReadOnlySql('# fetch orders\nSELECT 1', 'mysql')).toBe(true)
+    // Generic text cannot start with #; SQL Server allows #temp identifiers.
+    expect(isReadOnlySql('# fetch orders\nSELECT 1')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 # comment', 'mysql')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 # comment\n; DELETE FROM t', 'mysql')).toBe(false)
+    // The rest of the line is a comment, so this is only one (invalid) statement.
+    expect(isReadOnlySql('SELECT 1 # ; DELETE FROM t', 'mysql')).toBe(true)
+    // Outside MySQL the semicolon stays visible and a second statement is rejected.
+    expect(isReadOnlySql('SELECT 1 # ; DELETE FROM t', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM #tmp; SELECT 2', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM #tmp; SELECT 2', 'mysql')).toBe(true)
+  })
 })
