@@ -127,6 +127,22 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1\nGO\nselect 2', 'mysql')).toEqual(['select 1\nGO\nselect 2'])
   })
 
+  it('repeats a batch for a GO count', () => {
+    expect(splitStatements('insert into t values (1)\nGO 3\nselect 1', 'mssql')).toEqual([
+      'insert into t values (1)',
+      'insert into t values (1)',
+      'insert into t values (1)',
+      'select 1',
+    ])
+    expect(splitStatements('select 1; select 2\nGO 2', 'mssql')).toEqual([
+      'select 1',
+      'select 2',
+      'select 1',
+      'select 2',
+    ])
+    expect(splitStatements('select 1\nGO 1', 'mssql')).toEqual(['select 1'])
+  })
+
   it('keeps a SQL Server program body until its GO batch', () => {
     const procedure = [
       '-- define it',

@@ -8,6 +8,7 @@ interface DelimiterDirective {
 
 interface BatchDirective {
   end: number
+  count: number
 }
 
 /** A script may put explanatory comments before its first DELIMITER line. */
@@ -48,15 +49,18 @@ function isMssqlProgram(text: string): boolean {
 /**
  * Parse a SQL Server `GO` batch separator at `index`. `GO` is a client command,
  * not T-SQL: it only counts as its own line, optionally followed by a comment,
- * and is never sent to the server.
+ * and is never sent to the server. A positive count repeats the preceding
+ * batch, matching sqlcmd.
  */
 function mssqlGoDirective(input: string, index: number): BatchDirective | null {
   let lineStart = index
   while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
   if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
-  const match = /^go[ \t]*(?:--[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
+  const match = /^go(?:[ \t]+(\d+))?[ \t]*(?:--[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
   if (match === null) return null
-  return { end: index + match[0].length }
+  const count = match[1] === undefined ? 1 : Number(match[1])
+  if (!Number.isSafeInteger(count) || count < 1) return null
+  return { end: index + match[0].length, count }
 }
 
 /**
@@ -82,6 +86,7 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
   const statements: string[] = []
   let current = ''
   let delimiter = ';'
+  let batchStart = 0
   let index = 0
 
   const flush = (): void => {
@@ -101,6 +106,11 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       const batch = mssqlGoDirective(input, index)
       if (batch !== null) {
         if (!hasOnlyComments(current)) flush()
+        const batchStatements = statements.slice(batchStart)
+        if (batch.count > 1 && batchStatements.length > 0) {
+          for (let repeat = 1; repeat < batch.count; repeat += 1) statements.push(...batchStatements)
+        }
+        batchStart = statements.length
         index = batch.end
         continue
       }
