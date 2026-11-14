@@ -52,6 +52,23 @@ describe('Redis command guard', () => {
     expect(isReadOnlyCommand('SADD')).toBe(false)
   })
 
+  it('accepts range and metadata reads', () => {
+    for (const command of [
+      'ZRANGEBYLEX',
+      'ZREVRANGEBYLEX',
+      'ZREVRANGEBYSCORE',
+      'BITFIELD_RO',
+      'XPENDING',
+      'LOLWUT',
+      'LASTSAVE',
+      'ROLE',
+      'COMMAND',
+      'SUBSTR',
+    ]) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+  })
+
   it('accepts pure reads that cannot store their result', () => {
     for (const command of [
       'ZRANDMEMBER',

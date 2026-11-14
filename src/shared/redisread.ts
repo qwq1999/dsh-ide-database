@@ -86,6 +86,17 @@ export const REDIS_READ_COMMANDS: ReadonlySet<string> = new Set([
   'pexpiretime',
   'georadius_ro',
   'georadiusbymember_ro',
+  // Sorted-set range variants and metadata reads.
+  'zrangebylex',
+  'zrevrangebylex',
+  'zrevrangebyscore',
+  'bitfield_ro',
+  'xpending',
+  'lolwut',
+  'lastsave',
+  'role',
+  'command',
+  'substr',
 ])
 
 export function isRedisReadCommand(command: string): boolean {
