@@ -296,7 +296,7 @@ const MSSQL_RENAME = /\bexec(?:ute)?\s+(?:@\w+\s*=\s*)?(?:\[?dbo\]?\.)?\[?sp_ren
 // `sp_executesql` and `EXEC(@sql)` run dynamic SQL, which may create or
 // drop objects; stored-procedure calls such as `sp_help` are ordinary reads.
 const MSSQL_DYNAMIC_SQL =
-  /\bexec(?:ute)?\s*(?:@\w+\s*=\s*)?(?:\(|(?:\[?dbo\]?\.)?\[?sp_executesql\]?|@\w+)/iu
+  /\bexec(?:ute)?\s*(?:@\w+\s*=\s*)?(?:\(|(?:\[?dbo\]?\.)?\[?sp_executesql\]?|@\w+\b(?!\s*=))/iu
 
 /** `SELECT ... INTO new_table` creates a table even though it starts with SELECT. */
 function selectCreatesTable(code: string): boolean {

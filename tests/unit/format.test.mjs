@@ -193,6 +193,8 @@ describe('format helpers', () => {
     expect(looksLikeDdl('EXEC sp_help', 'mssql')).toBe(false)
     expect(looksLikeDdl("EXEC sp_executesql N'DROP TABLE users'", 'mssql')).toBe(true)
     expect(looksLikeDdl('EXEC(@sql)', 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC @sql', 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC @rc = sp_help', 'mssql')).toBe(false)
     expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'postgres')).toBe(false)
     expect(looksLikeDdl("BEGIN EXECUTE IMMEDIATE 'CREATE TABLE t (id NUMBER)'; END;", 'oracle')).toBe(true)
     expect(looksLikeDdl('BEGIN NULL; END;', 'oracle')).toBe(true)
