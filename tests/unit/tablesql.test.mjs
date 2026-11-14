@@ -355,6 +355,11 @@ describe('temporal literals', () => {
     expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54:33.123 +08:00')).toBe(
       `TO_TIMESTAMP_TZ('2024-11-11 09:54:33.123 +08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
     )
+    // Oracle's own TIMESTAMP WITH TIME ZONE text uses a one-digit hour offset.
+    const bridged = '2024-11-11 09:54:00.0 +8:00'
+    expect(temporalLiteral('oracle', stamp.typeName, bridged)).toBe(
+      `TO_TIMESTAMP_TZ('${bridged}', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
   })
 
   it('leaves other dialects and non-temporal text alone', () => {

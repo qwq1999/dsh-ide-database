@@ -144,19 +144,21 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
   if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
   const escaped = text.replace(/'/gu, "''")
-  const hasTime = /\d{2}:\d{2}:\d{2}/u.test(text)
+  // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
+  const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(text)
+  const hasTime = hasSeconds
   const hasFraction = /\.\d+/u.test(text)
-  const hasZone = /(?:[+-]\d{2}:\d{2}|Z)$/u.test(text)
+  const hasZone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.test(text)
+  const timeFormat = hasTime ? ' HH24:MI:SS' : ''
   if (base.startsWith('timestamp')) {
     if (hasZone) {
-      const format = `YYYY-MM-DD HH24:MI:SS${hasFraction ? '.FF' : ''} TZH:TZM`
+      const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZH:TZM`
       return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
     }
-    const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}${hasFraction ? '.FF' : ''}`
+    const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''}`
     return `TO_TIMESTAMP('${escaped}', '${format}')`
   }
-  const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}`
-  return `TO_DATE('${escaped}', '${format}')`
+  return `TO_DATE('${escaped}', 'YYYY-MM-DD${timeFormat}')`
 }
 
 /**
