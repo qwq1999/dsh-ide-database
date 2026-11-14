@@ -3,7 +3,7 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { CellValue, ClientConnection, ColumnInfo, Row, SqlDialect } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo, Dialect, Row, SqlDialect } from '../shared/types'
 import { maskNonCode } from './sqllex'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
@@ -124,9 +124,15 @@ export function isJsonType(typeName: string | undefined): boolean {
  * A text filter or equality built from that placeholder cannot match, so the
  * grid must not offer those actions for a non-NULL binary value.
  */
-export function isBinaryType(typeName: string | undefined): boolean {
+export function isBinaryType(typeName: string | undefined, dialect?: Dialect): boolean {
   if (typeName === undefined) return false
   const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  const normalized = dialect === 'redis' ? 'generic' : dialect
+  // MySQL and SQL Server serialise spatial values as bytes; PostgreSQL keeps
+  // PostGIS values as text, so only treat spatial names as binary there.
+  if (/^(?:geometry|geography|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection|geomcollection)$/u.test(base)) {
+    return normalized === 'mysql' || normalized === 'mssql'
+  }
   return /^(?:binary|varbinary|blob|tinyblob|mediumblob|longblob|bytea|image|raw|long raw)$/u.test(base)
 }
 

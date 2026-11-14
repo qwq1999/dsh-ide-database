@@ -1337,7 +1337,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const active = rowSort?.column === column.name ? rowSort.direction : null
     const index = columns.findIndex((item) => item.name === column.name)
-    const binary = isBinaryType(column.typeName)
+    const binary = isBinaryType(column.typeName, connection?.dialect)
     return [
       { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
       { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
@@ -1418,7 +1418,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   )
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => {
-      const binary = isBinaryType(cell.column.typeName) && cell.value !== null
+      const binary = isBinaryType(cell.column.typeName, connection?.dialect) && cell.value !== null
       return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },

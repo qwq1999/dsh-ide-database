@@ -254,6 +254,13 @@ describe('type families', () => {
     expect(isBinaryType('RAW(16)')).toBe(true)
     expect(isBinaryType('LONG RAW')).toBe(true)
     expect(isBinaryType('varbinary(max)')).toBe(true)
+    expect(isBinaryType('geometry', 'mysql')).toBe(true)
+    expect(isBinaryType('POINT', 'mysql')).toBe(true)
+    expect(isBinaryType('geography', 'mssql')).toBe(true)
+    // PostGIS values are text, not a byte placeholder.
+    expect(isBinaryType('geometry', 'postgres')).toBe(false)
+    expect(isBinaryType('point', 'postgres')).toBe(false)
+    expect(isBinaryType('geometry')).toBe(false)
     expect(isBinaryType('text')).toBe(false)
     expect(isBinaryType('json')).toBe(false)
     expect(isBinaryType(undefined)).toBe(false)

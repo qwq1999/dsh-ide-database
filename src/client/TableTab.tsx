@@ -348,7 +348,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (column: ColumnInfo): ColumnMenuItem[] => {
       const active = activeSort?.column === column.name ? activeSort.direction : null
       const index = columns.findIndex((item) => item.name === column.name)
-      const binary = isBinaryType(column.typeName)
+      const binary = isBinaryType(column.typeName, connection?.dialect)
       return [
         { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
         { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
@@ -463,7 +463,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (cell: CellMenuTarget): ColumnMenuItem[] => {
       // The bridge shows binary columns as a placeholder, not their bytes; an
       // equality/WHERE built from that text would never match the real value.
-      const binary = isBinaryType(cell.column.typeName) && cell.value !== null
+      const binary = isBinaryType(cell.column.typeName, connection?.dialect) && cell.value !== null
       return [
             {
               label: '查看完整值',
@@ -1196,7 +1196,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 {shownColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
-                  const binary = isBinaryType(column.typeName)
+                  const binary = isBinaryType(column.typeName, connection?.dialect)
                   return (
                     <th key={`filter-${column.name}-${index}`}>
                       <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
@@ -1243,7 +1243,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onCellClick={
             filtersOpen
               ? (column, value) => {
-                  if (isBinaryType(column.typeName) && value !== null) return
+                  if (isBinaryType(column.typeName, connection?.dialect) && value !== null) return
                   setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
                 }
               : undefined
