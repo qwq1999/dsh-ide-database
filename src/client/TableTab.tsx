@@ -781,13 +781,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   /** Save only the checked rows of the current page. */
   const exportSelected = (format: ExportFormat): void => {
     setExportOpen(false)
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns are a view setting; exports keep them.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const payload = renderExport(format, {
       dialect: connection?.dialect ?? 'mysql',
       schema: params.schema,
       table: params.table,
-      columns: shownColumns,
+      columns: displayColumns,
       rows: picked,
     })
     downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
