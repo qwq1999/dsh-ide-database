@@ -277,7 +277,9 @@ export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] 
  * One row as an INSERT statement for the table tab's context menu. Numeric
  * columns keep the exact text the driver returned (decimals arrive as strings
  * to avoid float rounding), everything else is quoted; NULL stays NULL.
- * Server-generated columns are left out: the database rejects a value for them.
+ * Server-generated and binary columns are left out: the database rejects a
+ * value for generated columns, and the bridge only exposes binary cells as a
+ * `<binary N bytes>` placeholder rather than their actual bytes.
  */
 export function insertStatement(
   dialect: ClientConnection['dialect'],
@@ -288,7 +290,18 @@ export function insertStatement(
 ): string {
   const selected = columns
     .map((column, index) => ({ column, index }))
-    .filter((entry) => entry.column.generated !== true && !isMssqlRowVersion(entry.column.typeName, dialect))
+    .filter(
+      (entry) =>
+        entry.column.generated !== true &&
+        !isMssqlRowVersion(entry.column.typeName, dialect) &&
+        // The bridge only returns `<binary N bytes>` for binary cells, so a
+        // placeholder cannot become a real INSERT value. Null binary cells
+        // still export as NULL; text columns keep such a literal string.
+        !isBinaryCell(entry.column, row[entry.index] ?? null, dialect),
+    )
+  if (selected.length === 0) {
+    return `-- ${qualifiedName(dialect, schema, table)} 只有二进制或生成列，未导出 INSERT`
+  }
   const names = selected.map((entry) => quoteIdent(dialect, entry.column.name)).join(', ')
   const values = selected
     .map((entry) => insertLiteral(dialect, entry.column, row[entry.index] ?? null))

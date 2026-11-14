@@ -454,6 +454,21 @@ describe('insertStatement', () => {
     )
   })
 
+  it('leaves binary placeholder cells out of INSERT', () => {
+    const columns = [column('id', 'int'), column('payload', 'BLOB'), column('flags', 'BIT'), column('note', 'TEXT')]
+    expect(
+      insertStatement('mysql', 'shop', 'files', columns, [1, '<binary 3 bytes>', '<binary 1 bytes>', '<binary 3 bytes>']),
+    ).toBe(
+      "INSERT INTO `shop`.`files` (`id`, `note`) VALUES (1, '<binary 3 bytes>');",
+    )
+    expect(
+      insertStatement('mysql', 'shop', 'files', [column('payload', 'BLOB')], ['<binary 3 bytes>']),
+    ).toBe('-- `shop`.`files` 只有二进制或生成列，未导出 INSERT')
+    expect(
+      insertStatement('mysql', 'shop', 'files', [column('id', 'int'), column('payload', 'BLOB')], [1, null]),
+    ).toBe('INSERT INTO `shop`.`files` (`id`, `payload`) VALUES (1, NULL);')
+  })
+
   it('leaves server-generated columns out while keeping value positions aligned', () => {
     const generated = [
       { ...column('total', 'int'), generated: true },
