@@ -483,9 +483,36 @@ function analyzeOptionEnabled(options: string): boolean {
   return value !== 'false' && value !== 'off' && value !== '0'
 }
 
+/** MySQL versioned comment; the server runs its body as part of the statement. */
+interface ExecutableComment {
+  body: string
+  end: number
+}
+
+/** Read one executable comment at the start of `text`; null when there is none. */
+function executableComment(text: string): ExecutableComment | null {
+  if (!text.startsWith('/*!')) return null
+  const close = text.indexOf('*/', 2)
+  if (close < 0) return null
+  return { body: text.slice(3, close), end: close + 2 }
+}
+
 export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {
   const text = stripLeadingComments(sql, dialect)
   if (text === null) return false
+  // MySQL runs the body of a leading `/*! ... */` as part of the statement.
+  // Judge that body too, then the statement after it, instead of rejecting every
+  // query that starts with a versioned hint.
+  if (isMysqlDialect(dialect)) {
+    const executable = executableComment(text)
+    if (executable !== null) {
+      const body = executable.body.trim().replace(/^\d{5,6}\s*/u, '').trim()
+      const restText = stripLeadingComments(text.slice(executable.end), dialect)
+      if (restText === null) return false
+      const rest = restText.replace(/;+\s*$/u, '')
+      return (body === '' || isReadOnlySql(body, dialect)) && (rest === '' || isReadOnlySql(rest, dialect))
+    }
+  }
   const withoutTrailing = text.replace(/;+\s*$/, '')
   // A semicolon inside a string, quoted identifier or comment is data, not a
   // second statement; only one left in the code part makes the script unsafe.

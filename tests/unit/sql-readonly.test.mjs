@@ -223,6 +223,12 @@ describe('isReadOnlySql', () => {
     // Ordinary executable hints and session variables remain reads.
     expect(isReadOnlySql('SELECT 1 /*!50000 SQL_NO_CACHE */', 'mysql')).toBe(true)
     expect(isReadOnlySql('SELECT count(*) /*!50000 INTO @total */ FROM users', 'mysql')).toBe(true)
+    // A versioned comment can also front a read-only statement. It must not be
+    // rejected just because the whole text starts with `/*!`.
+    expect(isReadOnlySql('/*!50000 SELECT 1 */', 'mysql')).toBe(true)
+    expect(isReadOnlySql('/*!50000 SELECT 1 */;', 'mysql')).toBe(true)
+    expect(isReadOnlySql('/*!50000 */ SELECT 1', 'mysql')).toBe(true)
+    expect(isReadOnlySql('/*!50000 SELECT 1 */ DELETE FROM t', 'mysql')).toBe(false)
   })
 
   it('does not treat MySQL arithmetic minus minus as a line comment', () => {
