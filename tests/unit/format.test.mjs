@@ -103,6 +103,15 @@ describe('format helpers', () => {
     expect(looksLikeWrite('DO 1', 'mysql')).toBe(false)
   })
 
+  it('recognizes Oracle anonymous blocks as writes', () => {
+    expect(looksLikeWrite('BEGIN DELETE FROM users; END;', 'oracle')).toBe(true)
+    expect(looksLikeWrite('BEGIN NULL; END;', 'oracle')).toBe(true)
+    expect(looksLikeWrite('DECLARE n NUMBER; BEGIN n := 1; END;', 'oceanbase-oracle')).toBe(true)
+    // BEGIN starts a transaction in MySQL/SQL Server, not a PL/SQL block.
+    expect(looksLikeWrite('BEGIN', 'mysql')).toBe(false)
+    expect(looksLikeWrite('BEGIN TRANSACTION', 'mssql')).toBe(false)
+  })
+
   it('recognizes bulk-load statements as writes', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)

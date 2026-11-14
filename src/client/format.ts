@@ -244,6 +244,14 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
   // masking, so any DO statement could contain DML and needs confirmation.
   // MySQL's `DO expr` only evaluates an expression, so it stays read-only.
   if (head.word === 'do' && dialect === 'postgres') return true
+  // Oracle PL/SQL anonymous blocks can hide DML behind `BEGIN` or `DECLARE`.
+  // Oracle starts transactions implicitly, so `BEGIN` here is always a block.
+  if (
+    (head.word === 'begin' || head.word === 'declare') &&
+    (dialect === 'oracle' || dialect === 'oceanbase-oracle')
+  ) {
+    return true
+  }
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)
   }
