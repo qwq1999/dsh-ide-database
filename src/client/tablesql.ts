@@ -136,7 +136,7 @@ export function isTemporalType(typeName: string | undefined, dialect?: Dialect):
   if (dialect === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return false
   // Keep parameters and time-zone wording, but never treat an array as a
   // scalar timestamp: `date[]` needs a cast or an array literal, not TO_DATE.
-  return /^(?:date|datetime2?|smalldatetime|timestamp(?:tz|ltz)?(?:\s+(?:with|without)(?:\s+local)?\s+time\s+zone)?)$/u.test(
+  return /^(?:date|datetime2?|datetimeoffset|smalldatetime|timestamp(?:tz|ltz)?(?:\s+(?:with|without)(?:\s+local)?\s+time\s+zone)?)$/u.test(
     base,
   )
 }
@@ -232,7 +232,14 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
       return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     }
     if (dialect === 'dameng') return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
-    if (dialect === 'mssql') return `CONVERT(VARCHAR(23), ${name}, 121)`
+    if (dialect === 'mssql') {
+      const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+      // datetime2 keeps up to 7 fractional digits and datetimeoffset adds a
+      // zone; a 23-character cast would truncate both the fraction and offset.
+      if (base.startsWith('datetimeoffset')) return `CONVERT(VARCHAR(34), ${name}, 121)`
+      if (base.startsWith('datetime2')) return `CONVERT(VARCHAR(27), ${name}, 121)`
+      return `CONVERT(VARCHAR(23), ${name}, 121)`
+    }
   }
   if (dialect === 'mysql') return `CAST(${name} AS CHAR)`
   if (dialect === 'mssql') return `CAST(${name} AS NVARCHAR(MAX))`

@@ -134,6 +134,12 @@ describe('filterExpression', () => {
     expect(filterExpression('mssql', column('created', 'datetime'), { op: 'like', text: '2024' })).toBe(
       `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%' ESCAPE '!'`,
     )
+    expect(filterExpression('mssql', column('created', 'datetime2(7)'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(27), [created], 121) LIKE '%2024%' ESCAPE '!'`,
+    )
+    expect(filterExpression('mssql', column('created', 'datetimeoffset(7)'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(34), [created], 121) LIKE '%2024%' ESCAPE '!'`,
+    )
     expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'ab' })).toBe(
       `"name" LIKE '%ab%' ESCAPE '!'`,
     )
