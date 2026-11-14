@@ -70,6 +70,14 @@ function matchingParen(text: string, open: number): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
     const char = text[index]
+    // Literals may contain parentheses that do not affect nesting.
+    if (char === '$') {
+      const end = dollarQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
+    }
     // Oracle alternative quoting hides its inner quote from the generic scanner.
     if (char === 'q' || char === 'Q') {
       const end = oracleQuotedLiteralEnd(text, index)
@@ -185,10 +193,36 @@ function oracleQuotedLiteralEnd(input: string, index: number): number | null {
   return end === -1 ? null : end + 2
 }
 
+/**
+ * The end (exclusive) of the PostgreSQL dollar-quoted string starting at
+ * `index`, or null when this is not one. `$$text$$` and `$tag$text$tag$` are
+ * both allowed; a tag may not start with a digit because `$1` is a parameter.
+ */
+function dollarQuotedLiteralEnd(input: string, index: number): number | null {
+  if (input[index] !== '$') return null
+  if (index > 0 && /[A-Za-z0-9_$]/u.test(input[index - 1] ?? '')) return null
+  let cursor = index + 1
+  while (cursor < input.length && /[A-Za-z0-9_]/u.test(input[cursor] ?? '')) cursor += 1
+  if (input[cursor] !== '$') return null
+  if (cursor > index + 1 && /[0-9]/u.test(input[index + 1] ?? '')) return null
+  const delimiter = input.slice(index, cursor + 1)
+  const close = input.indexOf(delimiter, cursor + 1)
+  return close === -1 ? null : close + delimiter.length
+}
+
 function withoutLiterals(text: string): string {
   let out = ''
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] ?? ''
+    // PostgreSQL dollar quoting hides semicolons inside a plain SELECT.
+    if (char === '$') {
+      const end = dollarQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        out += ' '
+        continue
+      }
+    }
     // Oracle alternative quoting can contain the quote character and semicolons;
     // skip the whole literal before the generic `'...'` scanner sees its inner quote.
     if (char === 'q' || char === 'Q') {

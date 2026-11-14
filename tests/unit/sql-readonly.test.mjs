@@ -127,6 +127,18 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT 1 /* into backup */')).toBe(true)
   })
 
+  it('accepts semicolons inside dollar-quoted strings', () => {
+    expect(isReadOnlySql('select $$a;b$$')).toBe(true)
+    expect(isReadOnlySql('select $tag$a;b$tag$')).toBe(true)
+    expect(isReadOnlySql('select $fn$ begin; return 1; end $fn$')).toBe(true)
+    expect(isReadOnlySql('with c as (select $tag$a;b$tag$ as x) select * from c')).toBe(true)
+    // A semicolon after the literal still separates two statements.
+    expect(isReadOnlySql('select $$;$$; delete from t')).toBe(false)
+    // An unterminated delimiter is not a string.
+    expect(isReadOnlySql('select 1 as $$; select 2')).toBe(false)
+    expect(isReadOnlySql('select $1$; select 2')).toBe(false)
+  })
+
   it('refuses a select that writes a file on the server', () => {
     expect(isReadOnlySql("SELECT * FROM users INTO OUTFILE '/tmp/users.txt'")).toBe(false)
     expect(isReadOnlySql("select 1 into dumpfile '/tmp/dump.bin'")).toBe(false)
