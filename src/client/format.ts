@@ -1,6 +1,6 @@
 import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
-import { maskNonCode } from './sqllex'
+import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
   return dialect ? DIALECT_LABEL[dialect] : '未选择'
@@ -126,6 +126,13 @@ function skipBalanced(text: string, open: number): number {
     if (char === "'" || char === '"' || char === '`') {
       quote = char
       continue
+    }
+    if (char === '[') {
+      const end = bracketIdentifierEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
     }
     if (char === '(') depth += 1
     else if (char === ')') {
