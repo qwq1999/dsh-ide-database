@@ -137,6 +137,18 @@ describe('exporting selected table rows', () => {
     expect(text).not.toContain('beta')
   })
 
+  it('extends the selection when shift-clicking an already selected row', async () => {
+    renderTable()
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(screen.getByLabelText('选择第 2 行'))
+    fireEvent.click(screen.getByLabelText('选择第 1 行'), { shiftKey: true })
+
+    expect((screen.getByLabelText('选择第 1 行') as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText('选择第 2 行') as HTMLInputElement).checked).toBe(true)
+  })
+
   it('keeps hidden columns in a selected-row export', async () => {
     const columns = [
       { name: 'id', typeName: 'INT' },

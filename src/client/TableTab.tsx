@@ -770,13 +770,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setSelectedRows((current) => {
       const next = new Set(current)
       if (extend && selectionAnchor.current !== null) {
+        // Shift-click extends the selection; it never clears a selected range
+        // based on the clicked row's current state.
         const from = Math.min(selectionAnchor.current, rowIndex)
         const to = Math.max(selectionAnchor.current, rowIndex)
-        const select = !next.has(rowIndex)
-        for (let index = from; index <= to; index += 1) {
-          if (select) next.add(index)
-          else next.delete(index)
-        }
+        for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
       if (next.has(rowIndex)) next.delete(rowIndex)
