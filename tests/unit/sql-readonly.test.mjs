@@ -182,4 +182,13 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT 1 /*!50000 SQL_NO_CACHE */')).toBe(true)
     expect(isReadOnlySql('SELECT count(*) /*!50000 INTO @total */ FROM users')).toBe(true)
   })
+
+  it('does not treat MySQL arithmetic minus minus as a line comment', () => {
+    expect(isReadOnlySql('SELECT 1--3')).toBe(true)
+    expect(isReadOnlySql("SELECT 1--3 INTO OUTFILE '/tmp/x'")).toBe(false)
+    expect(isReadOnlySql('SELECT 1--3; DELETE FROM t')).toBe(false)
+    // A real `--` comment still hides its content.
+    expect(isReadOnlySql('SELECT 1 -- comment; delete from t\n')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 -- comment\n; delete from t')).toBe(false)
+  })
 })
