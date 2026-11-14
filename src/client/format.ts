@@ -240,6 +240,10 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     if (head.rest.startsWith('(')) return false
     return /\bfrom\b/iu.test(code)
   }
+  // PostgreSQL `DO` runs an anonymous code block; the block is opaque after
+  // masking, so any DO statement could contain DML and needs confirmation.
+  // MySQL's `DO expr` only evaluates an expression, so it stays read-only.
+  if (head.word === 'do' && dialect === 'postgres') return true
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)
   }

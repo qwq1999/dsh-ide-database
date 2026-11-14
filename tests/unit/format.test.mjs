@@ -97,6 +97,12 @@ describe('format helpers', () => {
     expect(looksLikeWrite("SELECT q'[delete]' FROM dual", 'oracle')).toBe(false)
   })
 
+  it('recognizes PostgreSQL DO blocks as writes', () => {
+    expect(looksLikeWrite('DO $$ BEGIN DELETE FROM users; END $$', 'postgres')).toBe(true)
+    expect(looksLikeWrite('DO $$ BEGIN PERFORM 1; END $$', 'postgres')).toBe(true)
+    expect(looksLikeWrite('DO 1', 'mysql')).toBe(false)
+  })
+
   it('recognizes bulk-load statements as writes', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
