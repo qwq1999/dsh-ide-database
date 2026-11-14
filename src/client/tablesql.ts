@@ -161,9 +161,11 @@ export function insertStatement(
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
 }
 
-/** SQL Server has no boolean literals; its BIT columns take 1 and 0. */
+/** SQL Server and Oracle have no boolean literals; their BIT/NUMBER(1) columns take 1 and 0. */
 function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): string {
-  if (dialect === 'mssql') return value ? '1' : '0'
+  // Oracle (and OceanBase's Oracle mode) has no SQL boolean literal before
+  // 23c; a NUMBER(1) or BIT column is compared with 1/0 instead.
+  if (dialect === 'mssql' || dialect === 'oracle' || dialect === 'oceanbase-oracle') return value ? '1' : '0'
   return value ? 'TRUE' : 'FALSE'
 }
 
