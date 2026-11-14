@@ -8,6 +8,7 @@ import {
   insertStatements,
   isNumericType,
   isTemporalType,
+  isTextType,
   temporalLiteral,
   pageClause,
   qualifiedName,
@@ -131,6 +132,40 @@ describe('isNumericType', () => {
     expect(isNumericType('decimal(10,2)')).toBe(true)
     expect(isNumericType('varchar(20)')).toBe(false)
     expect(isNumericType('datetime')).toBe(false)
+  })
+
+  it('matches the whole type name rather than a prefix', () => {
+    expect(isNumericType('interval')).toBe(false)
+    expect(isNumericType('integer[]')).toBe(false)
+    expect(isNumericType('numeric[]')).toBe(false)
+    expect(isNumericType('int4')).toBe(true)
+    expect(isNumericType('float8')).toBe(true)
+    expect(isNumericType('serial')).toBe(true)
+    expect(isNumericType('bigserial')).toBe(true)
+    expect(isNumericType('double precision')).toBe(true)
+  })
+})
+
+describe('type families', () => {
+  it('does not treat arrays as scalar character or temporal types', () => {
+    expect(isTextType('character varying')).toBe(true)
+    expect(isTextType('character varying(50)')).toBe(true)
+    expect(isTextType('character varying[]')).toBe(false)
+    expect(isTextType('text[]')).toBe(false)
+    expect(isTemporalType('date[]')).toBe(false)
+    expect(isTemporalType('smalldatetime')).toBe(true)
+    expect(isTemporalType('timestamp(6) with local time zone')).toBe(true)
+    expect(isTemporalType('timestamp(6) with time zone')).toBe(true)
+    expect(isTemporalType('timestamp[]')).toBe(false)
+  })
+
+  it('casts a character varying array before a contains filter', () => {
+    const tags = column('tags', 'character varying[]')
+    expect(filterExpression('postgres', tags, { op: 'like', text: 'red' })).toBe(
+      `CAST("tags" AS TEXT) LIKE '%red%'`,
+    )
+    const span = column('span', 'interval')
+    expect(filterExpression('postgres', span, { op: 'eq', text: '1' })).toBe(`"span" = '1'`)
   })
 })
 

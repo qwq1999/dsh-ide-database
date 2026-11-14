@@ -90,20 +90,32 @@ export function selectColumnsSql(
 }
 
 export function isNumericType(typeName: string): boolean {
-  return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
+  const base = typeName.replace(/[\s(].*$/u, '').trim().toLowerCase()
+  // Anchor the whole name: the old leading `int` alternative also matched
+  // `interval`, and an array like `integer[]` is not a scalar number.
+  return /^(?:(?:tiny|small|medium|big)?int[248]?|integer|int[248]|(?:big|small)?serial[248]?|decimal|numeric|float[48]?|double|number|real)$/u.test(
+    base,
+  )
 }
 
 /** Date / timestamp columns need a typed literal on Oracle-family servers. */
 export function isTemporalType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false
-  return /^(date|datetime|timestamp)/iu.test(typeName.replace(/[\s(].*$/u, ''))
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  // Keep parameters and time-zone wording, but never treat an array as a
+  // scalar timestamp: `date[]` needs a cast or an array literal, not TO_DATE.
+  return /^(?:date|datetime2?|smalldatetime|timestamp(?:tz|ltz)?(?:\s+(?:with|without)(?:\s+local)?\s+time\s+zone)?)$/u.test(
+    base,
+  )
 }
 
 /** Character-family columns can be compared with LIKE without a cast. */
 export function isTextType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false
-  const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
-  return /^(?:bpchar|character|char|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(base)
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return /^(?:bpchar|character(?: varying)?|char(?:acter)?|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(
+    base,
+  )
 }
 
 /**
