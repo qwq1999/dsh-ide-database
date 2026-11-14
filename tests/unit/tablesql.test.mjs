@@ -180,6 +180,22 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('insert into [shop].[orders] (id) values (1)')).toEqual({ schema: 'shop', table: 'orders' })
   })
 
+  it('keeps quoted names with spaces and dots intact', () => {
+    expect(tableFromStatement('insert into [Order Details] (id) values (1)', 'mssql')).toEqual({
+      schema: '',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from [shop].[Order Details]', 'mssql')).toEqual({
+      schema: 'shop',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from `order details`', 'mysql')).toEqual({ schema: '', table: 'order details' })
+    expect(tableFromStatement('select * from "order details"')).toEqual({ schema: '', table: 'order details' })
+    expect(tableFromStatement('select * from [my.table]', 'mssql')).toEqual({ schema: '', table: 'my.table' })
+    expect(tableFromStatement('select * from [a]]b]', 'mssql')).toEqual({ schema: '', table: 'a]b' })
+    expect(tableFromStatement('select * from [from orders]', 'mssql')).toEqual({ schema: '', table: 'from orders' })
+  })
+
   it('skips subqueries without a plain table and returns null otherwise', () => {
     const nested = 'select * from (select * from shop.orders) x'
     expect(tableFromStatement(nested)).toEqual({ schema: 'shop', table: 'orders' })

@@ -245,8 +245,44 @@ export function insertStatements(
   return `${rows.map((row) => insertStatement(dialect, schema, table, columns, row)).join('\n')}\n`
 }
 
-function unquoteIdentifier(part: string): string {
-  return part.trim().replace(/^[`"[]/u, '').replace(/[`"\]]$/u, '')
+function skipSpaces(text: string, index: number): number {
+  let cursor = index
+  while (cursor < text.length && /\s/u.test(text[cursor] ?? '')) cursor += 1
+  return cursor
+}
+
+interface IdentifierToken {
+  value: string
+  end: number
+}
+
+/** Read one unquoted or quoted identifier, unescaping its delimiter. */
+function readTableIdentifier(text: string, index: number): IdentifierToken | null {
+  const start = skipSpaces(text, index)
+  const open = text[start]
+  if (open === '[' || open === '"' || open === '`') {
+    const close = open === '[' ? ']' : open
+    let cursor = start + 1
+    let value = ''
+    while (cursor < text.length) {
+      const char = text[cursor] ?? ''
+      if (char === close) {
+        if (text[cursor + 1] === close) {
+          value += close
+          cursor += 2
+          continue
+        }
+        return { value, end: cursor + 1 }
+      }
+      value += char
+      cursor += 1
+    }
+    return null
+  }
+  let cursor = start
+  while (cursor < text.length && /[\w$#]/u.test(text[cursor] ?? '')) cursor += 1
+  if (cursor === start) return null
+  return { value: text.slice(start, cursor), end: cursor }
 }
 
 /**
@@ -254,16 +290,27 @@ function unquoteIdentifier(part: string): string {
  * export. Returns null for statements without a plain table (functions,
  * multi-statement scripts, SELECTs over subqueries only). Literals and
  * comments are masked first: `SELECT 'from users' FROM orders` must not send
- * the INSERT export to users.
+ * the INSERT export to users. Quoted names keep spaces and dots inside their
+ * delimiters (`[Order Details]`, `"my.schema"."table name"`).
  */
 export function tableFromStatement(statement: string, dialect: SqlDialect = 'generic'): { schema: string; table: string } | null {
-  const code = maskNonCode(statement, dialect, false)
-  const match =
-    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(code)
-  if (match === null) return null
-  const parts = match[1].split('.').map(unquoteIdentifier)
-  if (parts.length >= 2) return { schema: parts[parts.length - 2] ?? '', table: parts[parts.length - 1] ?? '' }
-  return { schema: '', table: parts[0] ?? '' }
+  // Mask all quoted identifiers too, so a keyword inside `[from orders]` is
+  // not mistaken for the FROM clause; the offsets still line up with the
+  // original statement, which is where the actual name is read.
+  const code = maskNonCode(statement, dialect, true)
+  const keyword = /\b(?:from|join|update|into)\b/giu
+  let match: RegExpExecArray | null
+  while ((match = keyword.exec(code)) !== null) {
+    const first = readTableIdentifier(statement, keyword.lastIndex)
+    if (first === null) continue
+    const dot = skipSpaces(statement, first.end)
+    if (statement[dot] === '.') {
+      const second = readTableIdentifier(statement, dot + 1)
+      if (second !== null) return { schema: first.value, table: second.value }
+    }
+    return { schema: '', table: first.value }
+  }
+  return null
 }
 
 export function filterExpression(
