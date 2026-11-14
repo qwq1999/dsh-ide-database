@@ -122,17 +122,44 @@ export function isTextType(typeName: string | undefined): boolean {
 }
 
 /**
+ * Oracle's `TO_CHAR` keeps a fixed number of fractional digits and a two-digit
+ * hour offset, while the bridge trims trailing zeroes and prints "+8:00". Build
+ * the same text as the grid so a whole displayed timestamp can be filtered.
+ */
+function oracleTimestampText(name: string, typeName: string): string {
+  if (typeName.includes('local time zone')) {
+    // TZR is uppercase in the session; INITCAP restores "Asia/Shanghai".
+    return (
+      `INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR(${name}, ` +
+      `'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), ` +
+      `'\\. ([^ ]+)$', '.0 \\1'))`
+    )
+  }
+  if (typeName.includes('with time zone')) {
+    return (
+      `REGEXP_REPLACE(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), ` +
+      `'\\.$', '.0') || ' ' || ` +
+      `REGEXP_REPLACE(TO_CHAR(${name}, 'TZH:TZM'), '^([+-])0([0-9]:)', '\\1\\2')`
+    )
+  }
+  return `RTRIM(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.')`
+}
+
+/**
  * PostgreSQL, Oracle and SQL Server reject `integer LIKE '1%'`: LIKE needs
  * character input. Cast other columns to text so the table's filter row keeps
  * working for numbers, dates, UUIDs and arrays.
  */
 function textExpression(dialect: ClientConnection['dialect'], name: string, typeName: string | undefined): string {
-  if (isTemporalType(typeName)) {
+  if (typeName !== undefined && isTemporalType(typeName)) {
     // The grid shows the bridge's ISO text, so format temporal columns the
     // same way instead of trusting the session's NLS / language settings.
-    if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle') {
+      const lower = typeName.toLowerCase()
+      if (lower.startsWith('timestamp')) return oracleTimestampText(name, lower)
       return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     }
+    if (dialect === 'dameng') return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     if (dialect === 'mssql') return `CONVERT(VARCHAR(23), ${name}, 121)`
   }
   if (dialect === 'mysql') return `CAST(${name} AS CHAR)`

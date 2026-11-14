@@ -118,6 +118,28 @@ describe('filterExpression', () => {
       `"name" LIKE '%ab%' ESCAPE '!'`,
     )
   })
+
+  it('matches the fractional seconds and offset an Oracle timestamp displays', () => {
+    expect(filterExpression('oracle', column('created', 'TIMESTAMP'), { op: 'like', text: '09:54:33.123' })).toBe(
+      `RTRIM(RTRIM(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.') LIKE '%09:54:33.123%' ESCAPE '!'`,
+    )
+    expect(
+      filterExpression('oracle', column('created', 'TIMESTAMP(6) WITH TIME ZONE'), {
+        op: 'like',
+        text: '09:54:33.123 +8:00',
+      }),
+    ).toBe(
+      `REGEXP_REPLACE(RTRIM(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '\\.$', '.0') || ' ' || REGEXP_REPLACE(TO_CHAR("created", 'TZH:TZM'), '^([+-])0([0-9]:)', '\\1\\2') LIKE '%09:54:33.123 +8:00%' ESCAPE '!'`,
+    )
+    expect(
+      filterExpression('oracle', column('created', 'TIMESTAMP(6) WITH LOCAL TIME ZONE'), {
+        op: 'like',
+        text: '17:54:33.123 Asia/Shanghai',
+      }),
+    ).toBe(
+      `INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), '\\. ([^ ]+)$', '.0 \\1')) LIKE '%17:54:33.123 Asia/Shanghai%' ESCAPE '!'`,
+    )
+  })
 })
 
 describe('composeWhere', () => {
