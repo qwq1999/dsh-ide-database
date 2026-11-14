@@ -10,6 +10,8 @@ import {
   isTemporalType,
   isTextType,
   isBinaryType,
+  isBinaryValue,
+  isBinaryCell,
   temporalLiteral,
   pageClause,
   qualifiedName,
@@ -259,6 +261,17 @@ describe('type families', () => {
     expect(isBinaryType('timestamp', 'mssql')).toBe(true)
     expect(isBinaryType('rowversion', 'mssql')).toBe(true)
     expect(isBinaryType('timestamp', 'mysql')).toBe(false)
+  })
+
+  it('recognizes binary placeholders whose type name is vague', () => {
+    expect(isBinaryValue('<binary 1 bytes>')).toBe(true)
+    expect(isBinaryValue('<binary 0 bytes>')).toBe(true)
+    expect(isBinaryValue('<binary 3 bytes> extra')).toBe(false)
+    expect(isBinaryValue(3)).toBe(false)
+    expect(isBinaryCell(column('flags', 'BIT'), '<binary 1 bytes>', 'mysql')).toBe(true)
+    expect(isBinaryCell(column('note', 'TEXT'), '<binary 1 bytes>', 'mysql')).toBe(false)
+    expect(isBinaryCell(column('payload', 'BLOB'), '<binary 3 bytes>', 'mysql')).toBe(true)
+    expect(isBinaryCell(column('payload', 'BLOB'), null, 'mysql')).toBe(false)
     expect(isBinaryType('varbinary(max)')).toBe(true)
     expect(isBinaryType('geometry', 'mysql')).toBe(true)
     expect(isBinaryType('POINT', 'mysql')).toBe(true)

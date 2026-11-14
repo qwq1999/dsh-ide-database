@@ -142,6 +142,22 @@ export function isBinaryType(typeName: string | undefined, dialect?: Dialect): b
   return /^(?:binary|varbinary|blob|tinyblob|mediumblob|longblob|bytea|image|raw|long raw)$/u.test(base)
 }
 
+/** The bridge's textual stand-in for a binary cell. */
+export function isBinaryValue(value: CellValue): boolean {
+  return typeof value === 'string' && /^<binary \d+ bytes>$/u.test(value)
+}
+
+/**
+ * Whether this particular cell cannot be filtered by its displayed text. The
+ * type alone misses values such as MySQL `BIT(8)`, which the driver returns as
+ * bytes without a type name that says "binary"; the placeholder does catch it.
+ */
+export function isBinaryCell(column: ColumnInfo, value: CellValue, dialect?: Dialect): boolean {
+  if (value === null) return false
+  if (isBinaryType(column.typeName, dialect)) return true
+  return !isTextType(column.typeName) && isBinaryValue(value)
+}
+
 /** Character-family columns can be compared with LIKE without a cast. */
 export function isTextType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false

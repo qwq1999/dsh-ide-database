@@ -22,7 +22,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryType, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
@@ -463,7 +463,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (cell: CellMenuTarget): ColumnMenuItem[] => {
       // The bridge shows binary columns as a placeholder, not their bytes; an
       // equality/WHERE built from that text would never match the real value.
-      const binary = isBinaryType(cell.column.typeName, connection?.dialect) && cell.value !== null
+      const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
       return [
             {
               label: '查看完整值',
@@ -1196,7 +1196,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 {shownColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
-                  const binary = isBinaryType(column.typeName, connection?.dialect)
+                  const binary =
+                    isBinaryType(column.typeName, connection?.dialect) ||
+                    displayRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect))
                   return (
                     <th key={`filter-${column.name}-${index}`}>
                       <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
@@ -1243,7 +1245,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onCellClick={
             filtersOpen
               ? (column, value) => {
-                  if (isBinaryType(column.typeName, connection?.dialect) && value !== null) return
+                  if (isBinaryCell(column, value, connection?.dialect)) return
                   setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
                 }
               : undefined

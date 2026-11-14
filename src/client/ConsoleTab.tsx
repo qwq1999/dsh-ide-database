@@ -45,7 +45,7 @@ import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeTex
 import { shortcutHit, shortcutLabel } from './keymap'
 import type { ShortcutId } from '../shared/keymap'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
-import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, isBinaryType, tableFromStatement } from './tablesql'
+import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, isBinaryCell, isBinaryType, tableFromStatement } from './tablesql'
 import { applyCompletion, wordAtCaret, type Completion } from './complete'
 import { complete as completeRequest } from './completion/engine'
 import { matchScore } from './completion/rank'
@@ -1418,7 +1418,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   )
   const gridCellMenu = useCallback(
     (cell: CellMenuTarget): ColumnMenuItem[] => {
-      const binary = isBinaryType(cell.column.typeName, connection?.dialect) && cell.value !== null
+      const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
       return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
