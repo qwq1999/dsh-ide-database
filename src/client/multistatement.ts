@@ -42,7 +42,7 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
  * A batch ends at the next `GO`; keep the whole definition together until then.
  */
 function isMssqlProgram(text: string): boolean {
-  const code = maskNonCode(text.slice(0, 512), 'mssql', true)
+  const code = maskNonCode(text, 'mssql', true)
   return /^\s*create\s+(?:or\s+alter\s+)?(?:proc(?:edure)?|function|trigger|view)\b/iu.test(code)
 }
 
@@ -87,12 +87,14 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
   let current = ''
   let delimiter = ';'
   let batchStart = 0
+  let mssqlProgram: boolean | undefined
   let index = 0
 
   const flush = (): void => {
     const trimmed = current.trim()
     if (trimmed !== '') statements.push(trimmed)
     current = ''
+    mssqlProgram = undefined
   }
 
   while (index < input.length) {
@@ -235,7 +237,15 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       }
     }
 
-    if (char === ';' && delimiter === ';' && !(dialect === 'mssql' && isMssqlProgram(current))) {
+    if (char === ';' && delimiter === ';') {
+      if (dialect === 'mssql') {
+        if (mssqlProgram === undefined) mssqlProgram = isMssqlProgram(current)
+        if (mssqlProgram) {
+          current += char
+          index += 1
+          continue
+        }
+      }
       flush()
       index += 1
       continue

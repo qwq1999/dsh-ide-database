@@ -127,6 +127,16 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1\nGO\nselect 2', 'mysql')).toEqual(['select 1\nGO\nselect 2'])
   })
 
+  it('finds a SQL Server program after a long comment', () => {
+    const leading = `/* ${'x'.repeat(600)} */\nCREATE PROCEDURE long_proc AS BEGIN SELECT 1; SELECT 2; END`
+    const parts = splitStatements(`${leading}\nGO\nSELECT 3`, 'mssql')
+    expect(parts).toHaveLength(2)
+    expect(parts[0]).toContain('CREATE PROCEDURE')
+    expect(parts[0]).toContain('SELECT 1; SELECT 2;')
+    expect(parts[1]).toBe('SELECT 3')
+    expect(splitStatements('CREATE /* keep */ PROCEDURE p AS BEGIN SELECT 1; END\nGO', 'mssql')).toHaveLength(1)
+  })
+
   it('repeats a batch for a GO count', () => {
     expect(splitStatements('insert into t values (1)\nGO 3\nselect 1', 'mssql')).toEqual([
       'insert into t values (1)',
