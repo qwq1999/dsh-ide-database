@@ -123,6 +123,25 @@ describe('console column select copy', () => {
     expect(copies).toHaveBeenCalledWith('SELECT `id`, `name`, `total` FROM `shop`.`orders`')
   })
 
+  it('copies a row INSERT using only the visible columns', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('id'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '隐藏列「id」' }))
+    await waitFor(() => expect(screen.queryAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id')).length).toBe(0), { timeout: 4000 })
+
+    fireEvent.contextMenu(screen.getByText('手机'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制 INSERT 语句' }))
+
+    expect(copies).toHaveBeenCalledWith("INSERT INTO `shop`.`orders` (`name`, `total`) VALUES ('手机', 638.00);")
+  })
+
   it('copies the column as an IN list', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')

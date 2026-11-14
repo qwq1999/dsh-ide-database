@@ -1439,7 +1439,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
           const target = tableTarget()
           if (target === null) return
           void copyText(
-            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, cell.row),
+            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, shownColumns, cell.row),
           ).then(noteCopied('INSERT'))
         },
       },
@@ -1448,10 +1448,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         disabled: binary,
         run: () => void copyText(`WHERE ${cellWhere(connection?.dialect ?? 'mysql', cell.column, cell.value)}`).then(noteCopied('WHERE 条件')),
       },
-      { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')) },
+      { label: `复制整行（${shownColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(shownColumns, cell.row)).then(noteCopied('整行')) },
     ]
     },
-    [base, connection?.dialect, displayColumns, schema, sourceSql],
+    [base, connection?.dialect, shownColumns, schema, sourceSql],
   )
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))

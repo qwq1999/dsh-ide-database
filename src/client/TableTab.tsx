@@ -476,14 +476,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')),
             },
             {
-              label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')),
+              label: `复制整行（${shownColumns.length} 列，制表符分隔）`,
+              run: () => void copyText(rowToTsv(shownColumns, cell.row)).then(noteCopied('整行')),
             },
             {
               label: '复制 INSERT 语句',
               run: () => {
                 if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row)).then(noteCopied('INSERT'))
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, shownColumns, cell.row)).then(noteCopied('INSERT'))
               },
             },
             {
@@ -537,7 +537,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
       ]
     },
-    [connection, displayColumns, displayRows, filters, pageSize, params.schema, params.table],
+    [connection, shownColumns, filters, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
   const lastPage = total === undefined ? undefined : Math.max(Math.ceil(total / pageSize) - 1, 0)
