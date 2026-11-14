@@ -15,9 +15,9 @@ export interface ColumnFilter {
 export type ColumnFilters = Record<string, ColumnFilter>
 
 export function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
-  if (dialect === 'mysql') return `\`${name}\``
+  if (dialect === 'mysql') return `\`${name.replaceAll('`', '``')}\``
   if (dialect === 'mssql') return `[${name.replaceAll(']', ']]')}]`
-  return `"${name}"`
+  return `"${name.replaceAll('"', '""')}"`
 }
 
 export function qualifiedName(dialect: ClientConnection['dialect'], schema: string, table: string): string {
@@ -142,6 +142,7 @@ export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] 
  * One row as an INSERT statement for the table tab's context menu. Numeric
  * columns keep the exact text the driver returned (decimals arrive as strings
  * to avoid float rounding), everything else is quoted; NULL stays NULL.
+ * Server-generated columns are left out: the database rejects a value for them.
  */
 export function insertStatement(
   dialect: ClientConnection['dialect'],
@@ -150,14 +151,25 @@ export function insertStatement(
   columns: ColumnInfo[],
   row: CellValue[],
 ): string {
-  const names = columns.map((column) => quoteIdent(dialect, column.name)).join(', ')
-  const values = columns.map((column, index) => insertLiteral(dialect, column, row[index] ?? null)).join(', ')
+  const selected = columns
+    .map((column, index) => ({ column, index }))
+    .filter((entry) => entry.column.generated !== true)
+  const names = selected.map((entry) => quoteIdent(dialect, entry.column.name)).join(', ')
+  const values = selected
+    .map((entry) => insertLiteral(dialect, entry.column, row[entry.index] ?? null))
+    .join(', ')
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
+}
+
+/** SQL Server has no boolean literals; its BIT columns take 1 and 0. */
+function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): string {
+  if (dialect === 'mssql') return value ? '1' : '0'
+  return value ? 'TRUE' : 'FALSE'
 }
 
 function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo, value: CellValue): string {
   if (value === null) return 'NULL'
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  if (typeof value === 'boolean') return booleanLiteral(dialect, value)
   if (typeof value === 'number') return String(value)
   const text = String(value)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
@@ -224,7 +236,7 @@ export function cellWhere(
   const name = quoteIdent(dialect, column.name)
   if (value === null) return `${name} IS NULL`
   if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
-  if (typeof value === 'boolean') return `${name} = ${value ? 'TRUE' : 'FALSE'}`
+  if (typeof value === 'boolean') return `${name} = ${booleanLiteral(dialect, value)}`
   if (typeof value === 'string' && isTemporalType(column.typeName)) {
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
   }
@@ -257,7 +269,7 @@ export function inListOf(
     const value: CellValue = row[index] ?? null
     if (value === null || value === undefined) return 'NULL'
     if (typeof value === 'number' || typeof value === 'bigint') return String(value)
-    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+    if (typeof value === 'boolean') return booleanLiteral(dialect, value)
     return quoteLiteral(String(value), dialect)
   })
   return `(${literals.join(', ')})`

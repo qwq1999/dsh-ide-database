@@ -28,7 +28,7 @@ import { selectColumnsSql } from '../tablesql'
 import { tableSelectSql } from '../tablesql'
 import { TreeMenu, placeMenu, type TreeMenuState } from './tree-menu'
 import { objectIcon } from './tree-parts'
-import { buildTreeRows, folderOf, type TreeRow } from './tree-rows'
+import { buildTreeRows, folderOf, treeFilterSummary, type TreeRow } from './tree-rows'
 import { TreeRowView, type TreeRowActions } from './tree-row-view'
 import { TREE_ROW_HEIGHT, useWindow } from '../useWindow'
 import { DatabaseIcon, FilterIcon, KeyIcon, PlusIcon } from '../icons'
@@ -378,23 +378,26 @@ export function DataView(props: DataViewProps): ReactElement {
   }, [normalizedFilter, connections, schemas, servers])
 
   // A filtered tree needs a quick answer to "did anything match": count the
-  // connections and objects that survived the filter.
+  // data sources and objects the row builder actually keeps visible.
   const filterSummary = useMemo(() => {
     if (normalizedFilter === '') return null
-    const summary = { connections: 0, objects: 0 }
-    for (const connection of connections) {
-      const schemaNames = schemas[connection.id] ?? []
-      if (schemaNames.some((schema) => matchesFilteredObject(filterQuery, schema.name, ''))) summary.connections += 1
-      for (const [key, list] of Object.entries(objects)) {
-        if (!key.startsWith(`${connection.id}:`)) continue
-        const schemaName = key.slice(connection.id.length + 1)
-        const matched = list.filter((object) => matchesFilteredObject(filterQuery, schemaName, object.name))
-        summary.objects += matched.length
-      }
-    }
-    summary.connections = Math.max(summary.connections, summary.objects > 0 ? 1 : 0)
-    return summary
-  }, [normalizedFilter, connections, schemas, objects, filterQuery])
+    return treeFilterSummary({
+      connections,
+      schemas,
+      objects,
+      visibleSchemas: props.visibleSchemas,
+      redisKeys: props.redisKeys,
+      filter: settledFilter,
+    })
+  }, [
+    normalizedFilter,
+    connections,
+    schemas,
+    objects,
+    props.visibleSchemas,
+    props.redisKeys,
+    settledFilter,
+  ])
 
   // While filtering, open the branches that contain a match so hits are not
   // hidden inside collapsed data sources or schemas.
@@ -409,11 +412,13 @@ export function DataView(props: DataViewProps): ReactElement {
       }
       // Folders inside a matching schema open too, so the hit is one click away.
       for (const [key, list] of Object.entries(objects)) {
-        const hits = list.filter((object) => matches(object.name))
-        if (hits.length === 0) continue
         const separator = key.indexOf(':')
         const connectionId = key.slice(0, separator)
         const schema = key.slice(separator + 1)
+        // Same rule as the row model: a qualified filter must also match the
+        // schema, otherwise `shop.ord` would never open the 表 folder.
+        const hits = list.filter((object) => matchesFilteredObject(filterQuery, schema, object.name))
+        if (hits.length === 0) continue
         for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
           if (expanded[`${key}#${folder}`] === true) continue
           props.onToggleFolder(connectionId, schema, folder)

@@ -26,11 +26,18 @@ describe('pageable', () => {
     expect(pageable("SELECT 'into @x' AS note FROM shop.orders")).toBe(true)
     expect(pageable('SELECT 1 -- for update\nFROM shop.orders')).toBe(true)
     expect(pageable('SELECT 1 /* into outfile */ FROM shop.orders')).toBe(true)
+    // Paging keywords in data or comments must not disable paging either.
+    expect(pageable("SELECT * FROM shop.orders WHERE note = 'limit'")).toBe(true)
+    expect(pageable("SELECT * FROM shop.orders WHERE note = 'fetch first'")).toBe(true)
+    expect(pageable("SELECT * FROM shop.orders WHERE note = 'rownum'")).toBe(true)
+    expect(pageable('-- limit 10\nSELECT * FROM shop.orders')).toBe(true)
+    expect(pageable('/* fetch first 5 rows */ SELECT * FROM shop.orders')).toBe(true)
   })
 
   it('rejects anything that is not one plain SELECT', () => {
     expect(pageable('UPDATE t SET a = 1')).toBe(false)
     expect(pageable('SELECT 1; SELECT 2')).toBe(false)
+    expect(pageable('SELECT 1; DELETE FROM t')).toBe(false)
     expect(pageable('WITH x AS (SELECT 1) SELECT * FROM x')).toBe(false)
   })
 })

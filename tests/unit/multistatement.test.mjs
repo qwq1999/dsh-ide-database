@@ -15,10 +15,66 @@ describe('splitStatements', () => {
     expect(splitStatements("select 'back\\\\'; select 2")).toEqual(["select 'back\\\\'", 'select 2'])
   })
 
+  it('treats backslash as an ordinary character outside MySQL', () => {
+    const windowsPath = "select 'C:\\'; select 2"
+    for (const dialect of ['generic', 'postgres', 'sqlite', 'mssql', 'oracle', 'dameng', 'oceanbase-oracle']) {
+      expect(splitStatements(windowsPath, dialect)).toEqual(["select 'C:\\'", 'select 2'])
+    }
+    // MySQL reads `\'` as an escaped quote, so the rest stays inside the literal.
+    expect(splitStatements(windowsPath, 'mysql')).toEqual(["select 'C:\\'; select 2"])
+    // PostgreSQL E'' strings do escape, including the quote and the semicolon.
+    expect(splitStatements("select E'it\\'s; ok'; select 2", 'postgres')).toEqual([
+      "select E'it\\'s; ok'",
+      'select 2',
+    ])
+  })
+
+  it('keeps Oracle alternative-quoted literals in one statement', () => {
+    const quoted = "insert into t values (q'[it's; fine]')"
+    expect(splitStatements(`${quoted}; select 2`, 'oracle')).toEqual([quoted, 'select 2'])
+    expect(splitStatements("select q'{a;b}', q'<c;d>', q'!e;f!' from dual; select 2", 'oracle')).toEqual([
+      "select q'{a;b}', q'<c;d>', q'!e;f!' from dual",
+      'select 2',
+    ])
+    expect(splitStatements("select nq'[中文;值]' from dual; select 2", 'oracle')).toEqual([
+      "select nq'[中文;值]' from dual",
+      'select 2',
+    ])
+    // Other dialects do not know the q prefix, so the inner quote still ends
+    // the literal and the trailing statement is not separated cleanly.
+    expect(splitStatements(`${quoted}; select 2`, 'mssql')).not.toEqual(splitStatements(`${quoted}; select 2`, 'oracle'))
+  })
+
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
-    expect(splitStatements('select 1 # hash; comment\n; select 2')).toEqual(['select 1 # hash; comment', 'select 2'])
+    expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])
     expect(splitStatements('/* a; b */ select 1; /* c; d */')).toEqual(['/* a; b */ select 1', '/* c; d */'])
+  })
+
+  it('applies MySQL comment rules only to MySQL', () => {
+    // Without whitespace after `--`, MySQL reads arithmetic, not a comment.
+    expect(splitStatements('select 5--3; select 2', 'mysql')).toEqual(['select 5--3', 'select 2'])
+    // `#` is a MySQL comment, not a SQL Server temp-table prefix.
+    expect(splitStatements('select * from #tmp; select 2', 'mssql')).toEqual(['select * from #tmp', 'select 2'])
+    expect(splitStatements('select * from #tmp; select 2', 'generic')).toEqual(['select * from #tmp', 'select 2'])
+    // The standard `-- ` comment still works on MySQL.
+    expect(splitStatements('select 1 -- note; x\n; select 2', 'mysql')).toEqual(['select 1 -- note; x', 'select 2'])
+  })
+
+  it('keeps PostgreSQL dollar-quoted bodies in one statement', () => {
+    const body = 'create function bump() returns int as $$ begin; return 1; end $$ language plpgsql;'
+    expect(splitStatements(`${body}\nselect bump()`)).toEqual([body.slice(0, -1), 'select bump()'])
+    expect(splitStatements('select $tag$a;b$tag$; select 2')).toEqual(['select $tag$a;b$tag$', 'select 2'])
+    expect(splitStatements('select $outer$ $inner$; $inner$ $outer$; select 2')).toEqual([
+      'select $outer$ $inner$; $inner$ $outer$',
+      'select 2',
+    ])
+  })
+
+  it('leaves an unmatched dollar delimiter and dollar identifiers alone', () => {
+    expect(splitStatements('select 1 as $$; select 2')).toEqual(['select 1 as $$', 'select 2'])
+    expect(splitStatements('select foo$bar$baz; select 2')).toEqual(['select foo$bar$baz', 'select 2'])
+    expect(splitStatements('select $1$; select 2')).toEqual(['select $1$', 'select 2'])
   })
 
   it('returns an empty list for blank scripts and keeps single statements intact', () => {

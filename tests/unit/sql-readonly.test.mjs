@@ -33,6 +33,17 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('set @a = 1')).toBe(false)
   })
 
+  it('accepts semicolons inside literals and comments', () => {
+    expect(isReadOnlySql("select ';' as semi")).toBe(true)
+    expect(isReadOnlySql("select 'a;b' from dual")).toBe(true)
+    expect(isReadOnlySql('select "a;b" from t')).toBe(true)
+    expect(isReadOnlySql('select 1 /* ; */ from dual')).toBe(true)
+    expect(isReadOnlySql("select q'[it's; fine]' from dual")).toBe(true)
+    expect(isReadOnlySql("select nq'[中文;值]' from dual")).toBe(true)
+    expect(isReadOnlySql("select 'a;b'; delete from t")).toBe(false)
+    expect(isReadOnlySql("select q'[it's; fine]' from dual; delete from t")).toBe(false)
+  })
+
   it('rejects a second statement after a semicolon', () => {
     expect(isReadOnlySql('SELECT 1; DELETE FROM t')).toBe(false)
     expect(isReadOnlySql('select 1; select 2')).toBe(false)
@@ -70,6 +81,14 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS (SELECT id FROM t) DELETE FROM t')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1) UPDATE t SET a = 1')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1) INSERT INTO t VALUES (1)')).toBe(false)
+    // PostgreSQL data-modifying CTE bodies run as part of a plain outer SELECT.
+    expect(isReadOnlySql('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(false)
+    expect(isReadOnlySql('WITH u AS (UPDATE t SET a = 1 RETURNING *) SELECT 1')).toBe(false)
+    expect(isReadOnlySql('WITH i AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM i')).toBe(false)
+    expect(isReadOnlySql('WITH a AS (SELECT 1), d AS (DELETE FROM t RETURNING id) SELECT * FROM a, d')).toBe(false)
+    expect(isReadOnlySql('WITH outer AS (WITH inner AS (DELETE FROM t RETURNING *) SELECT * FROM inner) SELECT * FROM outer')).toBe(false)
+    expect(isReadOnlySql("WITH c AS (SELECT * FROM t INTO OUTFILE '/tmp/x') SELECT 1")).toBe(false)
+    expect(isReadOnlySql('WITH a AS (SELECT 1), b AS (SELECT * FROM a) SELECT * FROM b')).toBe(true)
   })
 
   it('is not fooled by strings, comments or nesting inside the CTE', () => {
@@ -78,6 +97,7 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c AS (SELECT count(*) FROM (SELECT 1 AS a) x) SELECT 1')).toBe(true)
     expect(isReadOnlySql('WITH c AS (-- delete from t\nSELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('WITH c AS (/* delete */ SELECT 1) SELECT * FROM c')).toBe(true)
+    expect(isReadOnlySql("WITH c AS (SELECT q'[it's; fine]' AS x FROM dual) SELECT * FROM c")).toBe(true)
   })
 
   it('rejects a CTE list it cannot parse', () => {
@@ -86,6 +106,37 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH c (SELECT 1) SELECT 1')).toBe(false)
     expect(isReadOnlySql('WITH c AS SELECT 1 SELECT 1')).toBe(false)
     expect(isReadOnlySql('WITH c AS (SELECT 1')).toBe(false)
+  })
+
+  it('rejects a select that creates a table', () => {
+    // PostgreSQL: SELECT ... INTO [TEMP | UNLOGGED] [TABLE] name
+    expect(isReadOnlySql('SELECT * INTO backup FROM users')).toBe(false)
+    expect(isReadOnlySql('select 1 into new_table')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO TEMP TABLE backup FROM users')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO UNLOGGED TABLE backup FROM users')).toBe(false)
+    expect(isReadOnlySql('SELECT * INTO "backup" FROM users')).toBe(false)
+    // SQL Server: SELECT ... INTO #tmp
+    expect(isReadOnlySql('SELECT * INTO #tmp FROM users')).toBe(false)
+    // The same clause hidden inside a CTE body must not pass either.
+    expect(isReadOnlySql('WITH c AS (SELECT * INTO backup FROM t) SELECT 1')).toBe(false)
+    // Session variables and mentions in strings/comments stay reads.
+    expect(isReadOnlySql('SELECT count(*) INTO @total FROM users')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 INTO @a, @b')).toBe(true)
+    expect(isReadOnlySql("SELECT 'INTO backup' AS note")).toBe(true)
+    expect(isReadOnlySql("SELECT q'[INTO backup it's]' AS note FROM dual")).toBe(true)
+    expect(isReadOnlySql('SELECT 1 /* into backup */')).toBe(true)
+  })
+
+  it('accepts semicolons inside dollar-quoted strings', () => {
+    expect(isReadOnlySql('select $$a;b$$')).toBe(true)
+    expect(isReadOnlySql('select $tag$a;b$tag$')).toBe(true)
+    expect(isReadOnlySql('select $fn$ begin; return 1; end $fn$')).toBe(true)
+    expect(isReadOnlySql('with c as (select $tag$a;b$tag$ as x) select * from c')).toBe(true)
+    // A semicolon after the literal still separates two statements.
+    expect(isReadOnlySql('select $$;$$; delete from t')).toBe(false)
+    // An unterminated delimiter is not a string.
+    expect(isReadOnlySql('select 1 as $$; select 2')).toBe(false)
+    expect(isReadOnlySql('select $1$; select 2')).toBe(false)
   })
 
   it('refuses a select that writes a file on the server', () => {

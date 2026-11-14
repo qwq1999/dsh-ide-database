@@ -222,6 +222,70 @@ export function buildTreeRows(state: TreeRowsState): TreeRow[] {
   return context.rows
 }
 
+/** The slice of tree state the filter summary needs. */
+export interface TreeFilterState {
+  connections: ClientConnection[]
+  schemas: Record<string, SchemaInfo[]>
+  objects: Record<string, SchemaObject[]>
+  visibleSchemas: Record<string, string[] | null>
+  redisKeys: Record<string, Record<string, RedisKeyInfo[]>>
+  filter: string
+}
+
+/**
+ * What a filter leaves behind, counted the same way the rows are built.
+ *
+ * `connections` is 0 only when no data source shows a matching row at all, so
+ * the view can tell "nothing matched" apart from "a schema or key matched but
+ * no table did". Objects inside schemas hidden by the row picker do not count:
+ * the tree never shows them, and claiming they matched would be misleading.
+ */
+export interface TreeFilterSummary {
+  connections: number
+  objects: number
+}
+
+export function treeFilterSummary(state: TreeFilterState): TreeFilterSummary {
+  const filter = state.filter.trim().toLowerCase()
+  if (filter === '') return { connections: 0, objects: 0 }
+  const query = parseFilter(state.filter)
+  const matches = (text: string): boolean => text.toLowerCase().includes(filter)
+  const summary: TreeFilterSummary = { connections: 0, objects: 0 }
+
+  for (const connection of state.connections) {
+    const shownSchemas = state.visibleSchemas[connection.id] ?? null
+    let hit = matches(connection.name)
+
+    for (const schema of state.schemas[connection.id] ?? []) {
+      if (shownSchemas !== null && !shownSchemas.includes(schema.name)) continue
+      let objectHits = 0
+      for (const object of state.objects[`${connection.id}:${schema.name}`] ?? []) {
+        if (matchesFilteredObject(query, schema.name, object.name)) objectHits += 1
+      }
+      if (objectHits > 0 || matches(schema.name)) {
+        summary.objects += objectHits
+        hit = true
+      }
+    }
+
+    if (connection.dialect === 'redis') {
+      const keysByDb = state.redisKeys[connection.id]
+      // Same rule as appendConnection: while the first scan is pending the
+      // data source is still shown, so this is not an empty result yet.
+      if (
+        keysByDb === undefined ||
+        Object.values(keysByDb).some((keys) => keys.some((key) => matches(key.key)))
+      ) {
+        hit = true
+      }
+    }
+
+    if (hit) summary.connections += 1
+  }
+
+  return summary
+}
+
 function appendConnection(context: BuildContext, connection: ClientConnection): void {
   const { state, filter, matches, rows } = context
   const server = state.servers[connection.id]
@@ -331,10 +395,15 @@ function appendConnection(context: BuildContext, connection: ClientConnection): 
   if (!loading && server === undefined && hasCachedStructure) {
     note(rows, `${connection.id}#offline`, `离线缓存 · ${relativeTime(cachedStamp ?? '')}，连接后自动更新`, 2)
   }
-  if (!loading && shownSchemas !== null && schemas.length === 0) {
+  // Distinguish "the picker hides every schema" from "the filter matched
+  // none": the first has a fix at the row's picker, the second needs a
+  // different search term.
+  const pickerHidesAll =
+    shownSchemas !== null && allSchemas.length > 0 && allSchemas.every((schema) => !shownSchemas.includes(schema.name))
+  if (!loading && pickerHidesAll) {
     note(rows, `${connection.id}#hidden`, '全部 Schema 已隐藏，使用行尾按钮选择显示的架构', 2)
   }
-  if (!loading && schemas.length === 0 && (shownSchemas === null || allSchemas.length === 0)) {
+  if (!loading && schemas.length === 0 && !pickerHidesAll) {
     note(rows, `${connection.id}#empty`, filter !== '' ? '没有匹配的 schema' : '没有 schema', 2)
   }
   for (const schema of schemas) appendSchema(context, connection, schema)

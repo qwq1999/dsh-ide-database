@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -92,6 +93,22 @@ function typeFilter(value: string): void {
   fireEvent.change(screen.getByLabelText('筛选库表'), { target: { value } })
 }
 
+/** Lets the filter auto-expand effect really open branches, as the app does. */
+function FilteringTree({ initialExpanded }: { initialExpanded: Record<string, boolean> }): JSX.Element {
+  const [expanded, setExpanded] = useState(initialExpanded)
+  const toggle = (key: string): void => setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
+  return (
+    <DataView
+      {...props({
+        expanded,
+        onToggleConnection: toggle,
+        onToggleSchema: (connectionId, schema) => toggle(`${connectionId}:${schema}`),
+        onToggleFolder: (connectionId, schema, folder) => toggle(`${connectionId}:${schema}#${folder}`),
+      })}
+    />
+  )
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -106,6 +123,51 @@ describe('qualified tree filter', () => {
     expect(shown('companies')).toBe(false)
     expect(shown('shop')).toBe(true)
     expect(shown('crm')).toBe(false)
+  })
+
+  it('opens the folder that holds a qualified hit', async () => {
+    render(<FilteringTree initialExpanded={{ c1: true, 'c1:shop': true, 'c1:crm': true }} />)
+    expect(shown('orders')).toBe(false)
+
+    typeFilter('shop.ord')
+
+    // The schema is already open, but its 表 folder starts collapsed. The hit
+    // is useless if the user still has to drill into the folder by hand.
+    await waitFor(() => expect(shown('orders')).toBe(true))
+    expect(shown('customers')).toBe(false)
+  })
+
+  it('does not call a schema-name hit empty', async () => {
+    render(<DataView {...props()} />)
+    typeFilter('shop')
+
+    // The schema row below the header is a hit, so the header must not claim
+    // that nothing matched just because no table name contains "shop".
+    await waitFor(() => expect(shown('orders')).toBe(false))
+    expect(shown('shop')).toBe(true)
+    expect(screen.queryByText('没有匹配的对象', { selector: '.dshdb-filter-empty' })).toBeNull()
+  })
+
+  it('says no schema matched when the picker still shows schemas', async () => {
+    render(<DataView {...props({ visibleSchemas: { c1: ['shop'] } })} />)
+    typeFilter('演示')
+
+    // `shop` is still selected in the picker; it is the filter that hides it.
+    // Telling the user to use the picker would send them to the wrong control.
+    await waitFor(() => expect(screen.getByText('没有匹配的 schema')).toBeTruthy())
+    expect(screen.queryByText(/全部 Schema 已隐藏/)).toBeNull()
+  })
+
+  it('does not count matches inside a hidden schema', async () => {
+    render(<DataView {...props({ visibleSchemas: { c1: ['crm'] } })} />)
+    typeFilter('ord')
+
+    // `orders` lives in the hidden `shop` schema: the tree cannot show it, so
+    // the header must not promise a match either.
+    await waitFor(() =>
+      expect(screen.getByText('没有匹配的对象', { selector: '.dshdb-filter-empty' })).toBeTruthy(),
+    )
+    expect(screen.queryByText('1 个对象匹配')).toBeNull()
   })
 
   it('shows every object of the schema when only the schema half is typed', async () => {

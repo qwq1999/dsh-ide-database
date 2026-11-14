@@ -70,6 +70,22 @@ function matchingParen(text: string, open: number): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
     const char = text[index]
+    // Literals may contain parentheses that do not affect nesting.
+    if (char === '$') {
+      const end = dollarQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
+    }
+    // Oracle alternative quoting hides its inner quote from the generic scanner.
+    if (char === 'q' || char === 'Q') {
+      const end = oracleQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
+    }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
       index += 1
@@ -106,15 +122,22 @@ function matchingParen(text: string, open: number): number {
   return -1
 }
 
+interface WithClause {
+  /** The parenthesised body of every CTE, in source order. */
+  bodies: string[]
+  /** The statement the CTE list runs. */
+  statement: string
+}
+
 /**
- * The statement that follows a `WITH cte AS (...), ...` clause. Returns null
- * when the CTE list cannot be parsed, which the read-only guard treats as a
- * write.
+ * Parse a `WITH cte AS (...), ...` clause. Returns null when the list cannot
+ * be parsed, which the read-only guard treats as a write.
  */
-function statementAfterWith(text: string): string | null {
+function parseWithClause(text: string): WithClause | null {
   let cursor = skipSpace(text, 'with'.length)
   const recursive = readWord(text, cursor)
   if (recursive.word === 'recursive') cursor = skipSpace(text, recursive.end)
+  const bodies: string[] = []
   for (;;) {
     const name = readWord(text, cursor)
     if (name.word === '') return null
@@ -135,21 +158,81 @@ function statementAfterWith(text: string): string | null {
     if (text[cursor] !== '(') return null
     const close = matchingParen(text, cursor)
     if (close < 0) return null
+    bodies.push(text.slice(cursor + 1, close))
     cursor = skipSpace(text, close + 1)
     if (text[cursor] !== ',') break
     cursor = skipSpace(text, cursor + 1)
   }
-  return text.slice(cursor)
+  return { bodies, statement: text.slice(cursor) }
 }
 
 /** Statements that write files on the server; a read-only connection must refuse them. */
 const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
 
 /** Lowercase copy of `text` with quoted strings and comments blanked out. */
+/**
+ * The end (exclusive) of the Oracle alternative-quoted literal starting at
+ * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
+ * bracket pairs have their own closing character, and anything else closes with
+ * the same character it opened with. A missing terminator is left to the normal
+ * scanner so malformed input still reaches the server.
+ */
+function oracleQuotedLiteralEnd(input: string, index: number): number | null {
+  const previous = input[index - 1]
+  if (previous === 'n' || previous === 'N') {
+    const before = input[index - 2]
+    if (before !== undefined && /[A-Za-z0-9_$]/u.test(before)) return null
+  } else if (previous !== undefined && /[A-Za-z0-9_$]/u.test(previous)) {
+    return null
+  }
+  if (input[index + 1] !== "'") return null
+  const open = input[index + 2]
+  if (open === undefined) return null
+  const close = open === '[' ? ']' : open === '{' ? '}' : open === '<' ? '>' : open === '(' ? ')' : open
+  const end = input.indexOf(`${close}'`, index + 3)
+  return end === -1 ? null : end + 2
+}
+
+/**
+ * The end (exclusive) of the PostgreSQL dollar-quoted string starting at
+ * `index`, or null when this is not one. `$$text$$` and `$tag$text$tag$` are
+ * both allowed; a tag may not start with a digit because `$1` is a parameter.
+ */
+function dollarQuotedLiteralEnd(input: string, index: number): number | null {
+  if (input[index] !== '$') return null
+  if (index > 0 && /[A-Za-z0-9_$]/u.test(input[index - 1] ?? '')) return null
+  let cursor = index + 1
+  while (cursor < input.length && /[A-Za-z0-9_]/u.test(input[cursor] ?? '')) cursor += 1
+  if (input[cursor] !== '$') return null
+  if (cursor > index + 1 && /[0-9]/u.test(input[index + 1] ?? '')) return null
+  const delimiter = input.slice(index, cursor + 1)
+  const close = input.indexOf(delimiter, cursor + 1)
+  return close === -1 ? null : close + delimiter.length
+}
+
 function withoutLiterals(text: string): string {
   let out = ''
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] ?? ''
+    // PostgreSQL dollar quoting hides semicolons inside a plain SELECT.
+    if (char === '$') {
+      const end = dollarQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        out += ' '
+        continue
+      }
+    }
+    // Oracle alternative quoting can contain the quote character and semicolons;
+    // skip the whole literal before the generic `'...'` scanner sees its inner quote.
+    if (char === 'q' || char === 'Q') {
+      const end = oracleQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        out += ' '
+        continue
+      }
+    }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
       index += 1
@@ -185,6 +268,37 @@ function withoutLiterals(text: string): string {
   return out
 }
 
+/**
+ * True when a top-level `INTO` creates a table rather than reading into a session
+ * variable or writing a server-side file. PostgreSQL spells it
+ * `SELECT ... INTO [TEMP] [TABLE] name`; SQL Server uses `SELECT ... INTO #tmp`.
+ */
+function selectsIntoTable(text: string): boolean {
+  const plain = withoutLiterals(text)
+  let depth = 0
+  for (let index = 0; index < plain.length; index += 1) {
+    const char = plain[index] ?? ''
+    if (char === '(') {
+      depth += 1
+      continue
+    }
+    if (char === ')') {
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (depth !== 0 || !plain.startsWith('into', index)) continue
+    if (isWordChar(plain[index - 1] ?? '') || isWordChar(plain[index + 4] ?? '')) continue
+    const target = skipSpace(plain, index + 4)
+    // `INTO @total` fills a session variable; only reads the source table.
+    if ((plain[target] ?? '') === '@') continue
+    const word = readWord(plain, target).word
+    // File writes are rejected separately by FILE_WRITE.
+    if (word === 'outfile' || word === 'dumpfile') continue
+    return true
+  }
+  return false
+}
+
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
 export function isReadOnlySql(sql: string): boolean {
   let text = sql.trim()
@@ -205,15 +319,20 @@ export function isReadOnlySql(sql: string): boolean {
     break
   }
   const withoutTrailing = text.replace(/;+\s*$/, '')
-  if (withoutTrailing.includes(';')) return false
+  // A semicolon inside a string, quoted identifier or comment is data, not a
+  // second statement; only one left in the code part makes the script unsafe.
+  if (withoutLiterals(withoutTrailing).includes(';')) return false
   const first = /^[A-Za-z]+/.exec(withoutTrailing)
   if (first === null) return false
   const head = first[0].toLowerCase()
   if (!READ_ONLY_STARTERS.has(head)) return false
   if (head === 'with') {
     // A CTE list can front any statement, including DELETE; judge what it runs.
-    const inner = statementAfterWith(withoutTrailing)
-    return inner !== null && isReadOnlySql(inner)
+    const clause = parseWithClause(withoutTrailing)
+    if (clause === null) return false
+    // PostgreSQL also allows data-modifying CTE bodies
+    // (`WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d`); judge them too.
+    return clause.bodies.every((body) => isReadOnlySql(body)) && isReadOnlySql(clause.statement)
   }
   if (head === 'explain') {
     // `EXPLAIN ANALYZE <statement>` and the parenthesised `EXPLAIN (ANALYZE, ...)`
@@ -239,6 +358,8 @@ export function isReadOnlySql(sql: string): boolean {
     }
     return rest !== '' && isReadOnlySql(rest)
   }
+  // `SELECT ... INTO <table>` creates a table on PostgreSQL and SQL Server.
+  if (head === 'select' && selectsIntoTable(withoutTrailing)) return false
   // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
   if (FILE_WRITE.test(withoutLiterals(withoutTrailing))) return false
   return true

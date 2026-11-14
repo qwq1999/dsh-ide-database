@@ -262,6 +262,12 @@ export interface ColumnInfo {
   typeName: string
   jdbcType?: number
   nullable?: boolean
+  /**
+   * Server-computed column (MySQL `GENERATED`, PostgreSQL generated, SQL Server
+   * computed). Such a column reads back normally but rejects an INSERT value,
+   * so generated SQL must leave it out.
+   */
+  generated?: boolean
 }
 
 export type CellValue = string | number | boolean | null

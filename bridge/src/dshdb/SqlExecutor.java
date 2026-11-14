@@ -665,6 +665,9 @@ final class SqlExecutor {
                     String extra = rs.getString(8);
                     if (extra != null && !extra.isEmpty()) {
                         row.put("extra", extra);
+                        if (extra.toUpperCase(Locale.ROOT).contains("GENERATED")) {
+                            row.put("generated", Boolean.TRUE);
+                        }
                     }
                     columns.add(row);
                 }
@@ -1011,6 +1014,7 @@ final class SqlExecutor {
         try (ResultSet rs = statement.getResultSet()) {
             ResultSetMetaData meta = rs.getMetaData();
             int count = meta.getColumnCount();
+            Map<String, Set<String>> generated = generatedColumns(statement.getConnection(), meta, count);
             for (int i = 1; i <= count; i++) {
                 Map<String, Object> column = new LinkedHashMap<String, Object>();
                 String label = meta.getColumnLabel(i);
@@ -1023,6 +1027,15 @@ final class SqlExecutor {
                 column.put(
                         "nullable",
                         Boolean.valueOf(meta.isNullable(i) != ResultSetMetaData.columnNoNulls));
+                String source = meta.getColumnName(i);
+                Set<String> generatedNames = generated.get(
+                        tableKey(meta.getCatalogName(i), meta.getSchemaName(i), meta.getTableName(i)));
+                if (generatedNames != null
+                        && source != null
+                        && label.equals(source)
+                        && generatedNames.contains(source)) {
+                    column.put("generated", Boolean.TRUE);
+                }
                 columns.add(column);
             }
             while (rs.next()) {
@@ -1044,6 +1057,61 @@ final class SqlExecutor {
         data.put("elapsedMs", Long.valueOf(elapsedMs(started)));
         data.put("sql", sql);
         return data;
+    }
+
+    private static String tableKey(String catalog, String schema, String table) {
+        return (catalog == null ? "" : catalog)
+                + '\0'
+                + (schema == null ? "" : schema)
+                + '\0'
+                + table;
+    }
+
+    /**
+     * Reads the JDBC generated-column flag once per source table in a result.
+     * ResultSetMetaData reports generated columns as writable on MySQL, so the
+     * driver-level {@code IS_GENERATEDCOLUMN} metadata is the reliable source.
+     * A driver that cannot answer simply leaves the columns unmarked.
+     */
+    private Map<String, Set<String>> generatedColumns(
+            Connection connection, ResultSetMetaData meta, int count) throws SQLException {
+        Map<String, Set<String>> generated = new LinkedHashMap<String, Set<String>>();
+        DatabaseMetaData database = connection.getMetaData();
+        Set<String> seen = new HashSet<String>();
+        for (int i = 1; i <= count; i++) {
+            String table = meta.getTableName(i);
+            if (table == null || table.isEmpty()) {
+                continue;
+            }
+            String catalog = meta.getCatalogName(i);
+            String schema = meta.getSchemaName(i);
+            String key = tableKey(catalog, schema, table);
+            if (!seen.add(key)) {
+                continue;
+            }
+            Set<String> names = new HashSet<String>();
+            String catalogArg = catalog == null || catalog.isEmpty() ? null : catalog;
+            String schemaArg = schema == null || schema.isEmpty() ? null : schema;
+            try (ResultSet columns = database.getColumns(catalogArg, schemaArg, table, null)) {
+                int nameIndex;
+                int generatedIndex;
+                try {
+                    nameIndex = columns.findColumn("COLUMN_NAME");
+                    generatedIndex = columns.findColumn("IS_GENERATEDCOLUMN");
+                } catch (SQLException missingColumn) {
+                    continue;
+                }
+                while (columns.next()) {
+                    if ("YES".equalsIgnoreCase(columns.getString(generatedIndex))) {
+                        names.add(columns.getString(nameIndex));
+                    }
+                }
+            } catch (SQLException ignored) {
+                // Metadata support differs per driver; export keeps the column.
+            }
+            generated.put(key, names);
+        }
+        return generated;
     }
 
     private Map<String, Object> updateResult(Statement statement, long started, String sql)
