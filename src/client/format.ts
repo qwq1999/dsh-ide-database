@@ -236,6 +236,18 @@ function explainAnalyzeBody(code: string): string | null {
  */
 function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
   if (dialect === 'mysql' && MYSQL_EXECUTABLE_WRITE.test(code)) return true
+  // PostgreSQL accepts `COPY(SELECT ...)` without a space; firstWord would see
+  // `copy(select` and skip the COPY rules entirely.
+  const copy = /^\s*copy\b/iu.exec(code)
+  if (copy !== null) {
+    // COPY ... TO PROGRAM runs an arbitrary server-side command, so it needs
+    // confirmation even though it does not write the database.
+    if (/\bto\s+program\b/iu.test(code)) return true
+    // COPY (SELECT ...) TO ... only reads the database; the FROM inside the
+    // subquery must not make it look like a table import.
+    if (code.slice(copy[0].length).trimStart().startsWith('(')) return false
+    return /\bfrom\b/iu.test(code)
+  }
   const head = firstWord(code)
   if (head.word === 'explain') {
     const body = explainAnalyzeBody(code)
@@ -246,15 +258,6 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     if (clause === null) return true
     if (clause.bodies.some((body) => looksLikeWrite(body, dialect))) return true
     return looksLikeWrite(clause.statement, dialect)
-  }
-  if (head.word === 'copy') {
-    // COPY ... TO PROGRAM runs an arbitrary server-side command, so it needs
-    // confirmation even though it does not write the database.
-    if (/\bto\s+program\b/iu.test(code)) return true
-    // COPY (SELECT ...) TO ... only reads the database; the FROM inside the
-    // subquery must not make it look like a table import.
-    if (head.rest.startsWith('(')) return false
-    return /\bfrom\b/iu.test(code)
   }
   // PostgreSQL `DO` runs an anonymous code block; the block is opaque after
   // masking, so any DO statement could contain DML and needs confirmation.
