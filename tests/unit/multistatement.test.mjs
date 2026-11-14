@@ -182,8 +182,17 @@ describe('splitStatements', () => {
     expect(splitStatements('CREATE FUNCTION f() RETURNS int AS BEGIN RETURN 1; END', 'mssql')).toEqual([
       'CREATE FUNCTION f() RETURNS int AS BEGIN RETURN 1; END',
     ])
-    // A plain CREATE TABLE is still one statement per semicolon.
+    expect(splitStatements('ALTER PROCEDURE p AS BEGIN SELECT 1; END\nGO\nSELECT 2', 'mssql')).toEqual([
+      'ALTER PROCEDURE p AS BEGIN SELECT 1; END',
+      'SELECT 2',
+    ])
+    expect(splitStatements('ALTER VIEW v AS SELECT 1 AS a; -- still the view\nGO\nSELECT 2', 'mssql')).toEqual([
+      'ALTER VIEW v AS SELECT 1 AS a; -- still the view',
+      'SELECT 2',
+    ])
+    // A plain CREATE/ALTER TABLE is still one statement per semicolon.
     expect(splitStatements('CREATE TABLE t (a int); SELECT 1', 'mssql')).toEqual(['CREATE TABLE t (a int)', 'SELECT 1'])
+    expect(splitStatements('ALTER TABLE t ADD c int; SELECT 1', 'mssql')).toEqual(['ALTER TABLE t ADD c int', 'SELECT 1'])
   })
 
   it('returns an empty list for blank scripts and keeps single statements intact', () => {

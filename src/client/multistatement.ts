@@ -43,7 +43,7 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
  */
 function isMssqlProgram(text: string): boolean {
   const code = maskNonCode(text, 'mssql', true)
-  return /^\s*create\s+(?:or\s+alter\s+)?(?:proc(?:edure)?|function|trigger|view)\b/iu.test(code)
+  return /^\s*(?:create\s+(?:or\s+alter\s+)?|alter\s+)(?:proc(?:edure)?|function|trigger|view)\b/iu.test(code)
 }
 
 /**
