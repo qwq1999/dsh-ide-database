@@ -32,6 +32,23 @@ describe('column width measuring', () => {
     })
   })
 
+  it('restores widths after hiding and showing a column again', async () => {
+    window.localStorage.setItem('dsh-ide-database.colwidths.v1', JSON.stringify({ 'restore-widths': [100, 200, 300] }))
+    const { rerender, container } = render(
+      <DataGrid columns={columns} rows={[[1, '手机', '638.00']]} offset={0} storageKey="restore-widths" />,
+    )
+    rerender(
+      <DataGrid columns={[columns[0]!, columns[2]!]} rows={[[1, '638.00']]} offset={0} storageKey="restore-widths" />,
+    )
+    rerender(
+      <DataGrid columns={columns} rows={[[1, '手机', '638.00']]} offset={0} storageKey="restore-widths" />,
+    )
+    await waitFor(() => {
+      const painted = [...container.querySelectorAll('colgroup col')].map((col) => (col as HTMLElement).style.width)
+      expect(painted).toEqual(['34px', '100px', '200px', '300px'])
+    })
+  })
+
   it('measures the data headers even when the selection column is present', () => {
     render(
       <DataGrid

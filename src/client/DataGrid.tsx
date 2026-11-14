@@ -203,15 +203,22 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     storageKey === undefined ? null : readWidths(storageKey, columns.length),
   )
   const previousColumns = useRef(columns)
+  const previousStorageKey = useRef(storageKey)
 
   // A different result set (or a tab reused for another table) drops the widths.
   useEffect(() => {
     setWidths(storageKey === undefined ? null : readWidths(storageKey, columns.length))
   }, [storageKey, columns.length])
 
+  // Switching tables (or hiding a column) changes the slot count. Re-read the
+  // stored widths for that count instead of forgetting them: hiding and then
+  // showing a column again restores the widths saved for the full list.
   useEffect(() => {
-    if (widths !== null && widths.length !== columns.length) setWidths(null)
-  }, [widths, columns.length])
+    const keyChanged = previousStorageKey.current !== storageKey
+    previousStorageKey.current = storageKey
+    if (!keyChanged && widths !== null && widths.length === columns.length) return
+    setWidths(storageKey === undefined ? null : readWidths(storageKey, columns.length))
+  }, [widths, columns.length, storageKey])
 
   // Dragging a header reorders `columns`; move the measured widths with the
   // column instead of leaving them attached to a screen position.
