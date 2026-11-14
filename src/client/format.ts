@@ -232,6 +232,9 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     return looksLikeWrite(clause.statement, dialect)
   }
   if (head.word === 'copy') {
+    // COPY ... TO PROGRAM runs an arbitrary server-side command, so it needs
+    // confirmation even though it does not write the database.
+    if (/\bto\s+program\b/iu.test(code)) return true
     // COPY (SELECT ...) TO ... only reads the database; the FROM inside the
     // subquery must not make it look like a table import.
     if (head.rest.startsWith('(')) return false

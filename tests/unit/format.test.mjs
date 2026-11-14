@@ -102,6 +102,8 @@ describe('format helpers', () => {
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
     expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
     expect(looksLikeWrite("COPY (SELECT * FROM users) TO '/tmp/users.csv'", 'postgres')).toBe(false)
+    expect(looksLikeWrite("COPY users TO PROGRAM 'gzip > /tmp/users.gz'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY (SELECT * FROM users) TO PROGRAM 'gzip > /tmp/users.gz'", 'postgres')).toBe(true)
   })
 
   it('recognizes bulk and maintenance statements as writes', () => {
