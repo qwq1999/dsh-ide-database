@@ -183,6 +183,10 @@ describe('format helpers', () => {
     expect(looksLikeDdl('IF EXISTS (SELECT 1 FROM users) DROP TABLE users', 'mssql')).toBe(true)
     expect(looksLikeDdl('BEGIN\n  SELECT * INTO #tmp FROM users\nEND', 'mssql')).toBe(true)
     expect(looksLikeDdl('BEGIN\n  DELETE FROM users\nEND', 'mssql')).toBe(false)
+    expect(looksLikeDdl("COMMENT ON TABLE users IS 'customer records'", 'postgres')).toBe(true)
+    expect(looksLikeDdl("DO $$ BEGIN EXECUTE 'CREATE TABLE t (id int)'; END $$", 'postgres')).toBe(true)
+    expect(looksLikeDdl('DO $$ BEGIN PERFORM 1; END $$', 'postgres')).toBe(true)
+    expect(looksLikeDdl('DO 1', 'mysql')).toBe(false)
     // MySQL executes the body of `/*! ... */`, so DDL hidden in it is real.
     expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
     expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)

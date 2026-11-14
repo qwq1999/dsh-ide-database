@@ -290,7 +290,7 @@ export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): bo
  * a plain SELECT does not, so it must not pay for an extra `/schemas` round
  * trip (the host answers that from the live server).
  */
-const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate)\b/i
+const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate|comment)\b/i
 
 /** `SELECT ... INTO new_table` creates a table even though it starts with SELECT. */
 function selectCreatesTable(code: string): boolean {
@@ -306,6 +306,9 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
     if (code === '') return false
     const analyzed = unwrapExplainAnalyze(code)
     if (DDL_STATEMENT.test(analyzed)) return true
+    // PostgreSQL masks the body of a `DO` block as a string, so its DDL is
+    // invisible here; any DO block may create or drop objects, so refresh.
+    if (dialect === 'postgres' && /^\s*do\b/iu.test(analyzed)) return true
     // T-SQL control-flow blocks can contain DDL or `SELECT ... INTO`; their
     // first word is BEGIN/IF/WHILE, so the anchored DDL test above misses them.
     if (dialect === 'mssql' && /^\s*(?:begin|if|while)\b/iu.test(analyzed)) {
