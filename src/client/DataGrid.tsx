@@ -218,9 +218,11 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       event.stopPropagation()
       const table = tableRef.current
       if (table === null) return
-      const headers = table.querySelectorAll('thead tr:first-child th')
+      // The grid may have leading checkbox and row-number headers; tag data
+      // headers so measured widths cannot shift by one when selection is on.
+      const headers = table.querySelectorAll('thead tr:first-child th[data-column-index]')
       const measured = columns.map((_, columnIndex) => {
-        const header = headers[columnIndex + 1]
+        const header = headers[columnIndex]
         return header instanceof HTMLElement ? Math.round(header.getBoundingClientRect().width) : 120
       })
       const base = widths ?? measured
@@ -317,6 +319,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
             {columns.map((column, index) => (
               <th
                 key={`${column.name}-${index}`}
+                data-column-index={index}
                 title={headerTitle(column, onSort !== undefined)}
                 className={[
                   numericColumn(column) ? 'dshdb-cell-num' : '',
