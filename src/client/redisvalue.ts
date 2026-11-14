@@ -91,10 +91,8 @@ export function redisValueTable(value: RedisValue): RedisTable | null {
 
 /** `永久` when the key has no expiry, otherwise seconds; -2 means the key vanished. */
 export function redisTtlLabel(ttl: number): string {
-  if (ttl === -1) return '永久'
-  if (ttl === -2) return '已过期'
-  // Under a minute keep the precise seconds the server reported; longer spans read
-  // better in the same units the key table uses.
-  if (ttl >= 60) return formatTtl(ttl)
+  // -1 no expiry, -2 vanished, and other negatives/invalid values share the
+  // generic TTL wording instead of turning into `0s` or `NaNs`.
+  if (!Number.isFinite(ttl) || ttl < 0 || ttl >= 60) return formatTtl(ttl)
   return `${Math.max(0, Math.round(ttl))}s`
 }
