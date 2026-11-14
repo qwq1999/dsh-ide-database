@@ -271,6 +271,9 @@ function parseWithClause(text: string, dialect: SqlDialect = 'generic'): WithCla
 /** Statements that write files on the server; a read-only connection must refuse them. */
 const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
 
+/** `SELECT ... FOR UPDATE` / `LOCK IN SHARE MODE` takes row locks even without writing. */
+const LOCKING_READ = /\bfor\s+(?:update|share|key\s+share|no\s+key\s+update)\b|\block\s+in\s+share\s+mode\b/
+
 /**
  * The end (exclusive) of the Oracle alternative-quoted literal starting at
  * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
@@ -522,6 +525,9 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
   }
   // `SELECT ... INTO <table>` creates a table on PostgreSQL and SQL Server.
   if (head === 'select' && selectsIntoTable(withoutTrailing, dialect)) return false
+  // Locking reads take row locks and can block other sessions; a read-only
+  // connection should not be able to do that.
+  if (head === 'select' && LOCKING_READ.test(withoutLiterals(withoutTrailing, dialect))) return false
   // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
   if (FILE_WRITE.test(withoutLiterals(withoutTrailing, dialect))) return false
   return true

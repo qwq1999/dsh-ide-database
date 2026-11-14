@@ -259,4 +259,18 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT * FROM #tmp; SELECT 2', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM #tmp; SELECT 2', 'mysql')).toBe(true)
   })
+
+  it('rejects locking reads', () => {
+    expect(isReadOnlySql('SELECT * FROM t FOR UPDATE', 'postgres')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR NO KEY UPDATE', 'postgres')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR KEY SHARE', 'postgres')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR SHARE', 'postgres')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t LOCK IN SHARE MODE', 'mysql')).toBe(false)
+    // The words in a string or comment, and a plain EXPLAIN, stay reads.
+    expect(isReadOnlySql("SELECT 'for update' AS note", 'postgres')).toBe(true)
+    expect(isReadOnlySql('SELECT 1 /* for update */', 'postgres')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN SELECT * FROM t FOR UPDATE', 'postgres')).toBe(true)
+    // Locking reads inside a CTE body are checked too.
+    expect(isReadOnlySql('WITH c AS (SELECT * FROM t FOR UPDATE) SELECT * FROM c', 'postgres')).toBe(false)
+  })
 })
