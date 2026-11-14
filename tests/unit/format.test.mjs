@@ -225,6 +225,8 @@ describe('format helpers', () => {
 
   it('shortens remaining TTL to the largest whole unit', () => {
     expect(formatTtl(-1)).toBe('永久')
+    expect(formatTtl(-2)).toBe('已过期')
+    expect(formatTtl(-3)).toBe('—')
     expect(formatTtl(0)).toBe('0s')
     expect(formatTtl(59)).toBe('59s')
     expect(formatTtl(60)).toBe('1m')

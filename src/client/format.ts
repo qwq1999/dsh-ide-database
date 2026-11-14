@@ -16,10 +16,12 @@ export function formatMs(ms: number | undefined): string {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
-/** Compact remaining TTL: 3600 becomes `1h`, negative means no expiry. */
+/** Compact remaining TTL: 3600 becomes `1h`; -1 is no expiry, -2 is a vanished key. */
 export function formatTtl(seconds: number): string {
   if (!Number.isFinite(seconds)) return '—'
-  if (seconds < 0) return '永久'
+  if (seconds === -1) return '永久'
+  if (seconds === -2) return '已过期'
+  if (seconds < 0) return '—'
   const whole = Math.round(seconds)
   if (whole < 60) return `${whole}s`
   if (whole < 3600) return `${Math.floor(whole / 60)}m`
