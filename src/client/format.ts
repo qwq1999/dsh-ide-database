@@ -192,13 +192,21 @@ const SELECT_INTO_TABLE =
   /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
 
 /** The statement after `EXPLAIN ANALYZE`, or null when EXPLAIN does not execute. */
+/** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
+function analyzeOptionEnabled(options: string): boolean {
+  const match = /\banalyze\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
+  if (match === null) return false
+  const value = match[1]?.toLowerCase()
+  return value !== 'false' && value !== 'off' && value !== '0'
+}
+
 function explainAnalyzeBody(code: string): string | null {
   let rest = firstWord(code).rest
   let analyze = false
   if (rest.startsWith('(')) {
     const close = skipBalanced(rest, 0)
     if (close < 0) return null
-    if (/\banalyze\b/iu.test(rest.slice(1, close - 1))) analyze = true
+    if (analyzeOptionEnabled(rest.slice(1, close - 1))) analyze = true
     rest = rest.slice(close).trimStart()
   }
   const next = firstWord(rest)

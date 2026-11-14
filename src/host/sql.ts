@@ -475,6 +475,14 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
 }
 
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
+/** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
+function analyzeOptionEnabled(options: string): boolean {
+  const match = /\banalyze\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
+  if (match === null) return false
+  const value = match[1]?.toLowerCase()
+  return value !== 'false' && value !== 'off' && value !== '0'
+}
+
 export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {
   const text = stripLeadingComments(sql, dialect)
   if (text === null) return false
@@ -505,7 +513,7 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
     if (rest.startsWith('(')) {
       const close = matchingParen(rest, 0, dialect)
       if (close < 0) return false
-      if (!/\banalyze\b/.test(withoutLiterals(rest.slice(1, close), dialect))) return true
+      if (!analyzeOptionEnabled(withoutLiterals(rest.slice(1, close), dialect))) return true
       const statement = stripLeadingComments(rest.slice(close + 1), dialect)
       return statement !== null && statement !== '' && isReadOnlySql(statement, dialect)
     }
