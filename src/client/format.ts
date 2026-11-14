@@ -1,6 +1,7 @@
 import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
+import { isRedisReadCommand } from '../shared/redisread'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
@@ -335,86 +336,6 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
   })
 }
 
-const REDIS_READ = new Set([
-  'get',
-  'mget',
-  'strlen',
-  'type',
-  'ttl',
-  'pttl',
-  'exists',
-  'scan',
-  'keys',
-  'dbsize',
-  'info',
-  'ping',
-  'echo',
-  'time',
-  'randomkey',
-  'lrange',
-  'llen',
-  'lpos',
-  'smembers',
-  'scard',
-  'sismember',
-  'sscan',
-  'srandmember',
-  'hget',
-  'hmget',
-  'hgetall',
-  'hlen',
-  'hscan',
-  'hkeys',
-  'hvals',
-  'zrange',
-  'zrevrange',
-  'zrangebyscore',
-  'zcard',
-  'zscan',
-  'zscore',
-  'xrange',
-  'xrevrange',
-  'xlen',
-  'xinfo',
-  'object',
-  'memory',
-  'getrange',
-  'bitcount',
-  'geopos',
-  'geodist',
-  'georadius_ro',
-  'xread',
-  'lindex',
-  'zcount',
-  'zlexcount',
-  'zrank',
-  'zrevrank',
-  'zmscore',
-  'hstrlen',
-  'hexists',
-  'hrandfield',
-  'getbit',
-  'bitpos',
-  'geohash',
-  'geosearch',
-  'pfcount',
-  'sinter',
-  'sunion',
-  'sdiff',
-  'smismember',
-  'zrandmember',
-  'zunion',
-  'zinter',
-  'zintercard',
-  'sintercard',
-  'zdiff',
-  'sort_ro',
-  'lcs',
-  'expiretime',
-  'pexpiretime',
-  'georadiusbymember_ro',
-])
-
 function redisCommandName(command: string): string {
   const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)/.exec(command)
   return match?.[1]?.toLowerCase() ?? ''
@@ -422,7 +343,7 @@ function redisCommandName(command: string): string {
 
 export function looksLikeRedisWrite(command: string): boolean {
   const name = redisCommandName(command)
-  return name !== '' && !REDIS_READ.has(name)
+  return name !== '' && !isRedisReadCommand(name)
 }
 
 export function objectKindLabel(kind: ObjectKind): string {

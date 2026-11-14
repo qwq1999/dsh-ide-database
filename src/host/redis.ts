@@ -12,6 +12,7 @@ import type {
 import type { ConfigStore } from './config.js'
 import { DbError } from './errors.js'
 import type { SecretStore } from './secrets.js'
+import { isRedisReadCommand } from '../shared/redisread.js'
 
 interface Session {
   client: RedisClient
@@ -182,90 +183,9 @@ export async function keyInfos(client: RedisClient, keys: string[]): Promise<Red
   return infos
 }
 
-const READ_ONLY_COMMANDS = new Set([
-  'get',
-  'mget',
-  'strlen',
-  'type',
-  'ttl',
-  'pttl',
-  'exists',
-  'scan',
-  'keys',
-  'dbsize',
-  'info',
-  'ping',
-  'echo',
-  'time',
-  'randomkey',
-  'lrange',
-  'llen',
-  'lpos',
-  'smembers',
-  'scard',
-  'sismember',
-  'sscan',
-  'hget',
-  'hmget',
-  'hgetall',
-  'hlen',
-  'hscan',
-  'hkeys',
-  'hvals',
-  'zrange',
-  'zrevrange',
-  'zrangebyscore',
-  'zcard',
-  'zscan',
-  'zscore',
-  'xrange',
-  'xrevrange',
-  'xlen',
-  'getrange',
-  'object',
-  'memory',
-  'bitcount',
-  'geopos',
-  'xread',
-  'xinfo',
-  'lindex',
-  'zcount',
-  'zlexcount',
-  'zrank',
-  'zrevrank',
-  'zmscore',
-  'hstrlen',
-  'hexists',
-  'hrandfield',
-  'getbit',
-  'bitpos',
-  'geodist',
-  'geohash',
-  'geosearch',
-  'pfcount',
-  'srandmember',
-  'sinter',
-  'sunion',
-  'sdiff',
-  'smismember',
-  // Pure reads added in Redis 6/7.
-  'zrandmember',
-  'zunion',
-  'zinter',
-  'zintercard',
-  'sintercard',
-  'zdiff',
-  'sort_ro',
-  'lcs',
-  'expiretime',
-  'pexpiretime',
-  'georadius_ro',
-  'georadiusbymember_ro',
-])
-
 /** Whether a command only reads data and may run on a read-only connection. */
 export function isReadOnlyCommand(command: string): boolean {
-  return READ_ONLY_COMMANDS.has(command.toLowerCase())
+  return isRedisReadCommand(command)
 }
 
 // FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ConfigStore } from '../../lib/host/config.js'
 import { SecretStore } from '../../lib/host/secrets.js'
 import { RedisManager, isReadOnlyCommand } from '../../lib/host/redis.js'
+import { looksLikeRedisWrite } from '../../src/client/format.ts'
 
 const dirs = []
 
@@ -24,6 +25,12 @@ afterEach(() => {
 })
 
 describe('Redis command guard', () => {
+  it('shares the read list with the client write confirmation', () => {
+    for (const command of ['GET', 'SINTER', 'ZUNION', 'SORT_RO', 'SET', 'ZUNIONSTORE']) {
+      expect(looksLikeRedisWrite(command)).toBe(!isReadOnlyCommand(command))
+    }
+  })
+
   it('rejects destructive commands even on a writable connection', async () => {
     const { config, redis } = manager()
     const id = config.snapshot().connections[0].id
