@@ -338,6 +338,9 @@ describe('temporal literals', () => {
     expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33' })).toBe(
       `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
     )
+    expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54' })).toBe(
+      `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54', 'YYYY-MM-DD HH24:MI')`,
+    )
     expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33.123' })).toBe(
       `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33.123', 'YYYY-MM-DD HH24:MI:SS.FF')`,
     )
@@ -351,9 +354,18 @@ describe('temporal literals', () => {
     expect(cellWhere('oracle', date, '2024-11-11 09:54:33')).toBe(
       `"DAY" = TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
     )
+    expect(cellWhere('oracle', date, '2024-11-11 09:54')).toBe(
+      `"DAY" = TO_DATE('2024-11-11 09:54', 'YYYY-MM-DD HH24:MI')`,
+    )
     const stamp = { name: 'AT', typeName: 'TIMESTAMP WITH TIME ZONE' }
     expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54:33.123 +08:00')).toBe(
       `TO_TIMESTAMP_TZ('2024-11-11 09:54:33.123 +08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54 +8:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 09:54 +8:00', 'YYYY-MM-DD HH24:MI TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 +8:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 +8:00', 'YYYY-MM-DD TZH:TZM')`,
     )
     // Oracle's own TIMESTAMP WITH TIME ZONE text uses a one-digit hour offset.
     const bridged = '2024-11-11 09:54:00.0 +8:00'

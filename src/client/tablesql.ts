@@ -145,11 +145,16 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
   const escaped = text.replace(/'/gu, "''")
   // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
-  const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(text)
-  const hasTime = hasSeconds
-  const hasFraction = /\.\d+/u.test(text)
-  const hasZone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.test(text)
-  const timeFormat = hasTime ? ' HH24:MI:SS' : ''
+  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(text)
+  const hasZone = zone !== null
+  // Do not mistake a `+08:00` zone for a time; inspect only the local part.
+  const local = hasZone ? text.slice(0, zone.index) : text
+  const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(local)
+  // A filter typed as `2024-11-11 09:54` must keep its minutes; a format
+  // without them rejects the text with ORA-01830 instead of comparing at 00:00.
+  const hasTime = /\d{2}:\d{2}/u.test(local)
+  const hasFraction = hasSeconds && /\.\d+/u.test(local)
+  const timeFormat = hasTime ? (hasSeconds ? ' HH24:MI:SS' : ' HH24:MI') : ''
   if (base.startsWith('timestamp')) {
     if (hasZone) {
       const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZH:TZM`
