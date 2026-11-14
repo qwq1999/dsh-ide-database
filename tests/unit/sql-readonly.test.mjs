@@ -80,6 +80,19 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN (ANALYZE)')).toBe(false)
   })
 
+  it('does not let comments hide EXPLAIN ANALYZE', () => {
+    expect(isReadOnlySql('EXPLAIN /* run it */ ANALYZE DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN -- run it\nANALYZE DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /* options */ (ANALYZE) DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYZE) /* run it */ DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYZE /* run it */ DELETE FROM t')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYZE FORMAT=TREE /* run it */ DELETE FROM t')).toBe(false)
+    // A plain EXPLAIN still only plans, with or without comments.
+    expect(isReadOnlySql('EXPLAIN /* only plan */ SELECT 1')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN /* only plan */ DELETE FROM t')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN /* no statement */')).toBe(false)
+  })
+
   it('judges the statement a CTE list runs', () => {
     expect(isReadOnlySql('WITH c AS (SELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('with recursive c as (select 1) select 1 from c')).toBe(true)
