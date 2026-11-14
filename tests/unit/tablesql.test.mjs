@@ -238,6 +238,16 @@ describe('tableFromStatement', () => {
     })
   })
 
+  it('does not treat a table-valued function as the table', () => {
+    expect(tableFromStatement('select * from generate_series(1, 2)')).toBeNull()
+    expect(tableFromStatement('select * from public.generate_series(1, 2)')).toBeNull()
+    expect(tableFromStatement("select * from json_each('[]')")).toBeNull()
+    expect(tableFromStatement('select * from generate_series(1, 2) g join users on true')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+  })
+
   it('ignores literals and comments that mention another table', () => {
     expect(tableFromStatement("select 'from users' as note, id from orders")).toEqual({ schema: '', table: 'orders' })
     expect(tableFromStatement('select 1 -- from users\nfrom orders')).toEqual({ schema: '', table: 'orders' })

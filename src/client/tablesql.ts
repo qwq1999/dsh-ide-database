@@ -317,13 +317,23 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
       if (topLevelOnly && depthAt[match.index] !== 0) continue
       const parts: string[] = []
       let token = readTableIdentifier(statement, keyword.lastIndex)
+      let end = 0
       while (token !== null) {
         parts.push(token.value)
+        end = token.end
         const dot = skipSpaces(statement, token.end)
         if (statement[dot] !== '.') break
         token = readTableIdentifier(statement, dot + 1)
       }
       if (parts.length === 0) continue
+      // `generate_series(1, 2)` and `[dbo].[split](@text)` are table-valued
+      // functions, not tables; opening an INSERT for them would point at a
+      // nonexistent relation. Keep scanning for a real FROM/JOIN table. An
+      // INSERT's parenthesized column list is not a function call.
+      if (
+        (match[0].toLowerCase() === 'from' || match[0].toLowerCase() === 'join')
+        && statement[skipSpaces(statement, end)] === '('
+      ) continue
       // SQL Server accepts a three-part `database.schema.table` (and a four-part
       // server name); the console only needs the last two parts.
       return {
