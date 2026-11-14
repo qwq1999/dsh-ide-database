@@ -244,6 +244,9 @@ describe('type families', () => {
     expect(isTemporalType('timestamp(6) with local time zone')).toBe(true)
     expect(isTemporalType('timestamp(6) with time zone')).toBe(true)
     expect(isTemporalType('timestamp[]')).toBe(false)
+    expect(isTemporalType('timestamp', 'mssql')).toBe(false)
+    expect(isTemporalType('rowversion', 'mssql')).toBe(false)
+    expect(isTemporalType('timestamp', 'mysql')).toBe(true)
   })
 
   it('recognizes binary columns that only show a placeholder', () => {
@@ -253,6 +256,9 @@ describe('type families', () => {
     expect(isBinaryType('bytea')).toBe(true)
     expect(isBinaryType('RAW(16)')).toBe(true)
     expect(isBinaryType('LONG RAW')).toBe(true)
+    expect(isBinaryType('timestamp', 'mssql')).toBe(true)
+    expect(isBinaryType('rowversion', 'mssql')).toBe(true)
+    expect(isBinaryType('timestamp', 'mysql')).toBe(false)
     expect(isBinaryType('varbinary(max)')).toBe(true)
     expect(isBinaryType('geometry', 'mysql')).toBe(true)
     expect(isBinaryType('POINT', 'mysql')).toBe(true)
@@ -425,6 +431,13 @@ describe('insertStatement', () => {
       insertStatement('oracle', 'SHOP', 'EVENTS', temporal, ['2', '2024-11-12 10:00', '2024-11-12 10:00']),
     ).toBe(
       `INSERT INTO "SHOP"."EVENTS" ("ID", "DAY", "AT") VALUES (2, TO_DATE('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'), TO_TIMESTAMP('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'));`,
+    )
+  })
+
+  it('leaves SQL Server rowversion columns out of INSERT', () => {
+    const rowVersion = [column('id', 'int'), column('rv', 'timestamp'), column('rv2', 'rowversion')]
+    expect(insertStatement('mssql', 'dbo', 'events', rowVersion, [1, '<binary 8 bytes>', '<binary 8 bytes>'])).toBe(
+      'INSERT INTO [dbo].[events] ([id]) VALUES (1);',
     )
   })
 

@@ -102,9 +102,12 @@ export function isNumericType(typeName: string): boolean {
 }
 
 /** Date / timestamp columns need a typed literal on Oracle-family servers. */
-export function isTemporalType(typeName: string | undefined): boolean {
+export function isTemporalType(typeName: string | undefined, dialect?: Dialect): boolean {
   if (typeName === undefined) return false
   const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  // SQL Server's `timestamp` (and its `rowversion` synonym) is an
+  // auto-generated binary value, not a date/time — unlike every other dialect.
+  if (dialect === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return false
   // Keep parameters and time-zone wording, but never treat an array as a
   // scalar timestamp: `date[]` needs a cast or an array literal, not TO_DATE.
   return /^(?:date|datetime2?|smalldatetime|timestamp(?:tz|ltz)?(?:\s+(?:with|without)(?:\s+local)?\s+time\s+zone)?)$/u.test(
@@ -128,6 +131,9 @@ export function isBinaryType(typeName: string | undefined, dialect?: Dialect): b
   if (typeName === undefined) return false
   const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
   const normalized = dialect === 'redis' ? 'generic' : dialect
+  // SQL Server's timestamp/rowversion is an eight-byte binary value that the
+  // bridge renders as `<binary 8 bytes>`; it must never be filtered as a date.
+  if (normalized === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return true
   // MySQL and SQL Server serialise spatial values as bytes; PostgreSQL keeps
   // PostGIS values as text, so only treat spatial names as binary there.
   if (/^(?:geometry|geography|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection|geomcollection)$/u.test(base)) {
@@ -175,7 +181,7 @@ function oracleTimestampText(name: string, typeName: string): string {
  * working for numbers, dates, UUIDs and arrays.
  */
 function textExpression(dialect: ClientConnection['dialect'], name: string, typeName: string | undefined): string {
-  if (typeName !== undefined && isTemporalType(typeName)) {
+  if (typeName !== undefined && isTemporalType(typeName, dialect)) {
     // The grid shows the bridge's ISO text, so format temporal columns the
     // same way instead of trusting the session's NLS / language settings.
     if (dialect === 'oracle' || dialect === 'oceanbase-oracle') {
@@ -205,7 +211,7 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
  */
 export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: string, text: string): string {
   const literal = quoteLiteral(text, dialect)
-  if (!isTemporalType(typeName)) return literal
+  if (!isTemporalType(typeName, dialect)) return literal
   if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
   if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
   const type = typeName.toLowerCase()
@@ -266,7 +272,7 @@ export function insertStatement(
 ): string {
   const selected = columns
     .map((column, index) => ({ column, index }))
-    .filter((entry) => entry.column.generated !== true)
+    .filter((entry) => entry.column.generated !== true && !isMssqlRowVersion(entry.column.typeName, dialect))
   const names = selected.map((entry) => quoteIdent(dialect, entry.column.name)).join(', ')
   const values = selected
     .map((entry) => insertLiteral(dialect, entry.column, row[entry.index] ?? null))
@@ -280,6 +286,13 @@ function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): s
   // 23c; a NUMBER(1) or BIT column is compared with 1/0 instead.
   if (dialect === 'mssql' || dialect === 'oracle' || dialect === 'oceanbase-oracle') return value ? '1' : '0'
   return value ? 'TRUE' : 'FALSE'
+}
+
+/** SQL Server rowversion/timestamp values are generated and must not be inserted. */
+function isMssqlRowVersion(typeName: string | undefined, dialect: ClientConnection['dialect']): boolean {
+  if (dialect !== 'mssql' || typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return base === 'timestamp' || base === 'rowversion'
 }
 
 /** Whether the column is displayed as a boolean cell by the bridge. */
@@ -301,7 +314,7 @@ function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo,
   if (typeof value === 'boolean') return booleanLiteral(dialect, value)
   if (typeof value === 'number') return String(value)
   const text = String(value)
-  if (isTemporalType(column.typeName)) return temporalLiteral(dialect, column.typeName, text)
+  if (isTemporalType(column.typeName, dialect)) return temporalLiteral(dialect, column.typeName, text)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
   return quoteLiteral(text, dialect)
 }
@@ -452,7 +465,7 @@ export function filterExpression(
       return `${name} = ${booleanLiteral(dialect, text.toLowerCase() === 'true')}`
     }
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
-    if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
+    if (isTemporalType(column.typeName, dialect)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     if (isJsonType(column.typeName)) {
       return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(text, dialect)}`
     }
@@ -486,7 +499,7 @@ export function cellWhere(
   if (value === null) return `${name} IS NULL`
   if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
   if (typeof value === 'boolean') return `${name} = ${booleanLiteral(dialect, value)}`
-  if (typeof value === 'string' && isTemporalType(column.typeName)) {
+  if (typeof value === 'string' && isTemporalType(column.typeName, dialect)) {
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
   }
   if (typeof value === 'string' && isJsonType(column.typeName)) {
