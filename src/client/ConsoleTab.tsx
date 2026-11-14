@@ -1343,7 +1343,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       rowSort?.column === column.name && (rowSort.index === undefined || rowSort.index === index)
         ? rowSort.direction
         : null
-    const binary = isBinaryType(column.typeName, connection?.dialect)
+    const binary =
+      isBinaryType(column.typeName, connection?.dialect) ||
+      (index >= 0 && filteredRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect)))
     return [
       { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, index, direction: 'asc' }) },
       { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, index, direction: 'desc' }) },

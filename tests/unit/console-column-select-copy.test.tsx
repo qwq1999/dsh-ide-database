@@ -205,6 +205,33 @@ describe('console column select copy', () => {
     expect(item.disabled).toBe(true)
   })
 
+  it('does not build an IN list from a vague binary placeholder', async () => {
+    mocks.query.mockResolvedValue({
+      sql: 'SELECT * FROM shop.features',
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'flags', typeName: 'BIT' },
+      ],
+      rows: [[1, '<binary 1 bytes>']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    })
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.features' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('flags'))
+    const item = await screen.findByRole('menuitem', { name: '复制为 IN 列表（二进制列无法匹配）' }) as HTMLButtonElement
+    expect(item.disabled).toBe(true)
+  })
+
   it('copies the column as one comma separated line', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')

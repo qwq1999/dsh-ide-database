@@ -350,7 +350,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (column: ColumnInfo): ColumnMenuItem[] => {
       const active = activeSort?.column === column.name ? activeSort.direction : null
       const index = columns.findIndex((item) => item.name === column.name)
-      const binary = isBinaryType(column.typeName, connection?.dialect)
+      const binary =
+        isBinaryType(column.typeName, connection?.dialect) ||
+        (index >= 0 && rows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect)))
       return [
         { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
         { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
