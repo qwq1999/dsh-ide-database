@@ -8,7 +8,8 @@ import type { RedisKeyInfo } from '../shared/types'
 import { historyAgo, type HistoryEntry } from './history'
 import { ClearIcon, CopyIcon, StarIcon } from './icons'
 import { Button, Tag } from './ui'
-import { formatCount, formatMs, formatTtl } from './format'
+import { formatCount, formatMs } from './format'
+import { redisTtlLabel } from './redisvalue'
 import { copyText } from './colmenu'
 import { nextKeySort, sortKeys, sortKeysBySize, sortKeysByTtl, type KeySort } from './redissort'
 import { placeMenu, TreeMenu, type TreeMenuState } from './views/tree-menu'
@@ -194,8 +195,11 @@ const KeyRow = memo(function KeyRow({
       <td>
         <Tag>{info.type}</Tag>
       </td>
-      <td className="dshdb-num" title={info.ttl < 0 ? '不过期' : `${String(info.ttl)} 秒`}>
-        {formatTtl(info.ttl)}
+      <td
+        className="dshdb-num"
+        title={info.ttl === -1 ? '不过期' : info.ttl === -2 ? '已过期' : `${String(info.ttl)} 秒`}
+      >
+        {redisTtlLabel(info.ttl)}
       </td>
       <td className="dshdb-num">{info.size === undefined ? '' : formatCount(info.size)}</td>
     </tr>
