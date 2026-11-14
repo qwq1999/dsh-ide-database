@@ -61,6 +61,34 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1 -- note; x\n; select 2', 'mysql')).toEqual(['select 1 -- note; x', 'select 2'])
   })
 
+  it('honours MySQL DELIMITER directives', () => {
+    const script = [
+      '-- create the procedure',
+      'DELIMITER $$',
+      'CREATE PROCEDURE bump()',
+      'BEGIN',
+      "  UPDATE t SET note = 'a;b';",
+      '  -- END$$ in a comment is not a terminator',
+      '  SELECT 1;',
+      'END$$',
+      'DELIMITER ;',
+      'SELECT 2;',
+    ].join('\n')
+    expect(splitStatements(script, 'mysql')).toEqual([
+      "-- create the procedure\nCREATE PROCEDURE bump()\nBEGIN\n  UPDATE t SET note = 'a;b';\n  -- END$$ in a comment is not a terminator\n  SELECT 1;\nEND",
+      'SELECT 2',
+    ])
+
+    const slash = ['delimiter //', 'select 1;', 'select 2//', 'DELIMITER ;', 'select 3;'].join('\n')
+    expect(splitStatements(slash, 'mysql')).toEqual(['select 1;\nselect 2', 'select 3'])
+  })
+
+  it('does not treat DELIMITER in a statement as a client command', () => {
+    expect(splitStatements("select 'DELIMITER $$'; select 2", 'mysql')).toEqual(["select 'DELIMITER $$'", 'select 2'])
+    expect(splitStatements('select 1; DELIMITER $$', 'mysql')).toEqual(['select 1', 'DELIMITER $$'])
+    expect(splitStatements('DELIMITER $$\nselect 1; select 2', 'generic')).toEqual(['DELIMITER $$\nselect 1', 'select 2'])
+  })
+
   it('keeps SQL Server bracket identifiers in one statement', () => {
     expect(splitStatements('select [a;b] from t; select 2', 'mssql')).toEqual(['select [a;b] from t', 'select 2'])
     expect(splitStatements('select [a]];b] from t; select 2', 'mssql')).toEqual([
