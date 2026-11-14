@@ -317,7 +317,7 @@ export class StructureStore {
     // Drop descriptions of objects that disappeared from the refreshed list,
     // so renames/drops do not leave unreachable entries behind. Routines keep
     // their definition in the same cache, so every listed kind counts here.
-    const listed = new Set(objects.map((object) => `${schema}.${object.name}`))
+    const listed = new Set(objects.map((object) => object.name))
     this.descriptions.pruneObjects(connectionId, schema, listed)
     previous.objects[schema] = objects
     previous.fetchedAt = new Date().toISOString()
@@ -325,7 +325,7 @@ export class StructureStore {
     this.schedule()
   }
 
-  /** `schema.table` keys the description cache; relations only. */
+  /** The description cache is keyed by the schema/table pair; relations only. */
   putDescription(connectionId: string, schema: string, table: string, description: TableDescription): void {
     // The per-connection log takes the write; its timestamp makes the background
     // prefetcher incremental (a fresh entry is skipped, a stale one refreshed).

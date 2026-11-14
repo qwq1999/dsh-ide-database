@@ -15,6 +15,11 @@ import type { TableDescription } from '../shared/types.js'
  */
 const ENTRY_PREFIX = 'd'
 
+/** `${schema}.${table}` collides when either name contains a dot. */
+function cacheKey(schema: string, table: string): string {
+  return `${schema.length}:${schema}:${table}`
+}
+
 /** Rewrite the log once this many lines were appended past the live set. */
 export const DESCRIPTION_COMPACT_LINES = 2000
 
@@ -61,7 +66,7 @@ export class DescriptionCache {
             skipped += 1
             continue
           }
-          const key = `${record.s}.${record.t}`
+          const key = cacheKey(record.s, record.t)
           if (record.del === true) map.delete(key)
           else if (record.d !== null && typeof record.d === 'object') map.set(key, record.d as TableDescription)
         } catch {
@@ -76,18 +81,18 @@ export class DescriptionCache {
   }
 
   get(connectionId: string, schema: string, table: string): TableDescription | undefined {
-    const description = this.ensure(connectionId).get(`${schema}.${table}`)
+    const description = this.ensure(connectionId).get(cacheKey(schema, table))
     return description === undefined ? undefined : (JSON.parse(JSON.stringify(description)) as TableDescription)
   }
 
   has(connectionId: string, schema: string, table: string): boolean {
-    return this.ensure(connectionId).has(`${schema}.${table}`)
+    return this.ensure(connectionId).has(cacheKey(schema, table))
   }
 
   /** Store a description and append it to the log (the timestamp drives refreshes). */
   put(connectionId: string, schema: string, table: string, description: TableDescription): void {
     const entry: TableDescription = { ...description, describedAt: new Date().toISOString() }
-    this.ensure(connectionId).set(`${schema}.${table}`, entry)
+    this.ensure(connectionId).set(cacheKey(schema, table), entry)
     this.append(connectionId, JSON.stringify({ s: schema, t: table, [ENTRY_PREFIX]: entry }))
   }
 
@@ -98,9 +103,9 @@ export class DescriptionCache {
    */
   import(connectionId: string, descriptions: Record<string, TableDescription>): void {
     const map = this.ensure(connectionId)
-    for (const [key, description] of Object.entries(descriptions)) {
+    for (const description of Object.values(descriptions)) {
       if (description.table === '') continue
-      map.set(key, description)
+      map.set(cacheKey(description.schema, description.table), description)
     }
     this.rewrite(connectionId)
   }
@@ -108,12 +113,12 @@ export class DescriptionCache {
   /** Drop descriptions of schemas the server no longer reports. */
   pruneSchemas(connectionId: string, schemas: readonly string[]): void {
     const keep = new Set(schemas)
-    this.prune(connectionId, (key, description) => keep.has(description.schema))
+    this.prune(connectionId, (_key, description) => keep.has(description.schema))
   }
 
-  /** Drop descriptions of objects that disappeared from one schema's object list. */
+  /** Drop descriptions of objects that disappeared from one schema's object list; keys are table names. */
   pruneObjects(connectionId: string, schema: string, keys: ReadonlySet<string>): void {
-    this.prune(connectionId, (key, description) => description.schema !== schema || keys.has(key))
+    this.prune(connectionId, (_key, description) => description.schema !== schema || keys.has(description.table))
   }
 
   private prune(connectionId: string, keep: (key: string, description: TableDescription) => boolean): void {
@@ -182,8 +187,8 @@ export class DescriptionCache {
     this.pending.delete(connectionId)
     this.appended.set(connectionId, 0)
     const lines: string[] = []
-    // Keys are `${schema}.${table}` and quoted identifiers may contain dots;
-    // trust the description's own fields instead of splitting the key.
+    // Write the description's own fields; the in-memory key is opaque and may
+    // contain dots in either name.
     for (const description of map.values()) {
       lines.push(JSON.stringify({ s: description.schema, t: description.table, [ENTRY_PREFIX]: description }))
     }
