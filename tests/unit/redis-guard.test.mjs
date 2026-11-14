@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { ConfigStore } from '../../lib/host/config.js'
 import { SecretStore } from '../../lib/host/secrets.js'
-import { RedisManager } from '../../lib/host/redis.js'
+import { RedisManager, isReadOnlyCommand } from '../../lib/host/redis.js'
 
 const dirs = []
 
@@ -36,5 +36,12 @@ describe('Redis command guard', () => {
     const { config, redis } = manager()
     const id = config.snapshot().connections[0].id
     await expect(redis.command(id, 0, '   ', true)).rejects.toThrow(/命令不能为空/)
+  })
+
+  it('accepts set algebra as reads', () => {
+    for (const command of ['SINTER', 'SUNION', 'SDIFF', 'sinter']) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+    expect(isReadOnlyCommand('SADD')).toBe(false)
   })
 })
