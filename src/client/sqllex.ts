@@ -94,7 +94,7 @@ export function bracketIdentifierEnd(input: string, index: number): number | nul
  * literal. Double quotes and backticks are identifiers to table inference but
  * strings to paging, so the caller chooses whether to mask them.
  */
-export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentifiers: boolean): string {
+export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentifiers: boolean, keepExecutableComments = false): string {
   let out = ''
   let index = 0
   while (index < text.length) {
@@ -111,6 +111,12 @@ export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentif
       const stop = end === -1 ? text.length : end
       out += ' '.repeat(stop - index)
       index = stop
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*' && keepExecutableComments && dialect === 'mysql' && text[index + 2] === '!') {
+      // MySQL runs the body of `/*! ... */`; keep it visible to write detection.
+      out += '/*!'
+      index += 3
       continue
     }
     if (char === '/' && text[index + 1] === '*') {

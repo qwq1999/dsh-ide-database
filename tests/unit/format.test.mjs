@@ -69,6 +69,23 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
   })
 
+  it('looks inside CTEs and files when deciding whether to confirm', () => {
+    expect(looksLikeWrite('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(true)
+    expect(looksLikeWrite('WITH d AS (SELECT 1) SELECT * FROM d')).toBe(false)
+    expect(looksLikeWrite("SELECT 1 INTO OUTFILE '/tmp/x'")).toBe(true)
+    expect(looksLikeWrite('SELECT 1 INTO new_table')).toBe(true)
+    expect(looksLikeWrite('SELECT 1 INTO @total')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN /* note */ ANALYZE DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE) DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (FORMAT JSON) DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite("SELECT replace(name, 'a', 'b') FROM users")).toBe(false)
+    expect(looksLikeWrite("SELECT '=DELETE FROM t'")).toBe(false)
+    expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'mysql')).toBe(true)
+    expect(looksLikeWrite('SELECT 1 /*!50000 SQL_NO_CACHE */', 'mysql')).toBe(false)
+    expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'sqlite')).toBe(false)
+    expect(looksLikeWrite("SELECT q'[delete]' FROM dual", 'oracle')).toBe(false)
+  })
+
   it('detects statements that change the schema layout', () => {
     expect(looksLikeDdl('SELECT * FROM users')).toBe(false)
     expect(looksLikeDdl('INSERT INTO users VALUES (1)')).toBe(false)

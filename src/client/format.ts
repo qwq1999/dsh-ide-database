@@ -1,5 +1,6 @@
 import { DIALECT_LABEL } from '../shared/presets'
-import type { CellValue, Dialect, ObjectKind } from '../shared/types'
+import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
+import { maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
   return dialect ? DIALECT_LABEL[dialect] : '未选择'
@@ -156,18 +157,99 @@ function unwrapWith(statement: string): string | null {
   }
 }
 
-export function looksLikeWrite(sql: string): boolean {
-  const cleaned = stripComments(sql)
-  return cleaned
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .some((statement) => {
-      const unwrapped = unwrapExplainAnalyze(statement)
-      const rest = firstWord(unwrapped).word === 'with' ? unwrapWith(unwrapped) : unwrapped
-      if (rest === null) return true
-      return WRITE_STATEMENT.test(rest)
-    })
+const SELECT_INTO_FILE = /\binto\s+(?:outfile|dumpfile)\b/iu
+const MYSQL_EXECUTABLE_WRITE =
+  /\/\*![\s\S]*?\b(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
+const SELECT_INTO_TABLE =
+  /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
+
+/** The statement after `EXPLAIN ANALYZE`, or null when EXPLAIN does not execute. */
+function explainAnalyzeBody(code: string): string | null {
+  let rest = firstWord(code).rest
+  let analyze = false
+  if (rest.startsWith('(')) {
+    const close = skipBalanced(rest, 0)
+    if (close < 0) return null
+    if (/\banalyze\b/iu.test(rest.slice(1, close - 1))) analyze = true
+    rest = rest.slice(close).trimStart()
+  }
+  const next = firstWord(rest)
+  if (next.word === 'analyze') {
+    analyze = true
+    rest = next.rest
+  }
+  if (!analyze) return null
+  const verbose = firstWord(rest)
+  if (verbose.word === 'verbose') rest = verbose.rest
+  const format = firstWord(rest)
+  if (format.word.startsWith('format')) rest = format.rest
+  return rest
+}
+
+/** Split a masked WITH clause into its CTE bodies and the statement it decorates. */
+function withWriteParts(code: string): { bodies: string[]; statement: string } | null {
+  let rest = firstWord(code).rest
+  const maybeRecursive = firstWord(rest)
+  if (maybeRecursive.word === 'recursive') rest = maybeRecursive.rest
+  const bodies: string[] = []
+  for (;;) {
+    const name = firstWord(rest)
+    if (name.word === '') return null
+    rest = name.rest
+    if (rest.startsWith('(')) {
+      const close = skipBalanced(rest, 0)
+      if (close < 0) return null
+      rest = rest.slice(close).trimStart()
+    }
+    const as = firstWord(rest)
+    if (as.word !== 'as') return null
+    rest = as.rest
+    const optional = firstWord(rest)
+    if (optional.word === 'not' || optional.word === 'materialized') rest = optional.rest
+    if (!rest.startsWith('(')) return null
+    const close = skipBalanced(rest, 0)
+    if (close < 0) return null
+    bodies.push(rest.slice(1, close - 1))
+    rest = rest.slice(close).trimStart()
+    if (rest.startsWith(',')) {
+      rest = rest.slice(1).trimStart()
+      continue
+    }
+    return { bodies, statement: rest }
+  }
+}
+
+/**
+ * Whether executing this statement may change data, files or schema. This is
+ * only a confirmation hint; the host re-checks read-only connections. Strings
+ * and comments are masked first, but MySQL executable comments stay visible
+ * because the server runs them.
+ */
+function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
+  if (dialect === 'mysql' && MYSQL_EXECUTABLE_WRITE.test(code)) return true
+  const head = firstWord(code)
+  if (head.word === 'explain') {
+    const body = explainAnalyzeBody(code)
+    return body !== null && looksLikeWrite(body, dialect)
+  }
+  if (head.word === 'with') {
+    const clause = withWriteParts(code)
+    if (clause === null) return true
+    if (clause.bodies.some((body) => looksLikeWrite(body, dialect))) return true
+    return looksLikeWrite(clause.statement, dialect)
+  }
+  if (head.word === 'select' || head.word === 'values') {
+    return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)
+  }
+  return WRITE_STATEMENT.test(code)
+}
+
+export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): boolean {
+  const code = maskNonCode(sql, dialect, false, true).trim()
+  if (code === '') return false
+  const statements = code.split(';').map((part) => part.trim()).filter(Boolean)
+  if (statements.length > 1) return statements.some((part) => looksLikeWriteCode(part, dialect))
+  return looksLikeWriteCode(code, dialect)
 }
 
 /**

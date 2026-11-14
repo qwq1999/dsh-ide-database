@@ -719,7 +719,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             selectedId,
             part,
             pageSize === ALL_PAGE_SIZE ? ALL_ROWS : pageSize,
-            looksLikeWrite(part),
+            looksLikeWrite(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'),
             stmtKey,
             schema,
           )
@@ -803,7 +803,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     if (body === '') return
     const parts = splitStatements(body, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
     if (parts.length === 0) return
-    const isWrite = parts.some((part) => looksLikeWrite(part))
+    const isWrite = parts.some((part) => looksLikeWrite(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'))
     if (isWrite && settings?.confirmDestructive === true) {
       const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', body)
       if (!ok) return
