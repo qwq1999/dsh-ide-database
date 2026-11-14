@@ -133,6 +133,9 @@ describe('console row numbers while sorting', () => {
     const header = screen.getAllByRole('columnheader', { name: /^id/ })[1] as HTMLElement
     fireEvent.click(header)
     fireEvent.click(header)
+    const headers = screen.getAllByRole('columnheader', { name: /^id/ })
+    expect(headers[0]?.getAttribute('aria-sort')).toBe('none')
+    expect(headers[1]?.getAttribute('aria-sort')).toBe('descending')
     await waitFor(() =>
       expect(screen.getAllByRole('row')[1]?.textContent?.replace(/\s+/gu, '')).toBe('1130'),
     )

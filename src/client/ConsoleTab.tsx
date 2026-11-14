@@ -2606,6 +2606,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
                 rowNumbers={rowNumbers}
                 storageKey="console:sql"
                 sort={rowSort}
+                sortColumn={rowSort?.index !== undefined ? (columns[rowSort.index] ?? null) : null}
                 onSort={gridSort}
                 onReorderColumns={gridReorder}
                 headerMenu={columnMenu}

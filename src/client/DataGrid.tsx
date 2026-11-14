@@ -60,6 +60,8 @@ export interface DataGridProps {
   storageKey?: string
   /** Active sort; the matching header shows an arrow. */
   sort?: { column: string; direction: 'asc' | 'desc' } | null
+  /** Exact column whose header owns the sort; distinguishes duplicate labels. */
+  sortColumn?: ColumnInfo | null
   /** Clicking a header asks the page to sort by that column. */
   onSort?: (column: ColumnInfo, index: number) => void
   /** Right-click menu entries per column; headers open a context menu when set. */
@@ -160,6 +162,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     onCellOpen,
     storageKey,
     sort,
+    sortColumn,
     onSort,
     headerMenu,
     cellMenu,
@@ -172,6 +175,10 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   } = props
   const selectable = onToggleRow !== undefined
   const selectedCount = selectedRows?.size ?? 0
+  const isSorted = (column: ColumnInfo): boolean => {
+    if (sort === null || sort === undefined) return false
+    return sortColumn ? sortColumn === column : sort.column === column.name
+  }
   const colSpan = columns.length + (selectable ? 2 : 1)
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -320,12 +327,12 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                 ]
                   .filter((value) => value !== '')
                   .join(' ') || undefined}
-                data-sorted={sort !== null && sort !== undefined && sort.column === column.name ? sort.direction : undefined}
+                data-sorted={isSorted(column) ? sort?.direction : undefined}
                 aria-sort={
                   onSort === undefined
                     ? undefined
-                    : sort !== null && sort !== undefined && sort.column === column.name
-                      ? sort.direction === 'asc'
+                    : isSorted(column)
+                      ? sort?.direction === 'asc'
                         ? 'ascending'
                         : 'descending'
                       : 'none'
@@ -390,9 +397,9 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                 }
               >
                 {column.name}
-                {sort !== null && sort !== undefined && sort.column === column.name ? (
+                {isSorted(column) ? (
                   <span className="dshdb-sort-arrow" aria-hidden="true">
-                    {sort.direction === 'asc' ? '▲' : '▼'}
+                    {sort?.direction === 'asc' ? '▲' : '▼'}
                   </span>
                 ) : null}
                 <span
