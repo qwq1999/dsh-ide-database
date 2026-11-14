@@ -91,6 +91,7 @@ describe('format helpers', () => {
     expect(looksLikeWrite("SELECT replace(name, 'a', 'b') FROM users")).toBe(false)
     expect(looksLikeWrite("SELECT '=DELETE FROM t'")).toBe(false)
     expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000DELETE FROM t*/', 'mysql')).toBe(true)
     expect(looksLikeWrite('SELECT 1 /*!50000 SQL_NO_CACHE */', 'mysql')).toBe(false)
     expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'sqlite')).toBe(false)
     expect(looksLikeWrite("SELECT q'[delete]' FROM dual", 'oracle')).toBe(false)

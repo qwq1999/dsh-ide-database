@@ -184,7 +184,7 @@ function withWriteParts(code: string): { bodies: string[]; statement: string } |
 
 const SELECT_INTO_FILE = /\binto\s+(?:outfile|dumpfile)\b/iu
 const MYSQL_EXECUTABLE_WRITE =
-  /\/\*![\s\S]*?\b(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
+  /\/\*![\s\S]*?(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
 const SELECT_INTO_TABLE =
   /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
 
