@@ -60,6 +60,8 @@ export interface DataGridProps {
   storageKey?: string
   /** Full column count before hidden columns were removed; widths persist only when all are shown. */
   widthColumnCount?: number
+  /** Change when the page or result changes to scroll the body back to the top. */
+  resetKey?: unknown
   /** Active sort; the matching header shows an arrow. */
   sort?: { column: string; direction: 'asc' | 'desc' } | null
   /** Exact column whose header owns the sort; distinguishes duplicate labels. */
@@ -87,7 +89,7 @@ export interface DataGridProps {
 const MIN_COLUMN_WIDTH = 48
 const MAX_COLUMN_WIDTH = 1200
 
-function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElement | null>): {
+function useVirtualRange(rowCount: number, resetKey: unknown, containerRef: RefObject<HTMLDivElement | null>): {
   range: VirtualRange
   onScroll: () => void
 } {
@@ -120,7 +122,7 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
     const element = containerRef.current
     if (element !== null) element.scrollTop = 0
     setScrollTop(0)
-  }, [rowCount, containerRef])
+  }, [rowCount, resetKey, containerRef])
 
   const onScroll = useCallback(() => {
     if (frame.current !== 0) return
@@ -163,6 +165,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     onCellClick,
     onCellOpen,
     storageKey,
+    resetKey,
     sort,
     sortColumn,
     onSort,
@@ -189,7 +192,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   const dragged = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
-  const { range, onScroll } = useVirtualRange(rows.length, containerRef)
+  const { range, onScroll } = useVirtualRange(rows.length, resetKey, containerRef)
   const visible = rows.slice(range.start, range.end)
 
   const openMenu = useCallback((items: ColumnMenuItem[], clientX: number, clientY: number): void => {

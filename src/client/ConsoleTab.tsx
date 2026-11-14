@@ -2621,6 +2621,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
                 rowNumbers={rowNumbers}
                 storageKey="console:sql"
                 widthColumnCount={displayColumns.length}
+                resetKey={result}
                 sort={rowSort}
                 sortColumn={rowSort?.index !== undefined ? (columns[rowSort.index] ?? null) : null}
                 onSort={gridSort}
