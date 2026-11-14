@@ -1262,7 +1262,7 @@ final class SqlExecutor {
         }
         if (raw instanceof Array) {
             try {
-                return cap(String.valueOf(((Array) raw).getArray()));
+                return cap(arrayText((Array) raw));
             } catch (SQLException error) {
                 return "<array>";
             }
@@ -1272,6 +1272,53 @@ final class SqlExecutor {
         } catch (SQLException error) {
             return cap(String.valueOf(raw));
         }
+    }
+
+    /**
+     * JDBC returns arrays as Java arrays, not strings; {@code String.valueOf}
+     * on the nested array prints its JVM identity. Render the elements instead
+     * so PostgreSQL/Oracle array columns are readable in the grid.
+     */
+    static String arrayText(Array array) throws SQLException {
+        Object value = array.getArray();
+        if (value == null) {
+            return null;
+        }
+        StringBuilder text = new StringBuilder();
+        appendArray(text, value);
+        return text.toString();
+    }
+
+    private static void appendArray(StringBuilder text, Object value) {
+        if (value == null) {
+            text.append("NULL");
+            return;
+        }
+        if (value instanceof Object[]) {
+            Object[] items = (Object[]) value;
+            text.append('[');
+            for (int i = 0; i < items.length; i++) {
+                if (i > 0) {
+                    text.append(", ");
+                }
+                appendArray(text, items[i]);
+            }
+            text.append(']');
+            return;
+        }
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            text.append('[');
+            for (int i = 0; i < length; i++) {
+                if (i > 0) {
+                    text.append(", ");
+                }
+                appendArray(text, java.lang.reflect.Array.get(value, i));
+            }
+            text.append(']');
+            return;
+        }
+        text.append(String.valueOf(value));
     }
 
     private static String cap(String text) {
