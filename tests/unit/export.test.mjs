@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { exportFilename, jsonValue, renderExport, toJson, toMarkdown, toTsv } from '../../src/client/export.js'
+import { exportFilename, jsonValue, renderExport, safeFilename, toJson, toMarkdown, toTsv } from '../../src/client/export.js'
 
 const columns = (...names) => names.map((name) => ({ name, typeName: 'varchar', kind: 'text' }))
 
@@ -78,5 +78,14 @@ describe('exportFilename', () => {
     expect(exportFilename('shop', 'orders', 'md', new Date(2026, 9, 23, 1, 2, 3))).toBe('shop.orders-20261023-010203.md')
     expect(exportFilename('shop', 'orders', 'json', new Date(2026, 9, 23, 1, 2, 3))).toBe('shop.orders-20261023-010203.json')
     expect(exportFilename('shop', 'orders', 'sql', new Date(2026, 9, 23, 1, 2, 3))).toBe('shop.orders-20261023-010203.sql')
+  })
+
+  it('replaces characters that browsers or Windows reject in a filename', () => {
+    expect(safeFilename('shop/orders:2024*.csv')).toBe('shop_orders_2024_.csv')
+    expect(safeFilename('..\\secret.sql')).toBe('__secret.sql')
+    expect(safeFilename('.hidden.csv')).toBe('_hidden.csv')
+    expect(safeFilename('CON.sql')).toBe('_CON.sql')
+    expect(safeFilename('report. ')).toBe('report')
+    expect(safeFilename('   ')).toBe('download')
   })
 })

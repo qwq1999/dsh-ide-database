@@ -114,13 +114,29 @@ export function toMarkdown(columns: ColumnInfo[], rows: Row[]): string {
   return `${[head, divider, ...body].join('\n')}\n`
 }
 
+/**
+ * Keep a browser download on disk instead of letting a schema or table name
+ * with a slash, colon or wildcard turn into a path or an invalid Windows name.
+ * The display name in menus stays untouched; only the saved file is sanitised.
+ */
+export function safeFilename(filename: string, fallback = 'download'): string {
+  let cleaned = filename
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/gu, '_')
+    .replace(/[. ]+$/u, '')
+    .trim()
+  if (cleaned === '') return fallback
+  if (/^\.+/u.test(cleaned)) cleaned = `_${cleaned.replace(/^\.+/u, '')}`
+  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(cleaned)) cleaned = `_${cleaned}`
+  return cleaned
+}
+
 export function downloadText(filename: string, mime: string, text: string): void {
   const bom = mime.startsWith('text/csv') ? '\ufeff' : ''
   const blob = new Blob([bom, text], { type: `${mime};charset=utf-8` })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = safeFilename(filename)
   document.body.appendChild(link)
   link.click()
   link.remove()
