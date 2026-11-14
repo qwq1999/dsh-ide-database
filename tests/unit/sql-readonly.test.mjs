@@ -200,6 +200,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql("WITH c AS (SELECT 'a\\'' AS x) SELECT * FROM c", 'mysql')).toBe(true)
   })
 
+  it('honours PostgreSQL escape-string backslashes before a quote', () => {
+    expect(isReadOnlySql("SELECT E'a\\''; DELETE FROM t", 'postgres')).toBe(false)
+    expect(isReadOnlySql("SELECT e'a\\''; SELECT 1", 'postgres')).toBe(false)
+    expect(isReadOnlySql("SELECT E'a\\''", 'postgres')).toBe(true)
+    expect(isReadOnlySql("SELECT E'it\\'s fine'", 'postgres')).toBe(true)
+    expect(isReadOnlySql("WITH c AS (SELECT E'a\\'' AS x) SELECT * FROM c", 'postgres')).toBe(true)
+    expect(isReadOnlySql("WITH c AS (SELECT E'it\\'s)' AS x) SELECT * FROM c", 'postgres')).toBe(true)
+  })
+
   it('treats # as a comment only in MySQL-family dialects', () => {
     expect(isReadOnlySql('# fetch orders\nSELECT 1', 'mysql')).toBe(true)
     // Generic text cannot start with #; SQL Server allows #temp identifiers.

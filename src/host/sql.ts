@@ -70,6 +70,14 @@ function readWord(text: string, index: number): { word: string; end: number } {
   return { word: text.slice(index, end).toLowerCase(), end }
 }
 
+/** PostgreSQL E'...' strings interpret backslash escapes; ordinary strings do not. */
+function isPostgresEscapeString(text: string, quoteIndex: number): boolean {
+  const prefix = text[quoteIndex - 1]
+  if (prefix !== 'E' && prefix !== 'e') return false
+  const before = text[quoteIndex - 2]
+  return before === undefined || !isWordChar(before)
+}
+
 /** Index of the parenthesis closing the one at `open`, skipping quoted text and comments. */
 function bracketIdentifierEnd(text: string, index: number): number | null {
   if (text[index] !== '[') return null
@@ -123,9 +131,11 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
     }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
-      // MySQL backslash-escapes quotes inside strings; treating `\'` as a
-      // closing quote would hide a later `; DELETE` from the guard.
-      const escapes = dialect === 'mysql' && quote !== '`'
+      // MySQL strings and PostgreSQL E'...' strings backslash-escape quotes;
+      // treating `\'` as a closing quote would hide a later `; DELETE`.
+      const escapes =
+        (dialect === 'mysql' && quote !== '`') ||
+        (dialect === 'postgres' && quote === "'" && isPostgresEscapeString(text, index))
       index += 1
       while (index < text.length) {
         if (escapes && text[index] === '\\') {
@@ -287,7 +297,9 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
     }
     if (char === "'" || char === '"' || char === '`') {
       const quote = char
-      const escapes = dialect === 'mysql' && quote !== '`'
+      const escapes =
+        (dialect === 'mysql' && quote !== '`') ||
+        (dialect === 'postgres' && quote === "'" && isPostgresEscapeString(text, index))
       index += 1
       while (index < text.length) {
         if (escapes && text[index] === '\\') {
