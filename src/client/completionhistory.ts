@@ -105,7 +105,9 @@ export function completionFrequency(): Record<string, number> {
   const store = storage()
   if (store === undefined) return {}
   const entries = [...readPicks(store)].sort((left, right) => right[1] - left[1])
-  const counts: Record<string, number> = {}
+  // Completion names can be quoted identifiers such as `__proto__`; a plain
+  // object would send that assignment through the prototype setter.
+  const counts = Object.create(null) as Record<string, number>
   for (const [name, count] of entries.slice(0, MAX_FREQUENCY_ENTRIES)) counts[name] = count
   return counts
 }
