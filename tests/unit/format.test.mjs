@@ -69,6 +69,46 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
   })
 
+  it('treats the same pure Redis commands as the host guard', () => {
+    const reads = [
+      'XREAD',
+      'LINDEX',
+      'ZCOUNT',
+      'ZLEXCOUNT',
+      'ZRANK',
+      'ZREVRANK',
+      'ZMSCORE',
+      'HSTRLEN',
+      'HEXISTS',
+      'HRANDFIELD',
+      'GETBIT',
+      'BITPOS',
+      'GEOHASH',
+      'GEOSEARCH',
+      'PFCOUNT',
+      'SINTER',
+      'SUNION',
+      'SDIFF',
+      'SMISMEMBER',
+      'ZRANDMEMBER',
+      'ZUNION',
+      'ZINTER',
+      'ZINTERCARD',
+      'SINTERCARD',
+      'ZDIFF',
+      'SORT_RO',
+      'LCS',
+      'EXPIRETIME',
+      'PEXPIRETIME',
+      'GEORADIUS_RO',
+      'GEORADIUSBYMEMBER_RO',
+    ]
+    for (const command of reads) expect(looksLikeRedisWrite(`${command} key`)).toBe(false)
+    for (const command of ['ZUNIONSTORE', 'ZINTERSTORE', 'SINTERSTORE', 'SET', 'DEL']) {
+      expect(looksLikeRedisWrite(`${command} key`)).toBe(true)
+    }
+  })
+
   it('looks inside CTEs and files when deciding whether to confirm', () => {
     expect(looksLikeWrite('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(true)
     expect(looksLikeWrite('WITH d AS (SELECT 1) SELECT * FROM d')).toBe(false)

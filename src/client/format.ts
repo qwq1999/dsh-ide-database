@@ -383,10 +383,40 @@ const REDIS_READ = new Set([
   'geopos',
   'geodist',
   'georadius_ro',
+  'xread',
+  'lindex',
+  'zcount',
+  'zlexcount',
+  'zrank',
+  'zrevrank',
+  'zmscore',
+  'hstrlen',
+  'hexists',
+  'hrandfield',
+  'getbit',
+  'bitpos',
+  'geohash',
+  'geosearch',
+  'pfcount',
+  'sinter',
+  'sunion',
+  'sdiff',
+  'smismember',
+  'zrandmember',
+  'zunion',
+  'zinter',
+  'zintercard',
+  'sintercard',
+  'zdiff',
+  'sort_ro',
+  'lcs',
+  'expiretime',
+  'pexpiretime',
+  'georadiusbymember_ro',
 ])
 
 function redisCommandName(command: string): string {
-  const match = /^\s*([a-zA-Z]+)/.exec(command)
+  const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)/.exec(command)
   return match?.[1]?.toLowerCase() ?? ''
 }
 
