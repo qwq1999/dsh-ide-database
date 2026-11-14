@@ -258,6 +258,20 @@ function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): s
   return value ? 'TRUE' : 'FALSE'
 }
 
+/** Whether the column is displayed as a boolean cell by the bridge. */
+function isBooleanType(typeName: string | undefined, dialect: ClientConnection['dialect']): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase().split(/\s+/u)[0] ?? ''
+  if (base === 'bool' || base === 'boolean') return true
+  // MySQL's BIT/TINYINT(1) and SQL Server's BIT come back as booleans; in
+  // PostgreSQL BIT is a bit string, so it must keep its string literal.
+  if (base === 'bit') {
+    return dialect === 'mysql' || dialect === 'mssql'
+  }
+  // MySQL has no real boolean type; the bridge maps TINYINT(1) to a boolean.
+  return dialect === 'mysql' && base === 'tinyint'
+}
+
 function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo, value: CellValue): string {
   if (value === null) return 'NULL'
   if (typeof value === 'boolean') return booleanLiteral(dialect, value)
@@ -396,6 +410,9 @@ export function filterExpression(
   const text = filter.text.trim()
   if (text === '') return undefined
   if (filter.op === 'eq') {
+    if (isBooleanType(column.typeName, dialect) && /^(?:true|false)$/iu.test(text)) {
+      return `${name} = ${booleanLiteral(dialect, text.toLowerCase() === 'true')}`
+    }
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
     if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     return `${name} = ${quoteLiteral(text, dialect)}`

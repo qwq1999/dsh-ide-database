@@ -78,6 +78,19 @@ describe('filterExpression', () => {
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'isnull', text: '' })).toBe('`city` IS NULL')
   })
 
+  it('filters boolean cells with a boolean literal instead of a string', () => {
+    expect(filterExpression('mysql', column('active', 'tinyint(1)'), { op: 'eq', text: 'true' })).toBe('`active` = TRUE')
+    expect(filterExpression('mysql', column('active', 'tinyint(1)'), { op: 'eq', text: 'false' })).toBe('`active` = FALSE')
+    expect(filterExpression('mssql', column('active', 'bit'), { op: 'eq', text: 'false' })).toBe('[active] = 0')
+    expect(filterExpression('postgres', column('active', 'bool'), { op: 'eq', text: 'true' })).toBe('"active" = TRUE')
+    // PostgreSQL BIT is a bit string, not a boolean.
+    expect(filterExpression('postgres', column('flags', 'bit'), { op: 'eq', text: 'true' })).toBe('"flags" = \'true\'')
+    // A text column that happens to contain the word true is still text.
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'eq', text: 'true' })).toBe('"name" = \'true\'')
+    // Numeric TINYINT values keep their numeric form.
+    expect(filterExpression('mysql', column('count', 'tinyint'), { op: 'eq', text: '2' })).toBe('`count` = 2')
+  })
+
   it('treats a numeric string on a text column as a literal and skips empty text', () => {
     expect(filterExpression('mysql', column('code', 'varchar(10)'), { op: 'eq', text: '42' })).toBe("`code` = '42'")
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '  ' })).toBeUndefined()
