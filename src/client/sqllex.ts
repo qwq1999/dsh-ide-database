@@ -68,6 +68,27 @@ export function dollarDelimiterAt(input: string, index: number): string | null {
 }
 
 /**
+ * The end (exclusive) of the SQL Server bracket identifier starting at `index`,
+ * or null when it is not closed. `]]` escapes a closing bracket inside the name.
+ * A missing terminator is left to the normal scanner.
+ */
+export function bracketIdentifierEnd(input: string, index: number): number | null {
+  if (input[index] !== '[') return null
+  let cursor = index + 1
+  while (cursor < input.length) {
+    if (input[cursor] === ']') {
+      if (input[cursor + 1] === ']') {
+        cursor += 2
+        continue
+      }
+      return cursor + 1
+    }
+    cursor += 1
+  }
+  return null
+}
+
+/**
  * Replace string literals and comments with spaces of the same length, so a
  * caller can scan the result for keywords without matching text inside a
  * literal. Double quotes and backticks are identifiers to table inference but
@@ -117,6 +138,14 @@ export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentif
           index = end
           continue
         }
+      }
+    }
+    if (char === '[' && dialect === 'mssql' && maskQuotedIdentifiers) {
+      const end = bracketIdentifierEnd(text, index)
+      if (end !== null) {
+        out += ' '.repeat(end - index)
+        index = end
+        continue
       }
     }
     const masked = char === "'" || (maskQuotedIdentifiers && (char === '"' || char === '`'))

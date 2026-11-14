@@ -1,5 +1,5 @@
 import type { SqlDialect } from '../shared/types'
-import { backslashEscapes, dashStartsComment, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
+import { backslashEscapes, bracketIdentifierEnd, dashStartsComment, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
 
 /**
  * Split a SQL script into individual statements.
@@ -41,6 +41,17 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
           index = close + delimiter.length
           continue
         }
+      }
+    }
+
+    // SQL Server bracket identifiers may contain semicolons; keep the whole
+    // name together so `[a;b]` does not become two statements.
+    if (char === '[' && dialect === 'mssql') {
+      const end = bracketIdentifierEnd(input, index)
+      if (end !== null) {
+        current += input.slice(index, end)
+        index = end
+        continue
       }
     }
 

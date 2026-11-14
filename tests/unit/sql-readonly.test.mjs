@@ -44,6 +44,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql("select q'[it's; fine]' from dual; delete from t")).toBe(false)
   })
 
+  it('accepts semicolons and INTO inside SQL Server bracket identifiers', () => {
+    expect(isReadOnlySql('select [a;b] from t')).toBe(true)
+    expect(isReadOnlySql('select [a into b] from t')).toBe(true)
+    expect(isReadOnlySql('select [a]];b] from t')).toBe(true)
+    expect(isReadOnlySql('select [a;b] from t; delete from t')).toBe(false)
+    expect(isReadOnlySql('select [a;b')).toBe(false)
+    expect(isReadOnlySql('WITH c AS (select [a)] as x from t) select * from c')).toBe(true)
+  })
+
   it('rejects a second statement after a semicolon', () => {
     expect(isReadOnlySql('SELECT 1; DELETE FROM t')).toBe(false)
     expect(isReadOnlySql('select 1; select 2')).toBe(false)

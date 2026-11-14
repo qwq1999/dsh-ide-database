@@ -66,10 +66,34 @@ function readWord(text: string, index: number): { word: string; end: number } {
 }
 
 /** Index of the parenthesis closing the one at `open`, skipping quoted text and comments. */
+function bracketIdentifierEnd(text: string, index: number): number | null {
+  if (text[index] !== '[') return null
+  let cursor = index + 1
+  while (cursor < text.length) {
+    if (text[cursor] === ']') {
+      if (text[cursor + 1] === ']') {
+        cursor += 2
+        continue
+      }
+      return cursor + 1
+    }
+    cursor += 1
+  }
+  return null
+}
+
 function matchingParen(text: string, open: number): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
     const char = text[index]
+    // SQL Server bracket identifiers may contain parentheses and semicolons.
+    if (char === '[') {
+      const end = bracketIdentifierEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        continue
+      }
+    }
     // Literals may contain parentheses that do not affect nesting.
     if (char === '$') {
       const end = dollarQuotedLiteralEnd(text, index)
@@ -217,6 +241,16 @@ function withoutLiterals(text: string): string {
     // PostgreSQL dollar quoting hides semicolons inside a plain SELECT.
     if (char === '$') {
       const end = dollarQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        index = end - 1
+        out += ' '
+        continue
+      }
+    }
+    // SQL Server bracket identifiers may contain semicolons and look like
+    // writes (`[a into b]`); blank them like other quoted identifiers.
+    if (char === '[') {
+      const end = bracketIdentifierEnd(text, index)
       if (end !== null) {
         index = end - 1
         out += ' '

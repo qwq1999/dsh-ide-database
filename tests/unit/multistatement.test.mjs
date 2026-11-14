@@ -61,6 +61,16 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1 -- note; x\n; select 2', 'mysql')).toEqual(['select 1 -- note; x', 'select 2'])
   })
 
+  it('keeps SQL Server bracket identifiers in one statement', () => {
+    expect(splitStatements('select [a;b] from t; select 2', 'mssql')).toEqual(['select [a;b] from t', 'select 2'])
+    expect(splitStatements('select [a]];b] from t; select 2', 'mssql')).toEqual([
+      'select [a]];b] from t',
+      'select 2',
+    ])
+    // Other dialects have no bracket identifiers, so the semicolon still ends a statement.
+    expect(splitStatements('select [a;b] from t', 'generic')).toEqual(['select [a', 'b] from t'])
+  })
+
   it('keeps PostgreSQL dollar-quoted bodies in one statement', () => {
     const body = 'create function bump() returns int as $$ begin; return 1; end $$ language plpgsql;'
     expect(splitStatements(`${body}\nselect bump()`)).toEqual([body.slice(0, -1), 'select bump()'])

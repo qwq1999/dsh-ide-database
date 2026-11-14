@@ -41,6 +41,10 @@ describe('pageable', () => {
     expect(pageable('SELECT 5--3; SELECT 2', 'mysql')).toBe(false)
     // Outside MySQL a backslash is data; the closing quote must be found here.
     expect(pageable("SELECT 'C:\\'; SELECT 2", 'mssql')).toBe(false)
+    // SQL Server bracket identifiers are names, not keywords or separators.
+    expect(pageable('SELECT [limit] FROM t', 'mssql')).toBe(true)
+    expect(pageable('SELECT [a;b] FROM t', 'mssql')).toBe(true)
+    expect(pageable('SELECT [a;b] FROM t; SELECT 2', 'mssql')).toBe(false)
   })
 
   it('rejects anything that is not one plain SELECT', () => {
