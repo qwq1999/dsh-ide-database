@@ -120,6 +120,7 @@ describe('format helpers', () => {
     expect(looksLikeWrite('BEGIN\n  DELETE FROM users\nEND', 'mssql')).toBe(true)
     expect(looksLikeWrite('BEGIN TRANSACTION\nDELETE FROM users', 'mssql')).toBe(true)
     expect(looksLikeWrite('BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH', 'mssql')).toBe(false)
+    expect(looksLikeWrite('BEGIN\n  SELECT * INTO #tmp FROM users\nEND', 'mssql')).toBe(true)
   })
 
   it('recognizes SQL Server IF and WHILE bodies that contain writes', () => {
@@ -127,6 +128,8 @@ describe('format helpers', () => {
     expect(looksLikeWrite('WHILE 1 = 1 UPDATE users SET active = 1', 'mssql')).toBe(true)
     expect(looksLikeWrite('IF 1 = 1 SELECT 1', 'mssql')).toBe(false)
     expect(looksLikeWrite('WHILE 1 = 1 SELECT 1', 'mssql')).toBe(false)
+    expect(looksLikeWrite('IF EXISTS (SELECT 1 FROM users) SELECT * INTO #tmp FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('WHILE 1 = 1 SELECT * INTO #tmp FROM users', 'mssql')).toBe(true)
     expect(looksLikeWrite('IF 1 = 1 DELETE FROM users', 'mysql')).toBe(false)
   })
 
