@@ -99,6 +99,37 @@ export function isTemporalType(typeName: string | undefined): boolean {
   return /^(date|datetime|timestamp)/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }
 
+/** Character-family columns can be compared with LIKE without a cast. */
+export function isTextType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
+  return /^(?:bpchar|character|char|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(base)
+}
+
+/**
+ * PostgreSQL, Oracle and SQL Server reject `integer LIKE '1%'`: LIKE needs
+ * character input. Cast other columns to text so the table's filter row keeps
+ * working for numbers, dates, UUIDs and arrays.
+ */
+function textExpression(dialect: ClientConnection['dialect'], name: string, typeName: string | undefined): string {
+  if (isTemporalType(typeName)) {
+    // The grid shows the bridge's ISO text, so format temporal columns the
+    // same way instead of trusting the session's NLS / language settings.
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+      return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    }
+    if (dialect === 'mssql') return `CONVERT(VARCHAR(23), ${name}, 121)`
+  }
+  if (dialect === 'mysql') return `CAST(${name} AS CHAR)`
+  if (dialect === 'mssql') return `CAST(${name} AS NVARCHAR(MAX))`
+  if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+    return `TO_CHAR(${name})`
+  }
+  if (dialect === 'sqlite') return `CAST(${name} AS TEXT)`
+  if (dialect === 'postgres') return `CAST(${name} AS TEXT)`
+  return `CAST(${name} AS VARCHAR(4000))`
+}
+
 /**
  * Oracle compares a DATE or TIMESTAMP column with a bare string by converting
  * that string with NLS_DATE_FORMAT / NLS_TIMESTAMP_FORMAT, which does not accept
@@ -226,7 +257,8 @@ export function filterExpression(
     if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
-  return `${name} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
+  const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
+  return `${target} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
 }
 
 /**

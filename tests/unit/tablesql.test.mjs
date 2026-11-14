@@ -81,6 +81,30 @@ describe('filterExpression', () => {
     expect(filterExpression('mysql', column('code', 'varchar(10)'), { op: 'eq', text: '42' })).toBe("`code` = '42'")
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '  ' })).toBeUndefined()
   })
+
+  it('casts non-text columns before a contains filter', () => {
+    expect(filterExpression('postgres', column('id', 'integer'), { op: 'like', text: '12' })).toBe(
+      `CAST("id" AS TEXT) LIKE '%12%'`,
+    )
+    expect(filterExpression('postgres', column('created', 'timestamp(6)'), { op: 'like', text: '2024' })).toBe(
+      `CAST("created" AS TEXT) LIKE '%2024%'`,
+    )
+    expect(filterExpression('mysql', column('id', 'int'), { op: 'like', text: '12' })).toBe(
+      "CAST(`id` AS CHAR) LIKE '%12%'",
+    )
+    expect(filterExpression('oracle', column('ID', 'NUMBER'), { op: 'like', text: '12' })).toBe(
+      `TO_CHAR("ID") LIKE '%12%'`,
+    )
+    expect(filterExpression('oracle', column('created', 'DATE'), { op: 'like', text: '2024' })).toBe(
+      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%'`,
+    )
+    expect(filterExpression('mssql', column('created', 'datetime'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%'`,
+    )
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'ab' })).toBe(
+      `"name" LIKE '%ab%'`,
+    )
+  })
 })
 
 describe('composeWhere', () => {
