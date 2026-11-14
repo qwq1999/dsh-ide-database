@@ -24,8 +24,19 @@ describe('keyboard sorting', () => {
     fireEvent.keyDown(header, { key: 'Enter' })
     fireEvent.keyDown(header, { key: ' ' })
 
-    expect(onSort).toHaveBeenNthCalledWith(1, columns[0])
-    expect(onSort).toHaveBeenNthCalledWith(2, columns[0])
+    expect(onSort).toHaveBeenNthCalledWith(1, columns[0], 0)
+    expect(onSort).toHaveBeenNthCalledWith(2, columns[0], 0)
+  })
+
+  it('passes the display index for duplicate column names', () => {
+    const onSort = vi.fn()
+    const duplicate = [
+      { name: 'id', typeName: 'INTEGER' },
+      { name: 'id', typeName: 'INTEGER' },
+    ]
+    render(<DataGrid columns={duplicate} rows={[[1, 2]]} offset={0} onSort={onSort} />)
+    fireEvent.click(screen.getAllByRole('columnheader', { name: /^id/ })[1] as HTMLElement)
+    expect(onSort).toHaveBeenCalledWith(duplicate[1], 1)
   })
 
   it('ignores other keys and leaves non-sortable headers out of the tab order', () => {

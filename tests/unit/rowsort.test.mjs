@@ -16,6 +16,11 @@ describe('nextRowSort', () => {
   it('starts a new column at ascending', () => {
     expect(nextRowSort({ column: 'id', direction: 'desc' }, 'name')).toEqual({ column: 'name', direction: 'asc' })
   })
+
+  it('keeps duplicate column names on separate sort states', () => {
+    expect(nextRowSort({ column: 'id', index: 0, direction: 'asc' }, 'id', 1)).toEqual({ column: 'id', direction: 'asc', index: 1 })
+    expect(nextRowSort({ column: 'id', index: 0, direction: 'desc' }, 'id', 0)).toBeNull()
+  })
 })
 
 describe('sortRows', () => {
@@ -57,6 +62,20 @@ describe('sortRows', () => {
       'item9',
       'item10',
     ])
+  })
+
+  it('sorts the column selected by index when two columns share a name', () => {
+    const duplicate = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'id', typeName: 'INT' },
+    ]
+    const page = [
+      [1, 30],
+      [2, 10],
+      [3, 20],
+    ]
+    expect(sortRowsWithOrder(duplicate, page, { column: 'id', index: 1, direction: 'asc' }).rows.map((row) => row[0])).toEqual([2, 3, 1])
+    expect(sortRowsWithOrder(duplicate, page, { column: 'id', direction: 'asc' }).rows.map((row) => row[0])).toEqual([1, 2, 3])
   })
 
   it('does not mutate the page it was given', () => {

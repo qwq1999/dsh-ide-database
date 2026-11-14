@@ -1335,12 +1335,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     writeHidden('console:sql', hiddenColumns)
   }, [hiddenColumns])
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
-    const active = rowSort?.column === column.name ? rowSort.direction : null
-    const index = columns.findIndex((item) => item.name === column.name)
+    const index = columns.findIndex((item) => item === column)
+    const active =
+      rowSort?.column === column.name && (rowSort.index === undefined || rowSort.index === index)
+        ? rowSort.direction
+        : null
     const binary = isBinaryType(column.typeName, connection?.dialect)
     return [
-      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
-      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
+      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, index, direction: 'asc' }) },
+      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, index, direction: 'desc' }) },
       { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
       { label: `复制列名「${column.name}」`, run: () => void copyText(column.name).then(noteCopied('列名')) },
       {
@@ -1403,9 +1406,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }, [columns, displayColumns, filteredRows, hiddenCount, rowSort, shownColumns.length])
 
   /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
-  const gridSort = useCallback((column: ColumnInfo): void => {
-    setRowSort((current) => nextRowSort(current, column.name))
-  }, [])
+  const gridSort = useCallback(
+    (column: ColumnInfo, index: number): void => {
+      // The grid only knows display indexes; object identity still points at the
+      // original result column when headers are reordered or hidden.
+      const source = columns.findIndex((item) => item === column)
+      setRowSort((current) => nextRowSort(current, column.name, source >= 0 ? source : index))
+    },
+    [columns],
+  )
   const gridReorder = useCallback(
     (from: number, to: number): void => {
       // The grid reorders the columns it renders; translate back to display slots.

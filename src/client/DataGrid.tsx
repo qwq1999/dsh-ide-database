@@ -61,7 +61,7 @@ export interface DataGridProps {
   /** Active sort; the matching header shows an arrow. */
   sort?: { column: string; direction: 'asc' | 'desc' } | null
   /** Clicking a header asks the page to sort by that column. */
-  onSort?: (column: ColumnInfo) => void
+  onSort?: (column: ColumnInfo, index: number) => void
   /** Right-click menu entries per column; headers open a context menu when set. */
   headerMenu?: (column: ColumnInfo) => ColumnMenuItem[]
   /** Right-click menu entries for a result cell. */
@@ -338,7 +338,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                         if (event.key !== 'Enter' && event.key !== ' ') return
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
                         event.preventDefault()
-                        onSort(column)
+                        onSort(column, index)
                       }
                 }
                 draggable={onReorderColumns !== undefined}
@@ -377,7 +377,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                           return
                         }
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
-                        onSort(column)
+                        onSort(column, index)
                       }
                 }
                 onContextMenu={
