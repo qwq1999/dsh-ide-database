@@ -144,7 +144,7 @@ export function downloadText(filename: string, mime: string, text: string): void
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** A filesystem-safe name stamped with the export time. */
+/** A readable file name stamped with the export time; `downloadText` sanitises it. */
 export function exportFilename(schema: string, table: string, format: ExportFormat, now = new Date()): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
