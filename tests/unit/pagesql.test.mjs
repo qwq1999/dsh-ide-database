@@ -34,6 +34,15 @@ describe('pageable', () => {
     expect(pageable('/* fetch first 5 rows */ SELECT * FROM shop.orders')).toBe(true)
   })
 
+  it('reads literals and comments with the connection dialect', () => {
+    expect(pageable('SELECT $$a;b$$ FROM t', 'postgres')).toBe(true)
+    expect(pageable("SELECT q'[it's; fine]' FROM dual", 'oracle')).toBe(true)
+    // MySQL only starts `--` comments after whitespace, so this is two statements.
+    expect(pageable('SELECT 5--3; SELECT 2', 'mysql')).toBe(false)
+    // Outside MySQL a backslash is data; the closing quote must be found here.
+    expect(pageable("SELECT 'C:\\'; SELECT 2", 'mssql')).toBe(false)
+  })
+
   it('rejects anything that is not one plain SELECT', () => {
     expect(pageable('UPDATE t SET a = 1')).toBe(false)
     expect(pageable('SELECT 1; SELECT 2')).toBe(false)

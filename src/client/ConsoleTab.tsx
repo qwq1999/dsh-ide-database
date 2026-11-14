@@ -655,7 +655,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setFailure(null)
       setMultiNote('')
       try {
-        const paged = pageable(text)
+        const paged = pageable(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
         const showAll = target.size === ALL_PAGE_SIZE
         const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
         const maxRows = showAll ? ALL_ROWS : target.size
