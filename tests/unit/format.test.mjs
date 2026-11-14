@@ -36,6 +36,9 @@ describe('format helpers', () => {
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(1023.6)).toBe('1.0 KB')
     expect(formatBytes(2048)).toBe('2.0 KB')
+    expect(formatBytes(1048575.6)).toBe('1.0 MB')
+    expect(formatBytes(Number.NaN)).toBe('')
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('')
   })
 
   it('formats nullable cells', () => {
