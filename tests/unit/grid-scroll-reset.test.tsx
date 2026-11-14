@@ -20,4 +20,19 @@ describe('grid scroll position', () => {
     rerender(<DataGrid columns={columns} rows={rows} offset={250} resetKey={1} />)
     await waitFor(() => expect(wrap.scrollTop).toBe(0))
   })
+
+  it('keeps the position when auto refresh changes the row count on the same page', async () => {
+    const { container, rerender } = render(
+      <DataGrid columns={columns} rows={rows} offset={0} resetKey="page:1" />,
+    )
+    const wrap = container.querySelector('.dshdb-grid-wrap') as HTMLDivElement
+    wrap.scrollTop = 400
+    fireEvent.scroll(wrap)
+    expect(wrap.scrollTop).toBe(400)
+
+    const more = Array.from({ length: 260 }, (_, index) => [index])
+    rerender(<DataGrid columns={columns} rows={more} offset={0} resetKey="page:1" />)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(wrap.scrollTop).toBe(400)
+  })
 })

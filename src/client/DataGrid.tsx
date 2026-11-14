@@ -117,12 +117,15 @@ function useVirtualRange(rowCount: number, resetKey: unknown, containerRef: RefO
     return () => observer.disconnect()
   }, [measure])
 
-  // A different page or result set starts back at the top.
+  // A different page or result set starts back at the top. When the page passes
+  // an explicit reset key, a changing row count alone (auto refresh) must not
+  // move the user away from where they were reading.
+  const resetValue = resetKey === undefined ? rowCount : resetKey
   useEffect(() => {
     const element = containerRef.current
     if (element !== null) element.scrollTop = 0
     setScrollTop(0)
-  }, [rowCount, resetKey, containerRef])
+  }, [resetValue, containerRef])
 
   const onScroll = useCallback(() => {
     if (frame.current !== 0) return
