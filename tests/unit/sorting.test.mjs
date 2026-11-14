@@ -16,6 +16,20 @@ describe('table sorting expressions', () => {
     expect(parseOrderBy('LOWER(name)')).toBeUndefined()
   })
 
+  it('reads quoted names with spaces and escaped quotes', () => {
+    expect(parseOrderBy('`Order Date` DESC')).toEqual({ column: 'Order Date', direction: 'desc' })
+    expect(parseOrderBy('"a""b" asc')).toEqual({ column: 'a"b', direction: 'asc' })
+    expect(parseOrderBy('[Order Details] DESC')).toEqual({ column: 'Order Details', direction: 'desc' })
+    expect(parseOrderBy('[a]]b]')).toEqual({ column: 'a]b', direction: 'asc' })
+    expect(parseOrderBy("'Order Date'")).toEqual({ column: 'Order Date', direction: 'asc' })
+    expect(parseOrderBy('`a DESC`')).toEqual({ column: 'a DESC', direction: 'asc' })
+  })
+
+  it('cycles a quoted column with spaces through asc and desc', () => {
+    expect(nextOrderBy('`Order Date` ASC', 'Order Date', '`Order Date`')).toBe('`Order Date` DESC')
+    expect(nextOrderBy('`Order Date` DESC', 'Order Date', '`Order Date`')).toBe('')
+  })
+
   it('cycles none -> ASC -> DESC -> none', () => {
     expect(nextOrderBy('', 'city', '`city`')).toBe('`city` ASC')
     expect(nextOrderBy('`city` ASC', 'city', '`city`')).toBe('`city` DESC')
@@ -31,6 +45,7 @@ describe('table sorting expressions', () => {
     expect(quoteSortColumn('mysql', 'order')).toBe('`order`')
     expect(quoteSortColumn('oracle', 'order')).toBe('"order"')
     expect(quoteSortColumn('dameng', 'a"b')).toBe('"a""b"')
+    expect(quoteSortColumn('mssql', 'a]b')).toBe('[a]]b]')
   })
   it('strips a leading ORDER BY keyword, whatever its case or spelling', () => {
     expect(stripOrderBy('ORDER BY total DESC')).toBe('total DESC')
