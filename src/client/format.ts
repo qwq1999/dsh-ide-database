@@ -184,6 +184,8 @@ function withWriteParts(code: string): { bodies: string[]; statement: string } |
 }
 
 const SELECT_INTO_FILE = /\binto\s+(?:outfile|dumpfile)\b/iu
+const MSSQL_WRITE_WORD =
+  /\b(?:insert|update|delete|merge|truncate|create|alter|drop|exec(?:ute)?|backup|restore|bulk)\b/iu
 const MYSQL_EXECUTABLE_WRITE =
   /\/\*![\s\S]*?(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
 const SELECT_INTO_TABLE =
@@ -256,12 +258,8 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
   // may not use semicolons, so a DML keyword inside the same statement would
   // otherwise be missed. `BEGIN TRY ... END TRY` blocks without writes stay
   // read-only.
-  if (
-    head.word === 'begin' &&
-    dialect === 'mssql' &&
-    /\b(?:insert|update|delete|merge|truncate|create|alter|drop|exec(?:ute)?|backup|restore|bulk)\b/iu.test(head.rest)
-  ) {
-    return true
+  if (dialect === 'mssql' && (head.word === 'begin' || head.word === 'if' || head.word === 'while')) {
+    return MSSQL_WRITE_WORD.test(head.rest)
   }
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)

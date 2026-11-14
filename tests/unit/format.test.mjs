@@ -118,6 +118,14 @@ describe('format helpers', () => {
     expect(looksLikeWrite('BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH', 'mssql')).toBe(false)
   })
 
+  it('recognizes SQL Server IF and WHILE bodies that contain writes', () => {
+    expect(looksLikeWrite('IF EXISTS (SELECT 1 FROM users) DELETE FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('WHILE 1 = 1 UPDATE users SET active = 1', 'mssql')).toBe(true)
+    expect(looksLikeWrite('IF 1 = 1 SELECT 1', 'mssql')).toBe(false)
+    expect(looksLikeWrite('WHILE 1 = 1 SELECT 1', 'mssql')).toBe(false)
+    expect(looksLikeWrite('IF 1 = 1 DELETE FROM users', 'mysql')).toBe(false)
+  })
+
   it('recognizes bulk-load statements as writes', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
