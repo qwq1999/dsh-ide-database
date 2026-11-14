@@ -1329,7 +1329,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const signature = columnSignature(columns)
   useEffect(() => {
     setColumnOrder(null)
-    setHiddenColumns((current) => pruneHidden(current, columns))
+    // The first render has no columns yet; pruning then would erase the
+    // remembered hidden set before the result arrives, so keep it until the
+    // grid actually has a column list to prune against.
+    setHiddenColumns((current) => (columns.length === 0 ? current : pruneHidden(current, columns)))
   }, [signature, columns])
   useEffect(() => {
     writeHidden('console:sql', hiddenColumns)
