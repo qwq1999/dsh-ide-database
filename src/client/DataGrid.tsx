@@ -237,8 +237,8 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     const next = columns.map((column) => widths[oldIndex.get(column) ?? 0] ?? 0)
     if (next.every((width, index) => width === widths[index])) return
     setWidths(next)
-    if (storageKey !== undefined) writeWidths(storageKey, next)
-  }, [columns, widths, storageKey])
+    if (storageKey !== undefined && columns.length === widthColumnCount) writeWidths(storageKey, next)
+  }, [columns, widths, storageKey, widthColumnCount])
 
   const startResize = useCallback(
     (event: React.MouseEvent<HTMLSpanElement>, index: number) => {

@@ -87,6 +87,60 @@ describe('column width measuring', () => {
     })
   })
 
+  it('does not persist reordered visible widths while a column is hidden', async () => {
+    window.localStorage.setItem('dsh-ide-database.colwidths.v1', JSON.stringify({ 'hidden-reorder': [100, 200, 300] }))
+    const { rerender, container } = render(
+      <DataGrid
+        columns={columns}
+        rows={[[1, '手机', '638.00']]}
+        offset={0}
+        storageKey="hidden-reorder"
+        widthColumnCount={3}
+      />,
+    )
+    rerender(
+      <DataGrid
+        columns={[columns[0]!, columns[2]!]}
+        rows={[[1, '638.00']]}
+        offset={0}
+        storageKey="hidden-reorder"
+        widthColumnCount={3}
+      />,
+    )
+
+    const dataHeaders = [...document.querySelectorAll('th[data-column-index]')]
+    dataHeaders.forEach((cell, index) => {
+      cell.getBoundingClientRect = () => ({ width: [100, 300][index] ?? 0 } as DOMRect)
+    })
+    const grip = dataHeaders[0]?.querySelector('.dshdb-grip')
+    if (!(grip instanceof HTMLElement)) throw new Error('missing resize grip')
+    fireEvent.mouseDown(grip, { clientX: 0 })
+    fireEvent.mouseMove(document, { clientX: 20 })
+    fireEvent.mouseUp(document)
+
+    await waitFor(() => {
+      const painted = [...container.querySelectorAll('colgroup col')].map((col) => (col as HTMLElement).style.width)
+      expect(painted).toEqual(['34px', '120px', '300px'])
+    })
+
+    rerender(
+      <DataGrid
+        columns={[columns[2]!, columns[0]!]}
+        rows={[[1, '638.00']]}
+        offset={0}
+        storageKey="hidden-reorder"
+        widthColumnCount={3}
+      />,
+    )
+
+    await waitFor(() => {
+      const painted = [...container.querySelectorAll('colgroup col')].map((col) => (col as HTMLElement).style.width)
+      expect(painted).toEqual(['34px', '300px', '120px'])
+      const stored = JSON.parse(window.localStorage.getItem('dsh-ide-database.colwidths.v1') ?? '{}')
+      expect(stored['hidden-reorder']).toEqual([100, 200, 300])
+    })
+  })
+
   it('measures the data headers even when the selection column is present', () => {
     render(
       <DataGrid
