@@ -311,6 +311,11 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
     // PostgreSQL masks the body of a `DO` block as a string, so its DDL is
     // invisible here; any DO block may create or drop objects, so refresh.
     if (dialect === 'postgres' && /^\s*do\b/iu.test(analyzed)) return true
+    // Oracle PL/SQL blocks run DDL through `EXECUTE IMMEDIATE`; the block body
+    // is opaque here, so refresh after any anonymous block for safety.
+    if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && /^\s*(?:begin|declare)\b/iu.test(analyzed)) {
+      return true
+    }
     // T-SQL control-flow blocks can contain DDL or `SELECT ... INTO`; their
     // first word is BEGIN/IF/WHILE, so the anchored DDL test above misses them.
     if (dialect === 'mssql' && MSSQL_RENAME.test(analyzed)) return true

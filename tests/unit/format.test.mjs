@@ -192,6 +192,10 @@ describe('format helpers', () => {
     expect(looksLikeDdl("EXEC @rc = sp_rename 'dbo.users', 'customers'", 'mssql')).toBe(true)
     expect(looksLikeDdl('EXEC sp_help', 'mssql')).toBe(false)
     expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'postgres')).toBe(false)
+    expect(looksLikeDdl("BEGIN EXECUTE IMMEDIATE 'CREATE TABLE t (id NUMBER)'; END;", 'oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'oceanbase-oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'mysql')).toBe(false)
     // MySQL executes the body of `/*! ... */`, so DDL hidden in it is real.
     expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
     expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)
