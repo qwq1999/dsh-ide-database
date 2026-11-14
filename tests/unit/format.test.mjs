@@ -166,6 +166,12 @@ describe('format helpers', () => {
     expect(looksLikeDdl('ALTER TABLE users ADD COLUMN age INT')).toBe(true)
     expect(looksLikeDdl('SELECT 1; TRUNCATE TABLE users')).toBe(true)
     expect(looksLikeDdl('EXPLAIN ANALYZE DROP TABLE users')).toBe(true)
+    // A semicolon inside a string must not split the SELECT into a fake DROP.
+    expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note")).toBe(false)
+    expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note", 'postgres')).toBe(false)
+    // DELIMITER and GO are client-side boundaries; the DDL inside still counts.
+    expect(looksLikeDdl('DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//', 'mysql')).toBe(true)
+    expect(looksLikeDdl('SELECT 1\nGO\nDROP TABLE users', 'mssql')).toBe(true)
   })
 
   it('groups counts with thousands separators', () => {

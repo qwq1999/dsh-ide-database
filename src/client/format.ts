@@ -53,13 +53,6 @@ export function formatDateTime(iso: string | undefined): string {
 const WRITE_STATEMENT =
   /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|load|bulk|reindex|cluster|refresh|backup|restore|dbcc|analyze|optimize|vacuum|set\s+global)\b/i
 
-function stripComments(sql: string): string {
-  return sql
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/--[^\n\r]*/g, ' ')
-    .replace(/^\s*#.*$/gm, ' ')
-}
-
 /** Client-side hint only: the host re-checks and refuses writes on read-only connections. */
 function isSpaceChar(char: string): boolean {
   return char === ' ' || char === '\t' || char === '\n' || char === '\r'
@@ -289,12 +282,11 @@ export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): bo
  */
 const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate)\b/i
 
-export function looksLikeDdl(sql: string): boolean {
-  return stripComments(sql)
-    .split(';')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .some((statement) => DDL_STATEMENT.test(unwrapExplainAnalyze(statement)))
+export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): boolean {
+  return splitStatements(sql, dialect).some((statement) => {
+    const code = maskNonCode(statement, dialect, false).trim()
+    return code !== '' && DDL_STATEMENT.test(unwrapExplainAnalyze(code))
+  })
 }
 
 const REDIS_READ = new Set([

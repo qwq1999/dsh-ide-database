@@ -676,7 +676,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         setBase(paged ? text : '')
         setSourceSql(text)
         lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
-        if (looksLikeDdl(text)) {
+        if (looksLikeDdl(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')) {
           completionCatalog.current?.clear()
           void loadSchemaList(selectedId)
         }
@@ -749,7 +749,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
-      if (parts.some(looksLikeDdl)) {
+      if (parts.some((part) => looksLikeDdl(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'))) {
         completionCatalog.current?.clear()
         void loadSchemaList(selectedId)
       }
