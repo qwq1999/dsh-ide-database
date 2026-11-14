@@ -3,7 +3,8 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { CellValue, ClientConnection, ColumnInfo, Row } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo, Row, SqlDialect } from '../shared/types'
+import { maskNonCode } from './sqllex'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
  * exact value picked from a cell, `isnull` comes from clicking a NULL cell. */
@@ -98,6 +99,37 @@ export function isTemporalType(typeName: string | undefined): boolean {
   return /^(date|datetime|timestamp)/iu.test(typeName.replace(/[\s(].*$/u, ''))
 }
 
+/** Character-family columns can be compared with LIKE without a cast. */
+export function isTextType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
+  return /^(?:bpchar|character|char|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(base)
+}
+
+/**
+ * PostgreSQL, Oracle and SQL Server reject `integer LIKE '1%'`: LIKE needs
+ * character input. Cast other columns to text so the table's filter row keeps
+ * working for numbers, dates, UUIDs and arrays.
+ */
+function textExpression(dialect: ClientConnection['dialect'], name: string, typeName: string | undefined): string {
+  if (isTemporalType(typeName)) {
+    // The grid shows the bridge's ISO text, so format temporal columns the
+    // same way instead of trusting the session's NLS / language settings.
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+      return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    }
+    if (dialect === 'mssql') return `CONVERT(VARCHAR(23), ${name}, 121)`
+  }
+  if (dialect === 'mysql') return `CAST(${name} AS CHAR)`
+  if (dialect === 'mssql') return `CAST(${name} AS NVARCHAR(MAX))`
+  if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+    return `TO_CHAR(${name})`
+  }
+  if (dialect === 'sqlite') return `CAST(${name} AS TEXT)`
+  if (dialect === 'postgres') return `CAST(${name} AS TEXT)`
+  return `CAST(${name} AS VARCHAR(4000))`
+}
+
 /**
  * Oracle compares a DATE or TIMESTAMP column with a bare string by converting
  * that string with NLS_DATE_FORMAT / NLS_TIMESTAMP_FORMAT, which does not accept
@@ -161,9 +193,11 @@ export function insertStatement(
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
 }
 
-/** SQL Server has no boolean literals; its BIT columns take 1 and 0. */
+/** SQL Server and Oracle have no boolean literals; their BIT/NUMBER(1) columns take 1 and 0. */
 function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): string {
-  if (dialect === 'mssql') return value ? '1' : '0'
+  // Oracle (and OceanBase's Oracle mode) has no SQL boolean literal before
+  // 23c; a NUMBER(1) or BIT column is compared with 1/0 instead.
+  if (dialect === 'mssql' || dialect === 'oracle' || dialect === 'oceanbase-oracle') return value ? '1' : '0'
   return value ? 'TRUE' : 'FALSE'
 }
 
@@ -195,11 +229,14 @@ function unquoteIdentifier(part: string): string {
 /**
  * The table a statement reads from or writes to, used by the console's SQL
  * export. Returns null for statements without a plain table (functions,
- * multi-statement scripts, SELECTs over subqueries only).
+ * multi-statement scripts, SELECTs over subqueries only). Literals and
+ * comments are masked first: `SELECT 'from users' FROM orders` must not send
+ * the INSERT export to users.
  */
-export function tableFromStatement(statement: string): { schema: string; table: string } | null {
+export function tableFromStatement(statement: string, dialect: SqlDialect = 'generic'): { schema: string; table: string } | null {
+  const code = maskNonCode(statement, dialect, false)
   const match =
-    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(statement)
+    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(code)
   if (match === null) return null
   const parts = match[1].split('.').map(unquoteIdentifier)
   if (parts.length >= 2) return { schema: parts[parts.length - 2] ?? '', table: parts[parts.length - 1] ?? '' }
@@ -220,7 +257,8 @@ export function filterExpression(
     if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
-  return `${name} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
+  const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
+  return `${target} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
 }
 
 /**

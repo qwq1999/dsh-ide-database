@@ -176,19 +176,22 @@ function expectBudget(metrics) {
 }
 
 describe('completion performance benchmark', () => {
-  it('answers a WHERE column caret quickly', async () => {
+  // The p95 over 100 iterations is sensitive to CPU contention from the other
+  // test files. Retry once so a scheduler stall does not fail a green run; a
+  // real regression still fails both attempts.
+  it('answers a WHERE column caret quickly', { retry: 1 }, async () => {
     const metrics = await measure(WITH_COLUMNS, createMemoryCatalog())
     report('WHERE columns', metrics)
     expectBudget(metrics)
   })
 
-  it('answers a JOIN column caret with several referenced relations quickly', async () => {
+  it('answers a JOIN column caret with several referenced relations quickly', { retry: 1 }, async () => {
     const metrics = await measure(WITH_JOIN, createMemoryCatalog())
     report('JOIN columns', metrics)
     expectBudget(metrics)
   })
 
-  it('answers a schema-qualified caret quickly', async () => {
+  it('answers a schema-qualified caret quickly', { retry: 1 }, async () => {
     const metrics = await measure(WITH_QUALIFIER, createMemoryCatalog())
     report('qualified', metrics)
     expectBudget(metrics)

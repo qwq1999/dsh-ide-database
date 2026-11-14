@@ -127,6 +127,10 @@ export function DataView(props: DataViewProps): ReactElement {
   const [activeIndex, setActiveIndex] = useState(-1)
   const activeIndexRef = useRef(-1)
   activeIndexRef.current = activeIndex
+  // Async loads insert rows above the cursor (a connection's schemas arrive, a
+  // filter settles). Remember the row itself, not its position, so the roving
+  // focus stays on the same entry when the flat array shifts.
+  const activeKeyRef = useRef('')
   const propsRef = useRef(props)
   propsRef.current = props
 
@@ -496,16 +500,30 @@ export function DataView(props: DataViewProps): ReactElement {
   const filterAnchors = useMemo(() => [filterFloatRef, containerRef], [containerRef])
   usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
 
-  // A shrinking tree (collapsed branch, narrower filter) may leave the active
-  // index past the end; keep the roving focus valid.
+  // A changing tree (async rows above the cursor, collapsed branch, narrower
+  // filter) must not move the roving focus to a different entry. Follow the
+  // remembered row key first; only fall back to clamping when that row is gone.
   useEffect(() => {
-    setActiveIndex((current) => {
-      if (rows.length === 0) return -1
-      return current >= rows.length ? rows.length - 1 : current
-    })
+    if (rows.length === 0) {
+      activeKeyRef.current = ''
+      setActiveIndex(-1)
+      return
+    }
+    const key = activeKeyRef.current
+    if (key !== '') {
+      const next = rows.findIndex((row) => row.key === key)
+      if (next >= 0) {
+        setActiveIndex(next)
+        return
+      }
+    }
+    const clamped = activeIndexRef.current >= rows.length ? rows.length - 1 : activeIndexRef.current
+    activeKeyRef.current = clamped >= 0 ? rows[clamped]?.key ?? '' : ''
+    setActiveIndex(clamped)
   }, [rows])
 
   const focusIndex = (index: number): void => {
+    activeKeyRef.current = rows[index]?.key ?? ''
     setActiveIndex(index)
     containerRef.current?.focus()
     scrollToIndex(index)

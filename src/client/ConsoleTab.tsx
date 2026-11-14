@@ -655,7 +655,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setFailure(null)
       setMultiNote('')
       try {
-        const paged = pageable(text)
+        const paged = pageable(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
         const showAll = target.size === ALL_PAGE_SIZE
         const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
         const maxRows = showAll ? ALL_ROWS : target.size
@@ -1449,11 +1449,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
    */
   const resolveTarget = useCallback(
     (text: string): { schema: string; table: string } | null => {
-      const parsed = tableFromStatement(text)
+      const parsed = tableFromStatement(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
       if (parsed === null) return null
       return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
     },
-    [defaultSchema, schema],
+    [connection?.dialect, defaultSchema, schema],
   )
   const executedTarget = useMemo(
     () => resolveTarget(sourceSql !== '' ? sourceSql : base),

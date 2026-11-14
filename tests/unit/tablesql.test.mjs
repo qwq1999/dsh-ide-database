@@ -81,6 +81,30 @@ describe('filterExpression', () => {
     expect(filterExpression('mysql', column('code', 'varchar(10)'), { op: 'eq', text: '42' })).toBe("`code` = '42'")
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '  ' })).toBeUndefined()
   })
+
+  it('casts non-text columns before a contains filter', () => {
+    expect(filterExpression('postgres', column('id', 'integer'), { op: 'like', text: '12' })).toBe(
+      `CAST("id" AS TEXT) LIKE '%12%'`,
+    )
+    expect(filterExpression('postgres', column('created', 'timestamp(6)'), { op: 'like', text: '2024' })).toBe(
+      `CAST("created" AS TEXT) LIKE '%2024%'`,
+    )
+    expect(filterExpression('mysql', column('id', 'int'), { op: 'like', text: '12' })).toBe(
+      "CAST(`id` AS CHAR) LIKE '%12%'",
+    )
+    expect(filterExpression('oracle', column('ID', 'NUMBER'), { op: 'like', text: '12' })).toBe(
+      `TO_CHAR("ID") LIKE '%12%'`,
+    )
+    expect(filterExpression('oracle', column('created', 'DATE'), { op: 'like', text: '2024' })).toBe(
+      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%'`,
+    )
+    expect(filterExpression('mssql', column('created', 'datetime'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%'`,
+    )
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'ab' })).toBe(
+      `"name" LIKE '%ab%'`,
+    )
+  })
 })
 
 describe('composeWhere', () => {
@@ -123,6 +147,14 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement(nested)).toEqual({ schema: 'shop', table: 'orders' })
     expect(tableFromStatement('select 1 + 1')).toBeNull()
     expect(tableFromStatement('begin')).toBeNull()
+  })
+
+  it('ignores literals and comments that mention another table', () => {
+    expect(tableFromStatement("select 'from users' as note, id from orders")).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select 1 -- from users\nfrom orders')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select /* from users */ id from orders')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select $$from users$$ as note from orders', 'postgres')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement("select q'[from users]' as note from orders", 'oracle')).toEqual({ schema: '', table: 'orders' })
   })
 })
 
@@ -168,6 +200,16 @@ describe('insertStatement', () => {
     )
     expect(insertStatement('postgres', 'public', 'users', mssqlColumns, [3, true])).toBe(
       'INSERT INTO "public"."users" ("id", "active") VALUES (3, TRUE);',
+    )
+  })
+
+  it('writes Oracle boolean values as 1 and 0', () => {
+    const oracleColumns = [column('ID', 'NUMBER'), column('ACTIVE', 'NUMBER(1)')]
+    expect(insertStatement('oracle', 'SHOP', 'USERS', oracleColumns, ['1', true])).toBe(
+      'INSERT INTO "SHOP"."USERS" ("ID", "ACTIVE") VALUES (1, 1);',
+    )
+    expect(insertStatement('oceanbase-oracle', 'SHOP', 'USERS', oracleColumns, ['2', false])).toBe(
+      'INSERT INTO "SHOP"."USERS" ("ID", "ACTIVE") VALUES (2, 0);',
     )
   })
 
@@ -270,6 +312,8 @@ describe('cellWhere', () => {
     expect(cellWhere('mysql', { name: 'paid', typeName: 'BIT' }, true)).toBe('`paid` = TRUE')
     expect(cellWhere('mssql', { name: 'paid', typeName: 'BIT' }, true)).toBe('[paid] = 1')
     expect(cellWhere('mssql', { name: 'paid', typeName: 'BIT' }, false)).toBe('[paid] = 0')
+    expect(cellWhere('oracle', { name: 'paid', typeName: 'NUMBER(1)' }, true)).toBe('"paid" = 1')
+    expect(cellWhere('oceanbase-oracle', { name: 'paid', typeName: 'NUMBER(1)' }, false)).toBe('"paid" = 0')
     expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
   })
 })
@@ -277,7 +321,8 @@ describe('cellWhere', () => {
 describe('inListOf', () => {
   it('keeps numbers and NULLs bare and quotes text per dialect', () => {
     expect(inListOf('mysql', [[1], [2.5], [null], ['x']], 0)).toBe("(1, 2.5, NULL, 'x')")
-    expect(inListOf('oracle', [['a'], [true]], 0)).toBe("('a', TRUE)")
+    expect(inListOf('oracle', [['a'], [true]], 0)).toBe("('a', 1)")
+    expect(inListOf('oceanbase-oracle', [[false]], 0)).toBe('(0)')
     expect(inListOf('mssql', [[true], [false]], 0)).toBe('(1, 0)')
   })
 

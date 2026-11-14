@@ -151,6 +151,33 @@ describe('virtualized object tree', () => {
     expect(screen.getByText('再显示 200 个（还有 300 个）')).toBeTruthy()
   })
 
+  it('异步插入上方行时光标仍停在原来那一行', () => {
+    const orders = { name: 'orders', kind: 'table' } as SchemaObject
+    const customers = { name: 'customers', kind: 'table' } as SchemaObject
+    const props = viewProps({
+      schemas: { c1: [{ name: 'shop', objectCount: 2 }] },
+      objects: { 'c1:shop': [orders, customers] },
+      expanded: { c1: true, 'c1:shop': true, 'c1:shop#table': true },
+    })
+    const { rerender } = render(<DataView {...props} />)
+    const element = tree()
+    element.focus()
+    fireEvent.keyDown(element, { key: 'End' })
+    expect(element.getAttribute('aria-activedescendant')).toBe('dshdb-tree-row-4')
+    expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('customers')
+
+    // A schema arrives above the active row: the old code kept index 4 and the
+    // highlight jumped to `orders`.
+    rerender(
+      <DataView
+        {...props}
+        schemas={{ c1: [{ name: 'aaa', objectCount: 0 }, { name: 'shop', objectCount: 2 }] }}
+      />,
+    )
+    expect(element.getAttribute('aria-activedescendant')).toBe('dshdb-tree-row-5')
+    expect(document.querySelector('[aria-current="true"]')?.textContent).toContain('customers')
+  })
+
   it('扁平行数组保持过滤、展开与分页语义', () => {
     const orders = { name: 'orders', kind: 'table' } as SchemaObject
     const customers = { name: 'customers', kind: 'table' } as SchemaObject
