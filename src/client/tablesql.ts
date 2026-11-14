@@ -293,9 +293,23 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
  * back is not the one that was exported; standard SQL dialects take the text
  * verbatim and only need the quote doubled.
  */
-export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] = 'generic'): string {
+export function quoteLiteral(
+  text: string,
+  dialect: ClientConnection['dialect'] = 'generic',
+  unicode = false,
+): string {
   const escaped = dialect === 'mysql' ? text.replace(/\\/gu, '\\\\') : text
-  return `'${escaped.replace(/'/gu, "''")}'`
+  const literal = `'${escaped.replace(/'/gu, "''")}'`
+  // SQL Server's plain string literal is varchar; non-Latin text stored in an
+  // nvarchar column needs the Unicode N prefix to survive the session code page.
+  return dialect === 'mssql' && unicode ? `N${literal}` : literal
+}
+
+/** SQL Server Unicode string types need the N prefix for non-Latin values. */
+function isUnicodeText(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase().split(/\s+/u, 1)[0] ?? ''
+  return /^(?:nchar|nvarchar|ntext|sysname)$/u.test(base)
 }
 
 /**
@@ -370,7 +384,7 @@ function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo,
   const text = String(value)
   if (isTemporalType(column.typeName, dialect)) return temporalLiteral(dialect, column.typeName, text)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
-  return quoteLiteral(text, dialect)
+  return quoteLiteral(text, dialect, isUnicodeText(column.typeName))
 }
 
 /** Many rows as one INSERT-per-line SQL script, for the export menu. */
@@ -521,12 +535,12 @@ export function filterExpression(
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
     if (isTemporalType(column.typeName, dialect)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
     if (isJsonType(column.typeName)) {
-      return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(text, dialect)}`
+      return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
     }
-    return `${name} = ${quoteLiteral(text, dialect)}`
+    return `${name} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect)
+  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect, isUnicodeText(column.typeName))
   // Oracle prints a region as ASIA/SHANGHAI while the bridge shows
   // Asia/Shanghai; compare case-insensitively so both spellings match.
   if (
@@ -557,9 +571,9 @@ export function cellWhere(
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
   }
   if (typeof value === 'string' && isJsonType(column.typeName)) {
-    return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(value, dialect)}`
+    return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(value, dialect, isUnicodeText(column.typeName))}`
   }
-  return `${name} = ${quoteLiteral(String(value), dialect)}`
+  return `${name} = ${quoteLiteral(String(value), dialect, isUnicodeText(column.typeName))}`
 }
 
 /** One column counted across the whole table: the quick "group by" report. */

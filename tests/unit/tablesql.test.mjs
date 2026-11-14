@@ -52,6 +52,8 @@ describe('tablesql quoting', () => {
     expect(quoteLiteral('C:\\temp', 'mysql')).toBe("'C:\\\\temp'")
     expect(quoteLiteral('C:\\temp', 'oracle')).toBe("'C:\\temp'")
     expect(quoteLiteral("O'Brien", 'mysql')).toBe("'O''Brien'")
+    expect(quoteLiteral('手机', 'mssql', true)).toBe("N'手机'")
+    expect(quoteLiteral('手机', 'mssql')).toBe("'手机'")
   })
 
   it('builds the page clause per dialect', () => {
@@ -138,6 +140,10 @@ describe('filterExpression', () => {
   })
 
   it('casts JSON columns before equality', () => {
+    const unicode = column('name', 'nvarchar(max)')
+    expect(cellWhere('mssql', unicode, '手机')).toBe("[name] = N'手机'")
+    expect(filterExpression('mssql', unicode, { op: 'like', text: '手机' })).toBe("[name] LIKE N'%手机%' ESCAPE '!'")
+    expect(insertStatement('mssql', 'dbo', 'users', [unicode], ['手机'])).toBe("INSERT INTO [dbo].[users] ([name]) VALUES (N'手机');")
     const doc = column('doc', 'JSON')
     expect(filterExpression('mysql', doc, { op: 'eq', text: '{"a": 1}' })).toBe(
       'CAST(`doc` AS CHAR) = \'{"a": 1}\'',
