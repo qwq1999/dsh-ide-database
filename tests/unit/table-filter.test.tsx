@@ -122,6 +122,42 @@ describe('table column filter', () => {
     expect(payload.title).toContain('二进制列')
   })
 
+  it('aligns binary detection with the visible columns when an earlier column is hidden', async () => {
+    window.localStorage.setItem(
+      'dsh-ide-database.hidden.v1:table:shop.orders',
+      JSON.stringify(['id']),
+    )
+    const bitColumns = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'flags', typeName: 'BIT' },
+    ]
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: bitColumns.map((column) => ({ ...column })),
+      rows: [[1, '<binary 1 bytes>']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    }))
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+
+    const filterButton = await screen.findByLabelText('列筛选') as HTMLButtonElement
+    await waitFor(() => expect(filterButton.disabled).toBe(false))
+    fireEvent.click(filterButton)
+
+    expect(screen.queryByLabelText('筛选 id')).toBeNull()
+    const flags = await screen.findByLabelText('筛选 flags') as HTMLInputElement
+    expect(flags.disabled).toBe(true)
+    expect(flags.title).toContain('二进制列')
+  })
+
   it('disables a filter whose vague type renders binary placeholders', async () => {
     const bitColumns = [
       { name: 'id', typeName: 'INT' },

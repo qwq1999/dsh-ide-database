@@ -194,7 +194,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const signature = columnSignature(columns)
   useEffect(() => {
     setOrder(null)
-    setHiddenColumns((current) => pruneHidden(current, columns))
+    // Keep the remembered hidden set while the first page is still loading;
+    // pruning against an empty column list would forget it before it is useful.
+    if (columns.length > 0) setHiddenColumns((current) => pruneHidden(current, columns))
   }, [signature, columns])
   useEffect(() => {
     writeHidden(`table:${params.schema}.${params.table}`, hiddenColumns)
@@ -1198,7 +1200,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
                   const binary =
                     isBinaryType(column.typeName, connection?.dialect) ||
-                    displayRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect))
+                    shownRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect))
                   return (
                     <th key={`filter-${column.name}-${index}`}>
                       <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
