@@ -248,6 +248,17 @@ const READ_ONLY_COMMANDS = new Set([
   'sunion',
   'sdiff',
   'smismember',
+  // Pure reads added in Redis 6/7; none of these can write with arguments.
+  'zrandmember',
+  'zintercard',
+  'sintercard',
+  'zdiff',
+  'sort_ro',
+  'lcs',
+  'expiretime',
+  'pexpiretime',
+  'georadius_ro',
+  'georadiusbymember_ro',
 ])
 
 /** Whether a command only reads data and may run on a read-only connection. */

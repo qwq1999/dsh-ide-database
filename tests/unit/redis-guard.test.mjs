@@ -44,4 +44,24 @@ describe('Redis command guard', () => {
     }
     expect(isReadOnlyCommand('SADD')).toBe(false)
   })
+
+  it('accepts pure reads that cannot store their result', () => {
+    for (const command of [
+      'ZRANDMEMBER',
+      'ZINTERCARD',
+      'SINTERCARD',
+      'ZDIFF',
+      'SORT_RO',
+      'LCS',
+      'EXPIRETIME',
+      'PEXPIRETIME',
+      'GEORADIUS_RO',
+      'GEORADIUSBYMEMBER_RO',
+    ]) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+    // ZUNION/ZINTER accept STORE, so their arguments can turn them into writes.
+    expect(isReadOnlyCommand('ZUNION')).toBe(false)
+    expect(isReadOnlyCommand('ZINTER')).toBe(false)
+  })
 })
