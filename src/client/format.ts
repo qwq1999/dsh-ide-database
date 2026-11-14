@@ -232,7 +232,10 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     return looksLikeWrite(clause.statement, dialect)
   }
   if (head.word === 'copy') {
-    return /^\s*copy\b[\s\S]*?\bfrom\b/iu.test(code)
+    // COPY (SELECT ...) TO ... only reads the database; the FROM inside the
+    // subquery must not make it look like a table import.
+    if (head.rest.startsWith('(')) return false
+    return /\bfrom\b/iu.test(code)
   }
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)

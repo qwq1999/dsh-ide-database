@@ -101,6 +101,7 @@ describe('format helpers', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
     expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
+    expect(looksLikeWrite("COPY (SELECT * FROM users) TO '/tmp/users.csv'", 'postgres')).toBe(false)
   })
 
   it('recognizes bulk and maintenance statements as writes', () => {
