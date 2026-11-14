@@ -1,5 +1,5 @@
 import type { SqlDialect } from '../shared/types'
-import { backslashEscapes, bracketIdentifierEnd, dashStartsComment, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
+import { backslashEscapes, bracketIdentifierEnd, dashStartsComment, dollarDelimiterAt, maskNonCode, oracleQuotedLiteralEnd } from './sqllex'
 
 interface DelimiterDirective {
   token: string
@@ -33,6 +33,16 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
   const token = match[1]
   if (token === undefined) return null
   return { token, end: index + match[0].length }
+}
+
+/**
+ * SQL Server program bodies (`CREATE PROCEDURE`, `FUNCTION`, `TRIGGER`, `VIEW`)
+ * contain semicolons that are part of the definition, not statement separators.
+ * A batch ends at the next `GO`; keep the whole definition together until then.
+ */
+function isMssqlProgram(text: string): boolean {
+  const code = maskNonCode(text.slice(0, 512), 'mssql', true)
+  return /^\s*create\s+(?:or\s+alter\s+)?(?:proc(?:edure)?|function|trigger|view)\b/iu.test(code)
 }
 
 /**
@@ -215,7 +225,7 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       }
     }
 
-    if (char === ';' && delimiter === ';') {
+    if (char === ';' && delimiter === ';' && !(dialect === 'mssql' && isMssqlProgram(current))) {
       flush()
       index += 1
       continue

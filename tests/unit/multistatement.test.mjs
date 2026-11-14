@@ -127,6 +127,32 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1\nGO\nselect 2', 'mysql')).toEqual(['select 1\nGO\nselect 2'])
   })
 
+  it('keeps a SQL Server program body until its GO batch', () => {
+    const procedure = [
+      '-- define it',
+      'CREATE PROCEDURE bump AS',
+      'BEGIN',
+      "  UPDATE t SET note = 'a;b';",
+      '  SELECT 1;',
+      'END',
+      'GO',
+      'SELECT 2;',
+    ].join('\n')
+    expect(splitStatements(procedure, 'mssql')).toEqual([
+      "-- define it\nCREATE PROCEDURE bump AS\nBEGIN\n  UPDATE t SET note = 'a;b';\n  SELECT 1;\nEND",
+      'SELECT 2',
+    ])
+    expect(splitStatements('CREATE OR ALTER PROC p AS BEGIN SELECT 1; END\nGO\nSELECT 2', 'mssql')).toEqual([
+      'CREATE OR ALTER PROC p AS BEGIN SELECT 1; END',
+      'SELECT 2',
+    ])
+    expect(splitStatements('CREATE FUNCTION f() RETURNS int AS BEGIN RETURN 1; END', 'mssql')).toEqual([
+      'CREATE FUNCTION f() RETURNS int AS BEGIN RETURN 1; END',
+    ])
+    // A plain CREATE TABLE is still one statement per semicolon.
+    expect(splitStatements('CREATE TABLE t (a int); SELECT 1', 'mssql')).toEqual(['CREATE TABLE t (a int)', 'SELECT 1'])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
