@@ -1218,7 +1218,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           offset={offset}
           storageKey={widthStorageKey}
           widthColumnCount={displayColumns.length}
-          resetKey={lastLoad.current}
+          resetKey={lastLoad.current === null ? '' : `${lastLoad.current.target.page}:${lastLoad.current.target.size}:${lastLoad.current.target.where}:${lastLoad.current.target.orderBy}`}
           sort={activeSort ?? null}
           headerMenu={columnMenu}
           onSort={sortTable}

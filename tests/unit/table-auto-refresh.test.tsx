@@ -152,6 +152,29 @@ describe('table auto refresh', () => {
     else Object.defineProperty(document, 'visibilityState', visibility)
   })
 
+  it('keeps the scroll position when auto refresh reloads the same page', async () => {
+    mocks.query.mockImplementation((request: { sql: string }) =>
+      Promise.resolve({
+        columns: [{ name: 'id', type: 'int' }],
+        rows: Array.from({ length: 250 }, (_, index) => [index + 1]),
+        elapsedMs: 1,
+        sql: request.sql,
+      }),
+    )
+    const { container } = render(<TableTab useTabInfo={tab} />)
+    await waitFor(() => expect(pageCalls()).toBe(1))
+    await waitFor(() => expect(container.querySelectorAll('tbody tr').length).toBeGreaterThan(1))
+    fireEvent.change(screen.getByLabelText('自动刷新'), { target: { value: '5000' } })
+
+    const grid = container.querySelector('.dshdb-grid-wrap') as HTMLDivElement
+    grid.scrollTop = 400
+    await act(async () => {
+      timers.at(-1)?.run()
+    })
+    await waitFor(() => expect(pageCalls()).toBe(2))
+    expect(grid.scrollTop).toBe(400)
+  })
+
   it('does not refresh the grid while an export is running', async () => {
     render(<TableTab useTabInfo={tab} />)
     await waitFor(() => expect(pageCalls()).toBe(1))
