@@ -19,7 +19,7 @@ export type ExportFormat = 'csv' | 'json' | 'sql' | 'md'
  * Plain numbers (`-42`, `+3.5`) are left alone so they stay numeric.
  */
 export function spreadsheetSafe(text: string): string {
-  if (!/^[=+\-@]/u.test(text)) return text
+  if (!/^[=+\-@\t\r\n]/u.test(text)) return text
   if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(text)) return text
   return `'${text}`
 }

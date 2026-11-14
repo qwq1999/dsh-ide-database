@@ -5,12 +5,14 @@ const columns = (...names) => names.map((name) => ({ name, typeName: 'varchar', 
 
 describe('toCsv', () => {
   it('marks formula-like text so spreadsheets do not execute it', () => {
-    const text = toCsv(columns('note'), [['=1+1'], ['+SUM(A1)'], ['-2+3'], ['@cmd'], ['-42']])
+    const text = toCsv(columns('note'), [['=1+1'], ['+SUM(A1)'], ['-2+3'], ['@cmd'], ['-42'], ['\t=1+1'], ['\r@cmd']])
     expect(text).toContain("'=1+1")
     expect(text).toContain("'+SUM(A1)")
     expect(text).toContain("'-2+3")
     expect(text).toContain("'@cmd")
     expect(text).toContain('\r\n-42\r\n')
+    expect(text).toContain("'\t=1+1")
+    expect(text).toContain("'\r@cmd")
   })
 })
 
@@ -21,9 +23,11 @@ describe('toTsv', () => {
   })
 
   it('marks formula-like text before pasting into a spreadsheet', () => {
-    const text = toTsv(columns('note'), [['=1+1'], ['-42']])
+    const text = toTsv(columns('note'), [['=1+1'], ['-42'], ['\t=1+1'], ['\r@cmd']])
     expect(text).toContain("'=1+1")
     expect(text).toContain('\n-42\n')
+    expect(text).toContain("' =1+1")
+    expect(text).toContain("' @cmd")
   })
 })
 
