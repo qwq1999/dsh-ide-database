@@ -112,6 +112,13 @@ export function isTemporalType(typeName: string | undefined): boolean {
   )
 }
 
+/** JSON columns need a text cast before comparing with a quoted value. */
+export function isJsonType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return /^(?:json|jsonb)$/u.test(base)
+}
+
 /** Character-family columns can be compared with LIKE without a cast. */
 export function isTextType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false
@@ -415,6 +422,9 @@ export function filterExpression(
     }
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
     if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
+    if (isJsonType(column.typeName)) {
+      return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(text, dialect)}`
+    }
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
@@ -447,6 +457,9 @@ export function cellWhere(
   if (typeof value === 'boolean') return `${name} = ${booleanLiteral(dialect, value)}`
   if (typeof value === 'string' && isTemporalType(column.typeName)) {
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
+  }
+  if (typeof value === 'string' && isJsonType(column.typeName)) {
+    return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(value, dialect)}`
   }
   return `${name} = ${quoteLiteral(String(value), dialect)}`
 }

@@ -132,6 +132,19 @@ describe('filterExpression', () => {
     )
   })
 
+  it('casts JSON columns before equality', () => {
+    const doc = column('doc', 'JSON')
+    expect(filterExpression('mysql', doc, { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST(`doc` AS CHAR) = \'{"a": 1}\'',
+    )
+    expect(filterExpression('postgres', column('doc', 'JSONB'), { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST("doc" AS TEXT) = \'{"a": 1}\'',
+    )
+    expect(filterExpression('mssql', doc, { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST([doc] AS NVARCHAR(MAX)) = \'{"a": 1}\'',
+    )
+  })
+
   it('matches the fractional seconds and offset an Oracle timestamp displays', () => {
     expect(filterExpression('oracle', column('created', 'TIMESTAMP'), { op: 'like', text: '09:54:33.123' })).toBe(
       `RTRIM(RTRIM(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.') LIKE '%09:54:33.123%' ESCAPE '!'`,
@@ -486,6 +499,15 @@ describe('cellWhere', () => {
     expect(cellWhere('oracle', { name: 'paid', typeName: 'NUMBER(1)' }, true)).toBe('"paid" = 1')
     expect(cellWhere('oceanbase-oracle', { name: 'paid', typeName: 'NUMBER(1)' }, false)).toBe('"paid" = 0')
     expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
+  })
+
+  it('casts JSON values before comparing them', () => {
+    expect(cellWhere('mysql', { name: 'doc', typeName: 'JSON' }, '{"a": 1}')).toBe(
+      'CAST(`doc` AS CHAR) = \'{"a": 1}\'',
+    )
+    expect(cellWhere('postgres', { name: 'doc', typeName: 'JSONB' }, '{"a": 1}')).toBe(
+      'CAST("doc" AS TEXT) = \'{"a": 1}\'',
+    )
   })
 })
 
