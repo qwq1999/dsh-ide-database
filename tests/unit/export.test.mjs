@@ -24,6 +24,18 @@ describe('toJson', () => {
     expect(JSON.parse(text)).toEqual([{ id: 1, id_2: 2, name: 'x' }])
   })
 
+  it('keeps every value when a real column already uses the generated suffix', () => {
+    const text = toJson(columns('id', 'id', 'id_2'), [[1, 2, 3]])
+    expect(JSON.parse(text)).toEqual([{ id: 1, id_2: 2, id_2_2: 3 }])
+  })
+
+  it('keeps a column named __proto__ as data', () => {
+    const text = toJson(columns('__proto__'), [['x']])
+    const records = JSON.parse(text)
+    expect(Object.getOwnPropertyDescriptor(records[0], '__proto__')?.value).toBe('x')
+    expect(text).toContain('"__proto__": "x"')
+  })
+
   it('serialises bigints without throwing', () => {
     expect(JSON.parse(toJson(columns('big'), [[BigInt('9007199254740993')]]))[0].big).toBe('9007199254740993')
     expect(JSON.parse(toJson(columns('small'), [[BigInt(42)]]))[0].small).toBe(42)

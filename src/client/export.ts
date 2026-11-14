@@ -45,18 +45,27 @@ export function jsonValue(value: unknown): unknown {
 }
 
 function uniqueKeys(columns: ColumnInfo[]): string[] {
-  const seen = new Map<string, number>()
+  const used = new Set<string>()
   return columns.map((column) => {
-    const count = (seen.get(column.name) ?? 0) + 1
-    seen.set(column.name, count)
-    return count === 1 ? column.name : `${column.name}_${count}`
+    let key = column.name
+    let suffix = 2
+    // A real column may already be called `id_2`, so keep looking until the
+    // generated name is free; otherwise JSON would silently drop one value.
+    while (used.has(key)) {
+      key = `${column.name}_${suffix}`
+      suffix += 1
+    }
+    used.add(key)
+    return key
   })
 }
 
 export function toJson(columns: ColumnInfo[], rows: Row[]): string {
   const keys = uniqueKeys(columns)
   const records = rows.map((row) => {
-    const record: Record<string, unknown> = {}
+    // A null prototype keeps a column called `__proto__` as an ordinary key
+    // instead of silently changing the record's prototype.
+    const record: Record<string, unknown> = Object.create(null)
     keys.forEach((key, index) => {
       record[key] = jsonValue(row[index] ?? null)
     })
