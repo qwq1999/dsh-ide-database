@@ -301,16 +301,28 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
   const keyword = /\b(?:from|join|update|into)\b/giu
   let match: RegExpExecArray | null
   while ((match = keyword.exec(code)) !== null) {
-    const first = readTableIdentifier(statement, keyword.lastIndex)
-    if (first === null) continue
-    const dot = skipSpaces(statement, first.end)
-    if (statement[dot] === '.') {
-      const second = readTableIdentifier(statement, dot + 1)
-      if (second !== null) return { schema: first.value, table: second.value }
+    const parts: string[] = []
+    let token = readTableIdentifier(statement, keyword.lastIndex)
+    while (token !== null) {
+      parts.push(token.value)
+      const dot = skipSpaces(statement, token.end)
+      if (statement[dot] !== '.') break
+      token = readTableIdentifier(statement, dot + 1)
     }
-    return { schema: '', table: first.value }
+    if (parts.length === 0) continue
+    // SQL Server accepts a three-part `database.schema.table` (and a four-part
+    // server name); the console only needs the last two parts.
+    return {
+      schema: parts.length >= 2 ? parts[parts.length - 2] ?? '' : '',
+      table: parts[parts.length - 1] ?? '',
+    }
   }
   return null
+}
+
+/** Escape LIKE metacharacters so a contains filter matches the typed text literally. */
+function escapeLikeText(text: string): string {
+  return text.replace(/[!%_]/gu, (char) => `!${char}`)
 }
 
 export function filterExpression(
@@ -328,7 +340,7 @@ export function filterExpression(
     return `${name} = ${quoteLiteral(text, dialect)}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  return `${target} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
+  return `${target} LIKE ${quoteLiteral(`%${escapeLikeText(text)}%`, dialect)} ESCAPE '!'`
 }
 
 /**

@@ -71,7 +71,7 @@ describe('stripWhere', () => {
 describe('filterExpression', () => {
   it('builds LIKE, equality and IS NULL filters', () => {
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '北' })).toBe(
-      "`city` LIKE '%北%'",
+      "`city` LIKE '%北%' ESCAPE '!'",
     )
     expect(filterExpression('mysql', column('id', 'int(11)'), { op: 'eq', text: '30' })).toBe('`id` = 30')
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'eq', text: '北京' })).toBe("`city` = '北京'")
@@ -83,27 +83,39 @@ describe('filterExpression', () => {
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '  ' })).toBeUndefined()
   })
 
+  it('matches LIKE metacharacters in the typed text literally', () => {
+    expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '50%' })).toBe(
+      "`city` LIKE '%50!%%' ESCAPE '!'",
+    )
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'a_b' })).toBe(
+      `"name" LIKE '%a!_b%' ESCAPE '!'`,
+    )
+    expect(filterExpression('oracle', column('name', 'VARCHAR2(20)'), { op: 'like', text: 'a!b' })).toBe(
+      `"name" LIKE '%a!!b%' ESCAPE '!'`,
+    )
+  })
+
   it('casts non-text columns before a contains filter', () => {
     expect(filterExpression('postgres', column('id', 'integer'), { op: 'like', text: '12' })).toBe(
-      `CAST("id" AS TEXT) LIKE '%12%'`,
+      `CAST("id" AS TEXT) LIKE '%12%' ESCAPE '!'`,
     )
     expect(filterExpression('postgres', column('created', 'timestamp(6)'), { op: 'like', text: '2024' })).toBe(
-      `CAST("created" AS TEXT) LIKE '%2024%'`,
+      `CAST("created" AS TEXT) LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('mysql', column('id', 'int'), { op: 'like', text: '12' })).toBe(
-      "CAST(`id` AS CHAR) LIKE '%12%'",
+      "CAST(`id` AS CHAR) LIKE '%12%' ESCAPE '!'",
     )
     expect(filterExpression('oracle', column('ID', 'NUMBER'), { op: 'like', text: '12' })).toBe(
-      `TO_CHAR("ID") LIKE '%12%'`,
+      `TO_CHAR("ID") LIKE '%12%' ESCAPE '!'`,
     )
     expect(filterExpression('oracle', column('created', 'DATE'), { op: 'like', text: '2024' })).toBe(
-      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%'`,
+      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('mssql', column('created', 'datetime'), { op: 'like', text: '2024' })).toBe(
-      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%'`,
+      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'ab' })).toBe(
-      `"name" LIKE '%ab%'`,
+      `"name" LIKE '%ab%' ESCAPE '!'`,
     )
   })
 })
@@ -113,7 +125,7 @@ describe('composeWhere', () => {
 
   it('joins the manual WHERE with column filters', () => {
     const where = composeWhere('mysql', 'WHERE id > 10', columns, { city: { op: 'like', text: '北' } })
-    expect(where).toBe("(id > 10) AND `city` LIKE '%北%'")
+    expect(where).toBe("(id > 10) AND `city` LIKE '%北%' ESCAPE '!'")
   })
 
   it('returns just the filters when the manual box is empty', () => {
@@ -165,7 +177,7 @@ describe('type families', () => {
   it('casts a character varying array before a contains filter', () => {
     const tags = column('tags', 'character varying[]')
     expect(filterExpression('postgres', tags, { op: 'like', text: 'red' })).toBe(
-      `CAST("tags" AS TEXT) LIKE '%red%'`,
+      `CAST("tags" AS TEXT) LIKE '%red%' ESCAPE '!'`,
     )
     const span = column('span', 'interval')
     expect(filterExpression('postgres', span, { op: 'eq', text: '1' })).toBe(`"span" = '1'`)
@@ -194,6 +206,14 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('select * from [my.table]', 'mssql')).toEqual({ schema: '', table: 'my.table' })
     expect(tableFromStatement('select * from [a]]b]', 'mssql')).toEqual({ schema: '', table: 'a]b' })
     expect(tableFromStatement('select * from [from orders]', 'mssql')).toEqual({ schema: '', table: 'from orders' })
+  })
+
+  it('uses the last two parts of a three-part SQL Server name', () => {
+    expect(tableFromStatement('select * from [app].[dbo].[Order Details]', 'mssql')).toEqual({
+      schema: 'dbo',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from app.dbo.orders')).toEqual({ schema: 'dbo', table: 'orders' })
   })
 
   it('skips subqueries without a plain table and returns null otherwise', () => {
