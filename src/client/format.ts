@@ -51,7 +51,7 @@ export function formatDateTime(iso: string | undefined): string {
 }
 
 const WRITE_STATEMENT =
-  /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|load|analyze|optimize|vacuum|set\s+global)\b/i
+  /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|load|bulk|reindex|cluster|refresh|backup|restore|dbcc|analyze|optimize|vacuum|set\s+global)\b/i
 
 function stripComments(sql: string): string {
   return sql

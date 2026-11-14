@@ -103,6 +103,15 @@ describe('format helpers', () => {
     expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
   })
 
+  it('recognizes bulk and maintenance statements as writes', () => {
+    expect(looksLikeWrite("BULK INSERT users FROM 'C:\\users.csv'", 'mssql')).toBe(true)
+    expect(looksLikeWrite('REINDEX TABLE users', 'postgres')).toBe(true)
+    expect(looksLikeWrite('CLUSTER users USING users_pkey', 'postgres')).toBe(true)
+    expect(looksLikeWrite('REFRESH MATERIALIZED VIEW CONCURRENTLY user_stats', 'postgres')).toBe(true)
+    expect(looksLikeWrite("BACKUP DATABASE app TO DISK = 'app.bak'", 'mssql')).toBe(true)
+    expect(looksLikeWrite("RESTORE DATABASE app FROM DISK = 'app.bak'", 'mssql')).toBe(true)
+  })
+
   it('checks every batch separated by GO or DELIMITER', () => {
     expect(looksLikeWrite('select 1\nGO\ndelete from t', 'mssql')).toBe(true)
     expect(looksLikeWrite('select 1\nGO\nselect 2', 'mssql')).toBe(false)
