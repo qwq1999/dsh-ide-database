@@ -11,7 +11,6 @@ import type { ColumnInfo } from '../shared/types'
 const STORAGE_KEY = 'dsh-ide-database.colwidths.v1'
 const MIN_WIDTH = 40
 const MAX_WIDTH = 1200
-const MAX_COLUMNS = 64
 
 type StoredWidths = Record<string, number[]>
 
@@ -54,7 +53,7 @@ function writeAll(all: StoredWidths): void {
 /** Widths for one grid, or null when nothing usable is stored. */
 export function readWidths(key: string, count: number): number[] | null {
   const widths = readAll()[key]
-  if (!Array.isArray(widths) || widths.length !== count || count > MAX_COLUMNS) return null
+  if (!Array.isArray(widths) || widths.length !== count) return null
   const valid = widths.every(
     (width) => typeof width === 'number' && Number.isFinite(width) && width >= MIN_WIDTH && width <= MAX_WIDTH,
   )
@@ -63,7 +62,7 @@ export function readWidths(key: string, count: number): number[] | null {
 
 export function writeWidths(key: string, widths: number[]): void {
   const all = readAll()
-  all[key] = widths.slice(0, MAX_COLUMNS).map(clamp)
+  all[key] = widths.map(clamp)
   writeAll(all)
 }
 

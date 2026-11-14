@@ -36,6 +36,12 @@ describe('列宽记忆', () => {
     expect(readWidths('table:shop.orders', 3)).toBeNull()
   })
 
+  it('记住超过 64 列的宽表', () => {
+    const widths = Array.from({ length: 70 }, (_, index) => 100 + index)
+    writeWidths('table:wide', widths)
+    expect(readWidths('table:wide', 70)).toEqual(widths)
+  })
+
   it('写入时把过窄过宽的列夹到范围内', () => {
     writeWidths('console:sql', [5, 5000])
     expect(readWidths('console:sql', 2)).toEqual([40, 1200])
