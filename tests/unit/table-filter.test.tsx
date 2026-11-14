@@ -55,6 +55,7 @@ const columns = [
   { name: 'id', typeName: 'INT' },
   { name: 'name', typeName: 'VARCHAR' },
   { name: 'slug', typeName: 'VARCHAR' },
+  { name: 'payload', typeName: 'BLOB' },
 ]
 
 describe('table column filter', () => {
@@ -64,13 +65,14 @@ describe('table column filter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
     // A fresh result object per call, like the real bridge: the previous
     // implementation re-ran the debounce effect whenever columns changed.
     mocks.query.mockImplementation(async (request: { sql: string }) => ({
       sql: request.sql,
       columns: columns.map((column) => ({ ...column })),
-      rows: [[1, '手机数码', 'digital']],
+      rows: [[1, '手机数码', 'digital', '<binary 3 bytes>']],
       rowCount: 1,
       truncated: false,
       elapsedMs: 2,
@@ -100,5 +102,23 @@ describe('table column filter', () => {
     const settled = mocks.query.mock.calls.length
     await new Promise((resolve) => setTimeout(resolve, 700))
     expect(mocks.query.mock.calls.length).toBe(settled)
+  })
+
+  it('does not offer a text filter for a binary column', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+
+    const filterButton = await screen.findByLabelText('列筛选') as HTMLButtonElement
+    await waitFor(() => expect(filterButton.disabled).toBe(false))
+    fireEvent.click(filterButton)
+
+    const payload = await screen.findByLabelText('筛选 payload') as HTMLInputElement
+    expect(payload.disabled).toBe(true)
+    expect(payload.title).toContain('二进制列')
   })
 })

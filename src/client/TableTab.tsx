@@ -22,7 +22,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryType, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
@@ -459,7 +459,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     [filtersOpen],
   )
   const gridCellMenu = useCallback(
-    (cell: CellMenuTarget): ColumnMenuItem[] => [
+    (cell: CellMenuTarget): ColumnMenuItem[] => {
+      // The bridge shows binary columns as a placeholder, not their bytes; an
+      // equality/WHERE built from that text would never match the real value.
+      const binary = isBinaryType(cell.column.typeName) && cell.value !== null
+      return [
             {
               label: '查看完整值',
               run: () => setCellView(cellValueView(cell.column.name, cell.value)),
@@ -480,7 +484,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
-              label: '复制 WHERE 条件',
+              label: binary ? '复制 WHERE 条件（二进制值无法匹配）' : '复制 WHERE 条件',
+              disabled: binary,
               run: () => {
                 if (connection === null) return
                 void copyText(`WHERE ${cellWhere(connection.dialect, cell.column, cell.value)}`).then(noteCopied('WHERE 条件'))
@@ -497,7 +502,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
-              label: '在控制台按该值查询',
+              label: binary ? '在控制台按该值查询（二进制值无法匹配）' : '在控制台按该值查询',
+              disabled: binary,
               run: () => {
                 if (connection === null) return
                 const where = cellWhere(connection.dialect, cell.column, cell.value)
@@ -508,7 +514,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
-              label: '按此值筛选',
+              label: binary ? '按此值筛选（二进制值无法匹配）' : '按此值筛选',
+              disabled: binary,
               run: () => {
                 setFiltersOpen(true)
                 setColumnFilter(
@@ -524,7 +531,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 setColumnFilter(cell.column, undefined)
                 apply({ page: 0 })
               },
-            },],
+            },
+      ]
+    },
     [connection, displayColumns, displayRows, filters, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
@@ -1186,15 +1195,17 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                 {shownColumns.map((column, index) => {
                   const filter = filters[column.name]
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
+                  const binary = isBinaryType(column.typeName)
                   return (
                     <th key={`filter-${column.name}-${index}`}>
                       <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
                         <input
                           className="dshdb-filter-input"
-                          placeholder={filter?.op === 'isnull' ? 'NULL' : '包含…'}
+                          placeholder={binary ? '二进制列' : filter?.op === 'isnull' ? 'NULL' : '包含…'}
                           aria-label={`筛选 ${column.name}`}
-                          title={filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
+                          title={binary ? '二进制列不能按文本筛选' : filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
                           value={filter?.op === 'isnull' ? '' : filter?.text ?? ''}
+                          disabled={binary}
                           spellCheck={false}
                           onChange={(event) => {
                             const text = event.target.value
@@ -1231,6 +1242,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onCellClick={
             filtersOpen
               ? (column, value) => {
+                  if (isBinaryType(column.typeName) && value !== null) return
                   setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
                 }
               : undefined

@@ -9,6 +9,7 @@ import {
   isNumericType,
   isTemporalType,
   isTextType,
+  isBinaryType,
   temporalLiteral,
   pageClause,
   qualifiedName,
@@ -243,6 +244,19 @@ describe('type families', () => {
     expect(isTemporalType('timestamp(6) with local time zone')).toBe(true)
     expect(isTemporalType('timestamp(6) with time zone')).toBe(true)
     expect(isTemporalType('timestamp[]')).toBe(false)
+  })
+
+  it('recognizes binary columns that only show a placeholder', () => {
+    expect(isBinaryType('BLOB')).toBe(true)
+    expect(isBinaryType('LONGBLOB')).toBe(true)
+    expect(isBinaryType('VARBINARY(16)')).toBe(true)
+    expect(isBinaryType('bytea')).toBe(true)
+    expect(isBinaryType('RAW(16)')).toBe(true)
+    expect(isBinaryType('LONG RAW')).toBe(true)
+    expect(isBinaryType('varbinary(max)')).toBe(true)
+    expect(isBinaryType('text')).toBe(false)
+    expect(isBinaryType('json')).toBe(false)
+    expect(isBinaryType(undefined)).toBe(false)
   })
 
   it('casts a character varying array before a contains filter', () => {

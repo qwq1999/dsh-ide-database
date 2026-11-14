@@ -119,6 +119,17 @@ export function isJsonType(typeName: string | undefined): boolean {
   return /^(?:json|jsonb)$/u.test(base)
 }
 
+/**
+ * Binary columns are shown as `<binary N bytes>`, not as their actual bytes.
+ * A text filter or equality built from that placeholder cannot match, so the
+ * grid must not offer those actions for a non-NULL binary value.
+ */
+export function isBinaryType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return /^(?:binary|varbinary|blob|tinyblob|mediumblob|longblob|bytea|image|raw|long raw)$/u.test(base)
+}
+
 /** Character-family columns can be compared with LIKE without a cast. */
 export function isTextType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false

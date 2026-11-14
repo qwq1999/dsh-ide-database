@@ -45,7 +45,7 @@ import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeTex
 import { shortcutHit, shortcutLabel } from './keymap'
 import type { ShortcutId } from '../shared/keymap'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
-import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, tableFromStatement } from './tablesql'
+import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, isBinaryType, tableFromStatement } from './tablesql'
 import { applyCompletion, wordAtCaret, type Completion } from './complete'
 import { complete as completeRequest } from './completion/engine'
 import { matchScore } from './completion/rank'
@@ -1416,7 +1416,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     [displayColumns.length, hiddenView.positions],
   )
   const gridCellMenu = useCallback(
-    (cell: CellMenuTarget): ColumnMenuItem[] => [
+    (cell: CellMenuTarget): ColumnMenuItem[] => {
+      const binary = isBinaryType(cell.column.typeName) && cell.value !== null
+      return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')) },
@@ -1432,11 +1434,13 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         },
       },
       {
-        label: '复制 WHERE 条件',
+        label: binary ? '复制 WHERE 条件（二进制值无法匹配）' : '复制 WHERE 条件',
+        disabled: binary,
         run: () => void copyText(`WHERE ${cellWhere(connection?.dialect ?? 'mysql', cell.column, cell.value)}`).then(noteCopied('WHERE 条件')),
       },
       { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')) },
-    ],
+    ]
+    },
     [base, connection?.dialect, displayColumns, schema, sourceSql],
   )
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
