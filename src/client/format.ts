@@ -292,13 +292,23 @@ export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): bo
  */
 const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate)\b/i
 
+/** `SELECT ... INTO new_table` creates a table even though it starts with SELECT. */
+function selectCreatesTable(code: string): boolean {
+  return /^\s*select\b/iu.test(code) && SELECT_INTO_TABLE.test(code)
+}
+
 export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): boolean {
   return splitStatements(sql, dialect).some((statement) => {
     // MySQL executes the body of `/*! ... */`; DDL hidden there must clear the
     // cached structure just like a top-level statement.
     const code = maskNonCode(statement, dialect, false, true).trim()
     if (dialect === 'mysql' && MYSQL_EXECUTABLE_DDL.test(code)) return true
-    return code !== '' && DDL_STATEMENT.test(unwrapExplainAnalyze(code))
+    if (code === '') return false
+    const analyzed = unwrapExplainAnalyze(code)
+    if (DDL_STATEMENT.test(analyzed)) return true
+    // Look at the statement after a CTE list: `WITH ... SELECT INTO` creates a
+    // table, while `WITH ... INSERT INTO` does not change the schema layout.
+    return selectCreatesTable(withWriteParts(analyzed)?.statement ?? analyzed)
   })
 }
 

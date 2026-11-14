@@ -180,6 +180,18 @@ describe('format helpers', () => {
     expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
     expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)
     expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'generic')).toBe(false)
+    // SELECT ... INTO also creates a table, but INSERT INTO and INTO @var do not.
+    expect(looksLikeDdl('SELECT * INTO new_users FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO dbo.new_users FROM users', 'mssql')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO TEMP TABLE scratch FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO @total FROM users', 'mysql')).toBe(false)
+    expect(looksLikeDdl("SELECT 'INTO new_users' FROM users", 'postgres')).toBe(false)
+    expect(looksLikeDdl("SELECT * INTO OUTFILE '/tmp/users.csv' FROM users", 'mysql')).toBe(false)
+    expect(looksLikeDdl('INSERT INTO users SELECT * FROM old_users')).toBe(false)
+    expect(looksLikeDdl('WITH c AS (SELECT 1) INSERT INTO users SELECT * FROM c')).toBe(false)
+    expect(looksLikeDdl('WITH c AS (SELECT * FROM users) SELECT * INTO staged FROM c', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE true) SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE false) SELECT * INTO staged FROM users', 'postgres')).toBe(false)
   })
 
   it('groups counts with thousands separators', () => {
