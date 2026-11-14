@@ -187,6 +187,11 @@ describe('format helpers', () => {
     expect(looksLikeDdl("DO $$ BEGIN EXECUTE 'CREATE TABLE t (id int)'; END $$", 'postgres')).toBe(true)
     expect(looksLikeDdl('DO $$ BEGIN PERFORM 1; END $$', 'postgres')).toBe(true)
     expect(looksLikeDdl('DO 1', 'mysql')).toBe(false)
+    expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'mssql')).toBe(true)
+    expect(looksLikeDdl("EXEC dbo.sp_rename 'dbo.users.name', 'full_name', 'COLUMN'", 'mssql')).toBe(true)
+    expect(looksLikeDdl("EXEC @rc = sp_rename 'dbo.users', 'customers'", 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC sp_help', 'mssql')).toBe(false)
+    expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'postgres')).toBe(false)
     // MySQL executes the body of `/*! ... */`, so DDL hidden in it is real.
     expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
     expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)
