@@ -293,6 +293,10 @@ export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): bo
 const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate|comment)\b/i
 // SQL Server renames objects through the sp_rename procedure, not RENAME.
 const MSSQL_RENAME = /\bexec(?:ute)?\s+(?:@\w+\s*=\s*)?(?:\[?dbo\]?\.)?\[?sp_rename\]?\b/iu
+// `sp_executesql` and `EXEC(@sql)` run dynamic SQL, which may create or
+// drop objects; stored-procedure calls such as `sp_help` are ordinary reads.
+const MSSQL_DYNAMIC_SQL =
+  /\bexec(?:ute)?\s*(?:@\w+\s*=\s*)?(?:\(|(?:\[?dbo\]?\.)?\[?sp_executesql\]?|@\w+)/iu
 
 /** `SELECT ... INTO new_table` creates a table even though it starts with SELECT. */
 function selectCreatesTable(code: string): boolean {
@@ -319,6 +323,7 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
     // T-SQL control-flow blocks can contain DDL or `SELECT ... INTO`; their
     // first word is BEGIN/IF/WHILE, so the anchored DDL test above misses them.
     if (dialect === 'mssql' && MSSQL_RENAME.test(analyzed)) return true
+    if (dialect === 'mssql' && MSSQL_DYNAMIC_SQL.test(analyzed)) return true
     if (dialect === 'mssql' && /^\s*(?:begin|if|while)\b/iu.test(analyzed)) {
       return /\b(?:create|alter|drop|rename|truncate)\b/iu.test(analyzed) || SELECT_INTO_TABLE.test(analyzed)
     }
