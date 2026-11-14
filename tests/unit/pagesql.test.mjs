@@ -12,6 +12,14 @@ describe('pageable', () => {
     expect(pageable('SELECT * FROM t LIMIT 10')).toBe(false)
     expect(pageable('SELECT * FROM t WHERE ROWNUM <= 5')).toBe(false)
     expect(pageable('SELECT * FROM t FETCH FIRST 5 ROWS ONLY')).toBe(false)
+    expect(pageable('SELECT * FROM t ORDER BY id OFFSET 5 ROWS', 'mssql')).toBe(false)
+    expect(pageable('SELECT * FROM t ORDER BY id OFFSET @skip ROWS', 'mssql')).toBe(false)
+    expect(pageable('SELECT TOP 10 * FROM t', 'mssql')).toBe(false)
+    expect(pageable('SELECT TOP (10) * FROM t', 'mssql')).toBe(false)
+    expect(pageable('SELECT * FROM t FOR JSON PATH', 'mssql')).toBe(false)
+    expect(pageable('SELECT * FROM t FOR BROWSE', 'mssql')).toBe(false)
+    expect(pageable('SELECT * FROM t OPTION (MAXDOP 1)', 'mssql')).toBe(false)
+    expect(pageable('SELECT top10 FROM t', 'mssql')).toBe(true)
   })
 
   it('rejects SELECT ... INTO and locking reads', () => {
@@ -68,6 +76,24 @@ describe('wrapPage', () => {
         'SELECT * FROM (\nSELECT * FROM t\n) dshdb_page OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY',
       )
     }
+  })
+
+  it('pages SQL Server in place instead of wrapping an ORDER BY in a derived table', () => {
+    expect(wrapPage('mssql', 'SELECT * FROM t', 100, 2)).toBe(
+      'SELECT * FROM t\nORDER BY (SELECT NULL) OFFSET 200 ROWS FETCH NEXT 100 ROWS ONLY',
+    )
+    expect(wrapPage('mssql', 'SELECT * FROM t ORDER BY id', 100, 0)).toBe(
+      'SELECT * FROM t ORDER BY id\nOFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY',
+    )
+    expect(wrapPage('mssql', 'SELECT 1 -- 说明', 10, 0)).toBe(
+      'SELECT 1 -- 说明\nORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY',
+    )
+    expect(wrapPage('mssql', "SELECT 'order by' AS note", 10, 0)).toBe(
+      "SELECT 'order by' AS note\nORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY",
+    )
+    expect(wrapPage('mssql', 'SELECT * FROM (SELECT TOP 5 * FROM t ORDER BY id) s', 10, 0)).toBe(
+      'SELECT * FROM (SELECT TOP 5 * FROM t ORDER BY id) s\nORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY',
+    )
   })
 
   it('keeps a trailing line comment from swallowing the closing parenthesis', () => {

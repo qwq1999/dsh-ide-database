@@ -56,8 +56,8 @@ describe('SQL Server SQL text', () => {
     expect(tableSelectSql('mssql', 'dbo', 'orders', 'id > 1', '', 50)).toBe(
       'SELECT * FROM [dbo].[orders] WHERE id > 1 ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY',
     )
-    expect(wrapPage('mssql', 'SELECT * FROM [dbo].[orders]', 10, 2)).toContain(
-      ') dshdb_page ORDER BY (SELECT NULL) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY',
+    expect(wrapPage('mssql', 'SELECT * FROM [dbo].[orders]', 10, 2)).toBe(
+      'SELECT * FROM [dbo].[orders]\nORDER BY (SELECT NULL) OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY',
     )
   })
 })
