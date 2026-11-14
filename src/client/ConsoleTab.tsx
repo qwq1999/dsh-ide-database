@@ -45,6 +45,7 @@ import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
 import { shortcutHit, shortcutLabel } from './keymap'
 import type { ShortcutId } from '../shared/keymap'
+import { sqlDialectOf } from '../shared/dialect'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
 import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, isBinaryCell, isBinaryType, tableFromStatement } from './tablesql'
 import { applyCompletion, wordAtCaret, type Completion } from './complete'
@@ -656,7 +657,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setFailure(null)
       setMultiNote('')
       try {
-        const paged = pageable(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+        const paged = pageable(text, sqlDialectOf(connection?.dialect))
         const showAll = target.size === ALL_PAGE_SIZE
         const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
         const maxRows = showAll ? ALL_ROWS : target.size
@@ -677,7 +678,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         setBase(paged ? text : '')
         setSourceSql(text)
         lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
-        if (looksLikeDdl(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')) {
+        if (looksLikeDdl(text, sqlDialectOf(connection?.dialect))) {
           completionCatalog.current?.clear()
           void loadSchemaList(selectedId)
         }
@@ -720,7 +721,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             selectedId,
             part,
             pageSize === ALL_PAGE_SIZE ? ALL_ROWS : pageSize,
-            looksLikeWrite(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'),
+            looksLikeWrite(part, sqlDialectOf(connection?.dialect)),
             stmtKey,
             schema,
           )
@@ -750,7 +751,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
-      if (parts.some((part) => looksLikeDdl(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'))) {
+      if (parts.some((part) => looksLikeDdl(part, sqlDialectOf(connection?.dialect)))) {
         completionCatalog.current?.clear()
         void loadSchemaList(selectedId)
       }
@@ -802,9 +803,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportOpen(false)
     const body = text.trim()
     if (body === '') return
-    const parts = splitStatements(body, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+    const parts = splitStatements(body, sqlDialectOf(connection?.dialect))
     if (parts.length === 0) return
-    const isWrite = parts.some((part) => looksLikeWrite(part, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic'))
+    const isWrite = parts.some((part) => looksLikeWrite(part, sqlDialectOf(connection?.dialect)))
     if (isWrite && settings?.confirmDestructive === true) {
       const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', body)
       if (!ok) return
@@ -852,7 +853,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     const found = statementAtCaret(
       statement,
       area?.selectionStart ?? caretPos,
-      connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+      sqlDialectOf(connection?.dialect),
     )
     if (found.statement === '') return
     setSelectedRun(false)
@@ -1151,7 +1152,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         ? statementAtCaret(
             statement,
             area?.selectionStart ?? caretPos,
-            connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+            sqlDialectOf(connection?.dialect),
           ).statement
         : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
     if (picked.trim() === '') return
@@ -1488,7 +1489,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
    */
   const resolveTarget = useCallback(
     (text: string): { schema: string; table: string } | null => {
-      const parsed = tableFromStatement(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+      const parsed = tableFromStatement(text, sqlDialectOf(connection?.dialect))
       if (parsed === null) return null
       return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
     },

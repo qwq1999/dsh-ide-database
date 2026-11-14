@@ -2,6 +2,7 @@
  * Paging by wrapping the statement the user wrote, the same trick IDEA uses:
  * only a single plain SELECT can be wrapped, everything else runs as written.
  */
+import { sqlDialectOf } from '../shared/dialect'
 import type { ClientConnection, SqlDialect } from '../shared/types'
 import { maskNonCode } from './sqllex'
 
@@ -81,7 +82,7 @@ export function wrapPage(
   size: number,
   page: number,
 ): string {
-  const text = stripTerminators(statement.trim(), dialect === 'redis' ? 'generic' : dialect).trim()
+  const text = stripTerminators(statement.trim(), sqlDialectOf(dialect)).trim()
   const offset = page * size
   if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
     return `SELECT * FROM (

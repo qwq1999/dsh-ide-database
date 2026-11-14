@@ -3,6 +3,7 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
+import { sqlDialectOf } from '../shared/dialect'
 import type { CellValue, ClientConnection, ColumnInfo, Dialect, Row, SqlDialect } from '../shared/types'
 import { maskNonCode } from './sqllex'
 
@@ -155,7 +156,7 @@ export function isJsonType(typeName: string | undefined): boolean {
 export function isBinaryType(typeName: string | undefined, dialect?: Dialect): boolean {
   if (typeName === undefined) return false
   const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
-  const normalized = dialect === 'redis' ? 'generic' : dialect
+  const normalized = sqlDialectOf(dialect)
   // SQL Server's timestamp/rowversion is an eight-byte binary value that the
   // bridge renders as `<binary 8 bytes>`; it must never be filtered as a date.
   if (normalized === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return true

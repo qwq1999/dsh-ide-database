@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
+import { sqlDialectOf } from '../shared/dialect.js'
 import type {
   ColumnDetail,
   ColumnInfo,
@@ -1126,7 +1127,7 @@ export class SqlService {
   async query(connId: string, sql: string, options: QueryOptions = {}): Promise<QueryResult> {
     this.requireConnected(connId)
     const connection = this.requireConnection(connId)
-    const dialect: SqlDialect = connection.dialect === 'redis' ? 'generic' : connection.dialect
+    const dialect: SqlDialect = sqlDialectOf(connection.dialect)
     const statement = sql.trim()
     if (statement === '') throw new DbError('invalid', 'SQL 不能为空')
     if (options.allowWrite !== true && !isReadOnlySql(statement, dialect)) {
