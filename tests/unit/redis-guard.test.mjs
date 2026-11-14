@@ -48,6 +48,8 @@ describe('Redis command guard', () => {
   it('accepts pure reads that cannot store their result', () => {
     for (const command of [
       'ZRANDMEMBER',
+      'ZUNION',
+      'ZINTER',
       'ZINTERCARD',
       'SINTERCARD',
       'ZDIFF',
@@ -60,8 +62,8 @@ describe('Redis command guard', () => {
     ]) {
       expect(isReadOnlyCommand(command)).toBe(true)
     }
-    // ZUNION/ZINTER accept STORE, so their arguments can turn them into writes.
-    expect(isReadOnlyCommand('ZUNION')).toBe(false)
-    expect(isReadOnlyCommand('ZINTER')).toBe(false)
+    // The STORE variants remain separate write commands.
+    expect(isReadOnlyCommand('ZUNIONSTORE')).toBe(false)
+    expect(isReadOnlyCommand('ZINTERSTORE')).toBe(false)
   })
 })
