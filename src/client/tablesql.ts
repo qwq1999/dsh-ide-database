@@ -379,10 +379,7 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
           token = readTableIdentifier(statement, token.end)
           continue
         }
-        if (
-          word === 'lateral' &&
-          (dialect === 'postgres' || dialect === 'mysql' || dialect === 'oceanbase-mysql')
-        ) {
+        if (word === 'lateral' && (dialect === 'postgres' || dialect === 'mysql')) {
           const next = skipSpaces(statement, token.end)
           token = statement[next] === '(' ? null : readTableIdentifier(statement, token.end)
           continue
