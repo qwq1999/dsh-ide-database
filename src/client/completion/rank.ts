@@ -241,7 +241,7 @@ export function rankCandidates(
 ): RankedCandidate[] {
   const priorities = options.priorities ?? ANY_PRIORITY
   const recent = options.recent ?? []
-  const frequency = options.frequency ?? {}
+  const frequency = options.frequency ?? Object.create(null)
   const recentScore = new Map<string, number>()
   recent.forEach((name, index) => {
     if (recentScore.has(name)) return
@@ -259,8 +259,11 @@ export function rankCandidates(
     seen.add(key)
     const kind = priorities[item.kind] ?? ANY_PRIORITY[item.kind] ?? 0
     const recentPenalty = recentScore.get(item.name) ?? 0
-    const frequencyPenalty =
-      Math.min(FREQUENCY_MAX, frequency[item.name.toLowerCase()] ?? 0) * FREQUENCY_WEIGHT
+    const frequencyKey = item.name.toLowerCase()
+    // Quoted identifiers can be named `toString`/`__proto__`; never read an
+    // inherited property from the caller-supplied frequency map.
+    const picks = Object.hasOwn(frequency, frequencyKey) ? (frequency[frequencyKey] ?? 0) : 0
+    const frequencyPenalty = Math.min(FREQUENCY_MAX, picks) * FREQUENCY_WEIGHT
     const score = match * MATCH_WEIGHT + kind * KIND_WEIGHT - frequencyPenalty - recentPenalty
     scored.push({ item, score, order })
   })

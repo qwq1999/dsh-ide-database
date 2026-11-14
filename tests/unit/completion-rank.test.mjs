@@ -108,6 +108,11 @@ describe('rank', () => {
     ).toEqual(['table', 'keyword'])
   })
 
+  it('does not read inherited frequency keys', () => {
+    const ranked = rankCandidates([candidate('toString', 'table')], 'to')
+    expect(Number.isFinite(ranked[0]?.score)).toBe(true)
+  })
+
   it('keeps the score on ranked candidates only', () => {
     const ranked = rankCandidates([candidate('orders', 'table')], 'ord')
     expect(ranked[0]).toEqual({ name: 'orders', kind: 'table', score: 100 })
