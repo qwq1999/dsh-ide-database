@@ -190,6 +190,7 @@ const MSSQL_WRITE_WORD =
   /\b(?:insert|update|delete|merge|truncate|create|alter|drop|exec(?:ute)?|backup|restore|bulk)\b/iu
 const MYSQL_EXECUTABLE_WRITE =
   /\/\*![\s\S]*?(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
+const MYSQL_EXECUTABLE_DDL = /\/\*![\s\S]*?(?:create|alter|drop|rename|truncate)\b/iu
 const SELECT_INTO_TABLE =
   /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
 
@@ -293,7 +294,10 @@ const DDL_STATEMENT = /^\s*(create|alter|drop|rename|truncate)\b/i
 
 export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): boolean {
   return splitStatements(sql, dialect).some((statement) => {
-    const code = maskNonCode(statement, dialect, false).trim()
+    // MySQL executes the body of `/*! ... */`; DDL hidden there must clear the
+    // cached structure just like a top-level statement.
+    const code = maskNonCode(statement, dialect, false, true).trim()
+    if (dialect === 'mysql' && MYSQL_EXECUTABLE_DDL.test(code)) return true
     return code !== '' && DDL_STATEMENT.test(unwrapExplainAnalyze(code))
   })
 }

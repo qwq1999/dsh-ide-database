@@ -176,6 +176,10 @@ describe('format helpers', () => {
     // DELIMITER and GO are client-side boundaries; the DDL inside still counts.
     expect(looksLikeDdl('DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//', 'mysql')).toBe(true)
     expect(looksLikeDdl('SELECT 1\nGO\nDROP TABLE users', 'mssql')).toBe(true)
+    // MySQL executes the body of `/*! ... */`, so DDL hidden in it is real.
+    expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)
+    expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'generic')).toBe(false)
   })
 
   it('groups counts with thousands separators', () => {
