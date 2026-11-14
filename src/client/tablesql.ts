@@ -3,7 +3,8 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { CellValue, ClientConnection, ColumnInfo, Row } from '../shared/types'
+import type { CellValue, ClientConnection, ColumnInfo, Row, SqlDialect } from '../shared/types'
+import { maskNonCode } from './sqllex'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
  * exact value picked from a cell, `isnull` comes from clicking a NULL cell. */
@@ -197,11 +198,14 @@ function unquoteIdentifier(part: string): string {
 /**
  * The table a statement reads from or writes to, used by the console's SQL
  * export. Returns null for statements without a plain table (functions,
- * multi-statement scripts, SELECTs over subqueries only).
+ * multi-statement scripts, SELECTs over subqueries only). Literals and
+ * comments are masked first: `SELECT 'from users' FROM orders` must not send
+ * the INSERT export to users.
  */
-export function tableFromStatement(statement: string): { schema: string; table: string } | null {
+export function tableFromStatement(statement: string, dialect: SqlDialect = 'generic'): { schema: string; table: string } | null {
+  const code = maskNonCode(statement, dialect, false)
   const match =
-    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(statement)
+    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(code)
   if (match === null) return null
   const parts = match[1].split('.').map(unquoteIdentifier)
   if (parts.length >= 2) return { schema: parts[parts.length - 2] ?? '', table: parts[parts.length - 1] ?? '' }

@@ -124,6 +124,14 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('select 1 + 1')).toBeNull()
     expect(tableFromStatement('begin')).toBeNull()
   })
+
+  it('ignores literals and comments that mention another table', () => {
+    expect(tableFromStatement("select 'from users' as note, id from orders")).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select 1 -- from users\nfrom orders')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select /* from users */ id from orders')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement('select $$from users$$ as note from orders', 'postgres')).toEqual({ schema: '', table: 'orders' })
+    expect(tableFromStatement("select q'[from users]' as note from orders", 'oracle')).toEqual({ schema: '', table: 'orders' })
+  })
 })
 
 describe('insertStatement', () => {

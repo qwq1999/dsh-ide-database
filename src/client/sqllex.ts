@@ -66,3 +66,87 @@ export function dollarDelimiterAt(input: string, index: number): string | null {
   if (cursor > index + 1 && /[0-9]/.test(input[index + 1] ?? '')) return null
   return input.slice(index, cursor + 1)
 }
+
+/**
+ * Replace string literals and comments with spaces of the same length, so a
+ * caller can scan the result for keywords without matching text inside a
+ * literal. Double quotes and backticks are identifiers to table inference but
+ * strings to paging, so the caller chooses whether to mask them.
+ */
+export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentifiers: boolean): string {
+  let out = ''
+  let index = 0
+  while (index < text.length) {
+    const char = text[index] ?? ''
+    if (char === '-' && text[index + 1] === '-' && dashStartsComment(text, index + 2, dialect)) {
+      const end = text.indexOf('\n', index)
+      const stop = end === -1 ? text.length : end
+      out += ' '.repeat(stop - index)
+      index = stop
+      continue
+    }
+    if (char === '#' && dialect === 'mysql') {
+      const end = text.indexOf('\n', index)
+      const stop = end === -1 ? text.length : end
+      out += ' '.repeat(stop - index)
+      index = stop
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2)
+      const stop = close === -1 ? text.length : close + 2
+      out += ' '.repeat(stop - index)
+      index = stop
+      continue
+    }
+    if ((char === 'q' || char === 'Q') && (dialect === 'oracle' || dialect === 'oceanbase-oracle')) {
+      const end = oracleQuotedLiteralEnd(text, index)
+      if (end !== null) {
+        out += ' '.repeat(end - index)
+        index = end
+        continue
+      }
+    }
+    if (char === '$' && dialect === 'postgres') {
+      const delimiter = dollarDelimiterAt(text, index)
+      if (delimiter !== null) {
+        const close = text.indexOf(delimiter, index + delimiter.length)
+        if (close !== -1) {
+          const end = close + delimiter.length
+          out += ' '.repeat(end - index)
+          index = end
+          continue
+        }
+      }
+    }
+    const masked = char === "'" || (maskQuotedIdentifiers && (char === '"' || char === '`'))
+    if (masked) {
+      const quote = char
+      const escapes = backslashEscapes(text, index, quote, dialect)
+      index += 1
+      out += ' '
+      while (index < text.length) {
+        const next = text[index] ?? ''
+        index += 1
+        out += ' '
+        if (next === '\\' && quote !== '`' && escapes && index < text.length) {
+          index += 1
+          out += ' '
+          continue
+        }
+        if (next === quote) {
+          if (text[index] === quote) {
+            index += 1
+            out += ' '
+            continue
+          }
+          break
+        }
+      }
+      continue
+    }
+    out += char
+    index += 1
+  }
+  return out
+}
