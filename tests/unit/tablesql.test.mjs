@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   cellWhere,
+  columnFilter,
   columnNames,
   composeWhere,
+  withColumnFilter,
   filterExpression,
   insertStatement,
   insertStatements,
@@ -216,6 +218,16 @@ describe('composeWhere', () => {
     expect(composeWhere('mysql', '', odd, { constructor: { op: 'eq', text: 'x' } })).toBe(
       "`constructor` = 'x'",
     )
+  })
+
+  it('stores a filter for a column named __proto__ as data', () => {
+    const empty = {}
+    expect(columnFilter(empty, 'constructor')).toBeUndefined()
+    const own = withColumnFilter(empty, '__proto__', { op: 'eq', text: 'x' })
+    expect(Object.getPrototypeOf(own)).toBeNull()
+    expect(columnFilter(own, '__proto__')).toEqual({ op: 'eq', text: 'x' })
+    expect(composeWhere('mysql', '', [column('__proto__', 'text')], own)).toBe("`__proto__` = 'x'")
+    expect(columnFilter(withColumnFilter(own, '__proto__', undefined), '__proto__')).toBeUndefined()
   })
 })
 

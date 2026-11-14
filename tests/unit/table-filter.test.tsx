@@ -158,6 +158,43 @@ describe('table column filter', () => {
     expect(flags.title).toContain('二进制列')
   })
 
+  it('handles columns named like object prototype properties', async () => {
+    const oddColumns = [
+      { name: 'constructor', typeName: 'TEXT' },
+      { name: '__proto__', typeName: 'TEXT' },
+    ]
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: oddColumns.map((column) => ({ ...column })),
+      rows: [['a', 'b']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    }))
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+
+    const filterButton = await screen.findByLabelText('列筛选') as HTMLButtonElement
+    await waitFor(() => expect(filterButton.disabled).toBe(false))
+    fireEvent.click(filterButton)
+
+    const constructor = await screen.findByLabelText('筛选 constructor') as HTMLInputElement
+    expect(constructor.value).toBe('')
+    expect((await screen.findByLabelText('筛选 __proto__') as HTMLInputElement).value).toBe('')
+    fireEvent.change(constructor, { target: { value: 'a' } })
+
+    await waitFor(
+      () => expect(mocks.query.mock.calls.some((call) => String(call[0]?.sql).includes('`constructor`'))).toBe(true),
+      { timeout: 3000 },
+    )
+  })
+
   it('disables a filter whose vague type renders binary placeholders', async () => {
     const bitColumns = [
       { name: 'id', typeName: 'INT' },

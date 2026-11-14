@@ -22,7 +22,7 @@ import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } f
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, columnFilter, columnNames, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, selectColumnsSql, stripWhere, tableSelectSql, withColumnFilter, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
@@ -529,7 +529,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
             {
               label: `取消「${cell.column.name}」列的筛选`,
-              disabled: filters[cell.column.name] === undefined,
+              disabled: columnFilter(filters, cell.column.name) === undefined,
               run: () => {
                 setColumnFilter(cell.column, undefined)
                 apply({ page: 0 })
@@ -587,7 +587,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const previousActive = useRef(0)
   useEffect(() => {
     if (!filtersOpen || connection === null) return
-    const active = columnsRef.current.filter((column) => filters[column.name] !== undefined).length
+    const active = columnsRef.current.filter((column) => columnFilter(filters, column.name) !== undefined).length
     const hadFilters = previousActive.current > 0
     previousActive.current = active
     if (active === 0) {
@@ -604,7 +604,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     filterRowRef.current?.querySelector('input')?.focus()
   }, [filtersOpen])
 
-  const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
+  const activeFilterCount = columns.filter((column) => columnFilter(filters, column.name) !== undefined).length
 
   /** Drop every per-column filter at once and re-query the first page. */
   const clearColumnFilters = useCallback((): void => {
@@ -627,12 +627,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   const conditioned = whereText.trim() !== '' || activeFilterCount > 0
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
-    setFilters((previous) => {
-      const next: ColumnFilters = { ...previous }
-      if (filter === undefined) delete next[column.name]
-      else next[column.name] = filter
-      return next
-    })
+    setFilters((previous) => withColumnFilter(previous, column.name, filter))
   }
 
   /**
@@ -1196,7 +1191,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   ) : null}
                 </th>
                 {shownColumns.map((column, index) => {
-                  const filter = filters[column.name]
+                  const filter = columnFilter(filters, column.name)
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
                   const binary =
                     isBinaryType(column.typeName, connection?.dialect) ||
@@ -1226,9 +1221,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                             className="dshdb-filter-clear"
                             aria-label={`清除 ${column.name} 的筛选`}
                             onClick={() => {
-                              setColumnFilter(column, undefined)
-                              const next: ColumnFilters = { ...filters }
-                              delete next[column.name]
+                              const next = withColumnFilter(filters, column.name, undefined)
+                              setFilters(next)
                               applyRef.current({ page: 0 }, next)
                             }}
                           >

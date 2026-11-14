@@ -15,6 +15,31 @@ export interface ColumnFilter {
 
 export type ColumnFilters = Record<string, ColumnFilter>
 
+/**
+ * Read one filter without consulting `Object.prototype`. Columns may be named
+ * `constructor`, `toString`, or `__proto__`; a plain `filters[name]` would
+ * return an inherited object and crash the caller.
+ */
+export function columnFilter(filters: ColumnFilters, name: string): ColumnFilter | undefined {
+  return Object.hasOwn(filters, name) ? filters[name] : undefined
+}
+
+/**
+ * Immutably set or delete one filter. The accumulator has a null prototype so
+ * writing a column literally named `__proto__` creates a data property instead
+ * of invoking the legacy prototype setter.
+ */
+export function withColumnFilter(
+  filters: ColumnFilters,
+  name: string,
+  filter: ColumnFilter | undefined,
+): ColumnFilters {
+  const next = Object.assign(Object.create(null), filters) as ColumnFilters
+  if (filter === undefined) delete next[name]
+  else next[name] = filter
+  return next
+}
+
 export function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
   if (dialect === 'mysql') return `\`${name.replaceAll('`', '``')}\``
   if (dialect === 'mssql') return `[${name.replaceAll(']', ']]')}]`
@@ -583,11 +608,7 @@ export function composeWhere(
   const manual = stripWhere(base)
   if (manual !== '') parts.push(`(${manual})`)
   for (const column of columns) {
-    // A column may legitimately be named `constructor`, `toString`, or
-    // `__proto__`; reading a missing filter through the prototype chain would
-    // hand `filterExpression` an inherited object instead of "not filtered".
-    if (!Object.hasOwn(filters, column.name)) continue
-    const filter = filters[column.name]
+    const filter = columnFilter(filters, column.name)
     if (filter === undefined) continue
     const expression = filterExpression(dialect, column, filter)
     if (expression !== undefined) parts.push(expression)
