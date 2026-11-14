@@ -106,6 +106,30 @@ describe('table column filter', () => {
     expect(mocks.query.mock.calls.length).toBe(settled)
   })
 
+  it('does not carry column filters to another table', async () => {
+    const view = (table: string) => (
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table } } },
+        })}
+      />
+    )
+    const rendered = render(view('orders'))
+
+    const filterButton = await screen.findByLabelText('列筛选') as HTMLButtonElement
+    await waitFor(() => expect(filterButton.disabled).toBe(false))
+    fireEvent.click(filterButton)
+    fireEvent.change(await screen.findByLabelText('筛选 name'), { target: { value: '手机' } })
+    await waitFor(
+      () => expect(mocks.query.mock.calls.some((call) => String(call[0]?.sql).includes("`name` LIKE"))).toBe(true),
+      { timeout: 3000 },
+    )
+
+    rendered.rerender(view('customers'))
+    const name = await screen.findByLabelText('筛选 name') as HTMLInputElement
+    expect(name.value).toBe('')
+  })
+
   it('does not offer a text filter for a binary column', async () => {
     render(
       <TableTab

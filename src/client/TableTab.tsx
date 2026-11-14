@@ -334,6 +334,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setPage(0)
     setWhereText('')
     setOrderText('')
+    setFilters({})
+    // A filter belongs to the table it was typed on; clearing it here also
+    // keeps the debounce effect from re-querying the next table with it.
+    previousActive.current = 0
     setError(null)
     void (async () => {
       try {
