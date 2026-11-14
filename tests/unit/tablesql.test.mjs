@@ -158,6 +158,19 @@ describe('insertStatement', () => {
     expect(insertStatements('mysql', 'shop', 'categories', exportColumns, [])).toBe('')
   })
 
+  it('writes SQL Server bit values as 1 and 0', () => {
+    const mssqlColumns = [column('id', 'int'), column('active', 'bit')]
+    expect(insertStatement('mssql', 'dbo', 'users', mssqlColumns, [1, true])).toBe(
+      'INSERT INTO [dbo].[users] ([id], [active]) VALUES (1, 1);',
+    )
+    expect(insertStatement('mssql', 'dbo', 'users', mssqlColumns, [2, false])).toBe(
+      'INSERT INTO [dbo].[users] ([id], [active]) VALUES (2, 0);',
+    )
+    expect(insertStatement('postgres', 'public', 'users', mssqlColumns, [3, true])).toBe(
+      'INSERT INTO "public"."users" ("id", "active") VALUES (3, TRUE);',
+    )
+  })
+
   it('leaves server-generated columns out while keeping value positions aligned', () => {
     const generated = [
       { ...column('total', 'int'), generated: true },
@@ -255,6 +268,8 @@ describe('cellWhere', () => {
   it('matches NULL and boolean cells', () => {
     expect(cellWhere('mysql', { name: 'note', typeName: 'VARCHAR' }, null)).toBe('`note` IS NULL')
     expect(cellWhere('mysql', { name: 'paid', typeName: 'BIT' }, true)).toBe('`paid` = TRUE')
+    expect(cellWhere('mssql', { name: 'paid', typeName: 'BIT' }, true)).toBe('[paid] = 1')
+    expect(cellWhere('mssql', { name: 'paid', typeName: 'BIT' }, false)).toBe('[paid] = 0')
     expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
   })
 })
@@ -263,6 +278,7 @@ describe('inListOf', () => {
   it('keeps numbers and NULLs bare and quotes text per dialect', () => {
     expect(inListOf('mysql', [[1], [2.5], [null], ['x']], 0)).toBe("(1, 2.5, NULL, 'x')")
     expect(inListOf('oracle', [['a'], [true]], 0)).toBe("('a', TRUE)")
+    expect(inListOf('mssql', [[true], [false]], 0)).toBe('(1, 0)')
   })
 
   it('escapes backslashes for MySQL literal text', () => {

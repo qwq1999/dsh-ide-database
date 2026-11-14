@@ -161,9 +161,15 @@ export function insertStatement(
   return `INSERT INTO ${qualifiedName(dialect, schema, table)} (${names}) VALUES (${values});`
 }
 
+/** SQL Server has no boolean literals; its BIT columns take 1 and 0. */
+function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): string {
+  if (dialect === 'mssql') return value ? '1' : '0'
+  return value ? 'TRUE' : 'FALSE'
+}
+
 function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo, value: CellValue): string {
   if (value === null) return 'NULL'
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  if (typeof value === 'boolean') return booleanLiteral(dialect, value)
   if (typeof value === 'number') return String(value)
   const text = String(value)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
@@ -230,7 +236,7 @@ export function cellWhere(
   const name = quoteIdent(dialect, column.name)
   if (value === null) return `${name} IS NULL`
   if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
-  if (typeof value === 'boolean') return `${name} = ${value ? 'TRUE' : 'FALSE'}`
+  if (typeof value === 'boolean') return `${name} = ${booleanLiteral(dialect, value)}`
   if (typeof value === 'string' && isTemporalType(column.typeName)) {
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
   }
@@ -263,7 +269,7 @@ export function inListOf(
     const value: CellValue = row[index] ?? null
     if (value === null || value === undefined) return 'NULL'
     if (typeof value === 'number' || typeof value === 'bigint') return String(value)
-    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+    if (typeof value === 'boolean') return booleanLiteral(dialect, value)
     return quoteLiteral(String(value), dialect)
   })
   return `(${literals.join(', ')})`
