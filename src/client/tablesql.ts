@@ -336,7 +336,7 @@ function readTableIdentifier(text: string, index: number): IdentifierToken | nul
     return null
   }
   let cursor = start
-  while (cursor < text.length && /[\w$#]/u.test(text[cursor] ?? '')) cursor += 1
+  while (cursor < text.length && /[\p{L}\p{N}_$#]/u.test(text[cursor] ?? '')) cursor += 1
   if (cursor === start) return null
   return { value: text.slice(start, cursor), end: cursor }
 }
@@ -373,7 +373,24 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
       if (topLevelOnly && depthAt[match.index] !== 0) continue
       const parts: string[] = []
       let token = readTableIdentifier(statement, keyword.lastIndex)
-      let end = 0
+      while (token !== null) {
+        const word = token.value.toLowerCase()
+        if (word === 'only' && dialect === 'postgres') {
+          token = readTableIdentifier(statement, token.end)
+          continue
+        }
+        if (
+          word === 'lateral' &&
+          (dialect === 'postgres' || dialect === 'mysql' || dialect === 'oceanbase-mysql')
+        ) {
+          const next = skipSpaces(statement, token.end)
+          token = statement[next] === '(' ? null : readTableIdentifier(statement, token.end)
+          continue
+        }
+        break
+      }
+      if (token === null) continue
+      let end = token.end
       while (token !== null) {
         parts.push(token.value)
         end = token.end

@@ -279,6 +279,16 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('select * from [from orders]', 'mssql')).toEqual({ schema: '', table: 'from orders' })
   })
 
+  it('reads Unicode names and skips ONLY / LATERAL modifiers', () => {
+    expect(tableFromStatement('select * from 用户')).toEqual({ schema: '', table: '用户' })
+    expect(tableFromStatement('select * from 商店.订单', 'mysql')).toEqual({ schema: '商店', table: '订单' })
+    expect(tableFromStatement('delete from only 用户', 'postgres')).toEqual({ schema: '', table: '用户' })
+    expect(tableFromStatement('select * from lateral (select * from 订单) x', 'postgres')).toEqual({
+      schema: '',
+      table: '订单',
+    })
+  })
+
   it('uses the last two parts of a three-part SQL Server name', () => {
     expect(tableFromStatement('select * from [app].[dbo].[Order Details]', 'mssql')).toEqual({
       schema: 'dbo',
