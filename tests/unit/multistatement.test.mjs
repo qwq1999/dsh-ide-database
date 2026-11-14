@@ -115,6 +115,18 @@ describe('splitStatements', () => {
     expect(splitStatements('select $1$; select 2')).toEqual(['select $1$', 'select 2'])
   })
 
+  it('separates SQL Server batches at GO lines', () => {
+    expect(splitStatements('select 1\nGO\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('select 1\n  go  -- next batch\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('select 1\nGO\nGO\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('select 1;\nGO\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('select 1 GO\nselect 2', 'mssql')).toEqual(['select 1 GO\nselect 2'])
+    expect(splitStatements("select 'GO' as x;\nGO\nselect 2", 'mssql')).toEqual(["select 'GO' as x", 'select 2'])
+    // GO is a SQL Server client command, so other dialects leave it in the SQL.
+    expect(splitStatements('select 1\nGO\nselect 2', 'generic')).toEqual(['select 1\nGO\nselect 2'])
+    expect(splitStatements('select 1\nGO\nselect 2', 'mysql')).toEqual(['select 1\nGO\nselect 2'])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])

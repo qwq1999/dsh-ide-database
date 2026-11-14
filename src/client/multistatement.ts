@@ -6,6 +6,10 @@ interface DelimiterDirective {
   end: number
 }
 
+interface BatchDirective {
+  end: number
+}
+
 /** A script may put explanatory comments before its first DELIMITER line. */
 function hasOnlyComments(text: string): boolean {
   const rest = text
@@ -32,6 +36,20 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
 }
 
 /**
+ * Parse a SQL Server `GO` batch separator at `index`. `GO` is a client command,
+ * not T-SQL: it only counts as its own line, optionally followed by a comment,
+ * and is never sent to the server.
+ */
+function mssqlGoDirective(input: string, index: number): BatchDirective | null {
+  let lineStart = index
+  while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
+  if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
+  const match = /^go[ \t]*(?:--[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
+  if (match === null) return null
+  return { end: index + match[0].length }
+}
+
+/**
  * Split a SQL script into individual statements.
  *
  * The console sends one statement per request, so a script has to be cut at
@@ -47,7 +65,8 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
  *
  * MySQL's `DELIMITER $$` client command is handled here too: the directive is
  * removed, the chosen token terminates statements, and semicolons inside the
- * body stay part of the statement.
+ * body stay part of the statement. SQL Server's `GO` batch separator is also a
+ * client command; a line containing only `GO` splits batches and is removed.
  */
 export function splitStatements(input: string, dialect: SqlDialect = 'generic'): string[] {
   const statements: string[] = []
@@ -63,6 +82,19 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
   while (index < input.length) {
     const char = input[index] ?? ''
+
+    // `GO` is a SQL Server client command, not T-SQL. It only counts when it
+    // starts its own line; strings and comments are consumed by their own
+    // branches before the scanner can see a `GO` inside them.
+    const batchWord = char === 'g' || char === 'G' ? input.slice(index, index + 2).toLowerCase() : ''
+    if (dialect === 'mssql' && batchWord === 'go') {
+      const batch = mssqlGoDirective(input, index)
+      if (batch !== null) {
+        if (!hasOnlyComments(current)) flush()
+        index = batch.end
+        continue
+      }
+    }
 
     // `DELIMITER` is a mysql client command; it chooses the separator but is
     // never sent to the server. Only recognise it at the start of a line so a
