@@ -42,6 +42,12 @@ describe('pageable', () => {
     expect(pageable('/* fetch first 5 rows */ SELECT * FROM shop.orders')).toBe(true)
   })
 
+  it('pages a select whose terminator sits before a trailing comment', () => {
+    expect(pageable('SELECT * FROM t; -- trailing remark')).toBe(true)
+    expect(pageable('SELECT * FROM t;; /* trailing remark */')).toBe(true)
+    expect(pageable('SELECT 1; SELECT 2; -- trailing remark')).toBe(false)
+  })
+
   it('reads literals and comments with the connection dialect', () => {
     expect(pageable('SELECT $$a;b$$ FROM t', 'postgres')).toBe(true)
     expect(pageable("SELECT q'[it's; fine]' FROM dual", 'oracle')).toBe(true)
@@ -64,6 +70,12 @@ describe('pageable', () => {
 })
 
 describe('wrapPage', () => {
+  it('keeps a trailing comment out of the appended page clause', () => {
+    expect(wrapPage('generic', 'SELECT * FROM t; -- trailing remark', 10, 1)).toBe(
+      'SELECT * FROM (\nSELECT * FROM t -- trailing remark\n) dshdb_page LIMIT 10 OFFSET 10',
+    )
+  })
+
   it('wraps with LIMIT on the generic dialects', () => {
     expect(wrapPage('mysql', 'SELECT * FROM t', 500, 2)).toBe(
       'SELECT * FROM (\nSELECT * FROM t\n) dshdb_page LIMIT 500 OFFSET 1000',

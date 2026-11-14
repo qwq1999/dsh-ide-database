@@ -9,9 +9,30 @@ import { maskNonCode } from './sqllex'
 const NOT_PAGEABLE =
   /\binto\b|\bfor\s+(?:update|share|key\s+share|no\s+key\s+update|xml|json|browse)\b|\block\s+in\s+share\s+mode\b|\btop\b\s*(?:\(|\d)|\boption\s*\(/u
 
+/** Remove trailing semicolons without touching a trailing comment. */
+function stripTerminators(text: string, dialect: SqlDialect): string {
+  const code = maskNonCode(text, dialect, true)
+  const cuts: number[] = []
+  let end = code.length
+  for (;;) {
+    while (end > 0 && /\s/u.test(code[end - 1] ?? '')) end -= 1
+    if (end === 0 || code[end - 1] !== ';') break
+    cuts.push(end - 1)
+    end -= 1
+  }
+  if (cuts.length === 0) return text
+  let result = ''
+  let last = 0
+  for (const index of cuts.sort((left, right) => left - right)) {
+    result += text.slice(last, index)
+    last = index + 1
+  }
+  return result + text.slice(last)
+}
+
 /** A bare single SELECT can be wrapped into a page; anything else runs whole. */
 export function pageable(statement: string, dialect: SqlDialect = 'generic'): boolean {
-  const text = statement.trim().replace(/;+\s*$/u, '')
+  const text = stripTerminators(statement.trim(), dialect).trim()
   // Judge the code, not the text: a literal `'limit'`, a comment, or a leading
   // comment must not decide whether the console can page the query.
   const code = maskNonCode(text, dialect, true).trim().toLowerCase()
@@ -60,7 +81,7 @@ export function wrapPage(
   size: number,
   page: number,
 ): string {
-  const text = statement.trim().replace(/;+\s*$/u, '')
+  const text = stripTerminators(statement.trim(), dialect === 'redis' ? 'generic' : dialect).trim()
   const offset = page * size
   if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
     return `SELECT * FROM (
