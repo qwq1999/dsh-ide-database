@@ -113,6 +113,13 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('WITH a AS (SELECT 1), b AS (SELECT * FROM a) SELECT * FROM b')).toBe(true)
   })
 
+  it('accepts quoted CTE names', () => {
+    expect(isReadOnlySql('WITH "recent sales" AS (SELECT 1) SELECT * FROM "recent sales"', 'postgres')).toBe(true)
+    expect(isReadOnlySql('with [recent] as (select 1) select * from [recent]', 'mssql')).toBe(true)
+    expect(isReadOnlySql('with `recent` as (select 1) select * from `recent`', 'mysql')).toBe(true)
+    expect(isReadOnlySql('WITH "d" AS (DELETE FROM t RETURNING *) SELECT * FROM "d"', 'postgres')).toBe(false)
+  })
+
   it('is not fooled by strings, comments or nesting inside the CTE', () => {
     expect(isReadOnlySql("WITH c AS (SELECT 'delete' AS x) SELECT * FROM c")).toBe(true)
     expect(isReadOnlySql("WITH c AS (SELECT ')' AS p) SELECT * FROM c")).toBe(true)

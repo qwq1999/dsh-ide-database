@@ -70,6 +70,34 @@ function readWord(text: string, index: number): { word: string; end: number } {
   return { word: text.slice(index, end).toLowerCase(), end }
 }
 
+/**
+ * End of a CTE name, which may be a plain word or a delimited identifier
+ * (`"recent sales"`, `[recent]`, `` `recent` ``). `readWord` alone stops at the
+ * opening quote, so a valid read would look like an unparseable CTE list and
+ * the read-only guard would reject it.
+ */
+function readIdentifierEnd(text: string, index: number): number | null {
+  const start = skipSpace(text, index)
+  const open = text[start]
+  if (open === '[') return bracketIdentifierEnd(text, start)
+  if (open === '"' || open === '`') {
+    let cursor = start + 1
+    while (cursor < text.length) {
+      if (text[cursor] === open) {
+        if (text[cursor + 1] === open) {
+          cursor += 2
+          continue
+        }
+        return cursor + 1
+      }
+      cursor += 1
+    }
+    return null
+  }
+  const word = readWord(text, start)
+  return word.word === '' ? null : word.end
+}
+
 /** PostgreSQL E'...' strings interpret backslash escapes; ordinary strings do not. */
 function isPostgresEscapeString(text: string, quoteIndex: number): boolean {
   const prefix = text[quoteIndex - 1]
@@ -213,9 +241,9 @@ function parseWithClause(text: string, dialect: SqlDialect = 'generic'): WithCla
   if (recursive.word === 'recursive') cursor = skipSpace(text, recursive.end)
   const bodies: string[] = []
   for (;;) {
-    const name = readWord(text, cursor)
-    if (name.word === '') return null
-    cursor = skipSpace(text, name.end)
+    const nameEnd = readIdentifierEnd(text, cursor)
+    if (nameEnd === null) return null
+    cursor = skipSpace(text, nameEnd)
     if (text[cursor] === '(') {
       const close = matchingParen(text, cursor, dialect)
       if (close < 0) return null
