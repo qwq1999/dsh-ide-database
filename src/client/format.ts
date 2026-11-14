@@ -9,7 +9,7 @@ export function dialectLabel(dialect: Dialect | undefined): string {
 }
 
 export function formatMs(ms: number | undefined): string {
-  if (ms === undefined || !Number.isFinite(ms)) return '—'
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return '—'
   const rounded = Math.max(1, Math.round(ms))
   if (rounded < 1000) return `${rounded} ms`
   const seconds = Math.round(ms / 1000)
@@ -31,7 +31,7 @@ export function formatTtl(seconds: number): string {
 }
 
 export function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || !Number.isFinite(bytes)) return ''
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return ''
   const rounded = Math.round(bytes)
   if (rounded < 1024) return `${rounded} B`
   if (rounded < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

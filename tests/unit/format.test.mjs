@@ -29,6 +29,7 @@ describe('format helpers', () => {
     expect(formatMs(999.6)).toBe('1.00 s')
     expect(formatMs(59_999)).toBe('60.00 s')
     expect(formatMs(Number.POSITIVE_INFINITY)).toBe('—')
+    expect(formatMs(-1)).toBe('—')
     expect(formatMs(60_000)).toBe('1m 0s')
     expect(formatMs(65_400)).toBe('1m 5s')
     expect(formatMs(65000)).toBe('1m 5s')
@@ -39,6 +40,7 @@ describe('format helpers', () => {
     expect(formatBytes(1048575.6)).toBe('1.0 MB')
     expect(formatBytes(Number.NaN)).toBe('')
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('')
+    expect(formatBytes(-1)).toBe('')
   })
 
   it('formats nullable cells', () => {
