@@ -83,6 +83,16 @@ describe('splitStatements', () => {
     expect(splitStatements(slash, 'mysql')).toEqual(['select 1;\nselect 2', 'select 3'])
   })
 
+  it('ignores a trailing comment on a DELIMITER line', () => {
+    const script = [
+      'DELIMITER $$ -- switch to the procedure body',
+      'CREATE PROCEDURE p() BEGIN SELECT 1; END$$',
+      'DELIMITER ; -- restore the default',
+      'SELECT 2;',
+    ].join('\n')
+    expect(splitStatements(script, 'mysql')).toEqual(['CREATE PROCEDURE p() BEGIN SELECT 1; END', 'SELECT 2'])
+  })
+
   it('does not treat DELIMITER in a statement as a client command', () => {
     expect(splitStatements("select 'DELIMITER $$'; select 2", 'mysql')).toEqual(["select 'DELIMITER $$'", 'select 2'])
     expect(splitStatements('select 1; DELIMITER $$', 'mysql')).toEqual(['select 1', 'DELIMITER $$'])
