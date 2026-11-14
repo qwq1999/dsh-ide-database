@@ -348,6 +348,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (column: ColumnInfo): ColumnMenuItem[] => {
       const active = activeSort?.column === column.name ? activeSort.direction : null
       const index = columns.findIndex((item) => item.name === column.name)
+      const binary = isBinaryType(column.typeName)
       return [
         { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
         { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
@@ -359,8 +360,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           run: () => void copyText(columnValues(rows, index)).then(noteCopied('本列值')),
         },
         {
-          label: '复制为 IN 列表',
-          disabled: rows.length === 0 || index < 0,
+          label: binary ? '复制为 IN 列表（二进制列无法匹配）' : '复制为 IN 列表',
+          disabled: rows.length === 0 || index < 0 || binary,
           run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index, column)).then(noteCopied('IN 列表')),
         },
         {

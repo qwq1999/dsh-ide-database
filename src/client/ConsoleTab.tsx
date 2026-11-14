@@ -1337,6 +1337,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const active = rowSort?.column === column.name ? rowSort.direction : null
     const index = columns.findIndex((item) => item.name === column.name)
+    const binary = isBinaryType(column.typeName)
     return [
       { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
       { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
@@ -1348,8 +1349,8 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         run: () => void copyText(columnValues(filteredRows, index)).then(noteCopied('本列值')),
       },
       {
-        label: '复制为 IN 列表',
-        disabled: filteredRows.length === 0 || index < 0,
+        label: binary ? '复制为 IN 列表（二进制列无法匹配）' : '复制为 IN 列表',
+        disabled: filteredRows.length === 0 || index < 0 || binary,
         run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index, column)).then(noteCopied('IN 列表')),
       },
       {
