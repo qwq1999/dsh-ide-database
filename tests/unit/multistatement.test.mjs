@@ -91,6 +91,14 @@ describe('splitStatements', () => {
       'SELECT 2;',
     ].join('\n')
     expect(splitStatements(script, 'mysql')).toEqual(['CREATE PROCEDURE p() BEGIN SELECT 1; END', 'SELECT 2'])
+
+    const hash = [
+      'DELIMITER $$ # switch to the procedure body',
+      'CREATE PROCEDURE p() BEGIN SELECT 1; END$$',
+      'DELIMITER ; # restore the default',
+      'SELECT 2;',
+    ].join('\n')
+    expect(splitStatements(hash, 'mysql')).toEqual(['CREATE PROCEDURE p() BEGIN SELECT 1; END', 'SELECT 2'])
   })
 
   it('does not treat DELIMITER in a statement as a client command', () => {

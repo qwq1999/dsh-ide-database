@@ -29,7 +29,7 @@ function mysqlDelimiterDirective(input: string, index: number): DelimiterDirecti
   let lineStart = index
   while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
   if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
-  const match = /^delimiter[ \t]+(\S+)[ \t]*(?:--[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
+  const match = /^delimiter[ \t]+(\S+)[ \t]*(?:(?:--|#)[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
   if (match === null) return null
   const token = match[1]
   if (token === undefined) return null
