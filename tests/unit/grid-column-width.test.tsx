@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DataGrid } from '../../src/client/DataGrid'
@@ -13,6 +13,25 @@ const columns = [
 afterEach(() => cleanup())
 
 describe('column width measuring', () => {
+  it('moves stored widths when columns are reordered', async () => {
+    window.localStorage.setItem('dsh-ide-database.colwidths.v1', JSON.stringify({ 'reorder-widths': [100, 200, 300] }))
+    const { rerender } = render(
+      <DataGrid columns={columns} rows={[[1, '手机', '638.00']]} offset={0} storageKey="reorder-widths" />,
+    )
+    rerender(
+      <DataGrid
+        columns={[columns[2]!, columns[0]!, columns[1]!]}
+        rows={[[1, '手机', '638.00']]}
+        offset={0}
+        storageKey="reorder-widths"
+      />,
+    )
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('dsh-ide-database.colwidths.v1') ?? '{}')
+      expect(stored['reorder-widths']).toEqual([300, 100, 200])
+    })
+  })
+
   it('measures the data headers even when the selection column is present', () => {
     render(
       <DataGrid

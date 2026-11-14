@@ -202,6 +202,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   const [widths, setWidths] = useState<number[] | null>(() =>
     storageKey === undefined ? null : readWidths(storageKey, columns.length),
   )
+  const previousColumns = useRef(columns)
 
   // A different result set (or a tab reused for another table) drops the widths.
   useEffect(() => {
@@ -211,6 +212,20 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   useEffect(() => {
     if (widths !== null && widths.length !== columns.length) setWidths(null)
   }, [widths, columns.length])
+
+  // Dragging a header reorders `columns`; move the measured widths with the
+  // column instead of leaving them attached to a screen position.
+  useEffect(() => {
+    const previous = previousColumns.current
+    previousColumns.current = columns
+    if (widths === null || previous === columns || previous.length !== columns.length) return
+    const oldIndex = new Map(previous.map((column, index) => [column, index]))
+    if (!columns.every((column) => oldIndex.has(column))) return
+    const next = columns.map((column) => widths[oldIndex.get(column) ?? 0] ?? 0)
+    if (next.every((width, index) => width === widths[index])) return
+    setWidths(next)
+    if (storageKey !== undefined) writeWidths(storageKey, next)
+  }, [columns, widths, storageKey])
 
   const startResize = useCallback(
     (event: React.MouseEvent<HTMLSpanElement>, index: number) => {
