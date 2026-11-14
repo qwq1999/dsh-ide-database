@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForConsoleSource } from '../stubs/console-ready'
@@ -263,6 +263,29 @@ describe('console column select copy', () => {
       'SELECT `name`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `name` ORDER BY `count` DESC',
     )
   })
+  it('keeps the column order when the same query is run again', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    const labels = (): (string | null)[] => screen.getAllByRole('columnheader').map((cell) => cell.textContent)
+    const drag = createEvent.dragStart(header('id'))
+    Object.assign(drag, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent(header('id'), drag)
+    fireEvent.dragOver(header('total'))
+    fireEvent.drop(header('total'))
+    await waitFor(() => expect(labels().indexOf('name')).toBeLessThan(labels().indexOf('id')))
+
+    fireEvent.click(screen.getByRole('button', { name: '执行' }))
+    await waitFor(() => expect(mocks.query).toHaveBeenCalledTimes(2), { timeout: 4000 })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(labels().indexOf('name')).toBeLessThan(labels().indexOf('id'))
+  })
+
   it('copies every column name from the header menu', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')

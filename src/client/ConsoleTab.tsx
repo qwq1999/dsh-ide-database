@@ -1328,7 +1328,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const hiddenCount = displayColumns.length - shownColumns.length
   const signature = columnSignature(columns)
   useEffect(() => {
+    // Only a different result shape invalidates the column order; re-running
+    // the same query returns a new columns array but the user's order still fits.
     setColumnOrder(null)
+  }, [signature])
+  useEffect(() => {
     // The first render has no columns yet; pruning then would erase the
     // remembered hidden set before the result arrives, so keep it until the
     // grid actually has a column list to prune against.
