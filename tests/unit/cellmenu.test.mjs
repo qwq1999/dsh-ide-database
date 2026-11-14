@@ -12,4 +12,9 @@ describe('rowToTsv', () => {
   it('writes NULL as an empty cell', () => {
     expect(rowToTsv(columns('id', 'note'), [null, 'x'])).toBe('\tx')
   })
+
+  it('escapes spreadsheet formulas in copied rows', () => {
+    expect(rowToTsv(columns('note'), ['=HYPERLINK("http://evil.test")'])).toBe('\'=HYPERLINK("http://evil.test")')
+    expect(rowToTsv(columns('amount'), ['-42'])).toBe('-42')
+  })
 })

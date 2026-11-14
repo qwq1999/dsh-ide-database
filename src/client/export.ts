@@ -18,7 +18,7 @@ export type ExportFormat = 'csv' | 'json' | 'sql' | 'md'
  * `=HYPERLINK(...)` is displayed as text instead of running as a formula.
  * Plain numbers (`-42`, `+3.5`) are left alone so they stay numeric.
  */
-function spreadsheetSafe(text: string): string {
+export function spreadsheetSafe(text: string): string {
   if (!/^[=+\-@]/u.test(text)) return text
   if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(text)) return text
   return `'${text}`
