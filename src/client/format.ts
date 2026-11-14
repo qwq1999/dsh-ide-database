@@ -85,16 +85,32 @@ function unwrapExplainAnalyze(statement: string): string {
   return next.word.startsWith('format') ? next.rest : analyze.rest
 }
 
-function headWord(text: string): { word: string; rest: string } {
-  let end = 0
-  while (end < text.length) {
-    const char = text[end] ?? ''
-    if (isSpaceChar(char) || char === '(' || char === ')' || char === ',') break
-    end += 1
+/** Index just past a CTE name starting at `index`, or null when it is empty. */
+function cteNameEnd(text: string, index: number): number | null {
+  const first = text[index]
+  if (first === undefined) return null
+  const closer = first === '"' ? '"' : first === '`' ? '`' : first === '[' ? ']' : ''
+  if (closer !== '') {
+    let cursor = index + 1
+    while (cursor < text.length) {
+      if (text[cursor] === closer) {
+        if (text[cursor + 1] === closer) {
+          cursor += 2
+          continue
+        }
+        return cursor + 1
+      }
+      cursor += 1
+    }
+    return null
   }
-  let cursor = end
-  while (cursor < text.length && isSpaceChar(text[cursor] ?? '')) cursor += 1
-  return { word: text.slice(0, end).toLowerCase(), rest: text.slice(cursor) }
+  let cursor = index
+  while (cursor < text.length) {
+    const char = text[cursor] ?? ''
+    if (isSpaceChar(char) || char === '(' || char === ')' || char === ',') break
+    cursor += 1
+  }
+  return cursor > index ? cursor : null
 }
 
 /** Index just past the `)` that closes the `(` at `open`, or -1. */
@@ -120,40 +136,42 @@ function skipBalanced(text: string, open: number): number {
   return -1
 }
 
-/**
- * Oracle and PostgreSQL let a CTE prefix a write statement:
- * `WITH fresh AS (…) DELETE FROM t`. The confirmation prompt must look past
- * the CTE list, so this walks `WITH [RECURSIVE] name [(cols)] AS [NOT]
- * [MATERIALIZED] (…) [, …]` and returns the statement it decorates. `null`
- * means the header could not be parsed; the caller then treats it as a write.
- */
-function unwrapWith(statement: string): string | null {
-  let rest = firstWord(statement).rest
-  const maybeRecursive = headWord(rest)
+/** Split a masked WITH clause into its CTE bodies and the statement it decorates. */
+function withWriteParts(code: string): { bodies: string[]; statement: string } | null {
+  let rest = firstWord(code).rest
+  const maybeRecursive = firstWord(rest)
   if (maybeRecursive.word === 'recursive') rest = maybeRecursive.rest
+  const bodies: string[] = []
   for (;;) {
-    const name = headWord(rest)
-    if (name.word === '') return null
-    rest = name.rest
+    const nameEnd = cteNameEnd(rest, 0)
+    if (nameEnd === null) return null
+    rest = rest.slice(nameEnd).trimStart()
     if (rest.startsWith('(')) {
       const close = skipBalanced(rest, 0)
       if (close < 0) return null
       rest = rest.slice(close).trimStart()
     }
-    const as = headWord(rest)
+    const as = firstWord(rest)
     if (as.word !== 'as') return null
     rest = as.rest
-    const optional = headWord(rest)
-    if (optional.word === 'not' || optional.word === 'materialized') rest = optional.rest
+    const optional = firstWord(rest)
+    if (optional.word === 'not') {
+      const materialized = firstWord(optional.rest)
+      if (materialized.word !== 'materialized') return null
+      rest = materialized.rest
+    } else if (optional.word === 'materialized') {
+      rest = optional.rest
+    }
     if (!rest.startsWith('(')) return null
     const close = skipBalanced(rest, 0)
     if (close < 0) return null
+    bodies.push(rest.slice(1, close - 1))
     rest = rest.slice(close).trimStart()
     if (rest.startsWith(',')) {
       rest = rest.slice(1).trimStart()
       continue
     }
-    return rest
+    return { bodies, statement: rest }
   }
 }
 
@@ -184,39 +202,6 @@ function explainAnalyzeBody(code: string): string | null {
   const format = firstWord(rest)
   if (format.word.startsWith('format')) rest = format.rest
   return rest
-}
-
-/** Split a masked WITH clause into its CTE bodies and the statement it decorates. */
-function withWriteParts(code: string): { bodies: string[]; statement: string } | null {
-  let rest = firstWord(code).rest
-  const maybeRecursive = firstWord(rest)
-  if (maybeRecursive.word === 'recursive') rest = maybeRecursive.rest
-  const bodies: string[] = []
-  for (;;) {
-    const name = firstWord(rest)
-    if (name.word === '') return null
-    rest = name.rest
-    if (rest.startsWith('(')) {
-      const close = skipBalanced(rest, 0)
-      if (close < 0) return null
-      rest = rest.slice(close).trimStart()
-    }
-    const as = firstWord(rest)
-    if (as.word !== 'as') return null
-    rest = as.rest
-    const optional = firstWord(rest)
-    if (optional.word === 'not' || optional.word === 'materialized') rest = optional.rest
-    if (!rest.startsWith('(')) return null
-    const close = skipBalanced(rest, 0)
-    if (close < 0) return null
-    bodies.push(rest.slice(1, close - 1))
-    rest = rest.slice(close).trimStart()
-    if (rest.startsWith(',')) {
-      rest = rest.slice(1).trimStart()
-      continue
-    }
-    return { bodies, statement: rest }
-  }
 }
 
 /**

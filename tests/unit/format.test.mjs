@@ -72,6 +72,13 @@ describe('format helpers', () => {
   it('looks inside CTEs and files when deciding whether to confirm', () => {
     expect(looksLikeWrite('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(true)
     expect(looksLikeWrite('WITH d AS (SELECT 1) SELECT * FROM d')).toBe(false)
+    expect(looksLikeWrite('WITH "recent sales" AS (SELECT 1) SELECT * FROM "recent sales"')).toBe(false)
+    expect(looksLikeWrite('WITH `recent sales` AS (SELECT 1) SELECT * FROM `recent sales`')).toBe(false)
+    expect(looksLikeWrite('WITH [recent sales] AS (SELECT 1) SELECT * FROM [recent sales]')).toBe(false)
+    expect(looksLikeWrite('WITH "d" AS (DELETE FROM t RETURNING *) SELECT * FROM "d"')).toBe(true)
+    expect(looksLikeWrite('WITH "x"("id") AS (SELECT 1) SELECT * FROM "x"')).toBe(false)
+    expect(looksLikeWrite('WITH c AS NOT MATERIALIZED (SELECT 1) SELECT * FROM c')).toBe(false)
+    expect(looksLikeWrite('WITH c AS MATERIALIZED (SELECT 1) SELECT * FROM c')).toBe(false)
     expect(looksLikeWrite("SELECT 1 INTO OUTFILE '/tmp/x'")).toBe(true)
     expect(looksLikeWrite('SELECT 1 INTO new_table')).toBe(true)
     expect(looksLikeWrite('SELECT 1 INTO @total')).toBe(false)
