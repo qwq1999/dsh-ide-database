@@ -20,7 +20,7 @@ import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colm
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hasHidden, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
-import { migrateWidths } from './columnWidths'
+import { migrateWidths, moveWidthsForColumns } from './columnWidths'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
 import { cellWhere, columnFilter, columnNames, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, selectColumnsSql, stripWhere, tableSelectSql, withColumnFilter, type ColumnFilter, type ColumnFilters } from './tablesql'
@@ -255,6 +255,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     () => migrateWidths(gridStorageKey, legacyGridStorageKey, shownColumns.length),
     [gridStorageKey, legacyGridStorageKey, shownColumns.length],
   )
+
+  // Reordering while a column is hidden is handled by the page, not the grid:
+  // the grid only knows the visible columns, so it cannot move the saved
+  // width list for the hidden ones.
+  const previousFullColumns = useRef(displayColumns)
+  useEffect(() => {
+    const previous = previousFullColumns.current
+    previousFullColumns.current = displayColumns
+    if (shownColumns.length < displayColumns.length) {
+      moveWidthsForColumns(previous, displayColumns, widthStorageKey)
+    }
+  }, [displayColumns, shownColumns.length, widthStorageKey])
 
   // A reload, page change or filter shows different rows; old checkboxes would point nowhere.
   useEffect(() => {

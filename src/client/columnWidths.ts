@@ -6,6 +6,8 @@
  * stale or hand-edited entry can never make a column invisible.
  */
 
+import type { ColumnInfo } from '../shared/types'
+
 const STORAGE_KEY = 'dsh-ide-database.colwidths.v1'
 const MIN_WIDTH = 40
 const MAX_WIDTH = 1200
@@ -86,4 +88,25 @@ export function migrateWidths(primary: string, legacy: string, count: number): s
   if (previous !== null) writeWidths(primary, previous)
   clearWidths(legacy)
   return primary
+}
+
+/**
+ * Keep saved widths attached to their columns when the user reorders a grid
+ * while some columns are hidden. The grid cannot do this itself: it only sees
+ * the visible columns and does not write the full width list in that state.
+ */
+export function moveWidthsForColumns(
+  previous: readonly ColumnInfo[],
+  next: readonly ColumnInfo[],
+  key: string,
+): void {
+  const count = previous.length
+  if (count === 0 || count !== next.length) return
+  const widths = readWidths(key, count)
+  if (widths === null) return
+  const positions = new Map(previous.map((column, index) => [column, index]))
+  if (!next.every((column) => positions.has(column))) return
+  const moved = next.map((column) => widths[positions.get(column) ?? 0] ?? 0)
+  if (moved.every((width, index) => width === widths[index])) return
+  writeWidths(key, moved)
 }

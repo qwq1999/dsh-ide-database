@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { clearWidths, migrateWidths, readWidths, writeWidths } from '../../src/client/columnWidths.ts'
+import { clearWidths, migrateWidths, moveWidthsForColumns, readWidths, writeWidths } from '../../src/client/columnWidths.ts'
 
 class MemoryStorage {
   constructor() {
@@ -41,5 +41,30 @@ describe('列宽迁移', () => {
     clearWidths('table:mysql-1:shop.orders')
     migrateWidths('table:mysql-1:shop.orders', 'table:shop.orders', 2)
     expect(readWidths('table:mysql-1:shop.orders', 2)).toBeNull()
+  })
+})
+
+describe('隐藏列时重排列宽', () => {
+  it('把已保存的宽度跟着列身份移动到新位置', () => {
+    const a = { name: 'a' }
+    const b = { name: 'b' }
+    const c = { name: 'c' }
+    writeWidths('table:1', [100, 200, 300])
+    moveWidthsForColumns([a, b, c], [c, a, b], 'table:1')
+    expect(readWidths('table:1', 3)).toEqual([300, 100, 200])
+  })
+
+  it('列对象变化时不重排旧宽度', () => {
+    writeWidths('table:1', [100, 200, 300])
+    moveWidthsForColumns([{ name: 'a' }, { name: 'b' }, { name: 'c' }], [{ name: 'c' }, { name: 'a' }, { name: 'b' }], 'table:1')
+    expect(readWidths('table:1', 3)).toEqual([100, 200, 300])
+  })
+
+  it('没有保存宽度或列数不一致时不做任何事', () => {
+    moveWidthsForColumns([{ name: 'a' }, { name: 'b' }], [{ name: 'b' }, { name: 'a' }], 'table:none')
+    expect(readWidths('table:none', 2)).toBeNull()
+    writeWidths('table:2', [100, 200])
+    moveWidthsForColumns([{ name: 'a' }, { name: 'b' }], [{ name: 'a' }], 'table:2')
+    expect(readWidths('table:2', 2)).toEqual([100, 200])
   })
 })

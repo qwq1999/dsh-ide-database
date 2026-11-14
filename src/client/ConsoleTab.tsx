@@ -31,6 +31,7 @@ import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colm
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
+import { moveWidthsForColumns } from './columnWidths'
 import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
@@ -1319,6 +1320,17 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   shownRowsRef.current = shownRows
+
+  // The grid only sees visible columns; move saved widths for hidden ones here
+  // when the visible headers are reordered.
+  const previousFullColumns = useRef(displayColumns)
+  useEffect(() => {
+    const previous = previousFullColumns.current
+    previousFullColumns.current = displayColumns
+    if (shownColumns.length < displayColumns.length) {
+      moveWidthsForColumns(previous, displayColumns, 'console:sql')
+    }
+  }, [displayColumns, shownColumns.length])
 
   // A new page/filter/sort shows different rows, so old checkboxes no longer point at them.
   useEffect(() => {
