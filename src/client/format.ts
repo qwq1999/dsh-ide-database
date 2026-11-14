@@ -73,7 +73,16 @@ function firstWord(text: string): { word: string; rest: string } {
 function unwrapExplainAnalyze(statement: string): string {
   const head = firstWord(statement)
   if (head.word !== 'explain') return statement
-  const analyze = firstWord(head.rest)
+  let rest = head.rest
+  // PostgreSQL also allows `EXPLAIN (ANALYZE, FORMAT JSON) statement`; only
+  // unwrap the body when the option actually enables execution.
+  if (rest.startsWith('(')) {
+    const close = skipBalanced(rest, 0)
+    if (close < 0) return statement
+    if (!analyzeOptionEnabled(rest.slice(1, close - 1))) return statement
+    return rest.slice(close).trimStart()
+  }
+  const analyze = firstWord(rest)
   if (analyze.word !== 'analyze') return statement
   const next = firstWord(analyze.rest)
   return next.word.startsWith('format') ? next.rest : analyze.rest

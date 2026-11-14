@@ -166,6 +166,10 @@ describe('format helpers', () => {
     expect(looksLikeDdl('ALTER TABLE users ADD COLUMN age INT')).toBe(true)
     expect(looksLikeDdl('SELECT 1; TRUNCATE TABLE users')).toBe(true)
     expect(looksLikeDdl('EXPLAIN ANALYZE DROP TABLE users')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE true) DROP TABLE users')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE, FORMAT JSON) ALTER TABLE users ADD COLUMN age INT')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE false) DROP TABLE users')).toBe(false)
+    expect(looksLikeDdl('EXPLAIN (VERBOSE) DROP TABLE users')).toBe(false)
     // A semicolon inside a string must not split the SELECT into a fake DROP.
     expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note")).toBe(false)
     expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note", 'postgres')).toBe(false)
