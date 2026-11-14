@@ -35,4 +35,16 @@ describe('grid scroll position', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(wrap.scrollTop).toBe(400)
   })
+
+  it('clamps the position when the same page shrinks', async () => {
+    const { container, rerender } = render(
+      <DataGrid columns={columns} rows={rows} offset={0} resetKey="page:1" />,
+    )
+    const wrap = container.querySelector('.dshdb-grid-wrap') as HTMLDivElement
+    wrap.scrollTop = 5000
+    fireEvent.scroll(wrap)
+
+    rerender(<DataGrid columns={columns} rows={rows.slice(0, 205)} offset={0} resetKey="page:1" />)
+    await waitFor(() => expect(wrap.scrollTop).toBeLessThan(5000))
+  })
 })

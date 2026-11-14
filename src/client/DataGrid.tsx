@@ -127,6 +127,20 @@ function useVirtualRange(rowCount: number, resetKey: unknown, containerRef: RefO
     setScrollTop(0)
   }, [resetValue, containerRef])
 
+  // A row count that shrinks under the same page can leave scrollTop past the
+  // new content. Browsers clamp on layout, but the virtual window is computed
+  // from state first; clamp here so a refresh never renders an empty window.
+  useEffect(() => {
+    const element = containerRef.current
+    if (element === null) return
+    const visible = Math.max(viewport - headerHeight, 0)
+    const max = Math.max(0, rowCount * GRID_ROW_HEIGHT - visible)
+    if (element.scrollTop > max) {
+      element.scrollTop = max
+      setScrollTop(max)
+    }
+  }, [rowCount, viewport, headerHeight, containerRef])
+
   const onScroll = useCallback(() => {
     if (frame.current !== 0) return
     frame.current = requestAnimationFrame(() => {
