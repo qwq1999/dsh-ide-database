@@ -306,6 +306,11 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
     if (code === '') return false
     const analyzed = unwrapExplainAnalyze(code)
     if (DDL_STATEMENT.test(analyzed)) return true
+    // T-SQL control-flow blocks can contain DDL or `SELECT ... INTO`; their
+    // first word is BEGIN/IF/WHILE, so the anchored DDL test above misses them.
+    if (dialect === 'mssql' && /^\s*(?:begin|if|while)\b/iu.test(analyzed)) {
+      return /\b(?:create|alter|drop|rename|truncate)\b/iu.test(analyzed) || SELECT_INTO_TABLE.test(analyzed)
+    }
     // Look at the statement after a CTE list: `WITH ... SELECT INTO` creates a
     // table, while `WITH ... INSERT INTO` does not change the schema layout.
     return selectCreatesTable(withWriteParts(analyzed)?.statement ?? analyzed)
