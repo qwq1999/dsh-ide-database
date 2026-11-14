@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { exportFilename, jsonValue, renderExport, safeFilename, toJson, toMarkdown, toTsv } from '../../src/client/export.js'
+import { exportFilename, jsonValue, renderExport, safeFilename, toCsv, toJson, toMarkdown, toTsv } from '../../src/client/export.js'
 
 const columns = (...names) => names.map((name) => ({ name, typeName: 'varchar', kind: 'text' }))
+
+describe('toCsv', () => {
+  it('marks formula-like text so spreadsheets do not execute it', () => {
+    const text = toCsv(columns('note'), [['=1+1'], ['+SUM(A1)'], ['-2+3'], ['@cmd'], ['-42']])
+    expect(text).toContain("'=1+1")
+    expect(text).toContain("'+SUM(A1)")
+    expect(text).toContain("'-2+3")
+    expect(text).toContain("'@cmd")
+    expect(text).toContain('\r\n-42\r\n')
+  })
+})
 
 describe('toTsv', () => {
   it('separates cells with tabs and flattens inner breaks', () => {
     const text = toTsv(columns('id', 'note'), [[7, 'a\tb\nc'], [null, 'plain']])
     expect(text).toBe('id\tnote\n7\ta b c\nNULL\tplain\n')
+  })
+
+  it('marks formula-like text before pasting into a spreadsheet', () => {
+    const text = toTsv(columns('note'), [['=1+1'], ['-42']])
+    expect(text).toContain("'=1+1")
+    expect(text).toContain('\n-42\n')
   })
 })
 

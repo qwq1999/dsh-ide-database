@@ -12,8 +12,20 @@ import { insertStatements } from './tablesql'
 
 export type ExportFormat = 'csv' | 'json' | 'sql' | 'md'
 
+/**
+ * Spreadsheets execute text that starts with `=`, `+`, `-` or `@` even when it
+ * arrived in a CSV cell. Prefix an apostrophe so a database value such as
+ * `=HYPERLINK(...)` is displayed as text instead of running as a formula.
+ * Plain numbers (`-42`, `+3.5`) are left alone so they stay numeric.
+ */
+function spreadsheetSafe(text: string): string {
+  if (!/^[=+\-@]/u.test(text)) return text
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(text)) return text
+  return `'${text}`
+}
+
 function csvCell(value: CellValue): string {
-  const text = formatCell(value)
+  const text = spreadsheetSafe(formatCell(value))
   if (/[",\r\n]/u.test(text)) return `"${text.replace(/"/gu, '""')}"`
   return text
 }
@@ -26,7 +38,7 @@ export function toCsv(columns: ColumnInfo[], rows: Row[]): string {
 
 function tsvCell(value: CellValue): string {
   // Tabs and line breaks would start a new cell in a spreadsheet, so flatten them.
-  return formatCell(value).replace(/[\t\r\n]+/gu, ' ')
+  return spreadsheetSafe(formatCell(value)).replace(/[\t\r\n]+/gu, ' ')
 }
 
 /** Tab separated text for the clipboard: pasting it fills real cells in Excel. */
