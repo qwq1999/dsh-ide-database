@@ -20,7 +20,7 @@ import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colm
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { hasHidden, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
-import { readWidths, writeWidths } from './columnWidths'
+import { migrateWidths } from './columnWidths'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
 import { cellWhere, columnFilter, columnNames, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, selectColumnsSql, stripWhere, tableSelectSql, withColumnFilter, type ColumnFilter, type ColumnFilters } from './tablesql'
@@ -83,12 +83,6 @@ function readMigratedHidden(primary: string, legacy: string): string[] | null {
   return previous
 }
 
-function migrateWidths(primary: string, legacy: string, count: number): string {
-  if (count <= 0 || readWidths(primary, count) !== null) return primary
-  const previous = readWidths(legacy, count)
-  if (previous !== null) writeWidths(primary, previous)
-  return primary
-}
 
 function failureText(error: unknown): Failure {
   if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }

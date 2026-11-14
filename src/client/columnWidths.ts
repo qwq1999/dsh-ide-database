@@ -71,3 +71,19 @@ export function clearWidths(key: string): void {
   delete all[key]
   writeAll(all)
 }
+
+/**
+ * Move widths saved under a legacy key to the scoped key once. The legacy entry
+ * is removed so clearing the new preference later cannot resurrect it.
+ */
+export function migrateWidths(primary: string, legacy: string, count: number): string {
+  if (count <= 0) return primary
+  if (readWidths(primary, count) !== null) {
+    clearWidths(legacy)
+    return primary
+  }
+  const previous = readWidths(legacy, count)
+  if (previous !== null) writeWidths(primary, previous)
+  clearWidths(legacy)
+  return primary
+}
