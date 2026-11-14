@@ -97,6 +97,12 @@ describe('format helpers', () => {
     expect(looksLikeWrite("SELECT q'[delete]' FROM dual", 'oracle')).toBe(false)
   })
 
+  it('recognizes bulk-load statements as writes', () => {
+    expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
+    expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
+  })
+
   it('detects statements that change the schema layout', () => {
     expect(looksLikeDdl('SELECT * FROM users')).toBe(false)
     expect(looksLikeDdl('INSERT INTO users VALUES (1)')).toBe(false)

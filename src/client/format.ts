@@ -50,7 +50,7 @@ export function formatDateTime(iso: string | undefined): string {
 }
 
 const WRITE_STATEMENT =
-  /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|analyze|optimize|vacuum|set\s+global)\b/i
+  /^\s*(insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec|execute|rename|comment|lock|unlock|load|analyze|optimize|vacuum|set\s+global)\b/i
 
 function stripComments(sql: string): string {
   return sql
@@ -229,6 +229,9 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     if (clause === null) return true
     if (clause.bodies.some((body) => looksLikeWrite(body, dialect))) return true
     return looksLikeWrite(clause.statement, dialect)
+  }
+  if (head.word === 'copy') {
+    return /^\s*copy\b[\s\S]*?\bfrom\b/iu.test(code)
   }
   if (head.word === 'select' || head.word === 'values') {
     return SELECT_INTO_FILE.test(code) || SELECT_INTO_TABLE.test(code)
