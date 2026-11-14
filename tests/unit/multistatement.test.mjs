@@ -101,18 +101,18 @@ describe('splitStatements', () => {
 
   it('keeps PostgreSQL dollar-quoted bodies in one statement', () => {
     const body = 'create function bump() returns int as $$ begin; return 1; end $$ language plpgsql;'
-    expect(splitStatements(`${body}\nselect bump()`)).toEqual([body.slice(0, -1), 'select bump()'])
-    expect(splitStatements('select $tag$a;b$tag$; select 2')).toEqual(['select $tag$a;b$tag$', 'select 2'])
-    expect(splitStatements('select $outer$ $inner$; $inner$ $outer$; select 2')).toEqual([
+    expect(splitStatements(`${body}\nselect bump()`, 'postgres')).toEqual([body.slice(0, -1), 'select bump()'])
+    expect(splitStatements('select $tag$a;b$tag$; select 2', 'postgres')).toEqual(['select $tag$a;b$tag$', 'select 2'])
+    expect(splitStatements('select $outer$ $inner$; $inner$ $outer$; select 2', 'postgres')).toEqual([
       'select $outer$ $inner$; $inner$ $outer$',
       'select 2',
     ])
   })
 
   it('leaves an unmatched dollar delimiter and dollar identifiers alone', () => {
-    expect(splitStatements('select 1 as $$; select 2')).toEqual(['select 1 as $$', 'select 2'])
-    expect(splitStatements('select foo$bar$baz; select 2')).toEqual(['select foo$bar$baz', 'select 2'])
-    expect(splitStatements('select $1$; select 2')).toEqual(['select $1$', 'select 2'])
+    expect(splitStatements('select 1 as $$; select 2', 'postgres')).toEqual(['select 1 as $$', 'select 2'])
+    expect(splitStatements('select foo$bar$baz; select 2', 'postgres')).toEqual(['select foo$bar$baz', 'select 2'])
+    expect(splitStatements('select $1$; select 2', 'postgres')).toEqual(['select $1$', 'select 2'])
   })
 
   it('separates SQL Server batches at GO lines', () => {
@@ -125,6 +125,13 @@ describe('splitStatements', () => {
     // GO is a SQL Server client command, so other dialects leave it in the SQL.
     expect(splitStatements('select 1\nGO\nselect 2', 'generic')).toEqual(['select 1\nGO\nselect 2'])
     expect(splitStatements('select 1\nGO\nselect 2', 'mysql')).toEqual(['select 1\nGO\nselect 2'])
+  })
+
+  it('does not treat dollar identifiers as PostgreSQL quotes', () => {
+    const sql = 'select 1 as $a$; delete from t; select 2 as $a$'
+    expect(splitStatements(sql, 'mysql')).toEqual(['select 1 as $a$', 'delete from t', 'select 2 as $a$'])
+    expect(splitStatements(sql, 'generic')).toEqual(['select 1 as $a$', 'delete from t', 'select 2 as $a$'])
+    expect(splitStatements(sql, 'mssql')).toEqual(['select 1 as $a$', 'delete from t', 'select 2 as $a$'])
   })
 
   it('finds a SQL Server program after a long comment', () => {

@@ -113,8 +113,10 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
         continue
       }
     }
-    // Literals may contain parentheses that do not affect nesting.
-    if (char === '$') {
+    // PostgreSQL dollar quoting may contain parentheses that are not nesting.
+    // MySQL/Oracle/SQL Server also allow `$` in identifiers, so only the
+    // PostgreSQL dialect may treat `$tag$` as a quote here.
+    if (dialect === 'postgres' && char === '$') {
       const end = dollarQuotedLiteralEnd(text, index)
       if (end !== null) {
         index = end - 1
@@ -267,7 +269,9 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] ?? ''
     // PostgreSQL dollar quoting hides semicolons inside a plain SELECT.
-    if (char === '$') {
+    // Other dialects allow `$` in identifiers (`1 AS $a$`), so treating it as
+    // a quote there would hide a second statement from the guard.
+    if (dialect === 'postgres' && char === '$') {
       const end = dollarQuotedLiteralEnd(text, index)
       if (end !== null) {
         index = end - 1

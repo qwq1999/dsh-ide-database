@@ -150,15 +150,23 @@ describe('isReadOnlySql', () => {
   })
 
   it('accepts semicolons inside dollar-quoted strings', () => {
-    expect(isReadOnlySql('select $$a;b$$')).toBe(true)
-    expect(isReadOnlySql('select $tag$a;b$tag$')).toBe(true)
-    expect(isReadOnlySql('select $fn$ begin; return 1; end $fn$')).toBe(true)
-    expect(isReadOnlySql('with c as (select $tag$a;b$tag$ as x) select * from c')).toBe(true)
+    expect(isReadOnlySql('select $$a;b$$', 'postgres')).toBe(true)
+    expect(isReadOnlySql('select $tag$a;b$tag$', 'postgres')).toBe(true)
+    expect(isReadOnlySql('select $fn$ begin; return 1; end $fn$', 'postgres')).toBe(true)
+    expect(isReadOnlySql('with c as (select $tag$a;b$tag$ as x) select * from c', 'postgres')).toBe(true)
     // A semicolon after the literal still separates two statements.
-    expect(isReadOnlySql('select $$;$$; delete from t')).toBe(false)
+    expect(isReadOnlySql('select $$;$$; delete from t', 'postgres')).toBe(false)
     // An unterminated delimiter is not a string.
-    expect(isReadOnlySql('select 1 as $$; select 2')).toBe(false)
-    expect(isReadOnlySql('select $1$; select 2')).toBe(false)
+    expect(isReadOnlySql('select 1 as $$; select 2', 'postgres')).toBe(false)
+    expect(isReadOnlySql('select $1$; select 2', 'postgres')).toBe(false)
+  })
+
+  it('does not treat dollar identifiers as quotes outside PostgreSQL', () => {
+    const sql = 'select 1 as $a$; delete from t; select 2 as $a$'
+    expect(isReadOnlySql(sql, 'mysql')).toBe(false)
+    expect(isReadOnlySql(sql, 'mssql')).toBe(false)
+    expect(isReadOnlySql(sql, 'oracle')).toBe(false)
+    expect(isReadOnlySql(sql)).toBe(false)
   })
 
   it('refuses a select that writes a file on the server', () => {

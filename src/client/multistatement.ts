@@ -147,7 +147,7 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     // PostgreSQL dollar quotes: a function body may contain semicolons, and the
     // matching tag is what ends it. An opener without a closer is left alone,
     // so MySQL's `$`-in-identifier scripts keep splitting at their semicolons.
-    if (char === '$') {
+    if (char === '$' && dialect === 'postgres') {
       const tag = dollarDelimiterAt(input, index)
       if (tag !== null) {
         const close = input.indexOf(tag, index + tag.length)
