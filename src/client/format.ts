@@ -34,8 +34,13 @@ export function formatBytes(bytes: number | undefined): string {
   if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return ''
   const rounded = Math.round(bytes)
   if (rounded < 1024) return `${rounded} B`
-  if (rounded < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  const kb = bytes / 1024
+  if (Math.round(kb * 10) / 10 < 1024) return `${kb.toFixed(1)} KB`
+  const mb = bytes / (1024 * 1024)
+  if (Math.round(mb * 10) / 10 < 1024) return `${mb.toFixed(1)} MB`
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (Math.round(gb * 10) / 10 < 1024) return `${gb.toFixed(1)} GB`
+  return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(1)} TB`
 }
 
 export function formatCell(value: CellValue): string {
