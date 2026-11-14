@@ -182,11 +182,10 @@ export class DescriptionCache {
     this.pending.delete(connectionId)
     this.appended.set(connectionId, 0)
     const lines: string[] = []
-    for (const [key, description] of map) {
-      const dot = key.lastIndexOf('.')
-      const schema = dot > 0 ? key.slice(0, dot) : description.schema
-      const table = dot > 0 ? key.slice(dot + 1) : description.table
-      lines.push(JSON.stringify({ s: schema, t: table, [ENTRY_PREFIX]: description }))
+    // Keys are `${schema}.${table}` and quoted identifiers may contain dots;
+    // trust the description's own fields instead of splitting the key.
+    for (const description of map.values()) {
+      lines.push(JSON.stringify({ s: description.schema, t: description.table, [ENTRY_PREFIX]: description }))
     }
     try {
       mkdirSync(this.dir, { recursive: true })

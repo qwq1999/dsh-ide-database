@@ -103,6 +103,25 @@ describe('DescriptionCache', () => {
     expect(lines).toHaveLength(2)
   })
 
+  it('keeps schema and table names that contain dots', () => {
+    const { dir, instance } = cache()
+    const schema = 'sales.eu'
+    const table = 'orders.2024'
+    instance.import('c1', { [`${schema}.${table}`]: description(schema, table) })
+
+    const lines = readFileSync(logFile(dir, 'c1'), 'utf8').trim().split('\n')
+    expect(lines).toHaveLength(1)
+    const record = JSON.parse(lines[0])
+    expect(record.s).toBe(schema)
+    expect(record.t).toBe(table)
+
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', schema, table)?.schema).toBe(schema)
+    expect(reloaded.get('c1', schema, table)?.table).toBe(table)
+    reloaded.pruneSchemas('c1', [schema])
+    expect(reloaded.has('c1', schema, table)).toBe(true)
+  })
+
   it('ignores a corrupted line instead of dropping the whole log', () => {
     const { dir, messages } = cache()
     writeFileSync(
