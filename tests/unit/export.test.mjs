@@ -76,9 +76,11 @@ describe('toMarkdown', () => {
   })
 
   it('escapes pipes and folds newlines so the table keeps its shape', () => {
-    const text = toMarkdown(columns('note'), [['a|b'], ['line1\nline2']])
+    const text = toMarkdown(columns('note'), [['a|b'], ['line1\nline2'], ['cr\rhere']])
     expect(text).toContain('| a\\|b |')
     expect(text).toContain('| line1<br>line2 |')
+    expect(text).toContain('| cr<br>here |')
+    expect(text).not.toContain('\r')
   })
 
   it('shows nulls and booleans the way the grid does', () => {

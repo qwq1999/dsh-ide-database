@@ -125,7 +125,7 @@ function markdownCell(value: CellValue): string {
   return formatCell(value)
     .replace(/\\/gu, '\\\\')
     .replace(/\|/gu, '\\|')
-    .replace(/\r?\n/gu, '<br>')
+    .replace(/\r\n?|\n/gu, '<br>')
 }
 
 export function toMarkdown(columns: ColumnInfo[], rows: Row[]): string {
