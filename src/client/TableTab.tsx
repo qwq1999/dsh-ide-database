@@ -19,7 +19,8 @@ import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-o
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
-import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { hasHidden, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { readWidths, writeWidths } from './columnWidths'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
 import { cellWhere, columnFilter, columnNames, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, selectColumnsSql, stripWhere, tableSelectSql, withColumnFilter, type ColumnFilter, type ColumnFilters } from './tablesql'
@@ -51,6 +52,43 @@ const ORDER_KEY = 'dsh-ide-database.table-order.v1'
 const AUTO_REFRESH_OPTIONS = [0, 5000, 10000, 30000] as const
 
 const noTabInfo = (): undefined => undefined
+
+/**
+ * Move a preference saved before table view keys included the connection.
+ * Mixing `public.users` from two data sources used to hide the same columns in
+ * both; the old key is migrated once and then removed so clearing the new
+ * preference cannot bring it back.
+ */
+function readMigratedText(primary: string, legacy: string): string {
+  try {
+    if (window.localStorage.getItem(primary) !== null) return readText(primary)
+  } catch {
+    // Storage disabled: behave like a fresh table.
+  }
+  const previous = readText(legacy)
+  if (previous !== '') {
+    writeText(primary, previous)
+    writeText(legacy, '')
+  }
+  return previous
+}
+
+function readMigratedHidden(primary: string, legacy: string): string[] | null {
+  if (hasHidden(primary)) return readHidden(primary)
+  const previous = readHidden(legacy)
+  if (previous !== null) {
+    writeHidden(primary, previous)
+    writeHidden(legacy, null)
+  }
+  return previous
+}
+
+function migrateWidths(primary: string, legacy: string, count: number): string {
+  if (count <= 0 || readWidths(primary, count) !== null) return primary
+  const previous = readWidths(legacy, count)
+  if (previous !== null) writeWidths(primary, previous)
+  return primary
+}
 
 function failureText(error: unknown): Failure {
   if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }
@@ -117,8 +155,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   /** Two table tabs open at once must not share one datalist id. */
   const columnsListId = `dshdb-columns-${params.table.replace(/[^\w-]/gu, '-')}`
   /** Sort order survives closing the tab, the same way column widths do. */
-  const orderStorageKey = `${ORDER_KEY}:${params.schema}.${params.table}`
-  const [orderText, setOrderText] = useState(() => readText(orderStorageKey))
+  const tableScope = `${params.connectionId}:${params.schema}.${params.table}`
+  const legacyTableScope = `${params.schema}.${params.table}`
+  const orderStorageKey = `${ORDER_KEY}:${tableScope}`
+  const gridStorageKey = `table:${tableScope}`
+  const legacyGridStorageKey = `table:${legacyTableScope}`
+  const [orderText, setOrderText] = useState(() =>
+    readMigratedText(orderStorageKey, `${ORDER_KEY}:${legacyTableScope}`),
+  )
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
   const [order, setOrder] = useState<number[] | null>(null)
@@ -138,7 +182,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setOrderText(remembered)
     applyRef.current({ orderBy: remembered, page: 0, recount: false })
   }, [columns, orderStorageKey])
-  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
+  const hiddenStorageKey = `table:${tableScope}`
+  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() =>
+    readMigratedHidden(hiddenStorageKey, `table:${legacyTableScope}`),
+  )
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const objectKind = params.kind === 'view' ? 'view' : 'table'
   const [ddl, setDdl] = useState<{ title: string; text: string; warnings: string[] } | null>(null)
@@ -199,10 +246,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     if (columns.length > 0) setHiddenColumns((current) => pruneHidden(current, columns))
   }, [signature, columns])
   useEffect(() => {
-    writeHidden(`table:${params.schema}.${params.table}`, hiddenColumns)
-  }, [hiddenColumns, params.schema, params.table])
+    writeHidden(hiddenStorageKey, hiddenColumns)
+  }, [hiddenColumns, hiddenStorageKey])
   const displayColumns = useMemo(() => orderColumns(columns, order), [columns, order])
   const displayRows = useMemo(() => orderRows(rows, order), [rows, order])
+  const widthStorageKey = useMemo(
+    () => migrateWidths(gridStorageKey, legacyGridStorageKey, displayColumns.length),
+    [gridStorageKey, legacyGridStorageKey, displayColumns.length],
+  )
   // Hiding only narrows what the grid renders; positions map back for drag order.
   const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
   const shownColumns = hiddenView.columns
@@ -1166,7 +1217,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           columns={shownColumns}
           rows={shownRows}
           offset={offset}
-          storageKey={`table:${params.schema}.${params.table}`}
+          storageKey={widthStorageKey}
           sort={activeSort ?? null}
           headerMenu={columnMenu}
           onSort={sortTable}

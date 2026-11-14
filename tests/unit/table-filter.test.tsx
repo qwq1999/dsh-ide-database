@@ -40,6 +40,8 @@ const mysql = {
   createdAt: '2026-01-01T00:00:00.000Z',
 }
 
+const mysql2 = { ...mysql, id: 'mysql-2', name: '另一个 MySQL' }
+
 const settings = {
   maxRows: 200,
   queryTimeoutSec: 30,
@@ -66,7 +68,7 @@ describe('table column filter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
-    mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
+    mocks.status.mockResolvedValue({ config: { connections: [mysql, mysql2], settings, drivers: [] }, drivers: [], env: {} })
     // A fresh result object per call, like the real bridge: the previous
     // implementation re-ran the debounce effect whenever columns changed.
     mocks.query.mockImplementation(async (request: { sql: string }) => ({
@@ -122,9 +124,28 @@ describe('table column filter', () => {
     expect(payload.title).toContain('二进制列')
   })
 
+  it('does not apply hidden columns from another connection', async () => {
+    window.localStorage.setItem(
+      'dsh-ide-database.hidden.v1:table:mysql-1:shop.orders',
+      JSON.stringify(['id']),
+    )
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: 'mysql-2', schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+
+    await waitFor(() => {
+      const headers = screen.getAllByRole('columnheader').map((cell) => cell.textContent ?? '')
+      expect(headers.some((text) => text.startsWith('id'))).toBe(true)
+    })
+  })
+
   it('aligns binary detection with the visible columns when an earlier column is hidden', async () => {
     window.localStorage.setItem(
-      'dsh-ide-database.hidden.v1:table:shop.orders',
+      'dsh-ide-database.hidden.v1:table:mysql-1:shop.orders',
       JSON.stringify(['id']),
     )
     const bitColumns = [

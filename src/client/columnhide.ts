@@ -65,6 +65,16 @@ function storage(): Storage | null {
   }
 }
 
+export function hasHidden(storageKey: string): boolean {
+  const store = storage()
+  if (store === null) return false
+  try {
+    return store.getItem(`${HIDDEN_STORAGE_PREFIX}${storageKey}`) !== null
+  } catch {
+    return false
+  }
+}
+
 export function readHidden(storageKey: string): string[] | null {
   const store = storage()
   if (store === null) return null

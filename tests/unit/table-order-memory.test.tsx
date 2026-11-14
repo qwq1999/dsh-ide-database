@@ -57,8 +57,11 @@ const settings = {
   confirmDestructive: false,
 }
 
-const tab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })
-const ORDER_KEY = 'dsh-ide-database.table-order.v1:shop.orders'
+const tab = (connectionId = 'mysql-1') => ({
+  tab: { navigation: { params: { connectionId, schema: 'shop', table: 'orders' } } },
+})
+const mysql2 = { ...mysql, id: 'mysql-2', name: '另一个 MySQL' }
+const ORDER_KEY = 'dsh-ide-database.table-order.v1:mysql-1:shop.orders'
 
 function pageSqls(): string[] {
   return mocks.query.mock.calls
@@ -75,7 +78,7 @@ describe('table sort order memory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
-    mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
+    mocks.status.mockResolvedValue({ config: { connections: [mysql, mysql2], settings, drivers: [] }, drivers: [], env: {} })
     mocks.query.mockImplementation(async (request: { sql: string }) =>
       request.sql.includes('COUNT(*)')
         ? { dialect: 'mysql', columns: [], rows: [[2]], rowCount: 1, truncated: false, elapsedMs: 1, warnings: [] }
@@ -120,5 +123,24 @@ describe('table sort order memory', () => {
 
     await waitFor(() => expect(window.localStorage.getItem(ORDER_KEY)).toBe(''))
     await waitFor(() => expect(pageSqls().at(-1)).not.toContain('ORDER BY'))
+  })
+
+  it("does not apply another connection's order to the same table", async () => {
+    window.localStorage.setItem(ORDER_KEY, 'id DESC')
+    render(<TableTab useTabInfo={() => tab('mysql-2')} />)
+
+    await screen.findByText('alpha')
+    expect((screen.getByLabelText('排序列') as HTMLInputElement).value).toBe('')
+    expect(pageSqls().at(-1)).not.toContain('ORDER BY')
+  })
+
+  it('moves an order saved before keys included the connection', async () => {
+    window.localStorage.setItem('dsh-ide-database.table-order.v1:shop.orders', 'id DESC')
+    render(<TableTab useTabInfo={tab} />)
+
+    await screen.findByText('alpha')
+    await waitFor(() => expect(pageSqls().at(-1)).toContain('ORDER BY id DESC'))
+    expect(window.localStorage.getItem(ORDER_KEY)).toBe('id DESC')
+    expect(window.localStorage.getItem('dsh-ide-database.table-order.v1:shop.orders')).toBe('')
   })
 })
