@@ -1,5 +1,6 @@
 import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
+import { splitStatements } from './multistatement'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
@@ -240,11 +241,10 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
 }
 
 export function looksLikeWrite(sql: string, dialect: SqlDialect = 'generic'): boolean {
-  const code = maskNonCode(sql, dialect, false, true).trim()
-  if (code === '') return false
-  const statements = code.split(';').map((part) => part.trim()).filter(Boolean)
-  if (statements.length > 1) return statements.some((part) => looksLikeWriteCode(part, dialect))
-  return looksLikeWriteCode(code, dialect)
+  return splitStatements(sql, dialect).some((statement) => {
+    const code = maskNonCode(statement, dialect, false, true).trim()
+    return code !== '' && looksLikeWriteCode(code, dialect)
+  })
 }
 
 /**

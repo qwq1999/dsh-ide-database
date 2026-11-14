@@ -103,6 +103,14 @@ describe('format helpers', () => {
     expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
   })
 
+  it('checks every batch separated by GO or DELIMITER', () => {
+    expect(looksLikeWrite('select 1\nGO\ndelete from t', 'mssql')).toBe(true)
+    expect(looksLikeWrite('select 1\nGO\nselect 2', 'mssql')).toBe(false)
+    expect(looksLikeWrite('DELIMITER //\nselect 1//\ndelete from t//', 'mysql')).toBe(true)
+    expect(looksLikeWrite('DELIMITER //\nselect 1//\nselect 2//', 'mysql')).toBe(false)
+    expect(looksLikeWrite('select 1 as "a;DELETE FROM t"', 'generic')).toBe(false)
+  })
+
   it('detects statements that change the schema layout', () => {
     expect(looksLikeDdl('SELECT * FROM users')).toBe(false)
     expect(looksLikeDdl('INSERT INTO users VALUES (1)')).toBe(false)
