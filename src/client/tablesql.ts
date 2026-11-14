@@ -213,6 +213,7 @@ function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo,
   if (typeof value === 'boolean') return booleanLiteral(dialect, value)
   if (typeof value === 'number') return String(value)
   const text = String(value)
+  if (isTemporalType(column.typeName)) return temporalLiteral(dialect, column.typeName, text)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
   return quoteLiteral(text, dialect)
 }
@@ -304,14 +305,18 @@ export function groupCountSql(
 /**
  * The values of one column as a parenthesised `IN` list: `(1, 2, 'x')`.
  * Handy for turning a result grid back into a `WHERE id IN (...)` filter.
+ * Pass the column so typed values (Oracle dates, numeric strings) get the
+ * same literal form the INSERT export uses.
  */
 export function inListOf(
   dialect: ClientConnection['dialect'],
   rows: Row[],
   index: number,
+  column?: ColumnInfo,
 ): string {
   const literals = rows.map((row) => {
     const value: CellValue = row[index] ?? null
+    if (column !== undefined) return insertLiteral(dialect, column, value)
     if (value === null || value === undefined) return 'NULL'
     if (typeof value === 'number' || typeof value === 'bigint') return String(value)
     if (typeof value === 'boolean') return booleanLiteral(dialect, value)

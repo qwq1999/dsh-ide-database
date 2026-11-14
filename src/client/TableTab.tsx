@@ -361,7 +361,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         {
           label: '复制为 IN 列表',
           disabled: rows.length === 0 || index < 0,
-          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)).then(noteCopied('IN 列表')),
+          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index, column)).then(noteCopied('IN 列表')),
         },
         {
           label: '复制本列（逗号分隔）',

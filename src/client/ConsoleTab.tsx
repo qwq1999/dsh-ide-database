@@ -1350,7 +1350,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: '复制为 IN 列表',
         disabled: filteredRows.length === 0 || index < 0,
-        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)).then(noteCopied('IN 列表')),
+        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index, column)).then(noteCopied('IN 列表')),
       },
       {
         label: '复制本列（逗号分隔）',

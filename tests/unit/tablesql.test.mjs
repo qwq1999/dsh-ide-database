@@ -213,6 +213,20 @@ describe('insertStatement', () => {
     )
   })
 
+  it('writes Oracle temporal values with typed literals', () => {
+    const temporal = [column('ID', 'NUMBER'), column('DAY', 'DATE'), column('AT', 'TIMESTAMP(6)')]
+    expect(
+      insertStatement('oracle', 'SHOP', 'EVENTS', temporal, ['1', '2024-11-11 09:54:33', '2024-11-11 09:54:33.123']),
+    ).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "DAY", "AT") VALUES (1, TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS'), TO_TIMESTAMP('2024-11-11 09:54:33.123', 'YYYY-MM-DD HH24:MI:SS.FF'));`,
+    )
+    expect(
+      insertStatement('oracle', 'SHOP', 'EVENTS', temporal, ['2', '2024-11-12 10:00', '2024-11-12 10:00']),
+    ).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "DAY", "AT") VALUES (2, TO_DATE('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'), TO_TIMESTAMP('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'));`,
+    )
+  })
+
   it('leaves server-generated columns out while keeping value positions aligned', () => {
     const generated = [
       { ...column('total', 'int'), generated: true },
@@ -329,6 +343,14 @@ describe('inListOf', () => {
   it('escapes backslashes for MySQL literal text', () => {
     const backslash = String.fromCharCode(92)
     expect(inListOf('mysql', [['C:' + backslash + 'temp']], 0)).toBe("('C:" + backslash + backslash + "temp')")
+  })
+
+  it('uses the column type for typed values when it is known', () => {
+    const day = column('D', 'DATE')
+    expect(inListOf('oracle', [['2024-11-11 09:54:33'], ['2024-11-12 10:00']], 0, day)).toBe(
+      `(TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS'), TO_DATE('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'))`,
+    )
+    expect(inListOf('oracle', [['7'], [null]], 0, column('N', 'NUMBER'))).toBe('(7, NULL)')
   })
 })
 
