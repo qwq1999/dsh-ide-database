@@ -217,6 +217,10 @@ describe('isReadOnlySql', () => {
   it('rejects writes hidden in MySQL executable comments', () => {
     // MySQL runs `/*! ... */` bodies, so they are not inert comments.
     expect(isReadOnlySql("SELECT * FROM users /*!50000 INTO OUTFILE '/tmp/users.txt' */", 'mysql')).toBe(false)
+    // MySQL accepts the version number touching the first keyword; the guard
+    // must still see `INTO OUTFILE` there.
+    expect(isReadOnlySql("SELECT * FROM users /*!50000INTO OUTFILE '/tmp/users.txt' */", 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 /*!50000INTO new_table*/', 'mysql')).toBe(false)
     expect(isReadOnlySql("select 1 /*!50000 into dumpfile '/tmp/dump.bin' */", 'mysql')).toBe(false)
     expect(isReadOnlySql('/*!50000 delete from t */', 'mysql')).toBe(false)
     expect(isReadOnlySql('/*!50000 delete from t */ select 1', 'mysql')).toBe(false)

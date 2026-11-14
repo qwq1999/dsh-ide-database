@@ -396,8 +396,17 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       // reject `SELECT ... /*!50000 INTO OUTFILE ... */` while still allowing
       // harmless hints such as `/*!50000 SQL_NO_CACHE */`.
       if (isMysqlDialect(dialect) && text[index + 2] === '!') {
+        // MySQL treats the digits after `/*!` as a version, not SQL. Replace
+        // them with spaces so `/*!50000INTO OUTFILE` still has a word boundary
+        // before `INTO`; the comment body itself must stay visible.
         out += '/*!'
         index += 2
+        // Stop on the last digit: the outer for-loop advances to the first body
+        // character, so moving straight to it here would skip that character.
+        while (index + 1 < text.length && /\d/u.test(text[index + 1] ?? '')) {
+          out += ' '
+          index += 1
+        }
         continue
       }
       const end = text.indexOf('*/', index + 2)
