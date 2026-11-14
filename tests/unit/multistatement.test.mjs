@@ -101,6 +101,7 @@ describe('splitStatements', () => {
 
   it('keeps SQL Server bracket identifiers in one statement', () => {
     expect(splitStatements('select [a;b] from t; select 2', 'mssql')).toEqual(['select [a;b] from t', 'select 2'])
+    expect(splitStatements('select [a;b] from t; select 2', 'sqlite')).toEqual(['select [a;b] from t', 'select 2'])
     expect(splitStatements('select [a]];b] from t; select 2', 'mssql')).toEqual([
       'select [a]];b] from t',
       'select 2',

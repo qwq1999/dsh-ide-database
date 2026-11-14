@@ -59,6 +59,8 @@ describe('pageable', () => {
     expect(pageable('SELECT [limit] FROM t', 'mssql')).toBe(true)
     expect(pageable('SELECT [a;b] FROM t', 'mssql')).toBe(true)
     expect(pageable('SELECT [a;b] FROM t; SELECT 2', 'mssql')).toBe(false)
+    expect(pageable('SELECT [a;b] FROM t', 'sqlite')).toBe(true)
+    expect(pageable('SELECT [a;b] FROM t; SELECT 2', 'sqlite')).toBe(false)
   })
 
   it('rejects anything that is not one plain SELECT', () => {

@@ -159,9 +159,9 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       }
     }
 
-    // SQL Server bracket identifiers may contain semicolons; keep the whole
-    // name together so `[a;b]` does not become two statements.
-    if (char === '[' && dialect === 'mssql') {
+    // SQL Server and SQLite bracket identifiers may contain semicolons; keep
+    // the whole name together so `[a;b]` does not become two statements.
+    if (char === '[' && (dialect === 'mssql' || dialect === 'sqlite')) {
       const end = bracketIdentifierEnd(input, index)
       if (end !== null) {
         current += input.slice(index, end)

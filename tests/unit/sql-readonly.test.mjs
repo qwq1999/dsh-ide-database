@@ -49,6 +49,8 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('select [a into b] from t')).toBe(true)
     expect(isReadOnlySql('select [a]];b] from t')).toBe(true)
     expect(isReadOnlySql('select [a;b] from t; delete from t')).toBe(false)
+    expect(isReadOnlySql('select [a;b] from t', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('select [a;b] from t; delete from t', 'sqlite')).toBe(false)
     expect(isReadOnlySql('select [a;b')).toBe(false)
     expect(isReadOnlySql('WITH c AS (select [a)] as x from t) select * from c')).toBe(true)
   })

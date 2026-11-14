@@ -152,7 +152,7 @@ export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentif
         }
       }
     }
-    if (char === '[' && dialect === 'mssql' && maskQuotedIdentifiers) {
+    if (char === '[' && (dialect === 'mssql' || dialect === 'sqlite') && maskQuotedIdentifiers) {
       const end = bracketIdentifierEnd(text, index)
       if (end !== null) {
         out += ' '.repeat(end - index)
