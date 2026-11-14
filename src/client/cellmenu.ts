@@ -15,7 +15,9 @@ export function rowToTsv(columns: ColumnInfo[], row: Row): string {
     .map((_, index) => {
       const value = row[index] ?? null
       if (value === null) return ''
-      return formatCell(value).replace(/\t/gu, ' ')
+      // A raw tab or newline would split one copied row into several cells or
+      // rows in the spreadsheet, so flatten them the same way file export does.
+      return formatCell(value).replace(/[\t\r\n]+/gu, ' ')
     })
     .join('\t')
 }
