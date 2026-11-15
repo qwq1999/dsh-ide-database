@@ -3,6 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 
 import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
+import { completionColumnKey } from '../../src/shared/completionkey'
 
 const servers = []
 const calls = { structureGet: [], structureDescription: [], sql: [], redis: [] }
@@ -40,7 +41,7 @@ const CACHED = {
 }
 
 const DESCRIPTIONS = {
-  'shop.orders': {
+  [completionColumnKey('shop', 'orders')]: {
     schema: 'shop',
     table: 'orders',
     kind: 'table',
@@ -49,6 +50,20 @@ const DESCRIPTIONS = {
       { name: 'total', typeName: 'DECIMAL' },
       { name: 'note', typeName: '' },
     ],
+    indexes: [],
+  },
+  [completionColumnKey('a.b', 'c')]: {
+    schema: 'a.b',
+    table: 'c',
+    kind: 'table',
+    columns: [{ name: 'left' }],
+    indexes: [],
+  },
+  [completionColumnKey('a', 'b.c')]: {
+    schema: 'a',
+    table: 'b.c',
+    kind: 'table',
+    columns: [{ name: 'right' }],
     indexes: [],
   },
 }
@@ -101,7 +116,7 @@ function deps() {
       },
       getDescription: (id, schema, table) => {
         calls.structureDescription.push(`${id}:${schema}.${table}`)
-        return id === 'm1' ? DESCRIPTIONS[`${schema}.${table}`] : undefined
+        return id === 'm1' ? DESCRIPTIONS[completionColumnKey(schema, table)] : undefined
       },
     },
     log: () => undefined,
@@ -161,7 +176,7 @@ describe('POST /completion/metadata over HTTP', () => {
         schemas: CACHED.schemas,
         tables: { shop: CACHED.objects.shop, crm: CACHED.objects.crm },
         columns: {
-          'shop.orders': [{ name: 'id', typeName: 'INT' }, { name: 'total', typeName: 'DECIMAL' }, { name: 'note' }],
+          [completionColumnKey('shop', 'orders')]: [{ name: 'id', typeName: 'INT' }, { name: 'total', typeName: 'DECIMAL' }, { name: 'note' }],
         },
       },
     })
@@ -172,6 +187,24 @@ describe('POST /completion/metadata over HTTP', () => {
       'm1:crm.customers',
       'm1:shop.unknown',
     ])
+  })
+
+  it('keeps dotted schemas and tables apart in the column map', async () => {
+    const url = await start('/completion/metadata')
+
+    const result = await post(url, {
+      id: 'm1',
+      tables: [
+        { schema: 'a.b', table: 'c' },
+        { schema: 'a', table: 'b.c' },
+      ],
+    })
+
+    expect(result.status).toBe(200)
+    expect(result.body.data.columns).toEqual({
+      [completionColumnKey('a.b', 'c')]: [{ name: 'left' }],
+      [completionColumnKey('a', 'b.c')]: [{ name: 'right' }],
+    })
   })
 
   it('reports cached:false and empty maps for a connection without a cached tree', async () => {
@@ -214,7 +247,7 @@ describe('POST /completion/metadata over HTTP', () => {
     expect(result.status).toBe(200)
     expect(result.body.data.tables).toEqual({ shop: CACHED.objects.shop })
     expect(result.body.data.columns).toEqual({
-      'shop.orders': [{ name: 'id', typeName: 'INT' }, { name: 'total', typeName: 'DECIMAL' }, { name: 'note' }],
+      [completionColumnKey('shop', 'orders')]: [{ name: 'id', typeName: 'INT' }, { name: 'total', typeName: 'DECIMAL' }, { name: 'note' }],
     })
   })
 
