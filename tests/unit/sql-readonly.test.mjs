@@ -55,6 +55,8 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('-- fetch orders\nSELECT 1')).toBe(true)
     expect(isReadOnlySql('/* hint */ select 1')).toBe(true)
     expect(isReadOnlySql('/* a */ -- b\n/* c */ SELECT 1')).toBe(true)
+    expect(isReadOnlySql('/* outer /* inner */ DELETE FROM t; */ SELECT 1', 'postgres')).toBe(true)
+    expect(isReadOnlySql('/* outer /* inner */ DELETE FROM t; */ SELECT 1', 'mssql')).toBe(true)
   })
 
   it('rejects writes', () => {

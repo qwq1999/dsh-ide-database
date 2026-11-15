@@ -1,4 +1,5 @@
 import type { SqlDialect } from '../shared/types'
+import { blockCommentEnd } from '../shared/sqlcomment'
 
 /**
  * Whether a backslash inside the literal starting at `quoteIndex` escapes the
@@ -126,8 +127,8 @@ export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentif
       continue
     }
     if (char === '/' && text[index + 1] === '*') {
-      const close = text.indexOf('*/', index + 2)
-      const stop = close === -1 ? text.length : close + 2
+      const close = blockCommentEnd(text, index, dialect)
+      const stop = close === -1 ? text.length : close
       out += ' '.repeat(stop - index)
       index = stop
       continue

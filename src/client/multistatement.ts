@@ -1,4 +1,5 @@
 import type { SqlDialect } from '../shared/types'
+import { blockCommentEnd } from '../shared/sqlcomment'
 import { backslashEscapes, bracketIdentifierEnd, dashStartsComment, dollarDelimiterAt, maskNonCode, oracleQuotedLiteralEnd } from './sqllex'
 
 interface DelimiterDirective {
@@ -380,8 +381,8 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
     // Block comments span lines; keep them attached to the current statement.
     if (char === '/' && input[index + 1] === '*') {
-      const close = input.indexOf('*/', index + 2)
-      const stop = close === -1 ? input.length : close + 2
+      const close = blockCommentEnd(input, index, dialect)
+      const stop = close === -1 ? input.length : close
       current += input.slice(index, stop)
       index = stop
       continue

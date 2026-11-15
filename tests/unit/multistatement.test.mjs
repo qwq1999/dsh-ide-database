@@ -431,6 +431,12 @@ describe('splitStatements', () => {
     expect(splitStatements(typeBody, 'oracle')).toEqual([typeBody])
   })
 
+  it('nests PostgreSQL and SQL Server block comments', () => {
+    const script = 'SELECT 1 /* outer /* inner */ ; */; SELECT 2'
+    expect(splitStatements(script, 'postgres')).toEqual(['SELECT 1 /* outer /* inner */ ; */', 'SELECT 2'])
+    expect(splitStatements(script, 'mssql')).toEqual(['SELECT 1 /* outer /* inner */ ; */', 'SELECT 2'])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])

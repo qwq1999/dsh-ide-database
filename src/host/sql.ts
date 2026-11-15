@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { sqlDialectOf } from '../shared/dialect.js'
+import { blockCommentEnd } from '../shared/sqlcomment.js'
 import { SQLITE_ARGUMENT_PRAGMAS, parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma.js'
 import type {
   ColumnDetail,
@@ -439,9 +440,9 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
         }
         continue
       }
-      const end = text.indexOf('*/', index + 2)
-      if (end < 0) return out
-      index = end + 1
+      const close = blockCommentEnd(text, index, dialect)
+      if (close < 0) return out
+      index = close - 1
       out += ' '
       continue
     }
@@ -504,9 +505,9 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
       return rest
     }
     if (rest.startsWith('/*')) {
-      const end = rest.indexOf('*/', 2)
+      const end = blockCommentEnd(rest, 0, dialect)
       if (end < 0) return null
-      rest = rest.slice(end + 2).trim()
+      rest = rest.slice(end).trim()
       continue
     }
     return rest
