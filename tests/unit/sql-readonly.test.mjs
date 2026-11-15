@@ -63,6 +63,11 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('set @a = 1')).toBe(false)
   })
 
+  it('rejects SQLite ATTACH and DETACH', () => {
+    expect(isReadOnlySql("ATTACH DATABASE '/tmp/other.db' AS other", 'sqlite')).toBe(false)
+    expect(isReadOnlySql('DETACH DATABASE other', 'sqlite')).toBe(false)
+  })
+
   it('accepts semicolons inside literals and comments', () => {
     expect(isReadOnlySql("select ';' as semi")).toBe(true)
     expect(isReadOnlySql("select 'a;b' from dual")).toBe(true)

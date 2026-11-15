@@ -206,6 +206,12 @@ describe('format helpers', () => {
     expect(looksLikeWrite('IF 1 = 1 DELETE FROM users', 'mysql')).toBe(false)
   })
 
+  it('requires confirmation for SQLite ATTACH and DETACH', () => {
+    expect(looksLikeWrite("ATTACH DATABASE '/tmp/other.db' AS other", 'sqlite')).toBe(true)
+    expect(looksLikeWrite('DETACH DATABASE other', 'sqlite')).toBe(true)
+    expect(looksLikeWrite("SELECT * FROM pragma_table_info('users')", 'sqlite')).toBe(false)
+  })
+
   it('recognizes bulk-load statements as writes', () => {
     expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
     expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
