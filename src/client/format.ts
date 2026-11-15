@@ -11,7 +11,7 @@ export function dialectLabel(dialect: Dialect | undefined): string {
 
 export function formatMs(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms) || ms < 0) return '—'
-  const rounded = Math.max(1, Math.round(ms))
+  const rounded = ms === 0 ? 0 : Math.max(1, Math.round(ms))
   if (rounded < 1000) return `${rounded} ms`
   const seconds = Math.round(ms / 1000)
   if (seconds >= 3600) {
