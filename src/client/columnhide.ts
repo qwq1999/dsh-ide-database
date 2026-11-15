@@ -13,6 +13,24 @@ export function isHidden(hidden: string[] | null, name: string): boolean {
   return hidden !== null && hidden.includes(name)
 }
 
+/**
+ * Stable identity for a column in one result. A result may contain the same
+ * column name twice (`SELECT a.id, b.id`); a plain name would hide both.
+ * Unique names keep their old name so existing preferences still apply, and
+ * repeated names get an encoded occurrence suffix.
+ */
+export function hiddenColumnId(columns: ColumnInfo[], index: number): string {
+  const column = columns[index]
+  if (column === undefined) return ''
+  let occurrence = 0
+  for (let previous = 0; previous < index; previous += 1) {
+    if (columns[previous]?.name === column.name) occurrence += 1
+  }
+  return occurrence === 0
+    ? column.name
+    : `${column.name}#${encodeURIComponent(JSON.stringify([column.name, occurrence]))}`
+}
+
 /** Add or remove one column; an empty set collapses back to `null` (all visible). */
 export function toggleHidden(hidden: string[] | null, name: string): string[] | null {
   const current = hidden ?? []
@@ -21,17 +39,18 @@ export function toggleHidden(hidden: string[] | null, name: string): string[] | 
 }
 
 /** Hide every column except one, so a wide result can be narrowed to a single field. */
-export function onlyColumn(columns: ColumnInfo[], name: string): string[] | null {
-  if (columns.length <= 1) return null
-  if (!columns.some((column) => column.name === name)) return null
-  return columns.filter((column) => column.name !== name).map((column) => column.name)
+export function onlyColumn(columns: ColumnInfo[], target: string | number): string[] | null {
+  const targetId = typeof target === 'number' ? hiddenColumnId(columns, target) : target
+  const index = columns.findIndex((_, current) => hiddenColumnId(columns, current) === targetId)
+  if (index < 0 || columns.length <= 1) return null
+  return columns.flatMap((_, current) => (current === index ? [] : [hiddenColumnId(columns, current)]))
 }
 
-/** Drop remembered names that the current result no longer has. */
+/** Drop remembered identities that the current result no longer has. */
 export function pruneHidden(hidden: string[] | null, columns: ColumnInfo[]): string[] | null {
   if (hidden === null) return null
-  const names = new Set(columns.map((column) => column.name))
-  const kept = hidden.filter((name) => names.has(name))
+  const known = new Set(columns.map((_, index) => hiddenColumnId(columns, index)))
+  const kept = hidden.filter((name) => known.has(name))
   return kept.length === 0 ? null : kept
 }
 
@@ -44,7 +63,9 @@ export function hideColumns(
   rows: Row[],
   hidden: string[] | null,
 ): { positions: number[]; columns: ColumnInfo[]; rows: Row[] } {
-  const positions = columns.map((column, index) => (isHidden(hidden, column.name) ? -1 : index)).filter((index) => index >= 0)
+  const positions = columns
+    .map((_, index) => (isHidden(hidden, hiddenColumnId(columns, index)) ? -1 : index))
+    .filter((index) => index >= 0)
   // Never hide every column: an empty grid with no way back is worse than the
   // extra wide column the user just asked to hide.
   if (positions.length === 0) {

@@ -32,7 +32,7 @@ import { cellCopyText, rowToTsv } from './cellmenu'
 import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { moveWidthsForColumns } from './columnWidths'
-import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { hiddenColumnId, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
@@ -1354,6 +1354,8 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }, [hiddenColumns])
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const index = columns.findIndex((item) => item === column)
+    const displayIndex = displayColumns.findIndex((item) => item === column)
+    const hiddenId = displayIndex >= 0 ? hiddenColumnId(displayColumns, displayIndex) : column.name
     const active =
       rowSort?.column === column.name && (rowSort.index === undefined || rowSort.index === index)
         ? rowSort.direction
@@ -1398,7 +1400,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: `隐藏列「${column.name}」`,
         disabled: shownColumns.length <= 1,
-        run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+        run: () => setHiddenColumns((current) => toggleHidden(current, hiddenId)),
       },
       {
         label: '按此列分组计数',
@@ -1415,7 +1417,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: '只看这一列',
         disabled: displayColumns.length <= 1,
-        run: () => setHiddenColumns(onlyColumn(displayColumns, column.name)),
+        run: () => setHiddenColumns(onlyColumn(displayColumns, displayIndex)),
       },
       {
         label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { hideColumns, isHidden, onlyColumn, pruneHidden, toggleHidden, HIDDEN_STORAGE_PREFIX, readHidden, writeHidden } from '../../src/client/columnhide'
+import { hiddenColumnId, hideColumns, isHidden, onlyColumn, pruneHidden, toggleHidden, HIDDEN_STORAGE_PREFIX, readHidden, writeHidden } from '../../src/client/columnhide'
 
 const columns = [
   { name: 'id', typeName: 'INT' },
@@ -58,6 +58,23 @@ describe('column hiding helpers', () => {
     const view = hideColumns(columns, rows, ['id', 'name', 'total'])
     expect(view.columns).toBe(columns)
     expect(view.rows).toBe(rows)
+  })
+
+  it('keeps duplicate column names independent', () => {
+    const duplicate = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'id', typeName: 'INT' },
+      { name: 'name', typeName: 'VARCHAR' },
+    ]
+    const first = hiddenColumnId(duplicate, 0)
+    const second = hiddenColumnId(duplicate, 1)
+    expect(first).toBe('id')
+    expect(second).not.toBe('id')
+    const view = hideColumns(duplicate, [[1, 2, '手机']], [second])
+    expect(view.positions).toEqual([0, 2])
+    expect(view.columns.map((column) => column.name)).toEqual(['id', 'name'])
+    expect(onlyColumn(duplicate, second)).toEqual([first, 'name'])
+    expect(pruneHidden([first, second], duplicate)).toEqual([first, second])
   })
 
   it('persists a set per grid and clears it on null', () => {
