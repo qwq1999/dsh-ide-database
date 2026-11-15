@@ -85,6 +85,9 @@ describe('Redis command guard', () => {
       'PEXPIRETIME',
       'GEORADIUS_RO',
       'GEORADIUSBYMEMBER_RO',
+      'EVAL_RO',
+      'EVALSHA_RO',
+      'FCALL_RO',
     ]) {
       expect(isReadOnlyCommand(command)).toBe(true)
     }

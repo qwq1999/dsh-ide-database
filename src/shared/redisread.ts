@@ -99,6 +99,10 @@ export const REDIS_READ_COMMANDS: ReadonlySet<string> = new Set([
   'role',
   'command',
   'substr',
+  // Redis 7 read-only script/function entry points.
+  'eval_ro',
+  'evalsha_ro',
+  'fcall_ro',
 ])
 
 export function isRedisReadCommand(command: string): boolean {
