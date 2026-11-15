@@ -184,6 +184,17 @@ describe('tree filter keys', () => {
     expect(screen.queryByLabelText('筛选库表')).toBeNull()
   })
 
+  it('keeps a box with a term open when the user presses elsewhere', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    const box = openFilter()
+    fireEvent.change(box, { target: { value: 'cus' } })
+    // A term is an active filter: browsing must not throw it away. Only the
+    // clear button, Escape or the toolbar button end it.
+    fireEvent.pointerDown(document.body)
+    await act(async () => {})
+    expect(screen.getByLabelText('筛选库表')).toHaveProperty('value', 'cus')
+  })
+
   it('clears the box and the matches with Escape', async () => {
     render(<Harness calls={{ load: 0 }} />)
     const box = openFilter()

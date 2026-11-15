@@ -11,6 +11,8 @@ export function usePopoverDismiss(
   open: boolean,
   onClose: () => void,
   ref: RefObject<HTMLElement | null> | ReadonlyArray<RefObject<HTMLElement | null>>,
+  /** Outside presses are ignored while this returns false; Escape still closes. */
+  canDismiss?: () => boolean,
 ): void {
   useEffect(() => {
     if (!open) return undefined
@@ -18,6 +20,7 @@ export function usePopoverDismiss(
     // inside that panel must not count as "outside" and dismiss the box.
     const anchors = Array.isArray(ref) ? ref : [ref]
     const onPointerDown = (event: PointerEvent): void => {
+      if (canDismiss !== undefined && !canDismiss()) return
       if (!anchors.some((anchor) => anchor.current?.contains(event.target as Node))) onClose()
     }
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -29,5 +32,5 @@ export function usePopoverDismiss(
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onClose, ref])
+  }, [open, onClose, ref, canDismiss])
 }

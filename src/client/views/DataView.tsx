@@ -524,17 +524,19 @@ export function DataView(props: DataViewProps): ReactElement {
 
   const { containerRef, range, totalHeight, viewportHeight, onScroll, scrollToIndex } = useWindow(rows.length)
 
-  // Pressing a row is part of using the filter, not leaving it: while there is
-  // a term, only presses outside both the box and the tree dismiss the search.
-  // An empty box is just standing by (the clear button leaves the caret
-  // behind), so a press anywhere else puts it away.
-  const filterAnchors = useMemo(() => {
-    const anchors: RefObject<HTMLElement | null>[] = [filterFloatRef]
-    if (filter !== '') anchors.push(containerRef)
-    if (props.filterTrigger) anchors.push(props.filterTrigger)
-    return anchors
-  }, [containerRef, filter, props.filterTrigger])
-  usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
+  // The box and the toolbar button it hangs from are "inside" for dismissal.
+  // The tree is not, so an empty box goes away as soon as the user presses a
+  // row; a box holding a term is guarded below instead.
+  const filterAnchors = useMemo<RefObject<HTMLElement | null>[]>(
+    () => (props.filterTrigger ? [filterFloatRef, props.filterTrigger] : [filterFloatRef]),
+    [props.filterTrigger],
+  )
+  // A term is an active filter: browsing the results, or pressing another
+  // toolbar button, must not throw it away. ×, Escape and the toolbar button
+  // are the explicit ways out, so an outside press only puts away an empty,
+  // standing-by box.
+  const canDismissTreeFilter = useCallback(() => filter.trim() === '', [filter])
+  usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors, canDismissTreeFilter)
 
   // A changing tree (async rows above the cursor, collapsed branch, narrower
   // filter) must not move the roving focus to a different entry. Follow the
