@@ -17,6 +17,31 @@ const ZIP_LOCAL = 0x04034b50
 const ZIP_CENTRAL = 0x02014b50
 const ZIP_EOCD = 0x06054b50
 const ZIP_EOCD_SEARCH = 65_557
+/** A downloaded JDBC driver or runtime should never expand into gigabytes. */
+export const MAX_ARCHIVE_ENTRY_BYTES = 512 * 1024 * 1024
+export const MAX_ARCHIVE_TOTAL_BYTES = 1024 * 1024 * 1024
+
+function isBufferTooLarge(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE'
+}
+
+function inflateEntry(raw: Buffer, name: string): Buffer {
+  try {
+    return inflateRawSync(raw, { maxOutputLength: MAX_ARCHIVE_ENTRY_BYTES })
+  } catch (error) {
+    if (isBufferTooLarge(error)) throw new Error(`zip 条目解压后过大：${name}`)
+    throw error
+  }
+}
+
+function gunzipArchive(archive: Buffer): Buffer {
+  try {
+    return gunzipSync(archive, { maxOutputLength: MAX_ARCHIVE_TOTAL_BYTES })
+  } catch (error) {
+    if (isBufferTooLarge(error)) throw new Error('解压后的归档超过大小限制')
+    throw error
+  }
+}
 
 function archivePath(raw: string): string | undefined {
   const normalized = raw.replace(/\\/g, '/').replace(/^\.\/+/, '')
@@ -73,12 +98,14 @@ export function extractZip(zip: Buffer, destination: string): void {
   const eocd = endOfCentralDirectory(zip)
   const count = zip.readUInt16LE(eocd + 10)
   let offset = zip.readUInt32LE(eocd + 16)
+  let total = 0
   for (let index = 0; index < count; index += 1) {
     if (offset + 46 > zip.length || zip.readUInt32LE(offset) !== ZIP_CENTRAL) {
       throw new Error('zip 中央目录损坏')
     }
     const method = zip.readUInt16LE(offset + 10)
     const compressedSize = zip.readUInt32LE(offset + 20)
+    const uncompressedSize = zip.readUInt32LE(offset + 24)
     const nameLength = zip.readUInt16LE(offset + 28)
     const extraLength = zip.readUInt16LE(offset + 30)
     const commentLength = zip.readUInt16LE(offset + 32)
@@ -87,7 +114,14 @@ export function extractZip(zip: Buffer, destination: string): void {
     const unixMode = (zip.readUInt32LE(offset + 38) >>> 16) & 0o777
     const rawName = zip.subarray(offset + 46, offset + 46 + nameLength).toString('utf8')
     offset += 46 + nameLength + extraLength + commentLength
-    if (compressedSize === 0xffffffff || localOffset === 0xffffffff) throw new Error('不支持 zip64 压缩包')
+    if (
+      compressedSize === 0xffffffff ||
+      uncompressedSize === 0xffffffff ||
+      localOffset === 0xffffffff
+    ) {
+      throw new Error('不支持 zip64 压缩包')
+    }
+    if (uncompressedSize > MAX_ARCHIVE_ENTRY_BYTES) throw new Error(`zip 条目过大：${rawName}`)
     const name = archivePath(rawName)
     if (name === undefined) continue
     if (rawName.endsWith('/')) {
@@ -103,9 +137,15 @@ export function extractZip(zip: Buffer, destination: string): void {
     const dataStart = localOffset + 30 + zip.readUInt16LE(localOffset + 26) + zip.readUInt16LE(localOffset + 28)
     const raw = zip.subarray(dataStart, dataStart + compressedSize)
     if (raw.length !== compressedSize) throw new Error(`zip 条目数据不完整：${rawName}`)
-    if (method === 0) writeEntry(destination, name, Buffer.from(raw), unixMode)
-    else if (method === 8) writeEntry(destination, name, inflateRawSync(raw), unixMode)
+    let data: Buffer
+    if (method === 0) data = Buffer.from(raw)
+    else if (method === 8) data = inflateEntry(raw, rawName)
     else throw new Error(`不支持 zip 压缩方式 ${String(method)}`)
+    if (data.length > MAX_ARCHIVE_ENTRY_BYTES || total + data.length > MAX_ARCHIVE_TOTAL_BYTES) {
+      throw new Error(`zip 解压后过大：${rawName}`)
+    }
+    total += data.length
+    writeEntry(destination, name, data, unixMode)
   }
 }
 
@@ -140,8 +180,9 @@ function parsePax(body: Buffer): Record<string, string> {
 }
 
 export function extractTarGz(archive: Buffer, destination: string): void {
-  const tar = gunzipSync(archive)
+  const tar = gunzipArchive(archive)
   let offset = 0
+  let total = 0
   let pax: Record<string, string> = {}
   while (offset + BLOCK <= tar.length) {
     const header = tar.subarray(offset, offset + BLOCK)
@@ -153,9 +194,13 @@ export function extractTarGz(archive: Buffer, destination: string): void {
     const entryName = prefix === '' ? cString(header, 0, 100) : `${prefix}/${cString(header, 0, 100)}`
     const name = pax.path ?? entryName
     const link = pax.linkpath ?? cString(header, 157, 100)
+    if (size > MAX_ARCHIVE_ENTRY_BYTES) throw new Error(`tar 条目过大：${entryName}`)
+    if (total + size > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('tar 解压后过大')
     offset += BLOCK
+    if (offset + size > tar.length) throw new Error(`tar 条目数据不完整：${entryName}`)
     const body = tar.subarray(offset, offset + size)
     offset += Math.ceil(size / BLOCK) * BLOCK
+    total += size
     if (type === 'x') {
       pax = { ...pax, ...parsePax(body) }
       continue
