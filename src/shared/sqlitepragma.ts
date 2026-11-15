@@ -48,8 +48,22 @@ export const SQLITE_ARGUMENT_PRAGMAS: ReadonlySet<string> = new Set([
   'quick_check',
 ])
 
-const PRAGMA_HEAD =
-  /^pragma\s+(?:(?:[^\s.]+|"[^"]*"|`[^`]*`|\[[^\]]*\])\s*\.\s*)?([A-Za-z_][A-Za-z0-9_]*)\b/iu
+// SQLite accepts comments between PRAGMA and the name (and around the schema
+// dot). They cannot be stripped blindly because quoted schema identifiers may
+// contain comment-like text, so consume them as grammar whitespace.
+const PRAGMA_GAP = String.raw`(?:\s+|--[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)+`
+const PRAGMA_GAP_OPT = String.raw`(?:\s+|--[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`
+const PRAGMA_HEAD = new RegExp(
+  '^pragma' +
+    PRAGMA_GAP +
+    '(?:(?:[^\\s.]+|"[^"]*"|`[^`]*`|\\[[^\\]]*\\])' +
+    PRAGMA_GAP_OPT +
+    '\\.' +
+    PRAGMA_GAP_OPT +
+    ')?' +
+    '([A-Za-z_][A-Za-z0-9_]*)\\b',
+  'iu',
+)
 
 /**
  * Parse the optional schema prefix and the pragma name. Works on raw SQL and

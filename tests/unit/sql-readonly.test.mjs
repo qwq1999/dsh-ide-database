@@ -31,6 +31,9 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA table_info("a=b")', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info([a=b])', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info(users) /* = */', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA /* inspect */ table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA -- inspect\n table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA main /* schema */ . table_info(users)', 'sqlite')).toBe(true)
     // PRAGMA is not a read-only starter outside SQLite.
     expect(isReadOnlySql('PRAGMA table_info(users)')).toBe(false)
   })
