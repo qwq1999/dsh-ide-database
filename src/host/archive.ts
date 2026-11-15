@@ -111,7 +111,10 @@ function endOfCentralDirectory(zip: Buffer): number {
   if (zip.length < 22) throw new Error('zip 文件缺少中央目录')
   const start = Math.max(0, zip.length - ZIP_EOCD_SEARCH)
   for (let offset = zip.length - 22; offset >= start; offset -= 1) {
-    if (zip.readUInt32LE(offset) === ZIP_EOCD) return offset
+    if (zip.readUInt32LE(offset) !== ZIP_EOCD) continue
+    // A comment may contain the EOCD signature; only trust the record whose
+    // declared comment length reaches the end of the file.
+    if (offset + 22 + zip.readUInt16LE(offset + 20) === zip.length) return offset
   }
   throw new Error('zip 文件缺少中央目录')
 }

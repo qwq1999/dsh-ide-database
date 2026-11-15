@@ -69,6 +69,13 @@ function buildZip(entries) {
   return Buffer.concat([...locals, centralDir, eocd])
 }
 
+/** Append a zip comment and update the real EOCD comment length. */
+function withZipComment(zip, comment) {
+  const result = Buffer.concat([zip, comment])
+  result.writeUInt16LE(comment.length, zip.length - 2)
+  return result
+}
+
 /** Minimal ustar tar with one regular-file entry per `[name, data, mode]` triple. */
 function buildTar(entries) {
   const blocks = []
@@ -183,6 +190,16 @@ describe('archive extraction', () => {
   it('rejects a zip shorter than its end-of-central-directory record', () => {
     const target = tempDir()
     expect(() => extractZip(Buffer.from([0x50, 0x4b, 0x03, 0x04]), target)).toThrow('zip 文件缺少中央目录')
+  })
+
+  it('skips an EOCD signature inside the zip comment', () => {
+    const target = tempDir()
+    const zip = buildZip([[`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')]])
+    const fake = Buffer.alloc(22)
+    fake.writeUInt32LE(0x06054b50, 0)
+    const comment = Buffer.concat([Buffer.alloc(4), fake, Buffer.alloc(24)])
+    extractZip(withZipComment(zip, comment), target)
+    expect(readFileSync(join(target, 'jdk-21', 'bin', JAVA_BIN), 'utf8')).toBe('java-bytes')
   })
 
   it('rejects data that is neither zip nor gzip', () => {
