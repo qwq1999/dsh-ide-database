@@ -376,6 +376,25 @@ describe('JreManager', () => {
     })
   })
 
+  it('rejects a mirror listing redirected to another origin', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const impl = async (url) => {
+      if (String(url) === listingUrl) {
+        const response = new Response(`<a href="${archiveName}">jre</a>`)
+        Object.defineProperty(response, 'url', { value: 'https://evil.example/listing' })
+        return response
+      }
+      return new Response('nope', { status: 404 })
+    }
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('外部地址'),
+    })
+  })
+
   it('falls back to the official API when the mirror listing is unavailable', async () => {
     const archive = gzipSync(
       buildTar([

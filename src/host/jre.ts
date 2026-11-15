@@ -213,6 +213,10 @@ export class JreManager {
     if (!response.ok) {
       throw new DbError('download-failed', `访问 Java 镜像失败（HTTP ${String(response.status)}）`, listing)
     }
+    const finalUrl = response.url === '' ? listing : response.url
+    if (new URL(finalUrl).origin !== new URL(listing).origin) {
+      throw new DbError('download-failed', 'Java 镜像列表重定向到外部地址', finalUrl)
+    }
     const html = await readResponseTextLimited(
       response,
       MAX_LISTING_BYTES,
