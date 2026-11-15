@@ -79,7 +79,7 @@ const SECRET_PARAM = /pass|secret|token|credential|key/i
 
 function maskConnection(connection: ConnectionConfig): ConnectionConfig {
   const params = connection.params ?? {}
-  const masked: Record<string, string> = {}
+  const masked: Record<string, string> = Object.create(null)
   let changed = false
   for (const [key, value] of Object.entries(params)) {
     if (SECRET_PARAM.test(key)) {

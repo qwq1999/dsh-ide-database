@@ -278,6 +278,16 @@ describe('createDatabaseTools', () => {
     expect(masked.params).toEqual({ password: '***', sslMode: 'require', apiToken: '***' })
   })
 
+  it('keeps a __proto__ parameter when other params are masked', async () => {
+    const params = JSON.parse('{"password":"p@ss","__proto__":"keep"}')
+    const { byName } = harness({ connection: { params } })
+    const value = await byName('db_list_connections').execute({})
+    const masked = value.connections.find((entry) => entry.id === 'c1')
+    expect(Object.hasOwn(masked.params, '__proto__')).toBe(true)
+    expect(masked.params['__proto__']).toBe('keep')
+    expect(masked.params.password).toBe('***')
+  })
+
   it('lets the preset supply host and port', async () => {
     const { byName } = harness()
     await expect(byName('db_create_connection').execute({ name: 'pg', driver: 'postgres' })).rejects.toThrow(/缺少参数 host/)
