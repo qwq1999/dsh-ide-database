@@ -355,6 +355,27 @@ describe('splitStatements', () => {
     expect(splitStatements(anonymous, 'oracle')).toEqual([anonymous])
   })
 
+  it('keeps Oracle compound trigger sections intact', () => {
+    const trigger = [
+      'CREATE OR REPLACE TRIGGER tr',
+      'FOR INSERT ON users',
+      'COMPOUND TRIGGER',
+      '  BEFORE STATEMENT IS',
+      '  BEGIN',
+      '    NULL;',
+      '  END BEFORE STATEMENT;',
+      '  AFTER EACH ROW IS',
+      '  BEGIN',
+      '    IF :NEW.id > 0 THEN',
+      '      NULL;',
+      '    END IF;',
+      '  END AFTER EACH ROW;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(trigger, 'oracle')).toEqual([trigger])
+    expect(splitStatements(`${trigger}\nSELECT 2;`, 'oracle')).toEqual([trigger, 'SELECT 2'])
+  })
+
   it('keeps Oracle package specifications and bodies intact', () => {
     const spec = [
       'CREATE OR REPLACE PACKAGE pkg AS',

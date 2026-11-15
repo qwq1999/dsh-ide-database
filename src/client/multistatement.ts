@@ -48,12 +48,45 @@ function oracleProgramKind(text: string): string | null {
   return ORACLE_PROGRAM_START.exec(text)?.[1]?.toLowerCase() ?? null
 }
 
+/**
+ * A compound trigger is a series of timing sections, each with its own
+ * `BEGIN ... END <timing>;`. The final `END [trigger];` has no timing suffix,
+ * so the section terminators must not flush the statement.
+ */
+function oracleCompoundTriggerNeedsMore(code: string): boolean {
+  const words = Array.from(code.matchAll(/;|\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
+  let depth = 0
+  let seenBegin = false
+  let lastEnd = -1
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]
+    if (word === 'begin' || word === 'if' || word === 'loop' || word === 'case') {
+      if (word === 'begin') seenBegin = true
+      depth += 1
+      continue
+    }
+    if (word !== 'end') continue
+    lastEnd = index
+    const next = words[index + 1]
+    if (next === 'if' || next === 'loop' || next === 'case') index += 1
+    depth -= 1
+  }
+  if (!seenBegin || depth > 0) return true
+  const after = words.slice(lastEnd + 1).join(' ')
+  return /^(?:before\s+statement|after\s+statement|before\s+each\s+row|after\s+each\s+row|instead\s+of|if|loop|case)\b/u.test(
+    after,
+  )
+}
+
 function oracleBlockNeedsMore(text: string): boolean {
   const code = maskNonCode(text, 'oracle', true)
   const anonymous = /^\s*(begin|declare)\b/iu.exec(code)
   const kind = anonymous === null ? oracleProgramKind(code) : null
   const program = kind !== null
   if (anonymous === null && !program) return false
+  if (kind === 'trigger' && /\bcompound\s+trigger\b/iu.test(code)) {
+    return oracleCompoundTriggerNeedsMore(code)
+  }
   const callable = kind === 'procedure' || kind === 'function' || kind === 'trigger'
   // External procedures and `CALL` triggers have no BEGIN block. Without this
   // check their first semicolon would be swallowed forever waiting for one.
