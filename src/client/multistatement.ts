@@ -33,6 +33,54 @@ function sqliteTriggerNeedsMore(text: string): boolean {
   return body && depth > 0
 }
 
+/**
+ * Oracle anonymous PL/SQL blocks start with `BEGIN` (or a `DECLARE` section)
+ * and can contain arbitrary semicolons. Count the block openers so a semicolon
+ * only ends the statement after the matching `END`. `END IF` / `END LOOP` /
+ * `END CASE` close a construct rather than the block, so they are not counted
+ * as an extra opener.
+ */
+function oracleBlockNeedsMore(text: string): boolean {
+  const code = maskNonCode(text, 'oracle', true)
+  const start = /^\s*(begin|declare)\b/iu.exec(code)
+  if (start === null) return false
+  const words = Array.from(code.matchAll(/\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
+  let declaration = start[1]?.toLowerCase() === 'declare'
+  let seenBegin = false
+  let depth = 0
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]
+    if (declaration) {
+      if (word === 'begin') {
+        declaration = false
+        seenBegin = true
+        depth = 1
+      }
+      continue
+    }
+    if (word === 'begin') {
+      if (seenBegin) depth += 1
+      else {
+        seenBegin = true
+        depth = 1
+      }
+      continue
+    }
+    if (word === 'if' || word === 'loop' || word === 'case') {
+      depth += 1
+      continue
+    }
+    if (word === 'end') {
+      const next = words[index + 1]
+      if (next === 'if' || next === 'loop' || next === 'case') index += 1
+      depth -= 1
+    }
+  }
+  // A DECLARE section has no `BEGIN` yet; its semicolons are not terminators.
+  if (declaration) return true
+  return seenBegin && depth > 0
+}
+
 /** A script may put explanatory comments before its first DELIMITER line. */
 function hasOnlyComments(text: string): boolean {
   const rest = text
@@ -260,6 +308,11 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     }
 
     if (char === ';' && delimiter === ';') {
+      if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && oracleBlockNeedsMore(current)) {
+        current += char
+        index += 1
+        continue
+      }
       if (dialect === 'sqlite' && sqliteTriggerNeedsMore(current)) {
         current += char
         index += 1

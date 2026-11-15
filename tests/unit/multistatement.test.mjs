@@ -245,6 +245,41 @@ describe('splitStatements', () => {
     expect(splitStatements(trigger, 'generic').length).toBeGreaterThan(1)
   })
 
+  it('keeps Oracle PL/SQL anonymous blocks intact', () => {
+    const block = [
+      'BEGIN',
+      '  NULL;',
+      '  IF 1 = 1 THEN',
+      '    NULL;',
+      '  END IF;',
+      '  CASE WHEN 1 = 1 THEN',
+      '    NULL;',
+      '  ELSE',
+      '    NULL;',
+      '  END CASE;',
+      '  FOR i IN 1..2 LOOP',
+      '    NULL;',
+      '  END LOOP;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(block, 'oracle')).toEqual([block.slice(0, -1)])
+    expect(splitStatements(`${block}\nSELECT 2;`, 'oracle')).toEqual([block.slice(0, -1), 'SELECT 2'])
+    expect(splitStatements(block, 'oceanbase-oracle')).toEqual([block.slice(0, -1)])
+
+    const declare = ['DECLARE', '  x NUMBER;', 'BEGIN', '  x := 1;', 'END;'].join('\n')
+    expect(splitStatements(declare, 'oracle')).toEqual([declare.slice(0, -1)])
+
+    const noisy = [
+      'BEGIN',
+      "  DBMS_OUTPUT.PUT_LINE('END; not a terminator');",
+      '  -- END; in a comment is not a terminator',
+      '  NULL;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(noisy, 'oracle')).toEqual([noisy.slice(0, -1)])
+    expect(splitStatements(block, 'generic').length).toBeGreaterThan(1)
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
