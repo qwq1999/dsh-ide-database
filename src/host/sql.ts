@@ -277,6 +277,13 @@ const LOCKING_READ =
   /\bfor\s+(?:update|share|key\s+share|no\s+key\s+update)\b|\block\s+in\s+share\s+mode\b|\bwith\s*\(\s*(?:updlock|holdlock|tablockx|tablock|xlock|serializable|repeatableread|readcommittedlock)\b/
 
 /**
+ * SQL Server also accepts table hints without `WITH` (`FROM t (UPDLOCK)`); the
+ * legacy spelling takes the same locks as the documented form.
+ */
+const MSSQL_TABLE_HINT_LOCK =
+  /\(\s*(?:updlock|holdlock|tablockx|tablock|xlock|serializable|repeatableread|readcommittedlock)\b/
+
+/**
  * The end (exclusive) of the Oracle alternative-quoted literal starting at
  * `index`, or null when this is not one. The shape is `[n]q'<open>text<close>'`;
  * bracket pairs have their own closing character, and anything else closes with
@@ -572,8 +579,12 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
   // `SELECT ... INTO <table>` creates a table on PostgreSQL and SQL Server.
   if (head === 'select' && selectsIntoTable(withoutTrailing, dialect)) return false
   // Locking reads take row locks and can block other sessions; a read-only
-  // connection should not be able to do that.
-  if (head === 'select' && LOCKING_READ.test(withoutLiterals(withoutTrailing, dialect))) return false
+  // connection should not be able to do that. SQL Server's shorthand hint omits
+  // `WITH`, so check it separately for that dialect.
+  if (head === 'select') {
+    const code = withoutLiterals(withoutTrailing, dialect)
+    if (LOCKING_READ.test(code) || (dialect === 'mssql' && MSSQL_TABLE_HINT_LOCK.test(code))) return false
+  }
   // `SELECT ... INTO OUTFILE '/path'` looks plain but writes a file on the server.
   if (FILE_WRITE.test(withoutLiterals(withoutTrailing, dialect))) return false
   return true

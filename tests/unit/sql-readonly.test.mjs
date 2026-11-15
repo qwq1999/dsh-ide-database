@@ -290,6 +290,9 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT * FROM t WITH (REPEATABLEREAD)', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t WITH (READCOMMITTEDLOCK)', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t WITH (NOLOCK)', 'mssql')).toBe(true)
+    // WITH is optional before a table hint; the legacy shorthand still takes locks.
+    expect(isReadOnlySql('SELECT * FROM t (UPDLOCK)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t (NOLOCK)', 'mssql')).toBe(true)
     expect(isReadOnlySql("SELECT 'with (updlock)' AS note", 'mssql')).toBe(true)
     // The words in a string or comment, and a plain EXPLAIN, stay reads.
     expect(isReadOnlySql("SELECT 'for update' AS note", 'postgres')).toBe(true)
