@@ -283,6 +283,12 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT * FROM t FOR KEY SHARE', 'postgres')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t FOR SHARE', 'postgres')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t LOCK IN SHARE MODE', 'mysql')).toBe(false)
+    // SQL Server table hints can take the same kind of locks without FOR UPDATE.
+    expect(isReadOnlySql('SELECT * FROM t WITH (UPDLOCK)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t WITH (UPDLOCK, ROWLOCK)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t WITH (TABLOCKX)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t WITH (NOLOCK)', 'mssql')).toBe(true)
+    expect(isReadOnlySql("SELECT 'with (updlock)' AS note", 'mssql')).toBe(true)
     // The words in a string or comment, and a plain EXPLAIN, stay reads.
     expect(isReadOnlySql("SELECT 'for update' AS note", 'postgres')).toBe(true)
     expect(isReadOnlySql('SELECT 1 /* for update */', 'postgres')).toBe(true)
