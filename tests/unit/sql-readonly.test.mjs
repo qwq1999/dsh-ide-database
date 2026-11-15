@@ -26,6 +26,7 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA integrity_check(1)', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA schema_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA user_version', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA user_version /* keep */', 'sqlite')).toBe(true)
     expect(isReadOnlySql("PRAGMA table_info('a=b')", 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info("a=b")', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info([a=b])', 'sqlite')).toBe(true)
@@ -36,6 +37,9 @@ describe('isReadOnlySql', () => {
 
   it('rejects mutating or ambiguous SQLite pragmas', () => {
     expect(isReadOnlySql('PRAGMA user_version = 1', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA user_version(1)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA application_id(1234)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA schema_version(7)', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA user_version /* x */ = 1', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA main.user_version = 1', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA journal_mode = WAL', 'sqlite')).toBe(false)

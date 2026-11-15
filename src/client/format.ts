@@ -2,7 +2,7 @@ import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
 import { isRedisReadCommand } from '../shared/redisread'
-import { parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma'
+import { SQLITE_ARGUMENT_PRAGMAS, parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
@@ -273,7 +273,11 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     if (pragma === null || !SQLITE_READ_PRAGMAS.has(pragma.name)) return true
     // `code` deliberately keeps double-quoted identifiers, so mask them again
     // before looking for the assignment sign: `table_info("a=b")` is a read.
-    return maskNonCode(pragma.rest, 'sqlite', true, false).includes('=')
+    const rest = maskNonCode(pragma.rest, 'sqlite', true, false)
+    if (rest.includes('=')) return true
+    // `PRAGMA user_version(7)` is an assignment, not a read argument; only
+    // query-style pragmas may carry a parenthesized argument.
+    return !(SQLITE_ARGUMENT_PRAGMAS.has(pragma.name) || rest.trim() === '')
   }
   if (head.word === 'explain') {
     // Oracle's EXPLAIN is `EXPLAIN PLAN FOR ...`, which writes the plan table;

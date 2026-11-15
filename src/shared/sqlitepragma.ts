@@ -30,6 +30,24 @@ export interface SqlitePragma {
   rest: string
 }
 
+/**
+ * Pragmas whose parenthesized form is a read argument (`table_info(users)`)
+ * rather than an assignment. For every other allowed pragma, SQLite also
+ * accepts `PRAGMA name(value)` as an assignment, e.g. `user_version(7)` or
+ * `application_id(1234)`, so a non-empty rest must be rejected.
+ */
+export const SQLITE_ARGUMENT_PRAGMAS: ReadonlySet<string> = new Set([
+  'table_info',
+  'table_xinfo',
+  'index_info',
+  'index_list',
+  'index_xinfo',
+  'foreign_key_list',
+  'foreign_key_check',
+  'integrity_check',
+  'quick_check',
+])
+
 const PRAGMA_HEAD =
   /^pragma\s+(?:(?:[^\s.]+|"[^"]*"|`[^`]*`|\[[^\]]*\])\s*\.\s*)?([A-Za-z_][A-Za-z0-9_]*)\b/iu
 

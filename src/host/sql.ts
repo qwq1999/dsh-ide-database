@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 
 import { sqlDialectOf } from '../shared/dialect.js'
-import { parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma.js'
+import { SQLITE_ARGUMENT_PRAGMAS, parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma.js'
 import type {
   ColumnDetail,
   ColumnInfo,
@@ -57,7 +57,11 @@ function sqliteReadOnlyPragma(text: string): boolean {
   // Even an introspection pragma can be assigned a value in some SQLite
   // versions; a plain read has no `=`. Mask strings/comments so an argument
   // such as `table_info('a=b')` stays a read.
-  return !withoutLiterals(pragma.rest, 'sqlite').includes('=')
+  const rest = withoutLiterals(pragma.rest, 'sqlite')
+  if (rest.includes('=')) return false
+  // `PRAGMA user_version(7)` also assigns; only query-style pragmas may carry
+  // a parenthesized argument.
+  return SQLITE_ARGUMENT_PRAGMAS.has(pragma.name) || rest.trim() === ''
 }
 
 /** True for identifier characters; deliberately ASCII plus anything above 127. */
