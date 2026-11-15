@@ -67,7 +67,9 @@ describe('settings data-source toolbar order', () => {
     const rows = Array.from(panel.querySelectorAll<HTMLElement>('.dshdb-action-row'))
     expect(rows).toHaveLength(8)
     expect(rows[0]?.textContent).toContain('新增')
-    expect(rows[4]?.textContent).toContain('筛选')
+    expect(rows[3]?.textContent).toContain('筛选')
+    expect(rows[5]?.textContent).toContain('删除')
+    expect(rows[6]?.textContent).toContain('回收站')
     expect(rows[7]?.textContent).toContain('设置')
     for (const row of rows) {
       expect(row.querySelector('.dshdb-action-icon svg')).not.toBeNull()

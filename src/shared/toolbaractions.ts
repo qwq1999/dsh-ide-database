@@ -6,7 +6,7 @@
  * the default order, so it lives here instead of in the client bundle.
  */
 
-export const TOOLBAR_ACTION_IDS = ['add', 'edit', 'refresh', 'delete', 'filter', 'console', 'trash', 'settings'] as const
+export const TOOLBAR_ACTION_IDS = ['add', 'edit', 'refresh', 'filter', 'console', 'delete', 'trash', 'settings'] as const
 
 export type ToolbarActionId = (typeof TOOLBAR_ACTION_IDS)[number]
 

@@ -89,9 +89,9 @@ describe('data-source toolbar', () => {
       'add',
       'edit',
       'refresh',
-      'delete',
       'filter',
       'console',
+      'delete',
     ])
   })
 

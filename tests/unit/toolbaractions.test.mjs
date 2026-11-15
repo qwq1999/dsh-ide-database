@@ -19,11 +19,13 @@ describe('toolbar action order', () => {
       'add',
       'edit',
       'refresh',
-      'delete',
       'filter',
+      'delete',
       'trash',
       'settings',
     ])
+    // Delete feeds the recycle bin, so the default order keeps them adjacent.
+    expect(TOOLBAR_ACTION_IDS.indexOf('delete')).toBe(TOOLBAR_ACTION_IDS.indexOf('trash') - 1)
     expect(TOOLBAR_ACTION_IDS).toHaveLength(8)
     expect(orderToolbarActions(undefined)).toEqual([...TOOLBAR_ACTION_IDS])
   })
