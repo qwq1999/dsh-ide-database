@@ -34,18 +34,26 @@ function sqliteTriggerNeedsMore(text: string): boolean {
 }
 
 /**
- * Oracle anonymous PL/SQL blocks start with `BEGIN` (or a `DECLARE` section)
- * and can contain arbitrary semicolons. Count the block openers so a semicolon
- * only ends the statement after the matching `END`. `END IF` / `END LOOP` /
- * `END CASE` close a construct rather than the block, so they are not counted
- * as an extra opener.
+ * Oracle anonymous PL/SQL blocks start with `BEGIN` (or a `DECLARE` section),
+ * and procedure/function/trigger definitions also put a PL/SQL body after
+ * `AS`/`IS`. Those bodies contain semicolons; count the block openers so a
+ * semicolon only ends the statement after the matching `END`. `END IF` /
+ * `END LOOP` / `END CASE` close a construct rather than the block, so they are
+ * not counted as an extra opener.
  */
+const ORACLE_PROGRAM_START =
+  /^\s*create\s+(?:or\s+replace\s+)?(?:editionable\s+|noneditionable\s+)?(?:procedure|function|trigger)\b/iu
+
 function oracleBlockNeedsMore(text: string): boolean {
   const code = maskNonCode(text, 'oracle', true)
-  const start = /^\s*(begin|declare)\b/iu.exec(code)
-  if (start === null) return false
+  const anonymous = /^\s*(begin|declare)\b/iu.exec(code)
+  const program = anonymous === null && ORACLE_PROGRAM_START.test(code)
+  if (anonymous === null && !program) return false
+  // External procedures and `CALL` triggers have no BEGIN block. Without this
+  // check their first semicolon would be swallowed forever waiting for one.
+  if (program && !/\bbegin\b/iu.test(code) && /\b(?:external|language|call)\b/iu.test(code)) return false
   const words = Array.from(code.matchAll(/\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
-  let declaration = start[1]?.toLowerCase() === 'declare'
+  let declaration = anonymous?.[1]?.toLowerCase() === 'declare' || program
   let seenBegin = false
   let depth = 0
   for (let index = 0; index < words.length; index += 1) {
@@ -76,18 +84,23 @@ function oracleBlockNeedsMore(text: string): boolean {
       depth -= 1
     }
   }
-  // A DECLARE section has no `BEGIN` yet; its semicolons are not terminators.
+  // A DECLARE section (or a program's declaration section) has no `BEGIN`
+  // yet; its semicolons are not terminators.
   if (declaration) return true
   return seenBegin && depth > 0
 }
 
 /**
- * Whether the statement starts an Oracle anonymous block. Unlike ordinary
+ * Whether the statement starts an Oracle PL/SQL block. Unlike ordinary
  * statements, the final `;` belongs to the PL/SQL syntax and must be sent to
  * the server; the splitter removes it for a plain `SELECT`.
  */
 function oracleBlockStart(text: string): boolean {
-  return /^\s*(?:begin|declare)\b/iu.test(maskNonCode(text, 'oracle', true))
+  const code = maskNonCode(text, 'oracle', true)
+  if (/^\s*(?:begin|declare)\b/iu.test(code)) return true
+  // Only a program that actually reached a BEGIN body keeps the terminator;
+  // `CREATE ... AS EXTERNAL` and `CREATE TRIGGER ... CALL` are ordinary SQL.
+  return ORACLE_PROGRAM_START.test(code) && /\bbegin\b/iu.test(code)
 }
 
 /** A script may put explanatory comments before its first DELIMITER line. */

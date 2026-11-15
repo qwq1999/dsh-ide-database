@@ -281,6 +281,49 @@ describe('splitStatements', () => {
     expect(splitStatements(block, 'generic').length).toBeGreaterThan(1)
   })
 
+  it('keeps Oracle procedure, function and trigger bodies intact', () => {
+    const procedure = [
+      'CREATE OR REPLACE PROCEDURE p AS',
+      '  x NUMBER;',
+      'BEGIN',
+      '  x := 1;',
+      '  IF x > 0 THEN',
+      '    x := 2;',
+      '  END IF;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(procedure, 'oracle')).toEqual([procedure])
+    expect(splitStatements(`${procedure}\nSELECT 2;`, 'oracle')).toEqual([procedure, 'SELECT 2'])
+
+    const fn = [
+      'CREATE OR REPLACE FUNCTION f RETURN NUMBER AS',
+      'BEGIN',
+      '  RETURN 1;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(fn, 'oracle')).toEqual([fn])
+
+    const trigger = [
+      'CREATE OR REPLACE TRIGGER t BEFORE INSERT ON tab FOR EACH ROW',
+      'BEGIN',
+      '  NULL;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(trigger, 'oracle')).toEqual([trigger])
+
+    // No PL/SQL block: Oracle SQL DDL still drops the terminator.
+    const external = "CREATE OR REPLACE PROCEDURE p AS LANGUAGE JAVA NAME 'X.f()'; SELECT 2;"
+    expect(splitStatements(external, 'oracle')).toEqual([
+      "CREATE OR REPLACE PROCEDURE p AS LANGUAGE JAVA NAME 'X.f()'",
+      'SELECT 2',
+    ])
+    const callTrigger = 'CREATE OR REPLACE TRIGGER t BEFORE INSERT ON tab FOR EACH ROW CALL p; SELECT 2;'
+    expect(splitStatements(callTrigger, 'oracle')).toEqual([
+      'CREATE OR REPLACE TRIGGER t BEFORE INSERT ON tab FOR EACH ROW CALL p',
+      'SELECT 2',
+    ])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
