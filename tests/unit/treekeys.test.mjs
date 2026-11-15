@@ -50,6 +50,14 @@ describe('treeObjectKey', () => {
       `c1|a.b.c.d#${encodeURIComponent(JSON.stringify(['a.b', 'c.d']))}`,
     )
   })
+
+  it('does not let a hash in an object name swallow a folder selection', () => {
+    const objectKey = treeObjectKey('c1', 'a', 'b#columns')
+    expect(objectKey).toBe(
+      `c1|a.b#columns#${encodeURIComponent(JSON.stringify(['a', 'b#columns']))}`,
+    )
+    expect(objectKey).not.toBe(treeFolderSelectedKey('c1', 'a.b', 'columns'))
+  })
 })
 
 describe('tree schema and folder keys', () => {

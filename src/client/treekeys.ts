@@ -21,12 +21,13 @@ export function nextRowIndex(current: number, total: number, key: string): numbe
  * The readable `connection|schema.name` form is kept for ordinary names. A dot
  * in either the schema or the object name makes that form ambiguous: (`a`,
  * `b.c`) and (`a.b`, `c`) would produce the same key, sharing selection,
- * expansion and description cache entries. Those dotted cases append the exact
+ * expansion and description cache entries. A `#` is ambiguous with the folder
+ * delimiter used by {@link treeFolderSelectedKey}. Those cases append the exact
  * pair, encoded, so the key remains unique without changing normal keys.
  */
 export function treeObjectKey(connectionId: string, schema: string, name: string): string {
   const base = `${connectionId}|${schema}.${name}`
-  return schema.includes('.') || name.includes('.')
+  return /[.#]/u.test(schema) || /[.#]/u.test(name)
     ? `${base}#${encodeURIComponent(JSON.stringify([schema, name]))}`
     : base
 }
