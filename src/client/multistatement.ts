@@ -202,6 +202,11 @@ function oracleBlockStart(text: string): boolean {
   return /\bbegin\b/iu.test(code)
 }
 
+/** True when the pending text is only Oracle comments, not a statement. */
+function hasOnlyOracleComments(text: string): boolean {
+  return /^\s*(?:(?:--[^\n]*(?:\n|$))|(?:\/\*[\s\S]*?\*\/)\s*)*$/u.test(text)
+}
+
 /** Index just past a SQL*Plus `/` line, or null when it is not on its own line. */
 function oracleSlashLineEnd(input: string, index: number): number | null {
   if (input[index] !== '/') return null
@@ -345,9 +350,16 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     // SQL*Plus scripts put a lone `/` after a PL/SQL block to run it. The
     // splitter already executed the preceding statement, so this line is not
     // SQL and must not be sent to Oracle (which would report ORA-00900).
-    if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && char === '/' && current.trim() === '') {
+    if (
+      (dialect === 'oracle' || dialect === 'oceanbase-oracle') &&
+      char === '/' &&
+      (current.trim() === '' || hasOnlyOracleComments(current))
+    ) {
       const end = oracleSlashLineEnd(input, index)
       if (end !== null) {
+        // A slash is a client-side "run the buffer" marker. Drop any comments
+        // collected before it instead of sending them as a statement.
+        current = ''
         index = end
         continue
       }

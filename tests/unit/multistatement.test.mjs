@@ -52,6 +52,10 @@ describe('splitStatements', () => {
       'SELECT 1 FROM dual',
       'SELECT 2 FROM dual',
     ])
+    expect(splitStatements('BEGIN NULL; END;\n-- run the block\n/\nSELECT 1 FROM dual;', 'oracle')).toEqual([
+      'BEGIN NULL; END;',
+      'SELECT 1 FROM dual',
+    ])
   })
 
   it('ignores semicolons in line and block comments', () => {
