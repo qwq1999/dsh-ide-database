@@ -48,7 +48,9 @@ export function formatBytes(bytes: number | undefined): string {
   if (Math.round(gb * 10) / 10 < 1024) return `${gb.toFixed(1)} GB`
   const tb = bytes / (1024 * 1024 * 1024 * 1024)
   if (Math.round(tb * 10) / 10 < 1024) return `${tb.toFixed(1)} TB`
-  return `${(bytes / (1024 * 1024 * 1024 * 1024 * 1024)).toFixed(1)} PB`
+  const pb = bytes / (1024 * 1024 * 1024 * 1024 * 1024)
+  if (Math.round(pb * 10) / 10 < 1024) return `${pb.toFixed(1)} PB`
+  return `${(bytes / (1024 * 1024 * 1024 * 1024 * 1024 * 1024)).toFixed(1)} EB`
 }
 
 export function formatCell(value: CellValue): string {

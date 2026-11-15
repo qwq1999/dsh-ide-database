@@ -48,6 +48,7 @@ describe('format helpers', () => {
     expect(formatBytes(1024 ** 4)).toBe('1.0 TB')
     expect(formatBytes(1024 ** 5)).toBe('1.0 PB')
     expect(formatBytes(1.5 * 1024 ** 5)).toBe('1.5 PB')
+    expect(formatBytes(1024 ** 6)).toBe('1.0 EB')
     expect(formatBytes(Number.NaN)).toBe('')
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('')
     expect(formatBytes(-1)).toBe('')
