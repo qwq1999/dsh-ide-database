@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
+  type RefObject,
 } from 'react'
 import type {
   ClientConnection,
@@ -55,8 +56,12 @@ export interface DataViewProps {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
-  /** Bumped by the toolbar funnel button: reveal the floating filter and focus it. */
+  /** Bumped by the toolbar funnel button: reveal the floating filter, or put it away. */
   filterRequest?: number
+  /** The funnel button itself: a press there toggles the box, so it is not "outside" it. */
+  filterTrigger?: RefObject<HTMLElement | null>
+  /** Reports whether the box is on screen, so the trigger can show a pressed state. */
+  onFilterOpenChange?: (open: boolean) => void
   redisKeys: Record<string, Record<string, RedisKeyInfo[]>>
   redisCursor: Record<string, Record<string, string>>
   loadingRedisKeys: Record<string, Record<string, boolean>>
@@ -230,15 +235,24 @@ export function DataView(props: DataViewProps): ReactElement {
 
   // The toolbar's funnel button bumps a counter instead of sharing the
   // open/closed state: the box belongs to this view, so a click and Ctrl+F
-  // end up in the same place. Only a change counts, so remounting the view
+  // end up in the same place. A second click is the way back out, so the
+  // counter only says "the button was pressed" and this effect picks between
+  // revealing and putting away. Only a change counts, so remounting the view
   // with an old counter baked in does not pop the box open on its own.
   const filterRequestRef = useRef(props.filterRequest ?? 0)
   useEffect(() => {
     const request = props.filterRequest ?? 0
     if (request === filterRequestRef.current) return
     filterRequestRef.current = request
-    focusTreeFilter()
-  }, [props.filterRequest, focusTreeFilter])
+    if (filterOpen) closeTreeFilter()
+    else focusTreeFilter()
+  }, [props.filterRequest, filterOpen, focusTreeFilter, closeTreeFilter])
+
+  // The trigger looks pressed while the box is up.
+  const reportFilterOpen = props.onFilterOpenChange
+  useEffect(() => {
+    reportFilterOpen?.(filterOpen)
+  }, [filterOpen, reportFilterOpen])
 
   const openObjectMenu = useCallback(
     (
@@ -512,7 +526,10 @@ export function DataView(props: DataViewProps): ReactElement {
 
   // Pressing a row is part of using the filter, not leaving it: only presses
   // outside both the box and the tree dismiss the search.
-  const filterAnchors = useMemo(() => [filterFloatRef, containerRef], [containerRef])
+  const filterAnchors = useMemo(
+    () => (props.filterTrigger ? [filterFloatRef, containerRef, props.filterTrigger] : [filterFloatRef, containerRef]),
+    [containerRef, props.filterTrigger],
+  )
   usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
 
   // A changing tree (async rows above the cursor, collapsed branch, narrower

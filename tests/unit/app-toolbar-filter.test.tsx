@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ status: vi.fn() }))
@@ -82,7 +82,20 @@ describe('data-source toolbar filter button', () => {
     expect(document.activeElement).toBe(input)
   })
 
-  it('keeps the box open on a second click and refocuses it', async () => {
+  it('puts the box away on a second click', async () => {
+    mockStatus()
+    render(<App />)
+    const button = await filterButton()
+    fireEvent.click(button)
+    const input = await screen.findByLabelText('筛选库表')
+    fireEvent.change(input, { target: { value: '192' } })
+    await waitFor(() => expect(button.getAttribute('aria-pressed')).toBe('true'))
+    fireEvent.click(button)
+    await waitFor(() => expect(screen.queryByLabelText('筛选库表')).toBeNull())
+    expect(button.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('reopens with an empty term after the box was put away', async () => {
     mockStatus()
     render(<App />)
     const button = await filterButton()
@@ -90,9 +103,26 @@ describe('data-source toolbar filter button', () => {
     const input = await screen.findByLabelText('筛选库表')
     fireEvent.change(input, { target: { value: '192' } })
     fireEvent.click(button)
-    expect(await screen.findByLabelText('筛选库表')).toBe(input)
+    await waitFor(() => expect(screen.queryByLabelText('筛选库表')).toBeNull())
+    // Putting the box away ends the filter, so the next press starts clean.
+    fireEvent.click(button)
+    const reopened = await screen.findByLabelText('筛选库表')
+    expect((reopened as HTMLInputElement).value).toBe('')
+  })
+
+  it('keeps the caret in the box when the trigger itself is pressed', async () => {
+    mockStatus()
+    render(<App />)
+    const button = await filterButton()
+    fireEvent.click(button)
+    const input = await screen.findByLabelText('筛选库表')
     expect(document.activeElement).toBe(input)
-    expect((input as HTMLInputElement).value).toBe('192')
+    // Stealing focus would blur the field, and an empty box closes on blur:
+    // the click would then read "closed" and open it again instead of closing.
+    const press = createEvent.mouseDown(button)
+    fireEvent(button, press)
+    expect(press.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(input)
   })
 
   it('is disabled while there is no data source to filter', async () => {

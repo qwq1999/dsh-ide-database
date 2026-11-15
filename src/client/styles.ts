@@ -88,6 +88,11 @@ export const CSS = `
 .dshdb-toolbtn:disabled { opacity: 0.45; cursor: default; }
 .dshdb-toolbtn svg { flex: none; color: inherit; }
 .dshdb-toolbtn:hover:not(:disabled) svg { color: var(--dsw-alias-label-primary); }
+/* Two-state toolbar buttons (the tree filter) stay lit while their panel is up. */
+.dshdb-toolbtn[aria-pressed='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
 
 .dshdb-tab {
   height: 24px;

@@ -98,4 +98,12 @@ describe('tree filter request', () => {
     const input = screen.getByLabelText('筛选库表')
     expect(document.activeElement).toBe(input)
   })
+
+  it('puts the filter away when the button is pressed again', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }))
+    expect(screen.getByLabelText('筛选库表')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }))
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
+  })
 })

@@ -61,12 +61,18 @@ function ToolButton({
   icon,
   onClick,
   disabled,
+  pressed,
+  keepFocus,
   children,
 }: {
   title: string
   icon: ReactElement
   onClick: () => void
   disabled?: boolean
+  /** Marks a two-state button so screen readers announce "pressed". */
+  pressed?: boolean
+  /** Leave the keyboard focus alone: the button toggles a field it must not blur. */
+  keepFocus?: boolean
   children: string
 }): ReactElement {
   return (
@@ -75,7 +81,15 @@ function ToolButton({
       className="dshdb-toolbtn"
       title={title}
       aria-label={title}
+      aria-pressed={pressed}
       onClick={onClick}
+      onMouseDown={
+        keepFocus === true
+          ? (event) => {
+              event.preventDefault()
+            }
+          : undefined
+      }
       disabled={disabled}
     >
       {icon}
@@ -100,6 +114,9 @@ export function App(props: AppProps): ReactElement {
   // 工具栏的「筛选」按钮只递增这个计数：筛选框本身的状态归 DataView 所有，
   // 在这里再存一份「开着/关着」会和 Ctrl+F 走成两条互相打架的路径。
   const [filterRequest, setFilterRequest] = useState(0)
+  // 只给按钮的按下态与提示文案用；筛选框开着还是关着仍由 DataView 决定。
+  const [treeFilterOpen, setTreeFilterOpen] = useState(false)
+  const filterButtonRef = useRef<HTMLSpanElement | null>(null)
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [connModal, setConnModal] = useState<{ open: boolean; editing: ClientConnection | null }>({
@@ -396,6 +413,10 @@ export function App(props: AppProps): ReactElement {
     label: string
     title: string
     disabled?: boolean
+    /** 两态按钮用它告诉辅助技术当前是开还是关。 */
+    pressed?: boolean
+    /** 按下时不要把焦点从它要操作的那个输入框上抢走。 */
+    keepFocus?: boolean
     onClick: () => void
   }[] = [
     {
@@ -436,8 +457,13 @@ export function App(props: AppProps): ReactElement {
     {
       id: 'filter',
       label: '筛选',
-      title: `${selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}（${shortcutLabel('tree.filter')}）`,
+      // 打开后按钮变成「关闭筛选框」：再点一次就是收起，不用自己猜。
+      title: treeFilterOpen
+        ? '关闭筛选框'
+        : `${selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}（${shortcutLabel('tree.filter')}）`,
       disabled: connections.length === 0,
+      pressed: treeFilterOpen,
+      keepFocus: true,
       onClick: () => setFilterRequest((count) => count + 1),
     },
     {
@@ -565,12 +591,15 @@ export function App(props: AppProps): ReactElement {
               key={action.id}
               className={'dshdb-toolbar-slot' + (index >= visibleToolbarCount ? ' dshdb-toolbar-slot-hidden' : '')}
               data-toolbar-action={action.id}
+              ref={action.id === 'filter' ? filterButtonRef : undefined}
             >
               <ToolButton
                 title={action.title}
                 icon={toolbarActionIcon(action.id)}
                 onClick={action.onClick}
                 disabled={action.disabled}
+                pressed={action.pressed}
+                keepFocus={action.keepFocus}
               >
                 {action.label}
               </ToolButton>
@@ -709,6 +738,8 @@ export function App(props: AppProps): ReactElement {
               redisDetailDb={redisDetailDb}
               redisDetailLoading={redisDetailLoading}
               filterRequest={filterRequest}
+              filterTrigger={filterButtonRef}
+              onFilterOpenChange={setTreeFilterOpen}
               onAddConnection={openAddConnection}
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
