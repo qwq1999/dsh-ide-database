@@ -19,7 +19,7 @@ export function formatMs(ms: number | undefined): string {
     const minutes = Math.floor((seconds % 3600) / 60)
     return `${hours}h ${minutes}m ${seconds % 60}s`
   }
-  if (ms >= 60_000) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+  if (seconds >= 60) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
   return `${(ms / 1000).toFixed(2)} s`
 }
 
