@@ -28,7 +28,7 @@ export function isValidSecretName(name: string): boolean {
 }
 
 export class SecretStore {
-  private entries: Record<string, { value: string; updatedAt: string }> = {}
+  private entries: Record<string, { value: string; updatedAt: string }> = Object.create(null)
   private loaded = false
 
   constructor(
@@ -69,10 +69,10 @@ export class SecretStore {
 
   resolve(name: string | undefined): SecretSource | undefined {
     if (name === undefined || name === '' || !isValidSecretName(name)) return undefined
-    const fromEnv = process.env[name]
-    if (fromEnv !== undefined && fromEnv !== '') return { value: fromEnv, source: 'env' }
+    const fromEnv = Object.hasOwn(process.env, name) ? process.env[name] : undefined
+    if (typeof fromEnv === 'string' && fromEnv !== '') return { value: fromEnv, source: 'env' }
     this.load()
-    const stored = this.entries[name]
+    const stored = Object.hasOwn(this.entries, name) ? this.entries[name] : undefined
     if (stored === undefined || stored.value === '') return undefined
     return { value: Buffer.from(stored.value, 'base64').toString('utf8'), source: 'store' }
   }
@@ -90,7 +90,7 @@ export class SecretStore {
 
   delete(name: string): void {
     this.load()
-    if (this.entries[name] === undefined) return
+    if (!Object.hasOwn(this.entries, name)) return
     delete this.entries[name]
     this.persist()
   }

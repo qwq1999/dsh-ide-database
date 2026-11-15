@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -29,6 +29,25 @@ describe('ConfigStore', () => {
       drivers: [],
       settings: { maxRows: 200, allowAgentWrites: false, connectTimeoutSec: 10, mavenMirror: 'central' },
     })
+  })
+
+  it('does not let a __proto__ secret alias every missing name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-config-'))
+    dirs.push(dir)
+    const file = join(dir, 'secrets.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        entries: JSON.parse(
+          '{"__proto__":{"value":"c2VjcmV0","updatedAt":"2026-01-01T00:00:00.000Z"}}',
+        ),
+      }),
+    )
+
+    const secrets = new SecretStore(file)
+    expect(secrets.resolve('DSH_IDE_DB_MISSING')).toBeUndefined()
+    expect(secrets.resolve('__proto__')?.value).toBe('secret')
   })
 
   it('saves a connection and keeps the password in the secret store', () => {
