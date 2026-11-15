@@ -58,14 +58,14 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function toJsonValue(value: unknown): JsonValue {
+export function toJsonValue(value: unknown): JsonValue {
   if (value === null || value === undefined) return null
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
   if (typeof value === 'bigint') return value.toString()
   if (Buffer.isBuffer(value)) return value.toString('utf8')
   if (Array.isArray(value)) return value.map((item) => toJsonValue(item))
   if (typeof value === 'object') {
-    const out: Record<string, JsonValue> = {}
+    const out: Record<string, JsonValue> = Object.create(null)
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) out[key] = toJsonValue(item)
     return out
   }
@@ -439,7 +439,7 @@ export class RedisManager {
               break
             }
           } while (cursor !== '0')
-          const object: Record<string, JsonValue> = {}
+          const object: Record<string, JsonValue> = Object.create(null)
           const limit = entries.length > maxRows * 2 ? maxRows * 2 : entries.length
           for (let index = 0; index + 1 < limit; index += 2) object[entries[index]] = entries[index + 1]
           if (entries.length > maxRows * 2) truncated = true
