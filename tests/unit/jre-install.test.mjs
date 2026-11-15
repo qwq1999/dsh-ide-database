@@ -143,6 +143,15 @@ describe('archive extraction', () => {
     expect(safeArchiveLink(target, 'jdk-21/bin/java', '')).toBeUndefined()
   })
 
+  it('rejects negative tar sizes instead of looping forever', () => {
+    const target = tempDir()
+    const header = Buffer.alloc(512)
+    header.write('evil.txt', 0, 'utf8')
+    header.write('-1001\0', 124, 'utf8')
+    const archive = gzipSync(Buffer.concat([header, Buffer.alloc(1024)]))
+    expect(() => extractTarGz(archive, target)).toThrow('tar 条目大小非法')
+  })
+
   it('unpacks tar.gz entries and keeps bin/java executable on Unix', () => {
     const target = tempDir()
     const archive = gzipSync(

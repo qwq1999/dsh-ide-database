@@ -172,9 +172,19 @@ function cString(block: Buffer, start: number, length: number): string {
 
 function octal(block: Buffer): number {
   const text = cString(block, 0, block.length).trim()
-  if (text === '') return 0
+  if (text === '' || !/^[0-7]+$/.test(text)) return 0
   const value = Number.parseInt(text, 8)
   return Number.isFinite(value) ? value : 0
+}
+
+/** Tar sizes must be non-negative octal; a negative size could make the reader loop. */
+function headerSize(header: Buffer): number {
+  const text = cString(header, 124, 12).trim()
+  if (text === '') return 0
+  if (!/^[0-7]+$/.test(text)) throw new Error('tar 条目大小非法')
+  const value = Number.parseInt(text, 8)
+  if (!Number.isFinite(value) || value < 0) throw new Error('tar 条目大小非法')
+  return value
 }
 
 /** PAX extended headers are `"<length> key=value\n"` records. */
@@ -202,7 +212,7 @@ export function extractTarGz(archive: Buffer, destination: string): void {
   while (offset + BLOCK <= tar.length) {
     const header = tar.subarray(offset, offset + BLOCK)
     if (header.every((byte) => byte === 0)) break
-    const size = octal(header.subarray(124, 136))
+    const size = headerSize(header)
     const mode = octal(header.subarray(100, 108))
     const type = String.fromCharCode(header[156] ?? 0)
     const prefix = cString(header, 345, 155)
