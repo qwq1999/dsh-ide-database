@@ -21,6 +21,7 @@ import type {
 } from '../../shared/types'
 import { objectKindLabel } from '../format'
 import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
+import { treeFolderKey } from '../treekeys'
 import { shortcutHit } from '../keymap'
 import { RedisValuePanel } from '../redisview'
 import { copyText } from '../colmenu'
@@ -424,7 +425,7 @@ export function DataView(props: DataViewProps): ReactElement {
         const hits = list.filter((object) => matchesFilteredObject(filterQuery, schema, object.name))
         if (hits.length === 0) continue
         for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
-          if (expanded[`${key}#${folder}`] === true) continue
+          if (expanded[treeFolderKey(connectionId, schema, folder)] === true) continue
           props.onToggleFolder(connectionId, schema, folder)
         }
       }

@@ -11,6 +11,8 @@
  * before the first dot then narrows the schema and the rest matches object
  * names, which is how people usually type once they know where a table lives.
  */
+import { treeSchemaKey } from './treekeys'
+
 export interface FilterTargets {
   connections: string[]
   schemas: string[]
@@ -81,7 +83,7 @@ export function filterTargets(
     const wanted = new Set<string>(hits)
     for (const key of objectHits) wanted.add(key.slice(connection.id.length + 1))
     for (const schema of wanted) {
-      if (expanded[`${connection.id}:${schema}`] === true) continue
+      if (expanded[treeSchemaKey(connection.id, schema)] === true) continue
       targets.schemas.push(`${connection.id}:${schema}`)
     }
   }

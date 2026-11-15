@@ -37,6 +37,19 @@ describe('filterTargets', () => {
     expect(filterTargets('nothing', connections, schemas, objects, {})).toEqual({ connections: [], schemas: [] })
     expect(filterTargets('   ', connections, schemas, objects, {})).toEqual({ connections: [], schemas: [] })
   })
+
+  it('does not mistake a folder of one schema for another schema being open', () => {
+    const unusual = {
+      'demo-mysql': [{ name: 'a' }, { name: 'a#columns' }],
+    }
+    const targets = filterTargets('a#columns', connections, unusual, {}, {
+      'demo-mysql': true,
+      // This is the folder key schema `a` used to produce, and the old schema
+      // key of schema `a#columns`; they must no longer be the same branch.
+      'demo-mysql:a#columns': true,
+    })
+    expect(targets).toEqual({ connections: [], schemas: ['demo-mysql:a#columns'] })
+  })
 })
 
 describe('qualified filters', () => {

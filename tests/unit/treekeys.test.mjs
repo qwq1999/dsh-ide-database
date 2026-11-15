@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { nextRowIndex, treeObjectKey } from '../../src/client/treekeys'
+import {
+  nextRowIndex,
+  treeFolderKey,
+  treeFolderSelectedKey,
+  treeObjectKey,
+  treeSchemaKey,
+  treeSchemaSelectedKey,
+} from '../../src/client/treekeys'
 
 describe('nextRowIndex', () => {
   it('moves down and stops at the last row', () => {
@@ -41,6 +48,28 @@ describe('treeObjectKey', () => {
   it('still tells an object apart from a differently split dotted name', () => {
     expect(treeObjectKey('c1', 'a.b', 'c.d')).toBe(
       `c1|a.b.c.d#${encodeURIComponent(JSON.stringify(['a.b', 'c.d']))}`,
+    )
+  })
+})
+
+describe('tree schema and folder keys', () => {
+  it('keeps the readable keys for ordinary schemas', () => {
+    expect(treeSchemaKey('c1', 'shop')).toBe('c1:shop')
+    expect(treeFolderKey('c1', 'shop', 'table')).toBe('c1:shop#table')
+    expect(treeSchemaSelectedKey('c1', 'shop')).toBe('c1|schema:shop')
+    expect(treeFolderSelectedKey('c1', 'shop', 'table')).toBe('c1|shop#table')
+  })
+
+  it('does not let a schema key swallow another schema folder', () => {
+    expect(treeSchemaKey('c1', 'a#columns')).not.toBe(treeFolderKey('c1', 'a', 'columns'))
+    expect(treeSchemaKey('c1', 'a#columns')).toBe('c1:a%23columns')
+  })
+
+  it('encodes the # and colon in selected keys too', () => {
+    expect(treeSchemaSelectedKey('c1', 'a#columns')).toBe('c1|schema:a%23columns')
+    expect(treeFolderSelectedKey('c1', 'a#columns', 'table')).toBe('c1|a%23columns#table')
+    expect(treeFolderSelectedKey('c1', 'a#columns', 'table')).not.toBe(
+      treeSchemaSelectedKey('c1', 'a'),
     )
   })
 })
