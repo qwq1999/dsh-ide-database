@@ -24,6 +24,12 @@ describe('relativeTime', () => {
     expect(relativeTime(at(3 * 86400))).toBe('3 天前')
   })
 
+  it('never rounds a sub-second age up into the next unit', () => {
+    expect(relativeTime(at(59.9))).toBe('刚刚')
+    expect(relativeTime(at(3599.9))).toBe('59 分钟前')
+    expect(relativeTime(at(86399.9))).toBe('23 小时前')
+  })
+
   it('agrees with the history rows at the same age', () => {
     const now = Date.parse('2026-03-01T12:00:00.000Z')
     for (const seconds of [10, 90, 3 * 3600, 86399, 3 * 86400]) {

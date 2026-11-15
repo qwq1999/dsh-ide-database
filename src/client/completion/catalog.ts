@@ -12,6 +12,7 @@
  * Concurrent requests for the same entry share one promise, so holding the
  * completion shortcut does not fire duplicate metadata reads.
  */
+import { completionColumnKey } from '../../shared/completionkey'
 import { api } from '../api'
 import type { CompletionCatalog } from './types'
 
@@ -132,7 +133,7 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
 
   async columns(schema: string, table: string): Promise<readonly CatalogColumn[]> {
     if (schema === '' || table === '') return []
-    const key = `${schema}.${table}`
+    const key = completionColumnKey(schema, table)
     const cached = this.columnCache.get(key)
     if (cached !== undefined) return cached
     return this.shared(`columns:${key}`, async () => {
@@ -200,7 +201,7 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
     try {
       const data = await api.completionMetadata(this.connectionId, { tables: [{ schema, table }] })
       if (!data.cached) return undefined
-      const columns = data.columns[`${schema}.${table}`]
+      const columns = data.columns[completionColumnKey(schema, table)]
       if (columns === undefined) return undefined
       return columns.map((column) => ({ name: column.name, typeName: column.typeName }))
     } catch {

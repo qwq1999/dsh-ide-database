@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   cellWhere,
+  columnFilter,
   columnNames,
   composeWhere,
+  withColumnFilter,
   filterExpression,
   insertStatement,
   insertStatements,
   isNumericType,
   isTemporalType,
+  isTextType,
+  isBinaryType,
+  isBinaryValue,
+  isBinaryCell,
   temporalLiteral,
   pageClause,
   qualifiedName,
@@ -46,6 +52,8 @@ describe('tablesql quoting', () => {
     expect(quoteLiteral('C:\\temp', 'mysql')).toBe("'C:\\\\temp'")
     expect(quoteLiteral('C:\\temp', 'oracle')).toBe("'C:\\temp'")
     expect(quoteLiteral("O'Brien", 'mysql')).toBe("'O''Brien'")
+    expect(quoteLiteral('手机', 'mssql', true)).toBe("N'手机'")
+    expect(quoteLiteral('手机', 'mssql')).toBe("'手机'")
   })
 
   it('builds the page clause per dialect', () => {
@@ -70,11 +78,24 @@ describe('stripWhere', () => {
 describe('filterExpression', () => {
   it('builds LIKE, equality and IS NULL filters', () => {
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '北' })).toBe(
-      "`city` LIKE '%北%'",
+      "`city` LIKE '%北%' ESCAPE '!'",
     )
     expect(filterExpression('mysql', column('id', 'int(11)'), { op: 'eq', text: '30' })).toBe('`id` = 30')
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'eq', text: '北京' })).toBe("`city` = '北京'")
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'isnull', text: '' })).toBe('`city` IS NULL')
+  })
+
+  it('filters boolean cells with a boolean literal instead of a string', () => {
+    expect(filterExpression('mysql', column('active', 'tinyint(1)'), { op: 'eq', text: 'true' })).toBe('`active` = TRUE')
+    expect(filterExpression('mysql', column('active', 'tinyint(1)'), { op: 'eq', text: 'false' })).toBe('`active` = FALSE')
+    expect(filterExpression('mssql', column('active', 'bit'), { op: 'eq', text: 'false' })).toBe('[active] = 0')
+    expect(filterExpression('postgres', column('active', 'bool'), { op: 'eq', text: 'true' })).toBe('"active" = TRUE')
+    // PostgreSQL BIT is a bit string, not a boolean.
+    expect(filterExpression('postgres', column('flags', 'bit'), { op: 'eq', text: 'true' })).toBe('"flags" = \'true\'')
+    // A text column that happens to contain the word true is still text.
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'eq', text: 'true' })).toBe('"name" = \'true\'')
+    // Numeric TINYINT values keep their numeric form.
+    expect(filterExpression('mysql', column('count', 'tinyint'), { op: 'eq', text: '2' })).toBe('`count` = 2')
   })
 
   it('treats a numeric string on a text column as a literal and skips empty text', () => {
@@ -82,27 +103,107 @@ describe('filterExpression', () => {
     expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '  ' })).toBeUndefined()
   })
 
+  it('matches LIKE metacharacters in the typed text literally', () => {
+    expect(filterExpression('mysql', column('city', 'varchar(20)'), { op: 'like', text: '50%' })).toBe(
+      "`city` LIKE '%50!%%' ESCAPE '!'",
+    )
+    expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'a_b' })).toBe(
+      `"name" LIKE '%a!_b%' ESCAPE '!'`,
+    )
+    expect(filterExpression('oracle', column('name', 'VARCHAR2(20)'), { op: 'like', text: 'a!b' })).toBe(
+      `"name" LIKE '%a!!b%' ESCAPE '!'`,
+    )
+  })
+
   it('casts non-text columns before a contains filter', () => {
     expect(filterExpression('postgres', column('id', 'integer'), { op: 'like', text: '12' })).toBe(
-      `CAST("id" AS TEXT) LIKE '%12%'`,
+      `CAST("id" AS TEXT) LIKE '%12%' ESCAPE '!'`,
     )
     expect(filterExpression('postgres', column('created', 'timestamp(6)'), { op: 'like', text: '2024' })).toBe(
-      `CAST("created" AS TEXT) LIKE '%2024%'`,
+      `CAST("created" AS TEXT) LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('mysql', column('id', 'int'), { op: 'like', text: '12' })).toBe(
-      "CAST(`id` AS CHAR) LIKE '%12%'",
+      "CAST(`id` AS CHAR) LIKE '%12%' ESCAPE '!'",
     )
     expect(filterExpression('oracle', column('ID', 'NUMBER'), { op: 'like', text: '12' })).toBe(
-      `TO_CHAR("ID") LIKE '%12%'`,
+      `TO_CHAR("ID") LIKE '%12%' ESCAPE '!'`,
     )
     expect(filterExpression('oracle', column('created', 'DATE'), { op: 'like', text: '2024' })).toBe(
-      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%'`,
+      `TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('mssql', column('created', 'datetime'), { op: 'like', text: '2024' })).toBe(
-      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%'`,
+      `CONVERT(VARCHAR(23), [created], 121) LIKE '%2024%' ESCAPE '!'`,
+    )
+    expect(filterExpression('mssql', column('created', 'datetime2(7)'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(27), [created], 121) LIKE '%2024%' ESCAPE '!'`,
+    )
+    expect(filterExpression('mssql', column('created', 'datetimeoffset(7)'), { op: 'like', text: '2024' })).toBe(
+      `CONVERT(VARCHAR(34), [created], 121) LIKE '%2024%' ESCAPE '!'`,
     )
     expect(filterExpression('postgres', column('name', 'text'), { op: 'like', text: 'ab' })).toBe(
-      `"name" LIKE '%ab%'`,
+      `"name" LIKE '%ab%' ESCAPE '!'`,
+    )
+  })
+
+  it('casts JSON columns before equality', () => {
+    const unicode = column('name', 'nvarchar(max)')
+    expect(cellWhere('mssql', unicode, '手机')).toBe("[name] = N'手机'")
+    expect(filterExpression('mssql', unicode, { op: 'like', text: '手机' })).toBe("[name] LIKE N'%手机%' ESCAPE '!'")
+    expect(insertStatement('mssql', 'dbo', 'users', [unicode], ['手机'])).toBe("INSERT INTO [dbo].[users] ([name]) VALUES (N'手机');")
+    const doc = column('doc', 'JSON')
+    expect(filterExpression('mysql', doc, { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST(`doc` AS CHAR) = \'{"a": 1}\'',
+    )
+    expect(filterExpression('postgres', column('doc', 'JSONB'), { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST("doc" AS TEXT) = \'{"a": 1}\'',
+    )
+    expect(filterExpression('mssql', doc, { op: 'eq', text: '{"a": 1}' })).toBe(
+      'CAST([doc] AS NVARCHAR(MAX)) = \'{"a": 1}\'',
+    )
+  })
+
+  it('matches the fractional seconds and offset an Oracle timestamp displays', () => {
+    expect(filterExpression('oracle', column('created', 'TIMESTAMP'), { op: 'like', text: '09:54:33.123' })).toBe(
+      `RTRIM(RTRIM(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.') LIKE '%09:54:33.123%' ESCAPE '!'`,
+    )
+    expect(
+      filterExpression('oracle', column('created', 'TIMESTAMP(6) WITH TIME ZONE'), {
+        op: 'like',
+        text: '09:54:33.123 +8:00',
+      }),
+    ).toBe(
+      `REGEXP_REPLACE(RTRIM(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '\\.$', '.0') || ' ' || REGEXP_REPLACE(TO_CHAR("created", 'TZH:TZM'), '^([+-])0([0-9]:)', '\\1\\2') LIKE '%09:54:33.123 +8:00%' ESCAPE '!'`,
+    )
+    expect(
+      filterExpression('oracle', column('created', 'TIMESTAMP(6) WITH LOCAL TIME ZONE'), {
+        op: 'like',
+        text: '17:54:33.123 Asia/Shanghai',
+      }),
+    ).toBe(
+      `UPPER(INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), '\\. ([^ ]+)$', '.0 \\1'))) LIKE UPPER('%17:54:33.123 Asia/Shanghai%') ESCAPE '!'`,
+    )
+  })
+
+  it('keeps an Oracle local time zone region when writing or filtering', () => {
+    const ltz = 'TIMESTAMP(6) WITH LOCAL TIME ZONE'
+    const at = column('AT', ltz)
+    expect(temporalLiteral('oracle', ltz, '2024-11-11 17:54:33.123 Asia/Shanghai')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 17:54:33.123 Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(temporalLiteral('oracle', ltz, '2023-12-31 19:00:00.0 US/Eastern')).toBe(
+      `TO_TIMESTAMP_TZ('2023-12-31 19:00:00.0 US/Eastern', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(temporalLiteral('oracle', ltz, '2023-12-31 16:00:00.0 Etc/GMT+8')).toBe(
+      `TO_TIMESTAMP_TZ('2023-12-31 16:00:00.0 Etc/GMT+8', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(cellWhere('oracle', at, '2023-12-31 19:00:00.0 US/Eastern')).toBe(
+      `"AT" = TO_TIMESTAMP_TZ('2023-12-31 19:00:00.0 US/Eastern', 'YYYY-MM-DD HH24:MI:SS.FF TZR')`,
+    )
+    expect(insertStatement('oracle', 'SHOP', 'EVENTS', [column('ID', 'NUMBER'), at], ['1', '2024-11-11 17:54:33.123 Asia/Shanghai'])).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "AT") VALUES (1, TO_TIMESTAMP_TZ('2024-11-11 17:54:33.123 Asia/Shanghai', 'YYYY-MM-DD HH24:MI:SS.FF TZR'));`,
+    )
+    expect(filterExpression('oracle', at, { op: 'like', text: '19:00:00.0 US/Eastern' })).toContain(
+      `UPPER('%19:00:00.0 US/Eastern%')`,
     )
   })
 })
@@ -112,7 +213,7 @@ describe('composeWhere', () => {
 
   it('joins the manual WHERE with column filters', () => {
     const where = composeWhere('mysql', 'WHERE id > 10', columns, { city: { op: 'like', text: '北' } })
-    expect(where).toBe("(id > 10) AND `city` LIKE '%北%'")
+    expect(where).toBe("(id > 10) AND `city` LIKE '%北%' ESCAPE '!'")
   })
 
   it('returns just the filters when the manual box is empty', () => {
@@ -121,6 +222,24 @@ describe('composeWhere', () => {
 
   it('returns an empty string when nothing is set', () => {
     expect(composeWhere('mysql', '', columns, {})).toBe('')
+  })
+
+  it('does not read inherited properties for oddly named columns', () => {
+    const odd = [column('constructor', 'text'), column('toString', 'text'), column('__proto__', 'text')]
+    expect(composeWhere('mysql', '', odd, {})).toBe('')
+    expect(composeWhere('mysql', '', odd, { constructor: { op: 'eq', text: 'x' } })).toBe(
+      "`constructor` = 'x'",
+    )
+  })
+
+  it('stores a filter for a column named __proto__ as data', () => {
+    const empty = {}
+    expect(columnFilter(empty, 'constructor')).toBeUndefined()
+    const own = withColumnFilter(empty, '__proto__', { op: 'eq', text: 'x' })
+    expect(Object.getPrototypeOf(own)).toBeNull()
+    expect(columnFilter(own, '__proto__')).toEqual({ op: 'eq', text: 'x' })
+    expect(composeWhere('mysql', '', [column('__proto__', 'text')], own)).toBe("`__proto__` = 'x'")
+    expect(columnFilter(withColumnFilter(own, '__proto__', undefined), '__proto__')).toBeUndefined()
   })
 })
 
@@ -132,6 +251,80 @@ describe('isNumericType', () => {
     expect(isNumericType('varchar(20)')).toBe(false)
     expect(isNumericType('datetime')).toBe(false)
   })
+
+  it('matches the whole type name rather than a prefix', () => {
+    expect(isNumericType('interval')).toBe(false)
+    expect(isNumericType('integer[]')).toBe(false)
+    expect(isNumericType('numeric[]')).toBe(false)
+    expect(isNumericType('decimal(10,2)[]')).toBe(false)
+    expect(isNumericType('numeric(10,2)[]')).toBe(false)
+    expect(isNumericType('int identity')).toBe(true)
+    expect(isNumericType('int4')).toBe(true)
+    expect(isNumericType('float8')).toBe(true)
+    expect(isNumericType('serial')).toBe(true)
+    expect(isNumericType('bigserial')).toBe(true)
+    expect(isNumericType('double precision')).toBe(true)
+  })
+})
+
+describe('type families', () => {
+  it('does not treat arrays as scalar character or temporal types', () => {
+    expect(isTextType('character varying')).toBe(true)
+    expect(isTextType('character varying(50)')).toBe(true)
+    expect(isTextType('character varying[]')).toBe(false)
+    expect(isTextType('text[]')).toBe(false)
+    expect(isTemporalType('date[]')).toBe(false)
+    expect(isTemporalType('smalldatetime')).toBe(true)
+    expect(isTemporalType('timestamp(6) with local time zone')).toBe(true)
+    expect(isTemporalType('timestamp(6) with time zone')).toBe(true)
+    expect(isTemporalType('timestamp[]')).toBe(false)
+    expect(isTemporalType('timestamp', 'mssql')).toBe(false)
+    expect(isTemporalType('rowversion', 'mssql')).toBe(false)
+    expect(isTemporalType('timestamp', 'mysql')).toBe(true)
+  })
+
+  it('recognizes binary columns that only show a placeholder', () => {
+    expect(isBinaryType('BLOB')).toBe(true)
+    expect(isBinaryType('LONGBLOB')).toBe(true)
+    expect(isBinaryType('VARBINARY(16)')).toBe(true)
+    expect(isBinaryType('bytea')).toBe(true)
+    expect(isBinaryType('RAW(16)')).toBe(true)
+    expect(isBinaryType('LONG RAW')).toBe(true)
+    expect(isBinaryType('timestamp', 'mssql')).toBe(true)
+    expect(isBinaryType('rowversion', 'mssql')).toBe(true)
+    expect(isBinaryType('timestamp', 'mysql')).toBe(false)
+  })
+
+  it('recognizes binary placeholders whose type name is vague', () => {
+    expect(isBinaryValue('<binary 1 bytes>')).toBe(true)
+    expect(isBinaryValue('<binary 0 bytes>')).toBe(true)
+    expect(isBinaryValue('<binary 3 bytes> extra')).toBe(false)
+    expect(isBinaryValue(3)).toBe(false)
+    expect(isBinaryCell(column('flags', 'BIT'), '<binary 1 bytes>', 'mysql')).toBe(true)
+    expect(isBinaryCell(column('note', 'TEXT'), '<binary 1 bytes>', 'mysql')).toBe(false)
+    expect(isBinaryCell(column('payload', 'BLOB'), '<binary 3 bytes>', 'mysql')).toBe(true)
+    expect(isBinaryCell(column('payload', 'BLOB'), null, 'mysql')).toBe(false)
+    expect(isBinaryType('varbinary(max)')).toBe(true)
+    expect(isBinaryType('geometry', 'mysql')).toBe(true)
+    expect(isBinaryType('POINT', 'mysql')).toBe(true)
+    expect(isBinaryType('geography', 'mssql')).toBe(true)
+    // PostGIS values are text, not a byte placeholder.
+    expect(isBinaryType('geometry', 'postgres')).toBe(false)
+    expect(isBinaryType('point', 'postgres')).toBe(false)
+    expect(isBinaryType('geometry')).toBe(false)
+    expect(isBinaryType('text')).toBe(false)
+    expect(isBinaryType('json')).toBe(false)
+    expect(isBinaryType(undefined)).toBe(false)
+  })
+
+  it('casts a character varying array before a contains filter', () => {
+    const tags = column('tags', 'character varying[]')
+    expect(filterExpression('postgres', tags, { op: 'like', text: 'red' })).toBe(
+      `CAST("tags" AS TEXT) LIKE '%red%' ESCAPE '!'`,
+    )
+    const span = column('span', 'interval')
+    expect(filterExpression('postgres', span, { op: 'eq', text: '1' })).toBe(`"span" = '1'`)
+  })
 })
 
 describe('tableFromStatement', () => {
@@ -142,11 +335,70 @@ describe('tableFromStatement', () => {
     expect(tableFromStatement('insert into [shop].[orders] (id) values (1)')).toEqual({ schema: 'shop', table: 'orders' })
   })
 
+  it('keeps quoted names with spaces and dots intact', () => {
+    expect(tableFromStatement('insert into [Order Details] (id) values (1)', 'mssql')).toEqual({
+      schema: '',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from [shop].[Order Details]', 'mssql')).toEqual({
+      schema: 'shop',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from `order details`', 'mysql')).toEqual({ schema: '', table: 'order details' })
+    expect(tableFromStatement('select * from "order details"')).toEqual({ schema: '', table: 'order details' })
+    expect(tableFromStatement('select * from [my.table]', 'mssql')).toEqual({ schema: '', table: 'my.table' })
+    expect(tableFromStatement('select * from [a]]b]', 'mssql')).toEqual({ schema: '', table: 'a]b' })
+    expect(tableFromStatement('select * from [from orders]', 'mssql')).toEqual({ schema: '', table: 'from orders' })
+  })
+
+  it('reads Unicode names and skips ONLY / LATERAL modifiers', () => {
+    expect(tableFromStatement('select * from 用户')).toEqual({ schema: '', table: '用户' })
+    expect(tableFromStatement('select * from 商店.订单', 'mysql')).toEqual({ schema: '商店', table: '订单' })
+    expect(tableFromStatement('delete from only 用户', 'postgres')).toEqual({ schema: '', table: '用户' })
+    expect(tableFromStatement('select * from lateral (select * from 订单) x', 'postgres')).toEqual({
+      schema: '',
+      table: '订单',
+    })
+  })
+
+  it('uses the last two parts of a three-part SQL Server name', () => {
+    expect(tableFromStatement('select * from [app].[dbo].[Order Details]', 'mssql')).toEqual({
+      schema: 'dbo',
+      table: 'Order Details',
+    })
+    expect(tableFromStatement('select * from app.dbo.orders')).toEqual({ schema: 'dbo', table: 'orders' })
+  })
+
   it('skips subqueries without a plain table and returns null otherwise', () => {
     const nested = 'select * from (select * from shop.orders) x'
     expect(tableFromStatement(nested)).toEqual({ schema: 'shop', table: 'orders' })
     expect(tableFromStatement('select 1 + 1')).toBeNull()
     expect(tableFromStatement('begin')).toBeNull()
+  })
+
+  it('prefers the outer table over a subquery in the select list', () => {
+    expect(tableFromStatement('select (select count(*) from logs) as n from users')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+    expect(tableFromStatement('with recent as (select * from logs) select * from users')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+    expect(tableFromStatement('select * from users where exists (select 1 from logs)')).toEqual({
+      schema: '',
+      table: 'users',
+    })
+  })
+
+  it('does not treat a table-valued function as the table', () => {
+    expect(tableFromStatement('select * from generate_series(1, 2)')).toBeNull()
+    expect(tableFromStatement('select * from public.generate_series(1, 2)')).toBeNull()
+    expect(tableFromStatement("select * from json_each('[]')")).toBeNull()
+    expect(tableFromStatement('select * from generate_series(1, 2) g join users on true')).toEqual({
+      schema: '',
+      table: 'users',
+    })
   })
 
   it('ignores literals and comments that mention another table', () => {
@@ -211,6 +463,42 @@ describe('insertStatement', () => {
     expect(insertStatement('oceanbase-oracle', 'SHOP', 'USERS', oracleColumns, ['2', false])).toBe(
       'INSERT INTO "SHOP"."USERS" ("ID", "ACTIVE") VALUES (2, 0);',
     )
+  })
+
+  it('writes Oracle temporal values with typed literals', () => {
+    const temporal = [column('ID', 'NUMBER'), column('DAY', 'DATE'), column('AT', 'TIMESTAMP(6)')]
+    expect(
+      insertStatement('oracle', 'SHOP', 'EVENTS', temporal, ['1', '2024-11-11 09:54:33', '2024-11-11 09:54:33.123']),
+    ).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "DAY", "AT") VALUES (1, TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS'), TO_TIMESTAMP('2024-11-11 09:54:33.123', 'YYYY-MM-DD HH24:MI:SS.FF'));`,
+    )
+    expect(
+      insertStatement('oracle', 'SHOP', 'EVENTS', temporal, ['2', '2024-11-12 10:00', '2024-11-12 10:00']),
+    ).toBe(
+      `INSERT INTO "SHOP"."EVENTS" ("ID", "DAY", "AT") VALUES (2, TO_DATE('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'), TO_TIMESTAMP('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'));`,
+    )
+  })
+
+  it('leaves SQL Server rowversion columns out of INSERT', () => {
+    const rowVersion = [column('id', 'int'), column('rv', 'timestamp'), column('rv2', 'rowversion')]
+    expect(insertStatement('mssql', 'dbo', 'events', rowVersion, [1, '<binary 8 bytes>', '<binary 8 bytes>'])).toBe(
+      'INSERT INTO [dbo].[events] ([id]) VALUES (1);',
+    )
+  })
+
+  it('leaves binary placeholder cells out of INSERT', () => {
+    const columns = [column('id', 'int'), column('payload', 'BLOB'), column('flags', 'BIT'), column('note', 'TEXT')]
+    expect(
+      insertStatement('mysql', 'shop', 'files', columns, [1, '<binary 3 bytes>', '<binary 1 bytes>', '<binary 3 bytes>']),
+    ).toBe(
+      "INSERT INTO `shop`.`files` (`id`, `note`) VALUES (1, '<binary 3 bytes>');",
+    )
+    expect(
+      insertStatement('mysql', 'shop', 'files', [column('payload', 'BLOB')], ['<binary 3 bytes>']),
+    ).toBe('-- `shop`.`files` 只有二进制或生成列，未导出 INSERT')
+    expect(
+      insertStatement('mysql', 'shop', 'files', [column('id', 'int'), column('payload', 'BLOB')], [1, null]),
+    ).toBe('INSERT INTO `shop`.`files` (`id`, `payload`) VALUES (1, NULL);')
   })
 
   it('leaves server-generated columns out while keeping value positions aligned', () => {
@@ -316,6 +604,15 @@ describe('cellWhere', () => {
     expect(cellWhere('oceanbase-oracle', { name: 'paid', typeName: 'NUMBER(1)' }, false)).toBe('"paid" = 0')
     expect(cellWhere('generic', { name: 'paid', typeName: 'BIT' }, false)).toBe('"paid" = FALSE')
   })
+
+  it('casts JSON values before comparing them', () => {
+    expect(cellWhere('mysql', { name: 'doc', typeName: 'JSON' }, '{"a": 1}')).toBe(
+      'CAST(`doc` AS CHAR) = \'{"a": 1}\'',
+    )
+    expect(cellWhere('postgres', { name: 'doc', typeName: 'JSONB' }, '{"a": 1}')).toBe(
+      'CAST("doc" AS TEXT) = \'{"a": 1}\'',
+    )
+  })
 })
 
 describe('inListOf', () => {
@@ -330,6 +627,14 @@ describe('inListOf', () => {
     const backslash = String.fromCharCode(92)
     expect(inListOf('mysql', [['C:' + backslash + 'temp']], 0)).toBe("('C:" + backslash + backslash + "temp')")
   })
+
+  it('uses the column type for typed values when it is known', () => {
+    const day = column('D', 'DATE')
+    expect(inListOf('oracle', [['2024-11-11 09:54:33'], ['2024-11-12 10:00']], 0, day)).toBe(
+      `(TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS'), TO_DATE('2024-11-12 10:00', 'YYYY-MM-DD HH24:MI'))`,
+    )
+    expect(inListOf('oracle', [['7'], [null]], 0, column('N', 'NUMBER'))).toBe('(7, NULL)')
+  })
 })
 
 describe('temporal literals', () => {
@@ -337,6 +642,9 @@ describe('temporal literals', () => {
     const timestamp = { name: 'CREATETIME', typeName: 'TIMESTAMP(6)' }
     expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33' })).toBe(
       `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
+    )
+    expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54' })).toBe(
+      `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54', 'YYYY-MM-DD HH24:MI')`,
     )
     expect(filterExpression('oracle', timestamp, { op: 'eq', text: '2024-11-11 09:54:33.123' })).toBe(
       `"CREATETIME" = TO_TIMESTAMP('2024-11-11 09:54:33.123', 'YYYY-MM-DD HH24:MI:SS.FF')`,
@@ -351,9 +659,23 @@ describe('temporal literals', () => {
     expect(cellWhere('oracle', date, '2024-11-11 09:54:33')).toBe(
       `"DAY" = TO_DATE('2024-11-11 09:54:33', 'YYYY-MM-DD HH24:MI:SS')`,
     )
+    expect(cellWhere('oracle', date, '2024-11-11 09:54')).toBe(
+      `"DAY" = TO_DATE('2024-11-11 09:54', 'YYYY-MM-DD HH24:MI')`,
+    )
     const stamp = { name: 'AT', typeName: 'TIMESTAMP WITH TIME ZONE' }
     expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54:33.123 +08:00')).toBe(
       `TO_TIMESTAMP_TZ('2024-11-11 09:54:33.123 +08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 09:54 +8:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 09:54 +8:00', 'YYYY-MM-DD HH24:MI TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', stamp.typeName, '2024-11-11 +8:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-11-11 +8:00', 'YYYY-MM-DD TZH:TZM')`,
+    )
+    // Oracle's own TIMESTAMP WITH TIME ZONE text uses a one-digit hour offset.
+    const bridged = '2024-11-11 09:54:00.0 +8:00'
+    expect(temporalLiteral('oracle', stamp.typeName, bridged)).toBe(
+      `TO_TIMESTAMP_TZ('${bridged}', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
     )
   })
 

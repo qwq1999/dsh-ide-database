@@ -79,7 +79,7 @@ const SECRET_PARAM = /pass|secret|token|credential|key/i
 
 function maskConnection(connection: ConnectionConfig): ConnectionConfig {
   const params = connection.params ?? {}
-  const masked: Record<string, string> = {}
+  const masked: Record<string, string> = Object.create(null)
   let changed = false
   for (const [key, value] of Object.entries(params)) {
     if (SECRET_PARAM.test(key)) {
@@ -606,7 +606,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (statement.trim() === '') throw new DbError('invalid', 'SQL 不能为空')
           const settings = deps.config.settings()
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
-          if (!allowWrite && !isReadOnlySql(statement)) {
+          if (!allowWrite && !isReadOnlySql(statement, connection.dialect)) {
             throw new DbError(
               'read-only',
               '当前配置不允许代理执行写语句',
@@ -663,7 +663,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           const settings = deps.config.settings()
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
           // EXPLAIN ANALYZE really runs the statement; a read-only plan request must not become a write.
-          if (!allowWrite && !isReadOnlySql(statement)) {
+          if (!allowWrite && !isReadOnlySql(statement, connection.dialect)) {
             throw new DbError(
               'read-only',
               '当前配置不允许代理执行会真实运行的写语句',

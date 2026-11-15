@@ -12,6 +12,7 @@ import type {
 import type { ConfigStore } from './config.js'
 import { DbError } from './errors.js'
 import type { SecretStore } from './secrets.js'
+import { isRedisReadCommand } from '../shared/redisread.js'
 
 interface Session {
   client: RedisClient
@@ -57,14 +58,14 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function toJsonValue(value: unknown): JsonValue {
+export function toJsonValue(value: unknown): JsonValue {
   if (value === null || value === undefined) return null
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
   if (typeof value === 'bigint') return value.toString()
   if (Buffer.isBuffer(value)) return value.toString('utf8')
   if (Array.isArray(value)) return value.map((item) => toJsonValue(item))
   if (typeof value === 'object') {
-    const out: Record<string, JsonValue> = {}
+    const out: Record<string, JsonValue> = Object.create(null)
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) out[key] = toJsonValue(item)
     return out
   }
@@ -182,69 +183,10 @@ export async function keyInfos(client: RedisClient, keys: string[]): Promise<Red
   return infos
 }
 
-const READ_ONLY_COMMANDS = new Set([
-  'get',
-  'mget',
-  'strlen',
-  'type',
-  'ttl',
-  'pttl',
-  'exists',
-  'scan',
-  'keys',
-  'dbsize',
-  'info',
-  'ping',
-  'echo',
-  'time',
-  'randomkey',
-  'lrange',
-  'llen',
-  'lpos',
-  'smembers',
-  'scard',
-  'sismember',
-  'sscan',
-  'hget',
-  'hmget',
-  'hgetall',
-  'hlen',
-  'hscan',
-  'hkeys',
-  'hvals',
-  'zrange',
-  'zrevrange',
-  'zrangebyscore',
-  'zcard',
-  'zscan',
-  'zscore',
-  'xrange',
-  'xrevrange',
-  'xlen',
-  'getrange',
-  'object',
-  'memory',
-  'bitcount',
-  'geopos',
-  'xread',
-  'xinfo',
-  'lindex',
-  'zcount',
-  'zlexcount',
-  'zrank',
-  'zrevrank',
-  'zmscore',
-  'hstrlen',
-  'hexists',
-  'hrandfield',
-  'getbit',
-  'bitpos',
-  'geodist',
-  'geohash',
-  'geosearch',
-  'pfcount',
-  'srandmember',
-])
+/** Whether a command only reads data and may run on a read-only connection. */
+export function isReadOnlyCommand(command: string): boolean {
+  return isRedisReadCommand(command)
+}
 
 // FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.
 const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf', 'flushdb', 'flushall'])
@@ -497,7 +439,7 @@ export class RedisManager {
               break
             }
           } while (cursor !== '0')
-          const object: Record<string, JsonValue> = {}
+          const object: Record<string, JsonValue> = Object.create(null)
           const limit = entries.length > maxRows * 2 ? maxRows * 2 : entries.length
           for (let index = 0; index + 1 < limit; index += 2) object[entries[index]] = entries[index + 1]
           if (entries.length > maxRows * 2) truncated = true
@@ -569,7 +511,7 @@ export class RedisManager {
       throw new DbError('read-only', `该命令被插件禁止执行：${command}`)
     }
     const session = await this.ensureSession(connId, db)
-    const readOnlyCommand = READ_ONLY_COMMANDS.has(command.toLowerCase())
+    const readOnlyCommand = isReadOnlyCommand(command)
     if (!readOnlyCommand && (session.readOnly || !allowWrite)) {
       throw new DbError('read-only', session.readOnly ? '该连接已标记为只读，拒绝写命令' : '当前操作不允许写命令')
     }

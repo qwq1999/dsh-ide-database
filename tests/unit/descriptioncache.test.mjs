@@ -60,7 +60,7 @@ describe('DescriptionCache', () => {
     instance.put('c1', 'app', 'b', description('app', 'b'))
     instance.flush()
 
-    instance.pruneObjects('c1', 'app', new Set(['app.b']))
+    instance.pruneObjects('c1', 'app', new Set(['b']))
     instance.flush()
     expect(instance.has('c1', 'app', 'a')).toBe(false)
 
@@ -101,6 +101,42 @@ describe('DescriptionCache', () => {
 
     const lines = readFileSync(logFile(dir, 'c1'), 'utf8').trim().split('\n')
     expect(lines).toHaveLength(2)
+  })
+
+  it('keeps schema and table names that contain dots', () => {
+    const { dir, instance } = cache()
+    const schema = 'sales.eu'
+    const table = 'orders.2024'
+    instance.import('c1', { [`${schema}.${table}`]: description(schema, table) })
+
+    const lines = readFileSync(logFile(dir, 'c1'), 'utf8').trim().split('\n')
+    expect(lines).toHaveLength(1)
+    const record = JSON.parse(lines[0])
+    expect(record.s).toBe(schema)
+    expect(record.t).toBe(table)
+
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', schema, table)?.schema).toBe(schema)
+    expect(reloaded.get('c1', schema, table)?.table).toBe(table)
+    reloaded.pruneSchemas('c1', [schema])
+    expect(reloaded.has('c1', schema, table)).toBe(true)
+  })
+
+  it('keeps schema and table pairs that would share a dotted key apart', () => {
+    const { dir, instance } = cache()
+    instance.put('c1', 'a.b', 'c', { ...description('a.b', 'c'), columns: [{ name: 'left', typeName: 'INT', nullable: false }] })
+    instance.put('c1', 'a', 'b.c', { ...description('a', 'b.c'), columns: [{ name: 'right', typeName: 'INT', nullable: false }] })
+    instance.flush()
+
+    expect(instance.get('c1', 'a.b', 'c')?.columns[0]?.name).toBe('left')
+    expect(instance.get('c1', 'a', 'b.c')?.columns[0]?.name).toBe('right')
+
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', 'a.b', 'c')?.columns[0]?.name).toBe('left')
+    expect(reloaded.get('c1', 'a', 'b.c')?.columns[0]?.name).toBe('right')
+    reloaded.pruneObjects('c1', 'a.b', new Set())
+    expect(reloaded.has('c1', 'a.b', 'c')).toBe(false)
+    expect(reloaded.has('c1', 'a', 'b.c')).toBe(true)
   })
 
   it('ignores a corrupted line instead of dropping the whole log', () => {

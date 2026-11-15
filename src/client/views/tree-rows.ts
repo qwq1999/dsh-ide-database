@@ -12,6 +12,13 @@ import { relativeTime } from '../relativetime'
 import { matchesFilteredObject, parseFilter } from '../treefilter'
 import { redisTtlLabel } from '../redisvalue'
 import { OBJECT_PAGE, objectWindow } from './objectlimit'
+import {
+  treeFolderKey,
+  treeFolderSelectedKey,
+  treeObjectKey,
+  treeSchemaKey,
+  treeSchemaSelectedKey,
+} from '../treekeys'
 
 /**
  * Flat row model of the object tree.
@@ -411,10 +418,11 @@ function appendConnection(context: BuildContext, connection: ClientConnection): 
 
 function appendSchema(context: BuildContext, connection: ClientConnection, schema: SchemaInfo): void {
   const { state, filter, query, matches, rows } = context
-  const key = `${connection.id}:${schema.name}`
-  const objectList = state.objects[key]
-  const objectLoading = state.loadingObjects[key] === true
-  const buckets = context.buckets.get(key)
+  const objectsKey = `${connection.id}:${schema.name}`
+  const key = treeSchemaKey(connection.id, schema.name)
+  const objectList = state.objects[objectsKey]
+  const objectLoading = state.loadingObjects[objectsKey] === true
+  const buckets = context.buckets.get(objectsKey)
   const total =
     objectList === undefined
       ? undefined
@@ -431,7 +439,7 @@ function appendSchema(context: BuildContext, connection: ClientConnection, schem
     expandable: true,
     open: schemaExpanded,
     toggleKey: key,
-    selectedKey: `${connection.id}|schema:${schema.name}`,
+    selectedKey: treeSchemaSelectedKey(connection.id, schema.name),
     connectionId: connection.id,
     schema: schema.name,
     label: schema.name,
@@ -459,7 +467,7 @@ function appendSchema(context: BuildContext, connection: ClientConnection, schem
   for (const folder of TREE_FOLDERS) {
     const items = buckets?.[folder.id] ?? []
     if (items.length === 0) continue
-    const folderKey = `${key}#${folder.id}`
+    const folderKey = treeFolderKey(connection.id, schema.name, folder.id)
     const folderExpanded = state.expanded[folderKey] === true
     rows.push({
       key: folderKey,
@@ -471,7 +479,7 @@ function appendSchema(context: BuildContext, connection: ClientConnection, schem
       expandable: true,
       open: folderExpanded,
       toggleKey: folderKey,
-      selectedKey: `${connection.id}|${schema.name}#${folder.id}`,
+      selectedKey: treeFolderSelectedKey(connection.id, schema.name, folder.id),
       connectionId: connection.id,
       schema: schema.name,
       folder: folder.id,
@@ -511,7 +519,7 @@ function appendObject(
   object: SchemaObject,
 ): void {
   const { state, filter, query, rows } = context
-  const objectKey = `${connection.id}|${schema.name}.${object.name}`
+  const objectKey = treeObjectKey(connection.id, schema.name, object.name)
   const relation = object.kind === 'table' || object.kind === 'view'
   const description = state.descriptions[objectKey]
   const loading = state.loadingDescriptions[objectKey] === true

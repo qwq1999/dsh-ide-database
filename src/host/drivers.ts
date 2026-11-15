@@ -23,7 +23,12 @@ import type {
 } from '../shared/types.js'
 import type { ConfigStore } from './config.js'
 import { DbError } from './errors.js'
+import { readResponseLimited, readResponseTextLimited } from './httpbody.js'
 import type { PluginPaths } from './paths.js'
+
+const MAX_DRIVER_BYTES = 256 * 1024 * 1024
+/** Published .sha1 files are tiny; cap a hostile mirror response before decoding. */
+const MAX_SHA_BYTES = 1024 * 1024
 
 export interface ResolvedJdbcDriver {
   id: string
@@ -200,7 +205,16 @@ export class DriverManager {
       if (!response.ok) {
         throw new DbError('download-failed', `下载驱动失败（HTTP ${response.status}）：${url}`, `请检查网络，或在设置中切换 Maven 镜像。`)
       }
-      payload = Buffer.from(await response.arrayBuffer())
+      payload = await readResponseLimited(
+        response,
+        MAX_DRIVER_BYTES,
+        (size) =>
+          new DbError(
+            'download-failed',
+            '下载的驱动文件过大',
+            `安装包超过 ${String(MAX_DRIVER_BYTES)} 字节（收到 ${String(size)} 字节）`,
+          ),
+      )
     } catch (error) {
       if (error instanceof DbError) throw error
       throw new DbError('download-failed', `无法连接 Maven 仓库：${messageOf(error)}`, url)
@@ -211,7 +225,18 @@ export class DriverManager {
     try {
       const shaResponse = await fetch(`${url}.sha1`, { signal: AbortSignal.timeout(20_000), redirect: 'follow' })
       if (shaResponse.ok) {
-        const text = (await shaResponse.text()).trim()
+        const text = (
+          await readResponseTextLimited(
+            shaResponse,
+            MAX_SHA_BYTES,
+            (size) =>
+              new DbError(
+                'download-failed',
+                '驱动校验文件过大',
+                `校验文件超过 ${String(MAX_SHA_BYTES)} 字节（收到 ${String(size)} 字节）`,
+              ),
+          )
+        ).trim()
         const match = /[a-fA-F0-9]{40}/.exec(text)
         if (match !== null) sha1Expected = match[0].toLowerCase()
       }

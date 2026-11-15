@@ -19,10 +19,11 @@ import { openConsoleTab, readTableTabParams, type TableTabParams } from './tab-o
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
-import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { hasHidden, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { migrateWidths, moveWidthsForColumns } from './columnWidths'
 import { collectRows } from './pagedrows'
 import { nextOrderBy, parseOrderBy, quoteSortColumn, stripOrderBy } from './sorting'
-import { cellWhere, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, orderByForPaging, pageClause, qualifiedName, columnNames, selectColumnsSql, stripWhere, tableSelectSql, type ColumnFilter, type ColumnFilters } from './tablesql'
+import { cellWhere, columnFilter, columnNames, composeWhere, groupCountSql, inListOf, insertStatement, insertStatements, isBinaryCell, isBinaryType, orderByForPaging, pageClause, qualifiedName, selectColumnsSql, stripWhere, tableSelectSql, withColumnFilter, type ColumnFilter, type ColumnFilters } from './tablesql'
 import { usePopoverDismiss } from './popover'
 import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
@@ -51,6 +52,37 @@ const ORDER_KEY = 'dsh-ide-database.table-order.v1'
 const AUTO_REFRESH_OPTIONS = [0, 5000, 10000, 30000] as const
 
 const noTabInfo = (): undefined => undefined
+
+/**
+ * Move a preference saved before table view keys included the connection.
+ * Mixing `public.users` from two data sources used to hide the same columns in
+ * both; the old key is migrated once and then removed so clearing the new
+ * preference cannot bring it back.
+ */
+function readMigratedText(primary: string, legacy: string): string {
+  try {
+    if (window.localStorage.getItem(primary) !== null) return readText(primary)
+  } catch {
+    // Storage disabled: behave like a fresh table.
+  }
+  const previous = readText(legacy)
+  if (previous !== '') {
+    writeText(primary, previous)
+    writeText(legacy, '')
+  }
+  return previous
+}
+
+function readMigratedHidden(primary: string, legacy: string): string[] | null {
+  if (hasHidden(primary)) return readHidden(primary)
+  const previous = readHidden(legacy)
+  if (previous !== null) {
+    writeHidden(primary, previous)
+    writeHidden(legacy, null)
+  }
+  return previous
+}
+
 
 function failureText(error: unknown): Failure {
   if (error instanceof ApiError) return { message: error.message, ...(error.detail ? { detail: error.detail } : {}) }
@@ -115,10 +147,27 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [pageDraft, setPageDraft] = useState('1')
   const [whereText, setWhereText] = useState('')
   /** Two table tabs open at once must not share one datalist id. */
-  const columnsListId = `dshdb-columns-${params.table.replace(/[^\w-]/gu, '-')}`
+  const columnsListId = `dshdb-columns-${encodeURIComponent(
+    JSON.stringify([params.connectionId, params.schema, params.table]),
+  )}`
   /** Sort order survives closing the tab, the same way column widths do. */
-  const orderStorageKey = `${ORDER_KEY}:${params.schema}.${params.table}`
-  const [orderText, setOrderText] = useState(() => readText(orderStorageKey))
+  const tableScope = `${params.connectionId}:${params.schema}.${params.table}`
+  // A dot in either name makes the old `connection:schema.table` key ambiguous:
+  // (`a`, `b.c`) and (`a.b`, `c`) would share it. Keep the old key for ordinary
+  // names so existing preferences still apply, and append the exact pair only
+  // when the dotted key could collide. Those old ambiguous keys are not
+  // migrated because they cannot be attributed to one table.
+  const dottedTableName = params.schema.includes('.') || params.table.includes('.')
+  const preferenceScope = dottedTableName
+    ? `${tableScope}#${encodeURIComponent(JSON.stringify([params.schema, params.table]))}`
+    : tableScope
+  const legacyTableScope = `${params.schema}.${params.table}`
+  const orderStorageKey = `${ORDER_KEY}:${preferenceScope}`
+  const gridStorageKey = `table:${preferenceScope}`
+  const legacyGridStorageKey = `table:${legacyTableScope}`
+  const [orderText, setOrderText] = useState(() =>
+    dottedTableName ? readText(orderStorageKey) : readMigratedText(orderStorageKey, `${ORDER_KEY}:${legacyTableScope}`),
+  )
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
   const [order, setOrder] = useState<number[] | null>(null)
@@ -138,7 +187,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setOrderText(remembered)
     applyRef.current({ orderBy: remembered, page: 0, recount: false })
   }, [columns, orderStorageKey])
-  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() => readHidden(`table:${params.schema}.${params.table}`))
+  const hiddenStorageKey = `table:${preferenceScope}`
+  const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() =>
+    dottedTableName ? readHidden(hiddenStorageKey) : readMigratedHidden(hiddenStorageKey, `table:${legacyTableScope}`),
+  )
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const objectKind = params.kind === 'view' ? 'view' : 'table'
   const [ddl, setDdl] = useState<{ title: string; text: string; warnings: string[] } | null>(null)
@@ -194,11 +246,13 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const signature = columnSignature(columns)
   useEffect(() => {
     setOrder(null)
-    setHiddenColumns((current) => pruneHidden(current, columns))
+    // Keep the remembered hidden set while the first page is still loading;
+    // pruning against an empty column list would forget it before it is useful.
+    if (columns.length > 0) setHiddenColumns((current) => pruneHidden(current, columns))
   }, [signature, columns])
   useEffect(() => {
-    writeHidden(`table:${params.schema}.${params.table}`, hiddenColumns)
-  }, [hiddenColumns, params.schema, params.table])
+    writeHidden(hiddenStorageKey, hiddenColumns)
+  }, [hiddenColumns, hiddenStorageKey])
   const displayColumns = useMemo(() => orderColumns(columns, order), [columns, order])
   const displayRows = useMemo(() => orderRows(rows, order), [rows, order])
   // Hiding only narrows what the grid renders; positions map back for drag order.
@@ -206,6 +260,27 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   const hiddenCount = displayColumns.length - shownColumns.length
+  // Widths are indexed by the columns the grid actually paints, so use the
+  // visible count both for migration and for the DataGrid storage key.
+  const widthStorageKey = useMemo(
+    () =>
+      dottedTableName
+        ? gridStorageKey
+        : migrateWidths(gridStorageKey, legacyGridStorageKey, shownColumns.length),
+    [dottedTableName, gridStorageKey, legacyGridStorageKey, shownColumns.length],
+  )
+
+  // Reordering while a column is hidden is handled by the page, not the grid:
+  // the grid only knows the visible columns, so it cannot move the saved
+  // width list for the hidden ones.
+  const previousFullColumns = useRef(displayColumns)
+  useEffect(() => {
+    const previous = previousFullColumns.current
+    previousFullColumns.current = displayColumns
+    if (shownColumns.length < displayColumns.length) {
+      moveWidthsForColumns(previous, displayColumns, widthStorageKey)
+    }
+  }, [displayColumns, shownColumns.length, widthStorageKey])
 
   // A reload, page change or filter shows different rows; old checkboxes would point nowhere.
   useEffect(() => {
@@ -273,6 +348,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setPage(0)
     setWhereText('')
     setOrderText('')
+    setFilters({})
+    // A filter belongs to the table it was typed on; clearing it here also
+    // keeps the debounce effect from re-querying the next table with it.
+    previousActive.current = 0
     setError(null)
     void (async () => {
       try {
@@ -348,6 +427,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     (column: ColumnInfo): ColumnMenuItem[] => {
       const active = activeSort?.column === column.name ? activeSort.direction : null
       const index = columns.findIndex((item) => item.name === column.name)
+      const binary =
+        isBinaryType(column.typeName, connection?.dialect) ||
+        (index >= 0 && rows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect)))
       return [
         { label: '按此列升序', disabled: active === 'asc', run: () => sortBy(column, 'asc') },
         { label: '按此列降序', disabled: active === 'desc', run: () => sortBy(column, 'desc') },
@@ -359,9 +441,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           run: () => void copyText(columnValues(rows, index)).then(noteCopied('本列值')),
         },
         {
-          label: '复制为 IN 列表',
-          disabled: rows.length === 0 || index < 0,
-          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index)).then(noteCopied('IN 列表')),
+          label: binary ? '复制为 IN 列表（二进制列无法匹配）' : '复制为 IN 列表',
+          disabled: rows.length === 0 || index < 0 || binary,
+          run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', rows, index, column)).then(noteCopied('IN 列表')),
         },
         {
           label: '复制本列（逗号分隔）',
@@ -459,7 +541,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     [filtersOpen],
   )
   const gridCellMenu = useCallback(
-    (cell: CellMenuTarget): ColumnMenuItem[] => [
+    (cell: CellMenuTarget): ColumnMenuItem[] => {
+      // The bridge shows binary columns as a placeholder, not their bytes; an
+      // equality/WHERE built from that text would never match the real value.
+      const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
+      return [
             {
               label: '查看完整值',
               run: () => setCellView(cellValueView(cell.column.name, cell.value)),
@@ -470,17 +556,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
             {
               label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
-              run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')),
+              run: () => void copyText(rowToTsv(displayColumns, displayRows[cell.rowIndex] ?? cell.row)).then(noteCopied('整行')),
             },
             {
               label: '复制 INSERT 语句',
               run: () => {
                 if (connection === null) return
-                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, cell.row)).then(noteCopied('INSERT'))
+                const full = displayRows[cell.rowIndex] ?? cell.row
+                void copyText(insertStatement(connection.dialect, params.schema, params.table, displayColumns, full)).then(noteCopied('INSERT'))
               },
             },
             {
-              label: '复制 WHERE 条件',
+              label: binary ? '复制 WHERE 条件（二进制值无法匹配）' : '复制 WHERE 条件',
+              disabled: binary,
               run: () => {
                 if (connection === null) return
                 void copyText(`WHERE ${cellWhere(connection.dialect, cell.column, cell.value)}`).then(noteCopied('WHERE 条件'))
@@ -497,7 +585,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
-              label: '在控制台按该值查询',
+              label: binary ? '在控制台按该值查询（二进制值无法匹配）' : '在控制台按该值查询',
+              disabled: binary,
               run: () => {
                 if (connection === null) return
                 const where = cellWhere(connection.dialect, cell.column, cell.value)
@@ -508,7 +597,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               },
             },
             {
-              label: '按此值筛选',
+              label: binary ? '按此值筛选（二进制值无法匹配）' : '按此值筛选',
+              disabled: binary,
               run: () => {
                 setFiltersOpen(true)
                 setColumnFilter(
@@ -519,12 +609,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
             },
             {
               label: `取消「${cell.column.name}」列的筛选`,
-              disabled: filters[cell.column.name] === undefined,
+              disabled: columnFilter(filters, cell.column.name) === undefined,
               run: () => {
                 setColumnFilter(cell.column, undefined)
                 apply({ page: 0 })
               },
-            },],
+            },
+      ]
+    },
     [connection, displayColumns, displayRows, filters, pageSize, params.schema, params.table],
   )
   const hasPrevious = page > 0
@@ -575,7 +667,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const previousActive = useRef(0)
   useEffect(() => {
     if (!filtersOpen || connection === null) return
-    const active = columnsRef.current.filter((column) => filters[column.name] !== undefined).length
+    const active = columnsRef.current.filter((column) => columnFilter(filters, column.name) !== undefined).length
     const hadFilters = previousActive.current > 0
     previousActive.current = active
     if (active === 0) {
@@ -592,7 +684,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     filterRowRef.current?.querySelector('input')?.focus()
   }, [filtersOpen])
 
-  const activeFilterCount = columns.filter((column) => filters[column.name] !== undefined).length
+  const activeFilterCount = columns.filter((column) => columnFilter(filters, column.name) !== undefined).length
 
   /** Drop every per-column filter at once and re-query the first page. */
   const clearColumnFilters = useCallback((): void => {
@@ -615,12 +707,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   const conditioned = whereText.trim() !== '' || activeFilterCount > 0
   const setColumnFilter = (column: ColumnInfo, filter: ColumnFilter | undefined): void => {
-    setFilters((previous) => {
-      const next: ColumnFilters = { ...previous }
-      if (filter === undefined) delete next[column.name]
-      else next[column.name] = filter
-      return next
-    })
+    setFilters((previous) => withColumnFilter(previous, column.name, filter))
   }
 
   /**
@@ -701,13 +788,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setSelectedRows((current) => {
       const next = new Set(current)
       if (extend && selectionAnchor.current !== null) {
+        // Shift-click extends the selection; it never clears a selected range
+        // based on the clicked row's current state.
         const from = Math.min(selectionAnchor.current, rowIndex)
         const to = Math.max(selectionAnchor.current, rowIndex)
-        const select = !next.has(rowIndex)
-        for (let index = from; index <= to; index += 1) {
-          if (select) next.add(index)
-          else next.delete(index)
-        }
+        for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
       if (next.has(rowIndex)) next.delete(rowIndex)
@@ -724,13 +809,14 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   /** Save only the checked rows of the current page. */
   const exportSelected = (format: ExportFormat): void => {
     setExportOpen(false)
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns are a view setting; exports keep them.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const payload = renderExport(format, {
       dialect: connection?.dialect ?? 'mysql',
       schema: params.schema,
       table: params.table,
-      columns: shownColumns,
+      columns: displayColumns,
       rows: picked,
     })
     downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
@@ -810,18 +896,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   /** Copy the checked rows in the same formats the page copies offer. */
   const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns are a view setting; exports and row copies keep them.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const text =
       format === 'csv'
-        ? toCsv(shownColumns, picked)
+        ? toCsv(displayColumns, picked)
         : format === 'tsv'
-          ? toTsv(shownColumns, picked)
+          ? toTsv(displayColumns, picked)
           : format === 'json'
-            ? toJson(shownColumns, picked)
+            ? toJson(displayColumns, picked)
             : format === 'md'
-              ? toMarkdown(shownColumns, picked)
-              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, shownColumns, picked)
+              ? toMarkdown(displayColumns, picked)
+              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, picked)
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
 
@@ -1157,7 +1244,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           columns={shownColumns}
           rows={shownRows}
           offset={offset}
-          storageKey={`table:${params.schema}.${params.table}`}
+          storageKey={widthStorageKey}
+          widthColumnCount={displayColumns.length}
+          resetKey={lastLoad.current === null ? '' : `${lastLoad.current.target.page}:${lastLoad.current.target.size}:${lastLoad.current.target.where}:${lastLoad.current.target.orderBy}`}
           sort={activeSort ?? null}
           headerMenu={columnMenu}
           onSort={sortTable}
@@ -1184,17 +1273,21 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                   ) : null}
                 </th>
                 {shownColumns.map((column, index) => {
-                  const filter = filters[column.name]
+                  const filter = columnFilter(filters, column.name)
                   const cleared = filter === undefined || (filter.op !== 'isnull' && filter.text.trim() === '')
+                  const binary =
+                    isBinaryType(column.typeName, connection?.dialect) ||
+                    shownRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect))
                   return (
                     <th key={`filter-${column.name}-${index}`}>
                       <span className={`dshdb-filter-box${cleared ? '' : ' dshdb-filter-box-active'}`}>
                         <input
                           className="dshdb-filter-input"
-                          placeholder={filter?.op === 'isnull' ? 'NULL' : '包含…'}
+                          placeholder={binary ? '二进制列' : filter?.op === 'isnull' ? 'NULL' : '包含…'}
                           aria-label={`筛选 ${column.name}`}
-                          title={filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
+                          title={binary ? '二进制列不能按文本筛选' : filter?.op === 'isnull' ? '等于 NULL' : `按 ${column.name} 筛选（包含匹配）`}
                           value={filter?.op === 'isnull' ? '' : filter?.text ?? ''}
+                          disabled={binary}
                           spellCheck={false}
                           onChange={(event) => {
                             const text = event.target.value
@@ -1210,9 +1303,8 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                             className="dshdb-filter-clear"
                             aria-label={`清除 ${column.name} 的筛选`}
                             onClick={() => {
-                              setColumnFilter(column, undefined)
-                              const next: ColumnFilters = { ...filters }
-                              delete next[column.name]
+                              const next = withColumnFilter(filters, column.name, undefined)
+                              setFilters(next)
                               applyRef.current({ page: 0 }, next)
                             }}
                           >
@@ -1231,6 +1323,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onCellClick={
             filtersOpen
               ? (column, value) => {
+                  if (isBinaryCell(column, value, connection?.dialect)) return
                   setColumnFilter(column, value === null ? { text: '', op: 'isnull' } : { text: formatCell(value), op: 'eq' })
                 }
               : undefined

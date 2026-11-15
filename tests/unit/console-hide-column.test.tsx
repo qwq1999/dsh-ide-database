@@ -144,4 +144,33 @@ describe('console column hiding', () => {
     expect(hasHeader('total')).toBe(true)
     expect(window.localStorage.getItem(`${HIDDEN_STORAGE_PREFIX}console:sql`)).toBe('["id","name"]')
   })
+
+  it('hides only the chosen column when the result repeats a name', async () => {
+    mocks.query.mockResolvedValue({
+      sql: 'SELECT a.id, b.id, a.name FROM a JOIN b',
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'id', typeName: 'INT' },
+        { name: 'name', typeName: 'VARCHAR' },
+      ],
+      rows: [[1, 2, '手机']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    })
+    await runQuery()
+
+    const ids = (): HTMLElement[] =>
+      screen.getAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id'))
+    expect(ids()).toHaveLength(2)
+
+    fireEvent.contextMenu(ids()[1]!)
+    fireEvent.click(screen.getByRole('menuitem', { name: '隐藏列「id」' }))
+    await waitFor(() => expect(ids()).toHaveLength(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(ids()[0]!)
+    fireEvent.click(screen.getByRole('menuitem', { name: /显示全部列/ }))
+    await waitFor(() => expect(ids()).toHaveLength(2), { timeout: 4000 })
+  })
 })

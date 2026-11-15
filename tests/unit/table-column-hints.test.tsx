@@ -87,14 +87,35 @@ describe('table filter column hints', () => {
     render(<TableTab useTabInfo={tab} />)
     const where = (await screen.findByPlaceholderText(/过滤条件/)) as HTMLInputElement
     const order = (await screen.findByPlaceholderText(/排序列/)) as HTMLInputElement
-    await waitFor(() => expect(where.getAttribute('list')).toBe('dshdb-columns-orders'))
-    expect(order.getAttribute('list')).toBe('dshdb-columns-orders')
+    await waitFor(() => expect(where.getAttribute('list')).not.toBeNull())
+    const listId = where.getAttribute('list') as string
+    expect(order.getAttribute('list')).toBe(listId)
 
     await waitFor(() => {
-      const options = Array.from(document.querySelectorAll('#dshdb-columns-orders option')).map(
+      const options = Array.from(document.getElementById(listId)?.querySelectorAll('option') ?? []).map(
         (option) => (option as HTMLOptionElement).value,
       )
       expect(options).toEqual(['id', 'total'])
     })
+  })
+
+  it('gives two tables with the same name different datalist ids', async () => {
+    render(
+      <>
+        <TableTab useTabInfo={tab} />
+        <TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'crm', table: 'orders' } } } })} />
+      </>,
+    )
+    const inputs = (await screen.findAllByPlaceholderText(/过滤条件/)) as HTMLInputElement[]
+    expect(inputs).toHaveLength(2)
+    const ids = inputs.map((input) => input.getAttribute('list'))
+    expect(ids.every((id) => id !== null)).toBe(true)
+    expect(new Set(ids).size).toBe(2)
+    for (const id of ids) {
+      const options = Array.from(document.getElementById(id as string)?.querySelectorAll('option') ?? []).map(
+        (option) => (option as HTMLOptionElement).value,
+      )
+      expect(options).toEqual(['id', 'total'])
+    }
   })
 })

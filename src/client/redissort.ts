@@ -39,7 +39,9 @@ export function sortKeysBySize(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInf
 export function sortKeysByTtl(keys: RedisKeyInfo[], sort: KeySort): RedisKeyInfo[] {
   if (sort === 'none') return keys
   const sorted = [...keys]
-  const ttlOf = (info: RedisKeyInfo): number => (info.ttl < 0 ? Number.POSITIVE_INFINITY : info.ttl)
+  // `-1` means no expiry and must stay last. `-2` means the key vanished
+  // between SCAN and TTL; it has the smallest remaining lifetime, not none.
+  const ttlOf = (info: RedisKeyInfo): number => (info.ttl === -1 ? Number.POSITIVE_INFINITY : info.ttl)
   sorted.sort((left, right) => {
     const leftTtl = ttlOf(left)
     const rightTtl = ttlOf(right)

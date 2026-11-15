@@ -3,7 +3,8 @@
  * WHERE box and the per-column filters. They live here rather than inside the
  * tab so they can be unit tested without rendering React.
  */
-import type { CellValue, ClientConnection, ColumnInfo, Row, SqlDialect } from '../shared/types'
+import { sqlDialectOf } from '../shared/dialect'
+import type { CellValue, ClientConnection, ColumnInfo, Dialect, Row, SqlDialect } from '../shared/types'
 import { maskNonCode } from './sqllex'
 
 /** A column filter: `like` is the text typed into the filter row, `eq` is an
@@ -14,6 +15,31 @@ export interface ColumnFilter {
 }
 
 export type ColumnFilters = Record<string, ColumnFilter>
+
+/**
+ * Read one filter without consulting `Object.prototype`. Columns may be named
+ * `constructor`, `toString`, or `__proto__`; a plain `filters[name]` would
+ * return an inherited object and crash the caller.
+ */
+export function columnFilter(filters: ColumnFilters, name: string): ColumnFilter | undefined {
+  return Object.hasOwn(filters, name) ? filters[name] : undefined
+}
+
+/**
+ * Immutably set or delete one filter. The accumulator has a null prototype so
+ * writing a column literally named `__proto__` creates a data property instead
+ * of invoking the legacy prototype setter.
+ */
+export function withColumnFilter(
+  filters: ColumnFilters,
+  name: string,
+  filter: ColumnFilter | undefined,
+): ColumnFilters {
+  const next = Object.assign(Object.create(null), filters) as ColumnFilters
+  if (filter === undefined) delete next[name]
+  else next[name] = filter
+  return next
+}
 
 export function quoteIdent(dialect: ClientConnection['dialect'], name: string): string {
   if (dialect === 'mysql') return `\`${name.replaceAll('`', '``')}\``
@@ -90,20 +116,105 @@ export function selectColumnsSql(
 }
 
 export function isNumericType(typeName: string): boolean {
-  return /^(tiny|small|medium|big)?int|^decimal|^numeric|^float|^double|^number|^real/iu.test(typeName.replace(/[\s(].*$/u, ''))
+  const withoutParams = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  // Keep trailing `[]` visible: `decimal(10,2)[]` is an array, not a number.
+  if (withoutParams.endsWith('[]')) return false
+  const base = withoutParams.split(/\s+/u, 1)[0] ?? ''
+  // Anchor the whole name: the old leading `int` alternative also matched
+  // `interval`, and an array like `integer[]` is not a scalar number.
+  return /^(?:(?:tiny|small|medium|big)?int[248]?|integer|int[248]|(?:big|small)?serial[248]?|decimal|numeric|float[48]?|double|number|real)$/u.test(
+    base,
+  )
 }
 
 /** Date / timestamp columns need a typed literal on Oracle-family servers. */
-export function isTemporalType(typeName: string | undefined): boolean {
+export function isTemporalType(typeName: string | undefined, dialect?: Dialect): boolean {
   if (typeName === undefined) return false
-  return /^(date|datetime|timestamp)/iu.test(typeName.replace(/[\s(].*$/u, ''))
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  // SQL Server's `timestamp` (and its `rowversion` synonym) is an
+  // auto-generated binary value, not a date/time — unlike every other dialect.
+  if (dialect === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return false
+  // Keep parameters and time-zone wording, but never treat an array as a
+  // scalar timestamp: `date[]` needs a cast or an array literal, not TO_DATE.
+  return /^(?:date|datetime2?|datetimeoffset|smalldatetime|timestamp(?:tz|ltz)?(?:\s+(?:with|without)(?:\s+local)?\s+time\s+zone)?)$/u.test(
+    base,
+  )
+}
+
+/** JSON columns need a text cast before comparing with a quoted value. */
+export function isJsonType(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return /^(?:json|jsonb)$/u.test(base)
+}
+
+/**
+ * Binary columns are shown as `<binary N bytes>`, not as their actual bytes.
+ * A text filter or equality built from that placeholder cannot match, so the
+ * grid must not offer those actions for a non-NULL binary value.
+ */
+export function isBinaryType(typeName: string | undefined, dialect?: Dialect): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  const normalized = sqlDialectOf(dialect)
+  // SQL Server's timestamp/rowversion is an eight-byte binary value that the
+  // bridge renders as `<binary 8 bytes>`; it must never be filtered as a date.
+  if (normalized === 'mssql' && (base === 'timestamp' || base === 'rowversion')) return true
+  // MySQL and SQL Server serialise spatial values as bytes; PostgreSQL keeps
+  // PostGIS values as text, so only treat spatial names as binary there.
+  if (/^(?:geometry|geography|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection|geomcollection)$/u.test(base)) {
+    return normalized === 'mysql' || normalized === 'mssql'
+  }
+  return /^(?:binary|varbinary|blob|tinyblob|mediumblob|longblob|bytea|image|raw|long raw)$/u.test(base)
+}
+
+/** The bridge's textual stand-in for a binary cell. */
+export function isBinaryValue(value: CellValue): boolean {
+  return typeof value === 'string' && /^<binary \d+ bytes>$/u.test(value)
+}
+
+/**
+ * Whether this particular cell cannot be filtered by its displayed text. The
+ * type alone misses values such as MySQL `BIT(8)`, which the driver returns as
+ * bytes without a type name that says "binary"; the placeholder does catch it.
+ */
+export function isBinaryCell(column: ColumnInfo, value: CellValue, dialect?: Dialect): boolean {
+  if (value === null) return false
+  if (isBinaryType(column.typeName, dialect)) return true
+  return !isTextType(column.typeName) && isBinaryValue(value)
 }
 
 /** Character-family columns can be compared with LIKE without a cast. */
 export function isTextType(typeName: string | undefined): boolean {
   if (typeName === undefined) return false
-  const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
-  return /^(?:bpchar|character|char|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(base)
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return /^(?:bpchar|character(?: varying)?|char(?:acter)?|varchar2?|nvarchar2?|nchar|(?:tiny|medium|long)?text|ntext|n?clob|enum|set|citext)$/u.test(
+    base,
+  )
+}
+
+/**
+ * Oracle's `TO_CHAR` keeps a fixed number of fractional digits and a two-digit
+ * hour offset, while the bridge trims trailing zeroes and prints "+8:00". Build
+ * the same text as the grid so a whole displayed timestamp can be filtered.
+ */
+function oracleTimestampText(name: string, typeName: string): string {
+  if (typeName.includes('local time zone')) {
+    // TZR is uppercase in the session; INITCAP restores "Asia/Shanghai".
+    return (
+      `INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR(${name}, ` +
+      `'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), ` +
+      `'\\. ([^ ]+)$', '.0 \\1'))`
+    )
+  }
+  if (typeName.includes('with time zone')) {
+    return (
+      `REGEXP_REPLACE(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), ` +
+      `'\\.$', '.0') || ' ' || ` +
+      `REGEXP_REPLACE(TO_CHAR(${name}, 'TZH:TZM'), '^([+-])0([0-9]:)', '\\1\\2')`
+    )
+  }
+  return `RTRIM(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.')`
 }
 
 /**
@@ -112,13 +223,23 @@ export function isTextType(typeName: string | undefined): boolean {
  * working for numbers, dates, UUIDs and arrays.
  */
 function textExpression(dialect: ClientConnection['dialect'], name: string, typeName: string | undefined): string {
-  if (isTemporalType(typeName)) {
+  if (typeName !== undefined && isTemporalType(typeName, dialect)) {
     // The grid shows the bridge's ISO text, so format temporal columns the
     // same way instead of trusting the session's NLS / language settings.
-    if (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng') {
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle') {
+      const lower = typeName.toLowerCase()
+      if (lower.startsWith('timestamp')) return oracleTimestampText(name, lower)
       return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     }
-    if (dialect === 'mssql') return `CONVERT(VARCHAR(23), ${name}, 121)`
+    if (dialect === 'dameng') return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    if (dialect === 'mssql') {
+      const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+      // datetime2 keeps up to 7 fractional digits and datetimeoffset adds a
+      // zone; a 23-character cast would truncate both the fraction and offset.
+      if (base.startsWith('datetimeoffset')) return `CONVERT(VARCHAR(34), ${name}, 121)`
+      if (base.startsWith('datetime2')) return `CONVERT(VARCHAR(27), ${name}, 121)`
+      return `CONVERT(VARCHAR(23), ${name}, 121)`
+    }
   }
   if (dialect === 'mysql') return `CAST(${name} AS CHAR)`
   if (dialect === 'mssql') return `CAST(${name} AS NVARCHAR(MAX))`
@@ -139,24 +260,39 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
  */
 export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: string, text: string): string {
   const literal = quoteLiteral(text, dialect)
-  if (!isTemporalType(typeName)) return literal
+  if (!isTemporalType(typeName, dialect)) return literal
   if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
   if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
+  const type = typeName.toLowerCase()
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
   const escaped = text.replace(/'/gu, "''")
-  const hasTime = /\d{2}:\d{2}:\d{2}/u.test(text)
-  const hasFraction = /\.\d+/u.test(text)
-  const hasZone = /(?:[+-]\d{2}:\d{2}|Z)$/u.test(text)
+  // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
+  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(text)
+  const hasZone = zone !== null
+  // Do not mistake a `+08:00` zone for a time; inspect only the local part.
+  const local = hasZone ? text.slice(0, zone.index) : text
+  const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(local)
+  // A filter typed as `2024-11-11 09:54` must keep its minutes; a format
+  // without them rejects the text with ORA-01830 instead of comparing at 00:00.
+  const hasTime = /\d{2}:\d{2}/u.test(local)
+  const hasFraction = hasSeconds && /\.\d+/u.test(local)
+  const timeFormat = hasTime ? (hasSeconds ? ' HH24:MI:SS' : ' HH24:MI') : ''
   if (base.startsWith('timestamp')) {
-    if (hasZone) {
-      const format = `YYYY-MM-DD HH24:MI:SS${hasFraction ? '.FF' : ''} TZH:TZM`
+    // A `TIMESTAMP WITH LOCAL TIME ZONE` is shown with its region name, which
+    // `TO_TIMESTAMP` cannot parse. `TZR` accepts the displayed name and keeps
+    // the instant when the value goes back into the column.
+    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(text)) {
+      const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZR`
       return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
     }
-    const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}${hasFraction ? '.FF' : ''}`
+    if (hasZone) {
+      const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZH:TZM`
+      return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
+    }
+    const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''}`
     return `TO_TIMESTAMP('${escaped}', '${format}')`
   }
-  const format = `YYYY-MM-DD${hasTime ? ' HH24:MI:SS' : ''}`
-  return `TO_DATE('${escaped}', '${format}')`
+  return `TO_DATE('${escaped}', 'YYYY-MM-DD${timeFormat}')`
 }
 
 /**
@@ -165,16 +301,32 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
  * back is not the one that was exported; standard SQL dialects take the text
  * verbatim and only need the quote doubled.
  */
-export function quoteLiteral(text: string, dialect: ClientConnection['dialect'] = 'generic'): string {
+export function quoteLiteral(
+  text: string,
+  dialect: ClientConnection['dialect'] = 'generic',
+  unicode = false,
+): string {
   const escaped = dialect === 'mysql' ? text.replace(/\\/gu, '\\\\') : text
-  return `'${escaped.replace(/'/gu, "''")}'`
+  const literal = `'${escaped.replace(/'/gu, "''")}'`
+  // SQL Server's plain string literal is varchar; non-Latin text stored in an
+  // nvarchar column needs the Unicode N prefix to survive the session code page.
+  return dialect === 'mssql' && unicode ? `N${literal}` : literal
+}
+
+/** SQL Server Unicode string types need the N prefix for non-Latin values. */
+function isUnicodeText(typeName: string | undefined): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase().split(/\s+/u, 1)[0] ?? ''
+  return /^(?:nchar|nvarchar|ntext|sysname)$/u.test(base)
 }
 
 /**
  * One row as an INSERT statement for the table tab's context menu. Numeric
  * columns keep the exact text the driver returned (decimals arrive as strings
  * to avoid float rounding), everything else is quoted; NULL stays NULL.
- * Server-generated columns are left out: the database rejects a value for them.
+ * Server-generated and binary columns are left out: the database rejects a
+ * value for generated columns, and the bridge only exposes binary cells as a
+ * `<binary N bytes>` placeholder rather than their actual bytes.
  */
 export function insertStatement(
   dialect: ClientConnection['dialect'],
@@ -185,7 +337,18 @@ export function insertStatement(
 ): string {
   const selected = columns
     .map((column, index) => ({ column, index }))
-    .filter((entry) => entry.column.generated !== true)
+    .filter(
+      (entry) =>
+        entry.column.generated !== true &&
+        !isMssqlRowVersion(entry.column.typeName, dialect) &&
+        // The bridge only returns `<binary N bytes>` for binary cells, so a
+        // placeholder cannot become a real INSERT value. Null binary cells
+        // still export as NULL; text columns keep such a literal string.
+        !isBinaryCell(entry.column, row[entry.index] ?? null, dialect),
+    )
+  if (selected.length === 0) {
+    return `-- ${qualifiedName(dialect, schema, table)} 只有二进制或生成列，未导出 INSERT`
+  }
   const names = selected.map((entry) => quoteIdent(dialect, entry.column.name)).join(', ')
   const values = selected
     .map((entry) => insertLiteral(dialect, entry.column, row[entry.index] ?? null))
@@ -201,13 +364,35 @@ function booleanLiteral(dialect: ClientConnection['dialect'], value: boolean): s
   return value ? 'TRUE' : 'FALSE'
 }
 
+/** SQL Server rowversion/timestamp values are generated and must not be inserted. */
+function isMssqlRowVersion(typeName: string | undefined, dialect: ClientConnection['dialect']): boolean {
+  if (dialect !== 'mssql' || typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
+  return base === 'timestamp' || base === 'rowversion'
+}
+
+/** Whether the column is displayed as a boolean cell by the bridge. */
+function isBooleanType(typeName: string | undefined, dialect: ClientConnection['dialect']): boolean {
+  if (typeName === undefined) return false
+  const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase().split(/\s+/u)[0] ?? ''
+  if (base === 'bool' || base === 'boolean') return true
+  // MySQL's BIT/TINYINT(1) and SQL Server's BIT come back as booleans; in
+  // PostgreSQL BIT is a bit string, so it must keep its string literal.
+  if (base === 'bit') {
+    return dialect === 'mysql' || dialect === 'mssql'
+  }
+  // MySQL has no real boolean type; the bridge maps TINYINT(1) to a boolean.
+  return dialect === 'mysql' && base === 'tinyint'
+}
+
 function insertLiteral(dialect: ClientConnection['dialect'], column: ColumnInfo, value: CellValue): string {
   if (value === null) return 'NULL'
   if (typeof value === 'boolean') return booleanLiteral(dialect, value)
   if (typeof value === 'number') return String(value)
   const text = String(value)
+  if (isTemporalType(column.typeName, dialect)) return temporalLiteral(dialect, column.typeName, text)
   if (isNumericType(column.typeName) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(text)) return text
-  return quoteLiteral(text, dialect)
+  return quoteLiteral(text, dialect, isUnicodeText(column.typeName))
 }
 
 /** Many rows as one INSERT-per-line SQL script, for the export menu. */
@@ -222,8 +407,44 @@ export function insertStatements(
   return `${rows.map((row) => insertStatement(dialect, schema, table, columns, row)).join('\n')}\n`
 }
 
-function unquoteIdentifier(part: string): string {
-  return part.trim().replace(/^[`"[]/u, '').replace(/[`"\]]$/u, '')
+function skipSpaces(text: string, index: number): number {
+  let cursor = index
+  while (cursor < text.length && /\s/u.test(text[cursor] ?? '')) cursor += 1
+  return cursor
+}
+
+interface IdentifierToken {
+  value: string
+  end: number
+}
+
+/** Read one unquoted or quoted identifier, unescaping its delimiter. */
+function readTableIdentifier(text: string, index: number): IdentifierToken | null {
+  const start = skipSpaces(text, index)
+  const open = text[start]
+  if (open === '[' || open === '"' || open === '`') {
+    const close = open === '[' ? ']' : open
+    let cursor = start + 1
+    let value = ''
+    while (cursor < text.length) {
+      const char = text[cursor] ?? ''
+      if (char === close) {
+        if (text[cursor + 1] === close) {
+          value += close
+          cursor += 2
+          continue
+        }
+        return { value, end: cursor + 1 }
+      }
+      value += char
+      cursor += 1
+    }
+    return null
+  }
+  let cursor = start
+  while (cursor < text.length && /[\p{L}\p{N}_$#]/u.test(text[cursor] ?? '')) cursor += 1
+  if (cursor === start) return null
+  return { value: text.slice(start, cursor), end: cursor }
 }
 
 /**
@@ -231,16 +452,79 @@ function unquoteIdentifier(part: string): string {
  * export. Returns null for statements without a plain table (functions,
  * multi-statement scripts, SELECTs over subqueries only). Literals and
  * comments are masked first: `SELECT 'from users' FROM orders` must not send
- * the INSERT export to users.
+ * the INSERT export to users. Quoted names keep spaces and dots inside their
+ * delimiters (`[Order Details]`, `"my.schema"."table name"`).
  */
 export function tableFromStatement(statement: string, dialect: SqlDialect = 'generic'): { schema: string; table: string } | null {
-  const code = maskNonCode(statement, dialect, false)
-  const match =
-    /\b(?:from|join|update|into)\s+((?:[`"\[]?[\w$#]+[`"\]]?\s*\.\s*)?[`"\[]?[\w$#]+[`"\]]?)/iu.exec(code)
-  if (match === null) return null
-  const parts = match[1].split('.').map(unquoteIdentifier)
-  if (parts.length >= 2) return { schema: parts[parts.length - 2] ?? '', table: parts[parts.length - 1] ?? '' }
-  return { schema: '', table: parts[0] ?? '' }
+  // Mask all quoted identifiers too, so a keyword inside `[from orders]` is
+  // not mistaken for the FROM clause; the offsets still line up with the
+  // original statement, which is where the actual name is read.
+  const code = maskNonCode(statement, dialect, true)
+  const keyword = /\b(?:from|join|update|into)\b/giu
+  // A subquery in the select list or in a CTE can mention a table before the
+  // statement's own FROM; only top-level keywords name the table being read or
+  // written. Fall back to nested keywords when the outer query selects from a
+  // derived table, whose real source is one level down.
+  const depthAt = new Int32Array(code.length)
+  let depth = 0
+  for (let index = 0; index < code.length; index += 1) {
+    depthAt[index] = depth
+    if (code[index] === '(') depth += 1
+    else if (code[index] === ')') depth = Math.max(0, depth - 1)
+  }
+  const readAt = (topLevelOnly: boolean): { schema: string; table: string } | null => {
+    keyword.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = keyword.exec(code)) !== null) {
+      if (topLevelOnly && depthAt[match.index] !== 0) continue
+      const parts: string[] = []
+      let token = readTableIdentifier(statement, keyword.lastIndex)
+      while (token !== null) {
+        const word = token.value.toLowerCase()
+        if (word === 'only' && dialect === 'postgres') {
+          token = readTableIdentifier(statement, token.end)
+          continue
+        }
+        if (word === 'lateral' && (dialect === 'postgres' || dialect === 'mysql')) {
+          const next = skipSpaces(statement, token.end)
+          token = statement[next] === '(' ? null : readTableIdentifier(statement, token.end)
+          continue
+        }
+        break
+      }
+      if (token === null) continue
+      let end = token.end
+      while (token !== null) {
+        parts.push(token.value)
+        end = token.end
+        const dot = skipSpaces(statement, token.end)
+        if (statement[dot] !== '.') break
+        token = readTableIdentifier(statement, dot + 1)
+      }
+      if (parts.length === 0) continue
+      // `generate_series(1, 2)` and `[dbo].[split](@text)` are table-valued
+      // functions, not tables; opening an INSERT for them would point at a
+      // nonexistent relation. Keep scanning for a real FROM/JOIN table. An
+      // INSERT's parenthesized column list is not a function call.
+      if (
+        (match[0].toLowerCase() === 'from' || match[0].toLowerCase() === 'join')
+        && statement[skipSpaces(statement, end)] === '('
+      ) continue
+      // SQL Server accepts a three-part `database.schema.table` (and a four-part
+      // server name); the console only needs the last two parts.
+      return {
+        schema: parts.length >= 2 ? parts[parts.length - 2] ?? '' : '',
+        table: parts[parts.length - 1] ?? '',
+      }
+    }
+    return null
+  }
+  return readAt(true) ?? readAt(false)
+}
+
+/** Escape LIKE metacharacters so a contains filter matches the typed text literally. */
+function escapeLikeText(text: string): string {
+  return text.replace(/[!%_]/gu, (char) => `!${char}`)
 }
 
 export function filterExpression(
@@ -253,12 +537,28 @@ export function filterExpression(
   const text = filter.text.trim()
   if (text === '') return undefined
   if (filter.op === 'eq') {
+    if (isBooleanType(column.typeName, dialect) && /^(?:true|false)$/iu.test(text)) {
+      return `${name} = ${booleanLiteral(dialect, text.toLowerCase() === 'true')}`
+    }
     if (isNumericType(column.typeName) && /^-?\d+(?:\.\d+)?$/u.test(text)) return `${name} = ${text}`
-    if (isTemporalType(column.typeName)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
-    return `${name} = ${quoteLiteral(text, dialect)}`
+    if (isTemporalType(column.typeName, dialect)) return `${name} = ${temporalLiteral(dialect, column.typeName, text)}`
+    if (isJsonType(column.typeName)) {
+      return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
+    }
+    return `${name} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  return `${target} LIKE ${quoteLiteral(`%${text}%`, dialect)}`
+  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect, isUnicodeText(column.typeName))
+  // Oracle prints a region as ASIA/SHANGHAI while the bridge shows
+  // Asia/Shanghai; compare case-insensitively so both spellings match.
+  if (
+    (dialect === 'oracle' || dialect === 'oceanbase-oracle') &&
+    column.typeName !== undefined &&
+    column.typeName.toLowerCase().includes('local time zone')
+  ) {
+    return `UPPER(${target}) LIKE UPPER(${pattern}) ESCAPE '!'`
+  }
+  return `${target} LIKE ${pattern} ESCAPE '!'`
 }
 
 /**
@@ -275,10 +575,13 @@ export function cellWhere(
   if (value === null) return `${name} IS NULL`
   if (typeof value === 'number' || typeof value === 'bigint') return `${name} = ${String(value)}`
   if (typeof value === 'boolean') return `${name} = ${booleanLiteral(dialect, value)}`
-  if (typeof value === 'string' && isTemporalType(column.typeName)) {
+  if (typeof value === 'string' && isTemporalType(column.typeName, dialect)) {
     return `${name} = ${temporalLiteral(dialect, column.typeName, value)}`
   }
-  return `${name} = ${quoteLiteral(String(value), dialect)}`
+  if (typeof value === 'string' && isJsonType(column.typeName)) {
+    return `${textExpression(dialect, name, column.typeName)} = ${quoteLiteral(value, dialect, isUnicodeText(column.typeName))}`
+  }
+  return `${name} = ${quoteLiteral(String(value), dialect, isUnicodeText(column.typeName))}`
 }
 
 /** One column counted across the whole table: the quick "group by" report. */
@@ -293,18 +596,21 @@ export function groupCountSql(
   return `SELECT ${name}, COUNT(*) AS ${count} FROM ${qualifiedName(dialect, schema, table)} GROUP BY ${name} ORDER BY ${count} DESC`
 }
 
-/** Manual WHERE (optional) AND every column filter, joined for one query. */
 /**
  * The values of one column as a parenthesised `IN` list: `(1, 2, 'x')`.
  * Handy for turning a result grid back into a `WHERE id IN (...)` filter.
+ * Pass the column so typed values (Oracle dates, numeric strings) get the
+ * same literal form the INSERT export uses.
  */
 export function inListOf(
   dialect: ClientConnection['dialect'],
   rows: Row[],
   index: number,
+  column?: ColumnInfo,
 ): string {
   const literals = rows.map((row) => {
     const value: CellValue = row[index] ?? null
+    if (column !== undefined) return insertLiteral(dialect, column, value)
     if (value === null || value === undefined) return 'NULL'
     if (typeof value === 'number' || typeof value === 'bigint') return String(value)
     if (typeof value === 'boolean') return booleanLiteral(dialect, value)
@@ -313,6 +619,7 @@ export function inListOf(
   return `(${literals.join(', ')})`
 }
 
+/** Manual WHERE (optional) AND every column filter, joined for one query. */
 export function composeWhere(
   dialect: ClientConnection['dialect'],
   base: string,
@@ -323,7 +630,7 @@ export function composeWhere(
   const manual = stripWhere(base)
   if (manual !== '') parts.push(`(${manual})`)
   for (const column of columns) {
-    const filter = filters[column.name]
+    const filter = columnFilter(filters, column.name)
     if (filter === undefined) continue
     const expression = filterExpression(dialect, column, filter)
     if (expression !== undefined) parts.push(expression)

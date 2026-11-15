@@ -5,8 +5,17 @@ import { crc32, gzipSync } from 'node:zlib'
 import { randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { extractArchive, extractTarGz, extractZip } from '../../lib/host/archive.js'
-import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
+import {
+  archivePath,
+  assertArchiveEntries,
+  extractArchive,
+  extractTarGz,
+  extractZip,
+  MAX_ARCHIVE_ENTRIES,
+  MAX_ARCHIVE_ENTRY_BYTES,
+  safeArchiveLink,
+} from '../../lib/host/archive.js'
+import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, resolveMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
 
 const JAVA_BIN = process.platform === 'win32' ? 'java.exe' : 'java'
 const tempDirs = []
@@ -60,6 +69,13 @@ function buildZip(entries) {
   return Buffer.concat([...locals, centralDir, eocd])
 }
 
+/** Append a zip comment and update the real EOCD comment length. */
+function withZipComment(zip, comment) {
+  const result = Buffer.concat([zip, comment])
+  result.writeUInt16LE(comment.length, zip.length - 2)
+  return result
+}
+
 /** Minimal ustar tar with one regular-file entry per `[name, data, mode]` triple. */
 function buildTar(entries) {
   const blocks = []
@@ -99,6 +115,64 @@ describe('archive extraction', () => {
     expect(existsSync(join(target, 'evil.txt'))).toBe(false)
   })
 
+  it('rejects a zip entry whose declared size exceeds the extraction limit', () => {
+    const target = tempDir()
+    const zip = buildZip([['big.txt', Buffer.from('x')]])
+    const central = zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
+    expect(central).toBeGreaterThanOrEqual(0)
+    zip.writeUInt32LE(MAX_ARCHIVE_ENTRY_BYTES + 1, central + 24)
+    expect(() => extractZip(zip, target)).toThrow(/条目过大/)
+    expect(existsSync(join(target, 'big.txt'))).toBe(false)
+  })
+
+  it('rejects a tar entry whose declared size exceeds the extraction limit', () => {
+    const target = tempDir()
+    const tar = buildTar([['big.txt', Buffer.from('x')]])
+    tar.write(`${(MAX_ARCHIVE_ENTRY_BYTES + 1).toString(8).padStart(11, '0')}\0`, 124, 'utf8')
+    expect(() => extractTarGz(gzipSync(tar), target)).toThrow(/tar 条目过大/)
+    expect(existsSync(join(target, 'big.txt'))).toBe(false)
+  })
+
+  it('rejects Windows-normalized archive paths', () => {
+    if (process.platform !== 'win32') return
+    expect(archivePath('.. /evil')).toBeUndefined()
+    expect(archivePath('CON')).toBeUndefined()
+    expect(archivePath('foo. ')).toBeUndefined()
+    expect(archivePath('foo:bar')).toBeUndefined()
+    expect(archivePath('dir/file.txt')).toBe('dir/file.txt')
+    expect(safeArchiveLink(tempDir(), 'jdk/bin/java', '.. /evil')).toBeUndefined()
+  })
+
+  it('keeps tar symlink targets inside the extraction directory', () => {
+    const target = tempDir()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '../lib/java')).toBe(join(target, 'jdk-21', 'lib', 'java'))
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '..foo')).toBe(join(target, 'jdk-21', 'bin', '..foo'))
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '../../../evil')).toBeUndefined()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '/etc/passwd')).toBeUndefined()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '')).toBeUndefined()
+  })
+
+  it('rejects negative tar sizes instead of looping forever', () => {
+    const target = tempDir()
+    const header = Buffer.alloc(512)
+    header.write('evil.txt', 0, 'utf8')
+    header.write('-1001\0', 124, 'utf8')
+    const archive = gzipSync(Buffer.concat([header, Buffer.alloc(1024)]))
+    expect(() => extractTarGz(archive, target)).toThrow('tar 条目大小非法')
+  })
+
+  it('rejects a tar header whose checksum was corrupted', () => {
+    const target = tempDir()
+    const tar = buildTar([['evil.txt', Buffer.from('payload')]])
+    tar[0] ^= 0x01
+    expect(() => extractTarGz(gzipSync(tar), target)).toThrow('tar 头校验和非法')
+  })
+
+  it('caps the number of archive entries', () => {
+    expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES)).not.toThrow()
+    expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES + 1)).toThrow('归档条目过多')
+  })
+
   it('unpacks tar.gz entries and keeps bin/java executable on Unix', () => {
     const target = tempDir()
     const archive = gzipSync(
@@ -111,6 +185,21 @@ describe('archive extraction', () => {
     const executable = join(target, 'jdk-21', 'bin', JAVA_BIN)
     expect(readFileSync(executable, 'utf8')).toBe('java-bytes')
     if (process.platform !== 'win32') expect(statSync(executable).mode & 0o111).not.toBe(0)
+  })
+
+  it('rejects a zip shorter than its end-of-central-directory record', () => {
+    const target = tempDir()
+    expect(() => extractZip(Buffer.from([0x50, 0x4b, 0x03, 0x04]), target)).toThrow('zip 文件缺少中央目录')
+  })
+
+  it('skips an EOCD signature inside the zip comment', () => {
+    const target = tempDir()
+    const zip = buildZip([[`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')]])
+    const fake = Buffer.alloc(22)
+    fake.writeUInt32LE(0x06054b50, 0)
+    const comment = Buffer.concat([Buffer.alloc(4), fake, Buffer.alloc(24)])
+    extractZip(withZipComment(zip, comment), target)
+    expect(readFileSync(join(target, 'jdk-21', 'bin', JAVA_BIN), 'utf8')).toBe('java-bytes')
   })
 
   it('rejects data that is neither zip nor gzip', () => {
@@ -179,6 +268,16 @@ describe('mirror listing', () => {
     expect(pickMirrorArchive(listing, '.tar.gz')).toBe('OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz')
     expect(pickMirrorArchive('<html>no archives</html>', '.zip')).toBeUndefined()
   })
+
+  it('keeps archive links on the mirror origin', () => {
+    const base = 'https://mirror.example/Adoptium/21/jre/x64/windows/'
+    expect(resolveMirrorArchive(base, 'OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip')).toBe(
+      'https://mirror.example/Adoptium/21/jre/x64/windows/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip',
+    )
+    expect(resolveMirrorArchive(base, 'https://evil.example/jre.zip')).toBeUndefined()
+    expect(resolveMirrorArchive(base, '//evil.example/jre.zip')).toBeUndefined()
+    expect(resolveMirrorArchive(base, 'https://mirror.example/other/jre.zip')).toBe('https://mirror.example/other/jre.zip')
+  })
 })
 
 describe('JreManager', () => {
@@ -217,6 +316,83 @@ describe('JreManager', () => {
     const { impl } = fakeFetch(() => new Response(Buffer.from('tiny')))
     const { jre } = manager(tempDir(), impl)
     await expect(jre.install()).rejects.toMatchObject({ code: 'download-failed' })
+  })
+
+  it('rejects an oversized download before buffering it', async () => {
+    const { impl } = fakeFetch(
+      () => new Response(new Uint8Array(0), { headers: { 'content-length': String(512 * 1024 * 1024 + 1) } }),
+    )
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('过大'),
+    })
+  })
+
+  it('follows same-origin mirror redirects', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const archiveUrl = `${listingUrl}${archiveName}`
+    const redirectUrl = `${listingUrl}redirected${extension}`
+    const entries = [
+      [`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')],
+      ['jdk-21/filler.bin', randomBytes(10.5 * 1024 * 1024)],
+    ]
+    const archive = extension === '.zip' ? buildZip(entries) : gzipSync(buildTar(entries))
+    const calls = []
+    const impl = async (url) => {
+      const href = String(url)
+      calls.push(href)
+      if (href === listingUrl) return new Response(`<a href="${archiveName}">jre</a>`)
+      if (href === archiveUrl) return new Response(null, { status: 302, headers: { location: `./redirected${extension}` } })
+      if (href === redirectUrl) return new Response(archive)
+      return new Response('nope', { status: 404 })
+    }
+    const dataDir = tempDir()
+    const { jre } = manager(dataDir, impl)
+    await jre.install()
+    expect(calls).toEqual([listingUrl, archiveUrl, redirectUrl])
+    expect(jre.installed).toBe(true)
+    expect(readFileSync(join(dataDir, 'jre', 'bin', JAVA_BIN), 'utf8')).toBe('java-bytes')
+  })
+
+  it('rejects a mirror redirect to another origin', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const archiveUrl = `${listingUrl}${archiveName}`
+    const impl = async (url) => {
+      if (String(url) === listingUrl) return new Response(`<a href="${archiveName}">jre</a>`)
+      if (String(url) === archiveUrl) {
+        return new Response(null, { status: 302, headers: { location: 'https://evil.example/jre.zip' } })
+      }
+      return new Response('nope', { status: 404 })
+    }
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('外部地址'),
+    })
+  })
+
+  it('rejects a mirror listing redirected to another origin', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const impl = async (url) => {
+      if (String(url) === listingUrl) {
+        const response = new Response(`<a href="${archiveName}">jre</a>`)
+        Object.defineProperty(response, 'url', { value: 'https://evil.example/listing' })
+        return response
+      }
+      return new Response('nope', { status: 404 })
+    }
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('外部地址'),
+    })
   })
 
   it('falls back to the official API when the mirror listing is unavailable', async () => {

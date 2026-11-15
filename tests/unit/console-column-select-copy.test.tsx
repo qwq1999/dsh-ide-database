@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForConsoleSource } from '../stubs/console-ready'
@@ -48,6 +48,7 @@ vi.mock('../../src/client/colmenu', async (importOriginal) => {
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
+import { HIDDEN_STORAGE_PREFIX } from '../../src/client/columnhide'
 
 const mysql = {
   id: 'mysql-1',
@@ -123,6 +124,43 @@ describe('console column select copy', () => {
     expect(copies).toHaveBeenCalledWith('SELECT `id`, `name`, `total` FROM `shop`.`orders`')
   })
 
+  it('copies a row INSERT with hidden columns and keeps values aligned', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('id'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '隐藏列「id」' }))
+    await waitFor(() => expect(screen.queryAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id')).length).toBe(0), { timeout: 4000 })
+
+    fireEvent.contextMenu(screen.getByText('手机'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '复制 INSERT 语句' }))
+
+    expect(copies).toHaveBeenCalledWith("INSERT INTO `shop`.`orders` (`id`, `name`, `total`) VALUES (1, '手机', 638.00);")
+  })
+
+  it('restores a remembered hidden column once the result arrives', async () => {
+    window.localStorage.setItem(`${HIDDEN_STORAGE_PREFIX}console:sql`, JSON.stringify(['id']))
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    await waitFor(
+      () => expect(screen.getAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id'))).toHaveLength(0),
+      { timeout: 4000 },
+    )
+    expect(window.localStorage.getItem(`${HIDDEN_STORAGE_PREFIX}console:sql`)).toBe(JSON.stringify(['id']))
+  })
+
   it('copies the column as an IN list', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')
@@ -138,6 +176,60 @@ describe('console column select copy', () => {
 
     expect(copies).toHaveBeenCalledWith("('手机')")
     expect(await screen.findByText('IN 列表 已复制')).toBeTruthy()
+  })
+
+  it('does not build an IN list from a binary placeholder', async () => {
+    mocks.query.mockResolvedValue({
+      sql: 'SELECT * FROM shop.files',
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'payload', typeName: 'BLOB' },
+      ],
+      rows: [[1, '<binary 3 bytes>']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    })
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.files' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('payload'))
+    const item = await screen.findByRole('menuitem', { name: '复制为 IN 列表（二进制列无法匹配）' }) as HTMLButtonElement
+    expect(item.disabled).toBe(true)
+  })
+
+  it('does not build an IN list from a vague binary placeholder', async () => {
+    mocks.query.mockResolvedValue({
+      sql: 'SELECT * FROM shop.features',
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'flags', typeName: 'BIT' },
+      ],
+      rows: [[1, '<binary 1 bytes>']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    })
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.features' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    fireEvent.contextMenu(header('flags'))
+    const item = await screen.findByRole('menuitem', { name: '复制为 IN 列表（二进制列无法匹配）' }) as HTMLButtonElement
+    expect(item.disabled).toBe(true)
   })
 
   it('copies the column as one comma separated line', async () => {
@@ -171,6 +263,29 @@ describe('console column select copy', () => {
       'SELECT `name`, COUNT(*) AS `count` FROM `shop`.`orders` GROUP BY `name` ORDER BY `count` DESC',
     )
   })
+  it('keeps the column order when the same query is run again', async () => {
+    render(<ConsoleTab />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM shop.orders' } })
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1), { timeout: 4000 })
+
+    const labels = (): (string | null)[] => screen.getAllByRole('columnheader').map((cell) => cell.textContent)
+    const drag = createEvent.dragStart(header('id'))
+    Object.assign(drag, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent(header('id'), drag)
+    fireEvent.dragOver(header('total'))
+    fireEvent.drop(header('total'))
+    await waitFor(() => expect(labels().indexOf('name')).toBeLessThan(labels().indexOf('id')))
+
+    fireEvent.click(screen.getByRole('button', { name: '执行' }))
+    await waitFor(() => expect(mocks.query).toHaveBeenCalledTimes(2), { timeout: 4000 })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(labels().indexOf('name')).toBeLessThan(labels().indexOf('id'))
+  })
+
   it('copies every column name from the header menu', async () => {
     render(<ConsoleTab />)
     await screen.findByLabelText('数据源')

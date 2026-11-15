@@ -40,6 +40,28 @@ describe('DataGrid sort state for assistive tech', () => {
     expect(header('id').getAttribute('aria-sort')).toBe('descending')
   })
 
+  it('marks only the clicked column when two headers share a name', () => {
+    const duplicate = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'id', typeName: 'INT' },
+    ]
+    render(
+      <DataGrid
+        columns={duplicate}
+        rows={[[1, 2]]}
+        offset={0}
+        sort={{ column: 'id', direction: 'asc' }}
+        sortColumn={duplicate[1]}
+        onSort={() => undefined}
+      />,
+    )
+    const headers = screen.getAllByRole('columnheader', { name: /^id/ })
+    expect(headers[0]?.getAttribute('aria-sort')).toBe('none')
+    expect(headers[1]?.getAttribute('aria-sort')).toBe('ascending')
+    expect(headers[0]?.querySelector('.dshdb-sort-arrow')).toBeNull()
+    expect(headers[1]?.querySelector('.dshdb-sort-arrow')).not.toBeNull()
+  })
+
   it('stays out of the way when the grid cannot sort', () => {
     render(<DataGrid columns={columns} rows={rows} offset={0} />)
     expect(header('id').getAttribute('aria-sort')).toBeNull()

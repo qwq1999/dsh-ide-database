@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { ConfigStore } from '../../lib/host/config.js'
 import { SecretStore } from '../../lib/host/secrets.js'
-import { RedisManager } from '../../lib/host/redis.js'
+import { RedisManager, isReadOnlyCommand } from '../../lib/host/redis.js'
+import { looksLikeRedisWrite } from '../../src/client/format.ts'
 
 const dirs = []
 
@@ -24,6 +25,12 @@ afterEach(() => {
 })
 
 describe('Redis command guard', () => {
+  it('shares the read list with the client write confirmation', () => {
+    for (const command of ['GET', 'SINTER', 'ZUNION', 'SORT_RO', 'SET', 'ZUNIONSTORE']) {
+      expect(looksLikeRedisWrite(command)).toBe(!isReadOnlyCommand(command))
+    }
+  })
+
   it('rejects destructive commands even on a writable connection', async () => {
     const { config, redis } = manager()
     const id = config.snapshot().connections[0].id
@@ -36,5 +43,56 @@ describe('Redis command guard', () => {
     const { config, redis } = manager()
     const id = config.snapshot().connections[0].id
     await expect(redis.command(id, 0, '   ', true)).rejects.toThrow(/命令不能为空/)
+  })
+
+  it('accepts set algebra as reads', () => {
+    for (const command of ['SINTER', 'SUNION', 'SDIFF', 'sinter']) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+    expect(isReadOnlyCommand('SADD')).toBe(false)
+  })
+
+  it('accepts range and metadata reads', () => {
+    for (const command of [
+      'ZRANGEBYLEX',
+      'ZREVRANGEBYLEX',
+      'ZREVRANGEBYSCORE',
+      'BITFIELD_RO',
+      'XPENDING',
+      'LOLWUT',
+      'LASTSAVE',
+      'ROLE',
+      'COMMAND',
+      'SUBSTR',
+      'DUMP',
+      'PUBSUB',
+    ]) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+  })
+
+  it('accepts pure reads that cannot store their result', () => {
+    for (const command of [
+      'ZRANDMEMBER',
+      'ZUNION',
+      'ZINTER',
+      'ZINTERCARD',
+      'SINTERCARD',
+      'ZDIFF',
+      'SORT_RO',
+      'LCS',
+      'EXPIRETIME',
+      'PEXPIRETIME',
+      'GEORADIUS_RO',
+      'GEORADIUSBYMEMBER_RO',
+      'EVAL_RO',
+      'EVALSHA_RO',
+      'FCALL_RO',
+    ]) {
+      expect(isReadOnlyCommand(command)).toBe(true)
+    }
+    // The STORE variants remain separate write commands.
+    expect(isReadOnlyCommand('ZUNIONSTORE')).toBe(false)
+    expect(isReadOnlyCommand('ZINTERSTORE')).toBe(false)
   })
 })

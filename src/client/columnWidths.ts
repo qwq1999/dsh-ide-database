@@ -6,10 +6,11 @@
  * stale or hand-edited entry can never make a column invisible.
  */
 
+import type { ColumnInfo } from '../shared/types'
+
 const STORAGE_KEY = 'dsh-ide-database.colwidths.v1'
 const MIN_WIDTH = 40
 const MAX_WIDTH = 1200
-const MAX_COLUMNS = 64
 
 type StoredWidths = Record<string, number[]>
 
@@ -52,7 +53,7 @@ function writeAll(all: StoredWidths): void {
 /** Widths for one grid, or null when nothing usable is stored. */
 export function readWidths(key: string, count: number): number[] | null {
   const widths = readAll()[key]
-  if (!Array.isArray(widths) || widths.length !== count || count > MAX_COLUMNS) return null
+  if (!Array.isArray(widths) || widths.length !== count) return null
   const valid = widths.every(
     (width) => typeof width === 'number' && Number.isFinite(width) && width >= MIN_WIDTH && width <= MAX_WIDTH,
   )
@@ -61,7 +62,7 @@ export function readWidths(key: string, count: number): number[] | null {
 
 export function writeWidths(key: string, widths: number[]): void {
   const all = readAll()
-  all[key] = widths.slice(0, MAX_COLUMNS).map(clamp)
+  all[key] = widths.map(clamp)
   writeAll(all)
 }
 
@@ -70,4 +71,41 @@ export function clearWidths(key: string): void {
   if (!(key in all)) return
   delete all[key]
   writeAll(all)
+}
+
+/**
+ * Move widths saved under a legacy key to the scoped key once. The legacy entry
+ * is removed so clearing the new preference later cannot resurrect it.
+ */
+export function migrateWidths(primary: string, legacy: string, count: number): string {
+  if (count <= 0) return primary
+  if (readWidths(primary, count) !== null) {
+    clearWidths(legacy)
+    return primary
+  }
+  const previous = readWidths(legacy, count)
+  if (previous !== null) writeWidths(primary, previous)
+  clearWidths(legacy)
+  return primary
+}
+
+/**
+ * Keep saved widths attached to their columns when the user reorders a grid
+ * while some columns are hidden. The grid cannot do this itself: it only sees
+ * the visible columns and does not write the full width list in that state.
+ */
+export function moveWidthsForColumns(
+  previous: readonly ColumnInfo[],
+  next: readonly ColumnInfo[],
+  key: string,
+): void {
+  const count = previous.length
+  if (count === 0 || count !== next.length) return
+  const widths = readWidths(key, count)
+  if (widths === null) return
+  const positions = new Map(previous.map((column, index) => [column, index]))
+  if (!next.every((column) => positions.has(column))) return
+  const moved = next.map((column) => widths[positions.get(column) ?? 0] ?? 0)
+  if (moved.every((width, index) => width === widths[index])) return
+  writeWidths(key, moved)
 }

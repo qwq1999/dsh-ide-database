@@ -49,7 +49,10 @@ describe('redisTtlLabel', () => {
   it('formats permanent, expired and expiring keys', () => {
     expect(redisTtlLabel(-1)).toBe('永久')
     expect(redisTtlLabel(-2)).toBe('已过期')
-    expect(redisTtlLabel(59.6)).toBe('60s')
+    expect(redisTtlLabel(-3)).toBe('—')
+    expect(redisTtlLabel(Number.NaN)).toBe('—')
+    expect(redisTtlLabel(59.4)).toBe('59s')
+    expect(redisTtlLabel(59.6)).toBe('1m')
     expect(redisTtlLabel(3600)).toBe('1h')
     expect(redisTtlLabel(90000)).toBe('1d')
   })

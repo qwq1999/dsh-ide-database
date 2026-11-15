@@ -128,6 +128,12 @@ describe('console presentational pieces', () => {
     expect(screen.getByText('永久')).toBeTruthy()
   })
 
+  it('labels an expired redis key instead of calling it permanent', () => {
+    render(<KeyGrid keys={[{ key: 'gone', type: 'string', ttl: -2 }]} selectedKey="" onSelect={() => {}} />)
+    expect(screen.getByText('已过期')).toBeTruthy()
+    expect(screen.getByTitle('已过期')).toBeTruthy()
+  })
+
   it('labels pager buttons with their titles', () => {
     render(<PagerButton label="1" title="第一页" onClick={() => {}} disabled={false} />)
     expect(screen.getByTitle('第一页')).toBeTruthy()

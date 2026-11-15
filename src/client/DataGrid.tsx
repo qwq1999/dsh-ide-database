@@ -58,10 +58,16 @@ export interface DataGridProps {
   onCellOpen?: (column: ColumnInfo, value: CellValue) => void
   /** Remember user-dragged column widths under this key. */
   storageKey?: string
+  /** Full column count before hidden columns were removed; widths persist only when all are shown. */
+  widthColumnCount?: number
+  /** Change when the page or result changes to scroll the body back to the top. */
+  resetKey?: unknown
   /** Active sort; the matching header shows an arrow. */
   sort?: { column: string; direction: 'asc' | 'desc' } | null
+  /** Exact column whose header owns the sort; distinguishes duplicate labels. */
+  sortColumn?: ColumnInfo | null
   /** Clicking a header asks the page to sort by that column. */
-  onSort?: (column: ColumnInfo) => void
+  onSort?: (column: ColumnInfo, index: number) => void
   /** Right-click menu entries per column; headers open a context menu when set. */
   headerMenu?: (column: ColumnInfo) => ColumnMenuItem[]
   /** Right-click menu entries for a result cell. */
@@ -83,7 +89,7 @@ export interface DataGridProps {
 const MIN_COLUMN_WIDTH = 48
 const MAX_COLUMN_WIDTH = 1200
 
-function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElement | null>): {
+function useVirtualRange(rowCount: number, resetKey: unknown, containerRef: RefObject<HTMLDivElement | null>): {
   range: VirtualRange
   onScroll: () => void
 } {
@@ -111,12 +117,29 @@ function useVirtualRange(rowCount: number, containerRef: RefObject<HTMLDivElemen
     return () => observer.disconnect()
   }, [measure])
 
-  // A different page or result set starts back at the top.
+  // A different page or result set starts back at the top. When the page passes
+  // an explicit reset key, a changing row count alone (auto refresh) must not
+  // move the user away from where they were reading.
+  const resetValue = resetKey === undefined ? rowCount : resetKey
   useEffect(() => {
     const element = containerRef.current
     if (element !== null) element.scrollTop = 0
     setScrollTop(0)
-  }, [rowCount, containerRef])
+  }, [resetValue, containerRef])
+
+  // A row count that shrinks under the same page can leave scrollTop past the
+  // new content. Browsers clamp on layout, but the virtual window is computed
+  // from state first; clamp here so a refresh never renders an empty window.
+  useEffect(() => {
+    const element = containerRef.current
+    if (element === null) return
+    const visible = Math.max(viewport - headerHeight, 0)
+    const max = Math.max(0, rowCount * GRID_ROW_HEIGHT - visible)
+    if (element.scrollTop > max) {
+      element.scrollTop = max
+      setScrollTop(max)
+    }
+  }, [rowCount, viewport, headerHeight, containerRef])
 
   const onScroll = useCallback(() => {
     if (frame.current !== 0) return
@@ -159,7 +182,9 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     onCellClick,
     onCellOpen,
     storageKey,
+    resetKey,
     sort,
+    sortColumn,
     onSort,
     headerMenu,
     cellMenu,
@@ -169,9 +194,14 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
     selectedRows,
     onToggleRow,
     onToggleAllRows,
+    widthColumnCount = columns.length,
   } = props
   const selectable = onToggleRow !== undefined
   const selectedCount = selectedRows?.size ?? 0
+  const isSorted = (column: ColumnInfo): boolean => {
+    if (sort === null || sort === undefined) return false
+    return sortColumn ? sortColumn === column : sort.column === column.name
+  }
   const colSpan = columns.length + (selectable ? 2 : 1)
   const [menu, setMenu] = useState<{ items: ColumnMenuItem[]; x: number; y: number } | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -179,7 +209,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   const dragged = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
-  const { range, onScroll } = useVirtualRange(rows.length, containerRef)
+  const { range, onScroll } = useVirtualRange(rows.length, resetKey, containerRef)
   const visible = rows.slice(range.start, range.end)
 
   const openMenu = useCallback((items: ColumnMenuItem[], clientX: number, clientY: number): void => {
@@ -195,15 +225,37 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   const [widths, setWidths] = useState<number[] | null>(() =>
     storageKey === undefined ? null : readWidths(storageKey, columns.length),
   )
+  const previousColumns = useRef(columns)
+  const previousStorageKey = useRef(storageKey)
 
   // A different result set (or a tab reused for another table) drops the widths.
   useEffect(() => {
     setWidths(storageKey === undefined ? null : readWidths(storageKey, columns.length))
   }, [storageKey, columns.length])
 
+  // Switching tables (or hiding a column) changes the slot count. Re-read the
+  // stored widths for that count instead of forgetting them: hiding and then
+  // showing a column again restores the widths saved for the full list.
   useEffect(() => {
-    if (widths !== null && widths.length !== columns.length) setWidths(null)
-  }, [widths, columns.length])
+    const keyChanged = previousStorageKey.current !== storageKey
+    previousStorageKey.current = storageKey
+    if (!keyChanged && widths !== null && widths.length === columns.length) return
+    setWidths(storageKey === undefined ? null : readWidths(storageKey, columns.length))
+  }, [widths, columns.length, storageKey])
+
+  // Dragging a header reorders `columns`; move the measured widths with the
+  // column instead of leaving them attached to a screen position.
+  useEffect(() => {
+    const previous = previousColumns.current
+    previousColumns.current = columns
+    if (widths === null || previous === columns || previous.length !== columns.length) return
+    const oldIndex = new Map(previous.map((column, index) => [column, index]))
+    if (!columns.every((column) => oldIndex.has(column))) return
+    const next = columns.map((column) => widths[oldIndex.get(column) ?? 0] ?? 0)
+    if (next.every((width, index) => width === widths[index])) return
+    setWidths(next)
+    if (storageKey !== undefined && columns.length === widthColumnCount) writeWidths(storageKey, next)
+  }, [columns, widths, storageKey, widthColumnCount])
 
   const startResize = useCallback(
     (event: React.MouseEvent<HTMLSpanElement>, index: number) => {
@@ -211,9 +263,11 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       event.stopPropagation()
       const table = tableRef.current
       if (table === null) return
-      const headers = table.querySelectorAll('thead tr:first-child th')
+      // The grid may have leading checkbox and row-number headers; tag data
+      // headers so measured widths cannot shift by one when selection is on.
+      const headers = table.querySelectorAll('thead tr:first-child th[data-column-index]')
       const measured = columns.map((_, columnIndex) => {
-        const header = headers[columnIndex + 1]
+        const header = headers[columnIndex]
         return header instanceof HTMLElement ? Math.round(header.getBoundingClientRect().width) : 120
       })
       const base = widths ?? measured
@@ -237,7 +291,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         document.removeEventListener('mouseleave', up)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        if (storageKey !== undefined) writeWidths(storageKey, current)
+        if (storageKey !== undefined && columns.length === widthColumnCount) writeWidths(storageKey, current)
       }
       document.addEventListener('mousemove', move)
       document.addEventListener('mouseup', up)
@@ -247,7 +301,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     },
-    [columns, storageKey, widths],
+    [columns, storageKey, widthColumnCount, widths],
   )
 
   const resetWidths = useCallback(() => {
@@ -310,6 +364,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
             {columns.map((column, index) => (
               <th
                 key={`${column.name}-${index}`}
+                data-column-index={index}
                 title={headerTitle(column, onSort !== undefined)}
                 className={[
                   numericColumn(column) ? 'dshdb-cell-num' : '',
@@ -320,12 +375,12 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                 ]
                   .filter((value) => value !== '')
                   .join(' ') || undefined}
-                data-sorted={sort !== null && sort !== undefined && sort.column === column.name ? sort.direction : undefined}
+                data-sorted={isSorted(column) ? sort?.direction : undefined}
                 aria-sort={
                   onSort === undefined
                     ? undefined
-                    : sort !== null && sort !== undefined && sort.column === column.name
-                      ? sort.direction === 'asc'
+                    : isSorted(column)
+                      ? sort?.direction === 'asc'
                         ? 'ascending'
                         : 'descending'
                       : 'none'
@@ -338,7 +393,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                         if (event.key !== 'Enter' && event.key !== ' ') return
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
                         event.preventDefault()
-                        onSort(column)
+                        onSort(column, index)
                       }
                 }
                 draggable={onReorderColumns !== undefined}
@@ -377,7 +432,7 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                           return
                         }
                         if ((event.target as HTMLElement).classList.contains('dshdb-grip')) return
-                        onSort(column)
+                        onSort(column, index)
                       }
                 }
                 onContextMenu={
@@ -390,9 +445,9 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                 }
               >
                 {column.name}
-                {sort !== null && sort !== undefined && sort.column === column.name ? (
+                {isSorted(column) ? (
                   <span className="dshdb-sort-arrow" aria-hidden="true">
-                    {sort.direction === 'asc' ? '▲' : '▼'}
+                    {sort?.direction === 'asc' ? '▲' : '▼'}
                   </span>
                 ) : null}
                 <span

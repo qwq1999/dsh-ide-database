@@ -25,15 +25,33 @@ describe('format helpers', () => {
     expect(formatMs(3)).toBe('3 ms')
     expect(formatMs(2500)).toBe('2.50 s')
     expect(formatMs(Number.NaN)).toBe('—')
-    expect(formatMs(0)).toBe('1 ms')
+    expect(formatMs(0)).toBe('0 ms')
+    expect(formatMs(0.4)).toBe('1 ms')
     expect(formatMs(999.6)).toBe('1.00 s')
+    expect(formatMs(59_999)).toBe('1m 0s')
+    expect(formatMs(59_999.6)).toBe('1m 0s')
+    expect(formatMs(Number.POSITIVE_INFINITY)).toBe('—')
+    expect(formatMs(-1)).toBe('—')
     expect(formatMs(60_000)).toBe('1m 0s')
     expect(formatMs(65_400)).toBe('1m 5s')
     expect(formatMs(65000)).toBe('1m 5s')
     expect(formatMs(600000)).toBe('10m 0s')
+    expect(formatMs(3_599_900)).toBe('1h 0m 0s')
+    expect(formatMs(3_600_000)).toBe('1h 0m 0s')
+    expect(formatMs(3_661_000)).toBe('1h 1m 1s')
     expect(formatBytes(512)).toBe('512 B')
     expect(formatBytes(1023.6)).toBe('1.0 KB')
     expect(formatBytes(2048)).toBe('2.0 KB')
+    expect(formatBytes(1048575.4)).toBe('1.0 MB')
+    expect(formatBytes(1048575.6)).toBe('1.0 MB')
+    expect(formatBytes(1024 ** 3)).toBe('1.0 GB')
+    expect(formatBytes(1024 ** 4)).toBe('1.0 TB')
+    expect(formatBytes(1024 ** 5)).toBe('1.0 PB')
+    expect(formatBytes(1.5 * 1024 ** 5)).toBe('1.5 PB')
+    expect(formatBytes(1024 ** 6)).toBe('1.0 EB')
+    expect(formatBytes(Number.NaN)).toBe('')
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('')
+    expect(formatBytes(-1)).toBe('')
   })
 
   it('formats nullable cells', () => {
@@ -59,6 +77,10 @@ describe('format helpers', () => {
     expect(looksLikeWrite('EXPLAIN ANALYZE DELETE FROM t')).toBe(true)
     expect(looksLikeWrite('explain analyze format=tree update t set a = 1')).toBe(true)
     expect(looksLikeWrite('EXPLAIN DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN PLAN FOR SELECT 1', 'oracle')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN SELECT 1', 'postgres')).toBe(false)
+    expect(looksLikeWrite('/* outer /* inner */ DELETE FROM t; */ SELECT 1', 'postgres')).toBe(false)
+    expect(looksLikeWrite('/* outer /* inner */ DELETE FROM t; */ SELECT 1', 'mssql')).toBe(false)
     expect(looksLikeWrite('WITH recent AS (SELECT 1) DELETE FROM users')).toBe(true)
     expect(looksLikeWrite('with a as (select 1), b (id) as (select 2) select * from a')).toBe(false)
     expect(looksLikeWrite('WITH a AS (SELECT 1), b AS (SELECT 2) UPDATE users SET age = 1')).toBe(true)
@@ -67,6 +89,168 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('GET foo')).toBe(false)
     expect(looksLikeRedisWrite('SET foo bar')).toBe(true)
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
+  })
+
+  it('flags mutating SQLite pragmas', () => {
+    expect(looksLikeWrite('PRAGMA table_info(users)', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA main.table_info(users)', 'sqlite')).toBe(false)
+    expect(looksLikeWrite("PRAGMA table_info('a=b')", 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA table_info("a=b")', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA table_info([a=b])', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA user_version = 1', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA user_version(1)', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA application_id(1234)', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA schema_version(7)', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA user_version', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA journal_mode = WAL', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA writable_schema = ON', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA unknown_pragma', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA table_info(users); PRAGMA user_version = 1', 'sqlite')).toBe(true)
+  })
+
+  it('treats the same pure Redis commands as the host guard', () => {
+    const reads = [
+      'XREAD',
+      'LINDEX',
+      'ZCOUNT',
+      'ZLEXCOUNT',
+      'ZRANK',
+      'ZREVRANK',
+      'ZMSCORE',
+      'HSTRLEN',
+      'HEXISTS',
+      'HRANDFIELD',
+      'GETBIT',
+      'BITPOS',
+      'GEOHASH',
+      'GEOSEARCH',
+      'PFCOUNT',
+      'SINTER',
+      'SUNION',
+      'SDIFF',
+      'SMISMEMBER',
+      'ZRANDMEMBER',
+      'ZUNION',
+      'ZINTER',
+      'ZINTERCARD',
+      'SINTERCARD',
+      'ZDIFF',
+      'SORT_RO',
+      'LCS',
+      'EXPIRETIME',
+      'PEXPIRETIME',
+      'GEORADIUS_RO',
+      'GEORADIUSBYMEMBER_RO',
+    ]
+    for (const command of reads) expect(looksLikeRedisWrite(`${command} key`)).toBe(false)
+    for (const command of ['ZUNIONSTORE', 'ZINTERSTORE', 'SINTERSTORE', 'SET', 'DEL']) {
+      expect(looksLikeRedisWrite(`${command} key`)).toBe(true)
+    }
+  })
+
+  it('looks inside CTEs and files when deciding whether to confirm', () => {
+    expect(looksLikeWrite('WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d')).toBe(true)
+    expect(looksLikeWrite('WITH d AS (SELECT 1) SELECT * FROM d')).toBe(false)
+    expect(looksLikeWrite('WITH "recent sales" AS (SELECT 1) SELECT * FROM "recent sales"')).toBe(false)
+    expect(looksLikeWrite('WITH `recent sales` AS (SELECT 1) SELECT * FROM `recent sales`')).toBe(false)
+    expect(looksLikeWrite('WITH [recent sales] AS (SELECT 1) SELECT * FROM [recent sales]')).toBe(false)
+    expect(looksLikeWrite('WITH "d" AS (DELETE FROM t RETURNING *) SELECT * FROM "d"')).toBe(true)
+    expect(looksLikeWrite('WITH "x"("id") AS (SELECT 1) SELECT * FROM "x"')).toBe(false)
+    expect(looksLikeWrite('WITH c AS NOT MATERIALIZED (SELECT 1) SELECT * FROM c')).toBe(false)
+    expect(looksLikeWrite('WITH c AS MATERIALIZED (SELECT 1) SELECT * FROM c')).toBe(false)
+    expect(looksLikeWrite('WITH c AS (SELECT [a)] FROM t) SELECT * FROM c', 'mssql')).toBe(false)
+    expect(looksLikeWrite('WITH c AS (SELECT [a)] FROM t) DELETE FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('WITH c AS (DELETE FROM [a)] OUTPUT deleted.id) SELECT * FROM c', 'mssql')).toBe(true)
+    expect(looksLikeWrite("SELECT 1 INTO OUTFILE '/tmp/x'")).toBe(true)
+    expect(looksLikeWrite('SELECT 1 INTO new_table')).toBe(true)
+    expect(looksLikeWrite('SELECT 1 INTO @total')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN /* note */ ANALYZE DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE) DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE false) DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE off, FORMAT JSON) DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE true) DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (ANALYZE 1) DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN (FORMAT JSON) DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite("SELECT replace(name, 'a', 'b') FROM users")).toBe(false)
+    expect(looksLikeWrite("SELECT '=DELETE FROM t'")).toBe(false)
+    expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000DELETE FROM t*/', 'mysql')).toBe(true)
+    expect(looksLikeWrite("SELECT 1 /*!50000INTO OUTFILE '/tmp/x'*/", 'mysql')).toBe(true)
+    expect(looksLikeWrite('SELECT 1 /*!50000 SQL_NO_CACHE */', 'mysql')).toBe(false)
+    expect(looksLikeWrite('SELECT 1 /*!50000 DELETE FROM t */', 'sqlite')).toBe(false)
+    expect(looksLikeWrite("SELECT q'[delete]' FROM dual", 'oracle')).toBe(false)
+  })
+
+  it('recognizes PostgreSQL DO blocks as writes', () => {
+    expect(looksLikeWrite('DO $$ BEGIN DELETE FROM users; END $$', 'postgres')).toBe(true)
+    expect(looksLikeWrite('DO $$ BEGIN PERFORM 1; END $$', 'postgres')).toBe(true)
+    expect(looksLikeWrite('DO 1', 'mysql')).toBe(false)
+  })
+
+  it('recognizes Oracle anonymous blocks as writes', () => {
+    expect(looksLikeWrite('BEGIN DELETE FROM users; END;', 'oracle')).toBe(true)
+    expect(looksLikeWrite('BEGIN NULL; END;', 'oracle')).toBe(true)
+    expect(looksLikeWrite('DECLARE n NUMBER; BEGIN n := 1; END;', 'oceanbase-oracle')).toBe(true)
+    // BEGIN starts a transaction in MySQL/SQL Server, not a PL/SQL block.
+    expect(looksLikeWrite('BEGIN', 'mysql')).toBe(false)
+    expect(looksLikeWrite('BEGIN TRANSACTION', 'mssql')).toBe(false)
+  })
+
+  it('recognizes SQL Server BEGIN blocks that contain writes', () => {
+    expect(looksLikeWrite('BEGIN\n  DELETE FROM users\nEND', 'mssql')).toBe(true)
+    expect(looksLikeWrite('BEGIN TRANSACTION\nDELETE FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('BEGIN TRY SELECT 1 END TRY BEGIN CATCH SELECT 2 END CATCH', 'mssql')).toBe(false)
+    expect(looksLikeWrite('BEGIN\n  SELECT * INTO #tmp FROM users\nEND', 'mssql')).toBe(true)
+  })
+
+  it('recognizes SQL Server IF and WHILE bodies that contain writes', () => {
+    expect(looksLikeWrite('IF EXISTS (SELECT 1 FROM users) DELETE FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('WHILE 1 = 1 UPDATE users SET active = 1', 'mssql')).toBe(true)
+    expect(looksLikeWrite('IF 1 = 1 SELECT 1', 'mssql')).toBe(false)
+    expect(looksLikeWrite('WHILE 1 = 1 SELECT 1', 'mssql')).toBe(false)
+    expect(looksLikeWrite('IF EXISTS (SELECT 1 FROM users) SELECT * INTO #tmp FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('WHILE 1 = 1 SELECT * INTO #tmp FROM users', 'mssql')).toBe(true)
+    expect(looksLikeWrite('IF 1 = 1 DELETE FROM users', 'mysql')).toBe(false)
+  })
+
+  it('requires confirmation for SQLite ATTACH and DETACH', () => {
+    expect(looksLikeWrite("ATTACH DATABASE '/tmp/other.db' AS other", 'sqlite')).toBe(true)
+    expect(looksLikeWrite('DETACH DATABASE other', 'sqlite')).toBe(true)
+    expect(looksLikeWrite("SELECT * FROM pragma_table_info('users')", 'sqlite')).toBe(false)
+  })
+
+  it('recognizes bulk-load statements as writes', () => {
+    expect(looksLikeWrite("LOAD DATA INFILE '/tmp/users.csv' INTO TABLE users", 'mysql')).toBe(true)
+    expect(looksLikeWrite("COPY users FROM '/tmp/users.csv'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY users TO '/tmp/users.csv'", 'postgres')).toBe(false)
+    expect(looksLikeWrite("COPY (SELECT * FROM users) TO '/tmp/users.csv'", 'postgres')).toBe(false)
+    expect(looksLikeWrite("COPY users TO PROGRAM 'gzip > /tmp/users.gz'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY (SELECT * FROM users) TO PROGRAM 'gzip > /tmp/users.gz'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY(SELECT * FROM users) TO PROGRAM 'gzip > /tmp/users.gz'", 'postgres')).toBe(true)
+    expect(looksLikeWrite("COPY(SELECT * FROM users) TO '/tmp/users.csv'", 'postgres')).toBe(false)
+  })
+
+  it('recognizes bulk and maintenance statements as writes', () => {
+    expect(looksLikeWrite("BULK INSERT users FROM 'C:\\users.csv'", 'mssql')).toBe(true)
+    expect(looksLikeWrite('REINDEX TABLE users', 'postgres')).toBe(true)
+    expect(looksLikeWrite('CLUSTER users USING users_pkey', 'postgres')).toBe(true)
+    expect(looksLikeWrite('REFRESH MATERIALIZED VIEW CONCURRENTLY user_stats', 'postgres')).toBe(true)
+    expect(looksLikeWrite("BACKUP DATABASE app TO DISK = 'app.bak'", 'mssql')).toBe(true)
+    expect(looksLikeWrite("RESTORE DATABASE app FROM DISK = 'app.bak'", 'mssql')).toBe(true)
+  })
+
+  it('recognizes a write hidden in a MySQL executable comment', () => {
+    expect(looksLikeWrite("/*!50000 SELECT * FROM users INTO OUTFILE '/tmp/users.csv' */", 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000 SELECT * INTO new_users FROM users */', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*!50000 SELECT * INTO @total FROM users */', 'mysql')).toBe(false)
+  })
+
+  it('checks every batch separated by GO or DELIMITER', () => {
+    expect(looksLikeWrite('select 1\nGO\ndelete from t', 'mssql')).toBe(true)
+    expect(looksLikeWrite('select 1\nGO\nselect 2', 'mssql')).toBe(false)
+    expect(looksLikeWrite('DELIMITER //\nselect 1//\ndelete from t//', 'mysql')).toBe(true)
+    expect(looksLikeWrite('DELIMITER //\nselect 1//\nselect 2//', 'mysql')).toBe(false)
+    expect(looksLikeWrite('select 1 as "a;DELETE FROM t"', 'generic')).toBe(false)
   })
 
   it('detects statements that change the schema layout', () => {
@@ -79,15 +263,70 @@ describe('format helpers', () => {
     expect(looksLikeDdl('ALTER TABLE users ADD COLUMN age INT')).toBe(true)
     expect(looksLikeDdl('SELECT 1; TRUNCATE TABLE users')).toBe(true)
     expect(looksLikeDdl('EXPLAIN ANALYZE DROP TABLE users')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE true) DROP TABLE users')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE, FORMAT JSON) ALTER TABLE users ADD COLUMN age INT')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE false) DROP TABLE users')).toBe(false)
+    expect(looksLikeDdl('EXPLAIN (VERBOSE) DROP TABLE users')).toBe(false)
+    // A semicolon inside a string must not split the SELECT into a fake DROP.
+    expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note")).toBe(false)
+    expect(looksLikeDdl("SELECT 'a; DROP TABLE users' AS note", 'postgres')).toBe(false)
+    // DELIMITER and GO are client-side boundaries; the DDL inside still counts.
+    expect(looksLikeDdl('DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//', 'mysql')).toBe(true)
+    expect(looksLikeDdl('SELECT 1\nGO\nDROP TABLE users', 'mssql')).toBe(true)
+    expect(looksLikeDdl('BEGIN\n  CREATE TABLE #tmp (id int)\nEND', 'mssql')).toBe(true)
+    expect(looksLikeDdl('IF EXISTS (SELECT 1 FROM users) DROP TABLE users', 'mssql')).toBe(true)
+    expect(looksLikeDdl('BEGIN\n  SELECT * INTO #tmp FROM users\nEND', 'mssql')).toBe(true)
+    expect(looksLikeDdl('BEGIN\n  DELETE FROM users\nEND', 'mssql')).toBe(false)
+    expect(looksLikeDdl("COMMENT ON TABLE users IS 'customer records'", 'postgres')).toBe(true)
+    expect(looksLikeDdl("DO $$ BEGIN EXECUTE 'CREATE TABLE t (id int)'; END $$", 'postgres')).toBe(true)
+    expect(looksLikeDdl('DO $$ BEGIN PERFORM 1; END $$', 'postgres')).toBe(true)
+    expect(looksLikeDdl('DO 1', 'mysql')).toBe(false)
+    expect(looksLikeDdl("ATTACH DATABASE 'x.db' AS x", 'sqlite')).toBe(true)
+    expect(looksLikeDdl('DETACH DATABASE x', 'sqlite')).toBe(true)
+    expect(looksLikeDdl("ATTACH DATABASE 'x.db' AS x")).toBe(false)
+    expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'mssql')).toBe(true)
+    expect(looksLikeDdl("EXEC dbo.sp_rename 'dbo.users.name', 'full_name', 'COLUMN'", 'mssql')).toBe(true)
+    expect(looksLikeDdl("EXEC @rc = sp_rename 'dbo.users', 'customers'", 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC sp_help', 'mssql')).toBe(false)
+    expect(looksLikeDdl("EXEC sp_executesql N'DROP TABLE users'", 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC(@sql)', 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC @sql', 'mssql')).toBe(true)
+    expect(looksLikeDdl('EXEC @rc = sp_help', 'mssql')).toBe(false)
+    expect(looksLikeDdl("EXEC sp_rename 'dbo.users', 'customers'", 'postgres')).toBe(false)
+    expect(looksLikeDdl("BEGIN EXECUTE IMMEDIATE 'CREATE TABLE t (id NUMBER)'; END;", 'oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'oceanbase-oracle')).toBe(true)
+    expect(looksLikeDdl('BEGIN NULL; END;', 'mysql')).toBe(false)
+    // MySQL executes the body of `/*! ... */`, so DDL hidden in it is real.
+    expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*!50000 SELECT 1 */', 'mysql')).toBe(false)
+    expect(looksLikeDdl('/*!50000 DROP TABLE users */', 'generic')).toBe(false)
+    // SELECT ... INTO also creates a table, but INSERT INTO and INTO @var do not.
+    expect(looksLikeDdl('SELECT * INTO new_users FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO dbo.new_users FROM users', 'mssql')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO TEMP TABLE scratch FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('SELECT * INTO @total FROM users', 'mysql')).toBe(false)
+    expect(looksLikeDdl("SELECT 'INTO new_users' FROM users", 'postgres')).toBe(false)
+    expect(looksLikeDdl("SELECT * INTO OUTFILE '/tmp/users.csv' FROM users", 'mysql')).toBe(false)
+    expect(looksLikeDdl('INSERT INTO users SELECT * FROM old_users')).toBe(false)
+    expect(looksLikeDdl('WITH c AS (SELECT 1) INSERT INTO users SELECT * FROM c')).toBe(false)
+    expect(looksLikeDdl('WITH c AS (SELECT * FROM users) SELECT * INTO staged FROM c', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE true) SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN (ANALYZE false) SELECT * INTO staged FROM users', 'postgres')).toBe(false)
   })
 
   it('groups counts with thousands separators', () => {
     expect(formatCount(999)).toBe('999')
     expect(formatCount(1234567)).toBe('1,234,567')
+    expect(formatCount(Number.NaN)).toBe('—')
+    expect(formatCount(Number.POSITIVE_INFINITY)).toBe('—')
+    expect(formatCount(-1)).toBe('—')
   })
 
   it('shortens remaining TTL to the largest whole unit', () => {
     expect(formatTtl(-1)).toBe('永久')
+    expect(formatTtl(-2)).toBe('已过期')
+    expect(formatTtl(-3)).toBe('—')
     expect(formatTtl(0)).toBe('0s')
     expect(formatTtl(59)).toBe('59s')
     expect(formatTtl(60)).toBe('1m')

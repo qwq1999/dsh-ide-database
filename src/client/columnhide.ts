@@ -13,6 +13,32 @@ export function isHidden(hidden: string[] | null, name: string): boolean {
   return hidden !== null && hidden.includes(name)
 }
 
+/**
+ * Stable identity for a column in one result. A result may contain the same
+ * column name twice (`SELECT a.id, b.id`); a plain name would hide both.
+ * Unique names keep their old name so existing preferences still apply, and
+ * repeated names get an encoded occurrence suffix.
+ */
+export function hiddenColumnId(columns: ColumnInfo[], index: number): string {
+  const column = columns[index]
+  if (column === undefined) return ''
+  let occurrence = 0
+  for (let previous = 0; previous < index; previous += 1) {
+    if (columns[previous]?.name === column.name) occurrence += 1
+  }
+  return occurrence === 0
+    ? column.name
+    : `${column.name}#${encodeURIComponent(JSON.stringify([column.name, occurrence]))}`
+}
+
+/** Stable ID for a display column, using the original result order. */
+function displayColumnId(columns: ColumnInfo[], index: number, identityColumns: ColumnInfo[]): string {
+  const column = columns[index]
+  if (column === undefined) return ''
+  const identityIndex = identityColumns.indexOf(column)
+  return identityIndex >= 0 ? hiddenColumnId(identityColumns, identityIndex) : hiddenColumnId(columns, index)
+}
+
 /** Add or remove one column; an empty set collapses back to `null` (all visible). */
 export function toggleHidden(hidden: string[] | null, name: string): string[] | null {
   const current = hidden ?? []
@@ -21,17 +47,24 @@ export function toggleHidden(hidden: string[] | null, name: string): string[] | 
 }
 
 /** Hide every column except one, so a wide result can be narrowed to a single field. */
-export function onlyColumn(columns: ColumnInfo[], name: string): string[] | null {
-  if (columns.length <= 1) return null
-  if (!columns.some((column) => column.name === name)) return null
-  return columns.filter((column) => column.name !== name).map((column) => column.name)
+export function onlyColumn(
+  columns: ColumnInfo[],
+  target: string | number,
+  identityColumns: ColumnInfo[] = columns,
+): string[] | null {
+  const targetId = typeof target === 'number' ? displayColumnId(columns, target, identityColumns) : target
+  const index = columns.findIndex((_, current) => displayColumnId(columns, current, identityColumns) === targetId)
+  if (index < 0 || columns.length <= 1) return null
+  return columns.flatMap((_, current) =>
+    current === index ? [] : [displayColumnId(columns, current, identityColumns)],
+  )
 }
 
-/** Drop remembered names that the current result no longer has. */
+/** Drop remembered identities that the current result no longer has. */
 export function pruneHidden(hidden: string[] | null, columns: ColumnInfo[]): string[] | null {
   if (hidden === null) return null
-  const names = new Set(columns.map((column) => column.name))
-  const kept = hidden.filter((name) => names.has(name))
+  const known = new Set(columns.map((_, index) => hiddenColumnId(columns, index)))
+  const kept = hidden.filter((name) => known.has(name))
   return kept.length === 0 ? null : kept
 }
 
@@ -43,8 +76,11 @@ export function hideColumns(
   columns: ColumnInfo[],
   rows: Row[],
   hidden: string[] | null,
+  identityColumns: ColumnInfo[] = columns,
 ): { positions: number[]; columns: ColumnInfo[]; rows: Row[] } {
-  const positions = columns.map((column, index) => (isHidden(hidden, column.name) ? -1 : index)).filter((index) => index >= 0)
+  const positions = columns
+    .map((_, index) => (isHidden(hidden, displayColumnId(columns, index, identityColumns)) ? -1 : index))
+    .filter((index) => index >= 0)
   // Never hide every column: an empty grid with no way back is worse than the
   // extra wide column the user just asked to hide.
   if (positions.length === 0) {
@@ -62,6 +98,16 @@ function storage(): Storage | null {
     return window.localStorage
   } catch {
     return null
+  }
+}
+
+export function hasHidden(storageKey: string): boolean {
+  const store = storage()
+  if (store === null) return false
+  try {
+    return store.getItem(`${HIDDEN_STORAGE_PREFIX}${storageKey}`) !== null
+  } catch {
+    return false
   }
 }
 

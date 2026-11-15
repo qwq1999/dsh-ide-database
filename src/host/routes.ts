@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+import { completionColumnKey } from '../shared/completionkey.js'
 import { PLUGIN_NAME, ROUTE_PREFIX } from '../shared/presets.js'
 import type {
   ApiResult,
@@ -372,7 +373,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
         : []
       const cached = deps.structure.get(id)
       const schemas = cached?.schemas ?? []
-      const tables: Record<string, SchemaObject[]> = {}
+      const tables: Record<string, SchemaObject[]> = Object.create(null)
       for (const schema of schemaNames) {
         const objects = cached?.objects[schema]
         if (objects !== undefined) tables[schema] = objects
@@ -381,7 +382,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       for (const relation of relations) {
         const description = deps.structure.getDescription(id, relation.schema, relation.table)
         if (description === undefined) continue
-        columns[`${relation.schema}.${relation.table}`] = description.columns.map((column) => ({
+        columns[completionColumnKey(relation.schema, relation.table)] = description.columns.map((column) => ({
           name: column.name,
           ...(typeof column.typeName === 'string' && column.typeName !== ''
             ? { typeName: column.typeName }

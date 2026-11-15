@@ -13,12 +13,24 @@ export type RowSortDirection = 'asc' | 'desc'
 export interface RowSort {
   column: string
   direction: RowSortDirection
+  /** Original result-column index; distinguishes columns with the same label. */
+  index?: number
 }
 
-/** Header clicks cycle none -> ascending -> descending -> none. */
-export function nextRowSort(current: RowSort | null, column: string): RowSort | null {
-  if (current === null || current.column !== column) return { column, direction: 'asc' }
-  return current.direction === 'asc' ? { column, direction: 'desc' } : null
+/**
+ * Header clicks cycle none -> ascending -> descending -> none. The index is
+ * compared too: `SELECT a.id, b.id` has two headers called `id`, and each one
+ * owns its own sort state.
+ */
+export function nextRowSort(current: RowSort | null, column: string, index?: number): RowSort | null {
+  const same = current !== null && current.column === column && (index === undefined || current.index === undefined || current.index === index)
+  if (!same) {
+    const next: RowSort = { column, direction: 'asc' }
+    if (index !== undefined) next.index = index
+    return next
+  }
+  if (current.direction === 'asc') return { column, direction: 'desc', index: current.index }
+  return null
 }
 
 /**
@@ -46,7 +58,9 @@ export function sortRowsWithOrder(
 ): { rows: Row[]; order: number[] } {
   const identity = rows.map((_row, index) => index)
   if (sort === null) return { rows, order: identity }
-  const index = columns.findIndex((column) => column.name === sort.column)
+  const explicit = sort.index
+  const byIndex = explicit !== undefined && Number.isInteger(explicit) && explicit >= 0 && explicit < columns.length
+  const index = byIndex ? explicit : columns.findIndex((column) => column.name === sort.column)
   if (index < 0) return { rows, order: identity }
   const factor = sort.direction === 'asc' ? 1 : -1
   const positions: number[] = [...identity].sort((left, right) => {

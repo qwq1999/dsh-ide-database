@@ -16,6 +16,7 @@ import {
   ViewIcon,
 } from '../icons'
 import { Loading } from '../ui'
+import { treeObjectKey } from '../treekeys'
 
 export function objectIcon(kind: ObjectKind): ReactNode {
   if (kind === 'table') return <TableIcon size={13} />
@@ -162,7 +163,7 @@ export const ObjectRow = memo(function ObjectRow({
   query: string
 }): ReactElement {
   const isRelation = object.kind === 'table' || object.kind === 'view'
-  const key = `${connectionId}|${schema}.${object.name}`
+  const key = treeObjectKey(connectionId, schema, object.name)
   const open = isRelation && openProp
   const keys = description?.indexes.filter((index) => index.primary === true || index.unique === true) ?? []
   const indexes = description?.indexes ?? []

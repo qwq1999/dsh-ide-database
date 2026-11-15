@@ -50,5 +50,7 @@ describe('statementAtCaret', () => {
     })
     const temp = 'select * from #tmp; select 2'
     expect(statementAtCaret(temp, temp.indexOf('select 2'), 'mssql')).toEqual({ statement: 'select 2', index: 1 })
+    const batched = 'select 1\nGO\nselect 2'
+    expect(statementAtCaret(batched, batched.indexOf('select 2'), 'mssql')).toEqual({ statement: 'select 2', index: 1 })
   })
 })

@@ -137,6 +137,61 @@ describe('exporting selected table rows', () => {
     expect(text).not.toContain('beta')
   })
 
+  it('extends the selection when shift-clicking an already selected row', async () => {
+    renderTable()
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(screen.getByLabelText('选择第 2 行'))
+    fireEvent.click(screen.getByLabelText('选择第 1 行'), { shiftKey: true })
+
+    expect((screen.getByLabelText('选择第 1 行') as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText('选择第 2 行') as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('keeps hidden columns in a selected-row export', async () => {
+    const columns = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'name', typeName: 'VARCHAR' },
+    ]
+    const rows = [
+      [1, 'alpha'],
+      [2, 'beta'],
+    ]
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: request.sql.startsWith('SELECT COUNT(*)') ? [{ name: 'COUNT(*)', typeName: 'BIGINT' }] : columns,
+      rows: request.sql.startsWith('SELECT COUNT(*)') ? [[2]] : rows,
+      rowCount: request.sql.startsWith('SELECT COUNT(*)') ? 1 : 2,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    }))
+    renderTable()
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))
+
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+
+    const idHeader = screen.getAllByRole('columnheader').find((cell) => (cell.textContent ?? '').startsWith('id'))
+    if (idHeader === undefined) throw new Error('missing id header')
+    fireEvent.contextMenu(idHeader)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '隐藏列「id」' }))
+    await waitFor(() =>
+      expect(screen.getAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id'))).toHaveLength(0),
+    )
+
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^已选 CSV/ }))
+
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
+    const [, , text] = downloads.mock.calls[0] as [string, string, string]
+    expect(text).toContain('id,name')
+    expect(text).toContain('1,alpha')
+    expect(text).not.toContain('2,beta')
+  })
+
   it('does not offer selected-row exports before a row is checked', async () => {
     renderTable()
     await waitFor(() => expect(mocks.query.mock.calls.length).toBe(2))

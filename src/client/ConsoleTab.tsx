@@ -31,7 +31,8 @@ import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colm
 import { cellCopyText, rowToTsv } from './cellmenu'
 import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
-import { hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
+import { moveWidthsForColumns } from './columnWidths'
+import { hiddenColumnId, hideColumns, onlyColumn, pruneHidden, readHidden, toggleHidden, writeHidden } from './columnhide'
 import { RedisValuePanel } from './redisview'
 import { usePopoverDismiss } from './popover'
 import { txButtonDisabled, type TxAction, type TxState } from './transaction'
@@ -44,8 +45,9 @@ import { splitStatements } from './multistatement'
 import { readAllowedNumber, readFlag, readText, writeFlag, writeNumber, writeText } from './prefs'
 import { shortcutHit, shortcutLabel } from './keymap'
 import type { ShortcutId } from '../shared/keymap'
+import { sqlDialectOf } from '../shared/dialect'
 import { downloadText, exportFilename, renderExport, toCsv, toJson, toMarkdown, toTsv, type ExportFormat } from './export'
-import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, tableFromStatement } from './tablesql'
+import { cellWhere, groupCountSql, inListOf, insertStatement, insertStatements, columnNames, selectColumnsSql, isBinaryCell, isBinaryType, tableFromStatement } from './tablesql'
 import { applyCompletion, wordAtCaret, type Completion } from './complete'
 import { complete as completeRequest } from './completion/engine'
 import { matchScore } from './completion/rank'
@@ -210,13 +212,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setSelectedRows((current) => {
       const next = new Set(current)
       if (extend && selectionAnchor.current !== null) {
+        // Shift-click extends the selection; it never clears a selected range
+        // based on the clicked row's current state.
         const from = Math.min(selectionAnchor.current, rowIndex)
         const to = Math.max(selectionAnchor.current, rowIndex)
-        const select = !next.has(rowIndex)
-        for (let index = from; index <= to; index += 1) {
-          if (select) next.add(index)
-          else next.delete(index)
-        }
+        for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
       if (next.has(rowIndex)) next.delete(rowIndex)
@@ -655,7 +655,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setFailure(null)
       setMultiNote('')
       try {
-        const paged = pageable(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+        const paged = pageable(text, sqlDialectOf(connection?.dialect))
         const showAll = target.size === ALL_PAGE_SIZE
         const sqlText = paged && !showAll ? wrapPage(connection?.dialect ?? 'mysql', text, target.size, target.page) : text
         const maxRows = showAll ? ALL_ROWS : target.size
@@ -676,7 +676,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         setBase(paged ? text : '')
         setSourceSql(text)
         lastRun.current = { rows: next.rows.length, elapsedMs: next.elapsedMs }
-        if (looksLikeDdl(text)) {
+        if (looksLikeDdl(text, sqlDialectOf(connection?.dialect))) {
           completionCatalog.current?.clear()
           void loadSchemaList(selectedId)
         }
@@ -719,7 +719,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             selectedId,
             part,
             pageSize === ALL_PAGE_SIZE ? ALL_ROWS : pageSize,
-            looksLikeWrite(part),
+            looksLikeWrite(part, sqlDialectOf(connection?.dialect)),
             stmtKey,
             schema,
           )
@@ -749,7 +749,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
       setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
-      if (parts.some(looksLikeDdl)) {
+      if (parts.some((part) => looksLikeDdl(part, sqlDialectOf(connection?.dialect)))) {
         completionCatalog.current?.clear()
         void loadSchemaList(selectedId)
       }
@@ -801,9 +801,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportOpen(false)
     const body = text.trim()
     if (body === '') return
-    const parts = splitStatements(body, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+    const parts = splitStatements(body, sqlDialectOf(connection?.dialect))
     if (parts.length === 0) return
-    const isWrite = parts.some((part) => looksLikeWrite(part))
+    const isWrite = parts.some((part) => looksLikeWrite(part, sqlDialectOf(connection?.dialect)))
     if (isWrite && settings?.confirmDestructive === true) {
       const ok = await askConfirm(parts.length > 1 ? `即将顺序执行 ${parts.length} 条语句（含写语句），可能修改或删除数据。` : '即将执行写语句，可能修改或删除数据。', body)
       if (!ok) return
@@ -851,7 +851,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     const found = statementAtCaret(
       statement,
       area?.selectionStart ?? caretPos,
-      connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+      sqlDialectOf(connection?.dialect),
     )
     if (found.statement === '') return
     setSelectedRun(false)
@@ -1150,7 +1150,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         ? statementAtCaret(
             statement,
             area?.selectionStart ?? caretPos,
-            connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic',
+            sqlDialectOf(connection?.dialect),
           ).statement
         : statement.slice(Math.min(area.selectionStart, area.selectionEnd), Math.max(area.selectionStart, area.selectionEnd))
     if (picked.trim() === '') return
@@ -1315,10 +1315,24 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const displayRows = useMemo(() => orderRows(filteredRows, columnOrder), [filteredRows, columnOrder])
   // Hiding is display-only: positions map back into the displayed columns, so
   // reordering and row copying keep addressing the full result.
-  const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
+  const hiddenView = useMemo(
+    () => hideColumns(displayColumns, displayRows, hiddenColumns, columns),
+    [columns, displayColumns, displayRows, hiddenColumns],
+  )
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   shownRowsRef.current = shownRows
+
+  // The grid only sees visible columns; move saved widths for hidden ones here
+  // when the visible headers are reordered.
+  const previousFullColumns = useRef(displayColumns)
+  useEffect(() => {
+    const previous = previousFullColumns.current
+    previousFullColumns.current = displayColumns
+    if (shownColumns.length < displayColumns.length) {
+      moveWidthsForColumns(previous, displayColumns, 'console:sql')
+    }
+  }, [displayColumns, shownColumns.length])
 
   // A new page/filter/sort shows different rows, so old checkboxes no longer point at them.
   useEffect(() => {
@@ -1328,18 +1342,32 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const hiddenCount = displayColumns.length - shownColumns.length
   const signature = columnSignature(columns)
   useEffect(() => {
+    // Only a different result shape invalidates the column order; re-running
+    // the same query returns a new columns array but the user's order still fits.
     setColumnOrder(null)
-    setHiddenColumns((current) => pruneHidden(current, columns))
+  }, [signature])
+  useEffect(() => {
+    // The first render has no columns yet; pruning then would erase the
+    // remembered hidden set before the result arrives, so keep it until the
+    // grid actually has a column list to prune against.
+    setHiddenColumns((current) => (columns.length === 0 ? current : pruneHidden(current, columns)))
   }, [signature, columns])
   useEffect(() => {
     writeHidden('console:sql', hiddenColumns)
   }, [hiddenColumns])
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
-    const active = rowSort?.column === column.name ? rowSort.direction : null
-    const index = columns.findIndex((item) => item.name === column.name)
+    const index = columns.findIndex((item) => item === column)
+    const hiddenId = index >= 0 ? hiddenColumnId(columns, index) : column.name
+    const active =
+      rowSort?.column === column.name && (rowSort.index === undefined || rowSort.index === index)
+        ? rowSort.direction
+        : null
+    const binary =
+      isBinaryType(column.typeName, connection?.dialect) ||
+      (index >= 0 && filteredRows.some((row) => isBinaryCell(column, row[index] ?? null, connection?.dialect)))
     return [
-      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, direction: 'asc' }) },
-      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, direction: 'desc' }) },
+      { label: '按此列升序', disabled: active === 'asc', run: () => setRowSort({ column: column.name, index, direction: 'asc' }) },
+      { label: '按此列降序', disabled: active === 'desc', run: () => setRowSort({ column: column.name, index, direction: 'desc' }) },
       { label: '清除排序', disabled: rowSort === null, run: () => setRowSort(null) },
       { label: `复制列名「${column.name}」`, run: () => void copyText(column.name).then(noteCopied('列名')) },
       {
@@ -1348,9 +1376,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         run: () => void copyText(columnValues(filteredRows, index)).then(noteCopied('本列值')),
       },
       {
-        label: '复制为 IN 列表',
-        disabled: filteredRows.length === 0 || index < 0,
-        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index)).then(noteCopied('IN 列表')),
+        label: binary ? '复制为 IN 列表（二进制列无法匹配）' : '复制为 IN 列表',
+        disabled: filteredRows.length === 0 || index < 0 || binary,
+        run: () => void copyText(inListOf(connection?.dialect ?? 'mysql', filteredRows, index, column)).then(noteCopied('IN 列表')),
       },
       {
         label: '复制本列（逗号分隔）',
@@ -1374,7 +1402,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: `隐藏列「${column.name}」`,
         disabled: shownColumns.length <= 1,
-        run: () => setHiddenColumns((current) => toggleHidden(current, column.name)),
+        run: () => setHiddenColumns((current) => toggleHidden(current, hiddenId)),
       },
       {
         label: '按此列分组计数',
@@ -1391,7 +1419,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: '只看这一列',
         disabled: displayColumns.length <= 1,
-        run: () => setHiddenColumns(onlyColumn(displayColumns, column.name)),
+        run: () => setHiddenColumns(onlyColumn(displayColumns, hiddenId, columns)),
       },
       {
         label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,
@@ -1402,9 +1430,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }, [columns, displayColumns, filteredRows, hiddenCount, rowSort, shownColumns.length])
 
   /** Stable grid callbacks so typing in the editor does not re-render the whole result grid. */
-  const gridSort = useCallback((column: ColumnInfo): void => {
-    setRowSort((current) => nextRowSort(current, column.name))
-  }, [])
+  const gridSort = useCallback(
+    (column: ColumnInfo, index: number): void => {
+      // The grid only knows display indexes; object identity still points at the
+      // original result column when headers are reordered or hidden.
+      const source = columns.findIndex((item) => item === column)
+      setRowSort((current) => nextRowSort(current, column.name, source >= 0 ? source : index))
+    },
+    [columns],
+  )
   const gridReorder = useCallback(
     (from: number, to: number): void => {
       // The grid reorders the columns it renders; translate back to display slots.
@@ -1416,7 +1450,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     [displayColumns.length, hiddenView.positions],
   )
   const gridCellMenu = useCallback(
-    (cell: CellMenuTarget): ColumnMenuItem[] => [
+    (cell: CellMenuTarget): ColumnMenuItem[] => {
+      const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
+      return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
       { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')) },
@@ -1426,18 +1462,24 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         run: () => {
           const target = tableTarget()
           if (target === null) return
+          const full = displayRows[cell.rowIndex] ?? cell.row
           void copyText(
-            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, cell.row),
+            insertStatement(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, full),
           ).then(noteCopied('INSERT'))
         },
       },
       {
-        label: '复制 WHERE 条件',
+        label: binary ? '复制 WHERE 条件（二进制值无法匹配）' : '复制 WHERE 条件',
+        disabled: binary,
         run: () => void copyText(`WHERE ${cellWhere(connection?.dialect ?? 'mysql', cell.column, cell.value)}`).then(noteCopied('WHERE 条件')),
       },
-      { label: `复制整行（${displayColumns.length} 列，制表符分隔）`, run: () => void copyText(rowToTsv(displayColumns, cell.row)).then(noteCopied('整行')) },
-    ],
-    [base, connection?.dialect, displayColumns, schema, sourceSql],
+      {
+        label: `复制整行（${displayColumns.length} 列，制表符分隔）`,
+        run: () => void copyText(rowToTsv(displayColumns, displayRows[cell.rowIndex] ?? cell.row)).then(noteCopied('整行')),
+      },
+    ]
+    },
+    [base, connection?.dialect, displayColumns, displayRows, schema, sourceSql],
   )
   const gridCellOpen = useCallback((column: ColumnInfo, value: CellValue): void => {
     setCellView(cellValueView(column.name, value))
@@ -1449,7 +1491,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
    */
   const resolveTarget = useCallback(
     (text: string): { schema: string; table: string } | null => {
-      const parsed = tableFromStatement(text, connection?.dialect === 'redis' ? 'generic' : connection?.dialect ?? 'generic')
+      const parsed = tableFromStatement(text, sqlDialectOf(connection?.dialect))
       if (parsed === null) return null
       return parsed.schema === '' ? { schema: schema !== '' ? schema : defaultSchema, table: parsed.table } : parsed
     },
@@ -1528,7 +1570,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   /** Save only the checked rows of the current page. */
   const exportSelected = (format: ExportFormat): void => {
     setExportOpen(false)
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    // Hidden columns stay in exports; only the grid omits them. Rows keep
+    // their positions, so the selection indexes map straight onto displayRows.
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
     if (format === 'sql' && target === null) {
@@ -1539,7 +1583,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       dialect: connection?.dialect ?? 'mysql',
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
-      columns: shownColumns,
+      columns: displayColumns,
       rows: picked,
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
@@ -1732,7 +1776,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
 
   /** Copy the checked rows in the same formats the page copies offer. */
   const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
-    const picked = shownRows.filter((_, index) => selectedRows.has(index))
+    const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
     if (format === 'sql' && target === null) {
@@ -1741,18 +1785,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     }
     const text =
       format === 'csv'
-        ? toCsv(shownColumns, picked)
+        ? toCsv(displayColumns, picked)
         : format === 'tsv'
-          ? toTsv(shownColumns, picked)
+          ? toTsv(displayColumns, picked)
           : format === 'json'
-            ? toJson(shownColumns, picked)
+            ? toJson(displayColumns, picked)
             : format === 'md'
-              ? toMarkdown(shownColumns, picked)
+              ? toMarkdown(displayColumns, picked)
               : insertStatements(
                   connection?.dialect ?? 'mysql',
                   target!.schema,
                   target!.table,
-                  shownColumns,
+                  displayColumns,
                   picked,
                 )
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
@@ -2591,7 +2635,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
                 offset={offset}
                 rowNumbers={rowNumbers}
                 storageKey="console:sql"
+                widthColumnCount={displayColumns.length}
+                resetKey={result}
                 sort={rowSort}
+                sortColumn={rowSort?.index !== undefined ? (columns[rowSort.index] ?? null) : null}
                 onSort={gridSort}
                 onReorderColumns={gridReorder}
                 headerMenu={columnMenu}

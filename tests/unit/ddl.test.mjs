@@ -129,4 +129,38 @@ describe('对象定义 (DDL)', () => {
     const result = await service.ddl('c1', 'mysql', 'shop', 'fn_x', 'function')
     expect(result.ddl).toBe('CREATE FUNCTION `fn_x`() RETURNS int RETURN 1')
   })
+
+  it('按结构重建 MySQL DDL 时转义注释里的反斜杠', async () => {
+    const { service } = harness({
+      onQuery: () => {
+        throw new Error('SHOW CREATE TABLE denied')
+      },
+    })
+    service.describe = async () => ({
+      schema: 'shop',
+      table: 'orders',
+      kind: 'table',
+      columns: [
+        {
+          name: 'path',
+          typeName: 'varchar(255)',
+          nullable: true,
+          comment: "C:\\temp\\it's",
+        },
+        {
+          name: 'dir',
+          typeName: 'varchar(255)',
+          nullable: true,
+          comment: 'C:\\temp\\',
+        },
+      ],
+      indexes: [],
+    })
+
+    const result = await service.ddl('c1', 'mysql', 'shop', 'orders', 'table')
+
+    expect(result.source).toBe('generated')
+    expect(result.ddl).toContain(String.raw`COMMENT 'C:\\temp\\it''s'`)
+    expect(result.ddl).toContain(String.raw`COMMENT 'C:\\temp\\'`)
+  })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import { SQL_DIALECT_LABEL } from '../../shared/presets'
+import { sqlDialectOf } from '../../shared/dialect'
 import type { DriverStatus, JarRef, SqlDialect } from '../../shared/types'
 import { api } from '../api'
 import { copyText } from '../colmenu'
@@ -56,7 +57,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
     const editing = props.editing
     if (editing) {
       setName(editing.name)
-      setDialect(editing.dialect === 'redis' ? 'generic' : editing.dialect)
+      setDialect(sqlDialectOf(editing.dialect))
       setDriverClass(editing.driverClass ?? '')
       setUrlTemplate(editing.urlTemplate ?? '')
       setJarsText(editing.jars.map((jar) => `${jar.group}:${jar.artifact}:${jar.version}`).join('\n'))

@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { gunzipSync, inflateRawSync } from 'node:zlib'
 
 /**
@@ -8,7 +8,8 @@ import { gunzipSync, inflateRawSync } from 'node:zlib'
  * formats is not worth it, so both readers stay dependency-free.
  *
  * Every entry is written relative to `destination` and anything that would
- * escape it (absolute paths, `..`, drive letters) is skipped.
+ * escape it (absolute paths, `..`, drive letters) is skipped; symlink targets
+ * must also resolve inside the destination.
  */
 
 const BLOCK = 512
@@ -16,12 +17,56 @@ const ZIP_LOCAL = 0x04034b50
 const ZIP_CENTRAL = 0x02014b50
 const ZIP_EOCD = 0x06054b50
 const ZIP_EOCD_SEARCH = 65_557
+/** A downloaded JDBC driver or runtime should never expand into gigabytes. */
+export const MAX_ARCHIVE_ENTRY_BYTES = 512 * 1024 * 1024
+export const MAX_ARCHIVE_TOTAL_BYTES = 1024 * 1024 * 1024
+/** A huge number of empty entries can exhaust time and descriptors without exceeding the byte cap. */
+export const MAX_ARCHIVE_ENTRIES = 20_000
 
-function archivePath(raw: string): string | undefined {
+export function assertArchiveEntries(count: number): void {
+  if (count > MAX_ARCHIVE_ENTRIES) throw new Error('归档条目过多')
+}
+
+function isBufferTooLarge(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE'
+}
+
+function inflateEntry(raw: Buffer, name: string): Buffer {
+  try {
+    return inflateRawSync(raw, { maxOutputLength: MAX_ARCHIVE_ENTRY_BYTES })
+  } catch (error) {
+    if (isBufferTooLarge(error)) throw new Error(`zip 条目解压后过大：${name}`)
+    throw error
+  }
+}
+
+function gunzipArchive(archive: Buffer): Buffer {
+  try {
+    return gunzipSync(archive, { maxOutputLength: MAX_ARCHIVE_TOTAL_BYTES })
+  } catch (error) {
+    if (isBufferTooLarge(error)) throw new Error('解压后的归档超过大小限制')
+    throw error
+  }
+}
+
+const WINDOWS_BAD_CHARS = /[<>:"|?*\u0000-\u001f]/
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
+
+function isUnsafeWindowsPart(part: string): boolean {
+  if (process.platform !== 'win32') return false
+  return (
+    part.endsWith('.') ||
+    part.endsWith(' ') ||
+    WINDOWS_BAD_CHARS.test(part) ||
+    WINDOWS_RESERVED_NAME.test(part)
+  )
+}
+
+export function archivePath(raw: string): string | undefined {
   const normalized = raw.replace(/\\/g, '/').replace(/^\.\/+/, '')
   if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) return undefined
   const parts = normalized.split('/').filter((part) => part !== '' && part !== '.')
-  if (parts.length === 0 || parts.includes('..')) return undefined
+  if (parts.length === 0 || parts.includes('..') || parts.some(isUnsafeWindowsPart)) return undefined
   return parts.join('/')
 }
 
@@ -36,8 +81,24 @@ function writeEntry(destination: string, name: string, data: Buffer, mode?: numb
   if (mode !== undefined && mode !== 0 && process.platform !== 'win32') chmodSync(target, mode & 0o777)
 }
 
+/**
+ * Resolve a tar symlink target and keep it only when it stays inside the
+ * extraction directory. A link like `../../outside` would otherwise let a
+ * later archive entry write through it outside the destination.
+ */
+export function safeArchiveLink(destination: string, name: string, link: string): string | undefined {
+  if (link === '' || isAbsolute(link) || /^[A-Za-z]:/.test(link)) return undefined
+  const linkParts = link.replace(/\\/g, '/').split('/')
+  if (linkParts.filter((part) => part !== '' && part !== '.' && part !== '..').some(isUnsafeWindowsPart)) return undefined
+  const resolved = resolve(dirname(join(destination, name)), link)
+  const inside = relative(destination, resolved)
+  if (isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`)) return undefined
+  return resolved
+}
+
 function createLink(destination: string, name: string, link: string): void {
   const target = join(destination, name)
+  if (safeArchiveLink(destination, name, link) === undefined) return
   mkdirSync(dirname(target), { recursive: true })
   try {
     symlinkSync(link, target)
@@ -47,9 +108,13 @@ function createLink(destination: string, name: string, link: string): void {
 }
 
 function endOfCentralDirectory(zip: Buffer): number {
+  if (zip.length < 22) throw new Error('zip 文件缺少中央目录')
   const start = Math.max(0, zip.length - ZIP_EOCD_SEARCH)
   for (let offset = zip.length - 22; offset >= start; offset -= 1) {
-    if (zip.readUInt32LE(offset) === ZIP_EOCD) return offset
+    if (zip.readUInt32LE(offset) !== ZIP_EOCD) continue
+    // A comment may contain the EOCD signature; only trust the record whose
+    // declared comment length reaches the end of the file.
+    if (offset + 22 + zip.readUInt16LE(offset + 20) === zip.length) return offset
   }
   throw new Error('zip 文件缺少中央目录')
 }
@@ -57,13 +122,16 @@ function endOfCentralDirectory(zip: Buffer): number {
 export function extractZip(zip: Buffer, destination: string): void {
   const eocd = endOfCentralDirectory(zip)
   const count = zip.readUInt16LE(eocd + 10)
+  assertArchiveEntries(count)
   let offset = zip.readUInt32LE(eocd + 16)
+  let total = 0
   for (let index = 0; index < count; index += 1) {
     if (offset + 46 > zip.length || zip.readUInt32LE(offset) !== ZIP_CENTRAL) {
       throw new Error('zip 中央目录损坏')
     }
     const method = zip.readUInt16LE(offset + 10)
     const compressedSize = zip.readUInt32LE(offset + 20)
+    const uncompressedSize = zip.readUInt32LE(offset + 24)
     const nameLength = zip.readUInt16LE(offset + 28)
     const extraLength = zip.readUInt16LE(offset + 30)
     const commentLength = zip.readUInt16LE(offset + 32)
@@ -72,7 +140,14 @@ export function extractZip(zip: Buffer, destination: string): void {
     const unixMode = (zip.readUInt32LE(offset + 38) >>> 16) & 0o777
     const rawName = zip.subarray(offset + 46, offset + 46 + nameLength).toString('utf8')
     offset += 46 + nameLength + extraLength + commentLength
-    if (compressedSize === 0xffffffff || localOffset === 0xffffffff) throw new Error('不支持 zip64 压缩包')
+    if (
+      compressedSize === 0xffffffff ||
+      uncompressedSize === 0xffffffff ||
+      localOffset === 0xffffffff
+    ) {
+      throw new Error('不支持 zip64 压缩包')
+    }
+    if (uncompressedSize > MAX_ARCHIVE_ENTRY_BYTES) throw new Error(`zip 条目过大：${rawName}`)
     const name = archivePath(rawName)
     if (name === undefined) continue
     if (rawName.endsWith('/')) {
@@ -88,9 +163,15 @@ export function extractZip(zip: Buffer, destination: string): void {
     const dataStart = localOffset + 30 + zip.readUInt16LE(localOffset + 26) + zip.readUInt16LE(localOffset + 28)
     const raw = zip.subarray(dataStart, dataStart + compressedSize)
     if (raw.length !== compressedSize) throw new Error(`zip 条目数据不完整：${rawName}`)
-    if (method === 0) writeEntry(destination, name, Buffer.from(raw), unixMode)
-    else if (method === 8) writeEntry(destination, name, inflateRawSync(raw), unixMode)
+    let data: Buffer
+    if (method === 0) data = Buffer.from(raw)
+    else if (method === 8) data = inflateEntry(raw, rawName)
     else throw new Error(`不支持 zip 压缩方式 ${String(method)}`)
+    if (data.length > MAX_ARCHIVE_ENTRY_BYTES || total + data.length > MAX_ARCHIVE_TOTAL_BYTES) {
+      throw new Error(`zip 解压后过大：${rawName}`)
+    }
+    total += data.length
+    writeEntry(destination, name, data, unixMode)
   }
 }
 
@@ -102,10 +183,36 @@ function cString(block: Buffer, start: number, length: number): string {
 
 function octal(block: Buffer): number {
   const text = cString(block, 0, block.length).trim()
-  if (text === '') return 0
+  if (text === '' || !/^[0-7]+$/.test(text)) return 0
   const value = Number.parseInt(text, 8)
   return Number.isFinite(value) ? value : 0
 }
+
+/** Tar sizes must be non-negative octal; a negative size could make the reader loop. */
+function headerSize(header: Buffer): number {
+  const text = cString(header, 124, 12).trim()
+  if (text === '') return 0
+  if (!/^[0-7]+$/.test(text)) throw new Error('tar 条目大小非法')
+  const value = Number.parseInt(text, 8)
+  if (!Number.isFinite(value) || value < 0) throw new Error('tar 条目大小非法')
+  return value
+}
+
+/** The historic signed-byte checksum is still emitted by some BSD tars. */
+function verifyTarChecksum(header: Buffer): void {
+  const text = cString(header, 148, 8).trim()
+  if (text === '' || !/^[0-7]+$/.test(text)) throw new Error('tar 头校验和非法')
+  const expected = Number.parseInt(text, 8)
+  let unsigned = 0
+  let signed = 0
+  for (let index = 0; index < BLOCK; index += 1) {
+    const byte = index >= 148 && index < 156 ? 0x20 : (header[index] ?? 0)
+    unsigned += byte
+    signed += byte > 127 ? byte - 256 : byte
+  }
+  if (expected !== unsigned && expected !== signed) throw new Error('tar 头校验和非法')
+}
+
 
 /** PAX extended headers are `"<length> key=value\n"` records. */
 function parsePax(body: Buffer): Record<string, string> {
@@ -125,22 +232,31 @@ function parsePax(body: Buffer): Record<string, string> {
 }
 
 export function extractTarGz(archive: Buffer, destination: string): void {
-  const tar = gunzipSync(archive)
+  const tar = gunzipArchive(archive)
   let offset = 0
+  let total = 0
+  let entries = 0
   let pax: Record<string, string> = {}
   while (offset + BLOCK <= tar.length) {
     const header = tar.subarray(offset, offset + BLOCK)
     if (header.every((byte) => byte === 0)) break
-    const size = octal(header.subarray(124, 136))
+    entries += 1
+    assertArchiveEntries(entries)
+    const size = headerSize(header)
     const mode = octal(header.subarray(100, 108))
     const type = String.fromCharCode(header[156] ?? 0)
     const prefix = cString(header, 345, 155)
     const entryName = prefix === '' ? cString(header, 0, 100) : `${prefix}/${cString(header, 0, 100)}`
     const name = pax.path ?? entryName
     const link = pax.linkpath ?? cString(header, 157, 100)
+    if (size > MAX_ARCHIVE_ENTRY_BYTES) throw new Error(`tar 条目过大：${entryName}`)
+    if (total + size > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('tar 解压后过大')
     offset += BLOCK
+    if (offset + size > tar.length) throw new Error(`tar 条目数据不完整：${entryName}`)
+    verifyTarChecksum(header)
     const body = tar.subarray(offset, offset + size)
     offset += Math.ceil(size / BLOCK) * BLOCK
+    total += size
     if (type === 'x') {
       pax = { ...pax, ...parsePax(body) }
       continue

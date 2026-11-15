@@ -1,5 +1,314 @@
 import type { SqlDialect } from '../shared/types'
-import { backslashEscapes, dashStartsComment, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
+import { blockCommentEnd } from '../shared/sqlcomment'
+import { backslashEscapes, bracketIdentifierEnd, dashStartsComment, dollarDelimiterAt, maskNonCode, oracleQuotedLiteralEnd } from './sqllex'
+
+interface DelimiterDirective {
+  token: string
+  end: number
+}
+
+interface BatchDirective {
+  end: number
+  count: number
+}
+
+/**
+ * SQLite keeps a trigger body between `BEGIN` and `END`; its internal
+ * semicolons are part of the definition. A `CASE ... END` expression inside
+ * the body has its own `END`, so count both `BEGIN` and `CASE` while scanning
+ * the already string/comment-masked statement.
+ */
+function sqliteTriggerNeedsMore(text: string): boolean {
+  const code = maskNonCode(text, 'sqlite', true)
+  if (!/^\s*create\s+(?:temp(?:orary)?\s+)?trigger\b/iu.test(code)) return false
+  let depth = 0
+  let body = false
+  for (const match of code.matchAll(/\b(begin|case|end)\b/giu)) {
+    const word = match[1]?.toLowerCase()
+    if (word === 'end') depth -= 1
+    else {
+      depth += 1
+      if (word === 'begin') body = true
+    }
+  }
+  return body && depth > 0
+}
+
+/**
+ * Oracle anonymous PL/SQL blocks start with `BEGIN` (or a `DECLARE` section),
+ * and procedure/function/trigger definitions also put a PL/SQL body after
+ * `AS`/`IS`. Those bodies contain semicolons; count the block openers so a
+ * semicolon only ends the statement after the matching `END`. `END IF` /
+ * `END LOOP` / `END CASE` close a construct rather than the block, so they are
+ * not counted as an extra opener.
+ */
+const ORACLE_PROGRAM_START =
+  /^\s*create\s+(?:or\s+replace\s+)?(?:editionable\s+|noneditionable\s+)?(procedure|function|trigger|package(?:\s+body)?|type\s+body)\b/iu
+
+function oracleProgramKind(text: string): string | null {
+  return ORACLE_PROGRAM_START.exec(text)?.[1]?.toLowerCase() ?? null
+}
+
+/**
+ * A compound trigger is a series of timing sections, each with its own
+ * `BEGIN ... END <timing>;`. The final `END [trigger];` has no timing suffix,
+ * so the section terminators must not flush the statement.
+ */
+function oracleCompoundTriggerNeedsMore(code: string): boolean {
+  const words = Array.from(code.matchAll(/;|\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
+  let depth = 0
+  let seenBegin = false
+  let lastEnd = -1
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]
+    if (word === 'begin' || word === 'if' || word === 'loop' || word === 'case') {
+      if (word === 'begin') seenBegin = true
+      depth += 1
+      continue
+    }
+    if (word !== 'end') continue
+    lastEnd = index
+    const next = words[index + 1]
+    if (next === 'if' || next === 'loop' || next === 'case') index += 1
+    depth -= 1
+  }
+  if (!seenBegin || depth > 0) return true
+  const after = words.slice(lastEnd + 1).join(' ')
+  return /^(?:before\s+statement|after\s+statement|before\s+each\s+row|after\s+each\s+row|instead\s+of|if|loop|case)\b/u.test(
+    after,
+  )
+}
+
+function oracleBlockNeedsMore(text: string): boolean {
+  const code = maskNonCode(text, 'oracle', true)
+  const anonymous = /^\s*(begin|declare)\b/iu.exec(code)
+  const kind = anonymous === null ? oracleProgramKind(code) : null
+  const program = kind !== null
+  if (anonymous === null && !program) return false
+  if (kind === 'trigger' && /\bcompound\s+trigger\b/iu.test(code)) {
+    return oracleCompoundTriggerNeedsMore(code)
+  }
+  const callable = kind === 'procedure' || kind === 'function' || kind === 'trigger'
+  // External procedures and `CALL` triggers have no BEGIN block. Without this
+  // check their first semicolon would be swallowed forever waiting for one.
+  if (callable && !/\bbegin\b/iu.test(code) && /\b(?:external|language|call)\b/iu.test(code)) return false
+  const words = Array.from(code.matchAll(/;|\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
+  let declaration = anonymous?.[1]?.toLowerCase() === 'declare' || program
+  // A procedure/function/trigger header is its own first PROCEDURE/FUNCTION
+  // token. Package and type bodies have no such header, so their first local
+  // subprogram must be treated as local.
+  let headerKeywordSkipped = !program || !callable
+  let localHeader = false
+  let inLocal = false
+  let localDepth = 0
+  let declarationEnd = false
+  let declarationCaseDepth = 0
+  let seenBegin = false
+  let depth = 0
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]
+    if (inLocal) {
+      if (word === 'begin' || word === 'if' || word === 'loop' || word === 'case') {
+        localDepth += 1
+        continue
+      }
+      if (word === 'end') {
+        const next = words[index + 1]
+        if (next === 'if' || next === 'loop' || next === 'case') index += 1
+        localDepth -= 1
+        if (localDepth === 0) inLocal = false
+      }
+      continue
+    }
+    if (declaration) {
+      if (word === ';') {
+        localHeader = false
+        continue
+      }
+      if (word === 'procedure' || word === 'function') {
+        if (!headerKeywordSkipped) headerKeywordSkipped = true
+        else localHeader = true
+        continue
+      }
+      if (word === 'begin') {
+        if (localHeader) {
+          inLocal = true
+          localDepth = 1
+          localHeader = false
+        } else {
+          declaration = false
+          seenBegin = true
+          depth = 1
+        }
+        continue
+      }
+      if (word === 'case') {
+        // A declaration initializer may contain a CASE expression; its END
+        // does not terminate a package/type declaration section.
+        declarationCaseDepth += 1
+        continue
+      }
+      if (word === 'end') {
+        if (declarationCaseDepth > 0) {
+          declarationCaseDepth -= 1
+          continue
+        }
+        // Package/type bodies have no main BEGIN, but still end with
+        // `END [name];`; this is the terminator we are waiting for.
+        declarationEnd = true
+      }
+      continue
+    }
+    if (word === 'begin') {
+      if (seenBegin) depth += 1
+      else {
+        seenBegin = true
+        depth = 1
+      }
+      continue
+    }
+    if (word === 'if' || word === 'loop' || word === 'case') {
+      depth += 1
+      continue
+    }
+    if (word === 'end') {
+      const next = words[index + 1]
+      if (next === 'if' || next === 'loop' || next === 'case') index += 1
+      depth -= 1
+    }
+  }
+  // A DECLARE section (or a program's declaration section) has no `BEGIN`
+  // yet; its semicolons are not terminators. A local subprogram may have
+  // closed, but the main body has not started.
+  if (inLocal) return true
+  if (declaration) return !declarationEnd
+  return seenBegin && depth > 0
+}
+
+/**
+ * Whether the statement starts an Oracle PL/SQL block. Unlike ordinary
+ * statements, the final `;` belongs to the PL/SQL syntax and must be sent to
+ * the server; the splitter removes it for a plain `SELECT`.
+ */
+function oracleBlockStart(text: string): boolean {
+  const code = maskNonCode(text, 'oracle', true)
+  if (/^\s*(?:begin|declare)\b/iu.test(code)) return true
+  const kind = oracleProgramKind(code)
+  if (kind === null) return false
+  // Package/type specifications and bodies have a final `END ...;` even when
+  // they have no executable section. Callable programs only keep the
+  // terminator when their body actually started.
+  if (kind === 'package' || kind === 'package body' || kind === 'type body') return /\bend\b/iu.test(code)
+  return /\bbegin\b/iu.test(code)
+}
+
+/** True when the pending text is only Oracle comments, not a statement. */
+function hasOnlyOracleComments(text: string): boolean {
+  return /^\s*(?:(?:--[^\n]*(?:\n|$))|(?:\/\*[\s\S]*?\*\/)\s*)*$/u.test(text)
+}
+
+/** Index just past a SQL*Plus `/` line, or null when it is not on its own line. */
+function oracleSlashLineEnd(input: string, index: number): number | null {
+  if (input[index] !== '/') return null
+  let lineStart = index
+  while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
+  if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
+  let cursor = index + 1
+  while (cursor < input.length && (input[cursor] === ' ' || input[cursor] === '\t')) cursor += 1
+  if (cursor < input.length && input[cursor] !== '\n' && input[cursor] !== '\r') return null
+  if (input[cursor] === '\r') {
+    cursor += 1
+    if (input[cursor] === '\n') cursor += 1
+  } else if (input[cursor] === '\n') {
+    cursor += 1
+  }
+  return cursor
+}
+
+/** A script may put explanatory comments before its first DELIMITER line. */
+function hasOnlyComments(text: string): boolean {
+  const rest = text
+    .replace(/\/\*[\s\S]*?\*\//gu, '')
+    .replace(/(?:--|#)[^\n]*/gu, '')
+    .trim()
+  return rest === ''
+}
+
+/**
+ * Parse a mysql `DELIMITER <token>` line at `index`. The command only counts at
+ * the beginning of a line; anything else is ordinary SQL and is left for the
+ * server.
+ */
+function mysqlDelimiterDirective(input: string, index: number): DelimiterDirective | null {
+  let lineStart = index
+  while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
+  if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
+  const match = /^delimiter[ \t]+(\S+)[ \t]*(?:(?:--|#)[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
+  if (match === null) return null
+  const token = match[1]
+  if (token === undefined) return null
+  return { token, end: index + match[0].length }
+}
+
+/**
+ * SQL Server program bodies (`CREATE PROCEDURE`, `FUNCTION`, `TRIGGER`, `VIEW`)
+ * contain semicolons that are part of the definition, not statement separators.
+ * A batch ends at the next `GO`; keep the whole definition together until then.
+ */
+function isMssqlProgram(text: string): boolean {
+  const code = maskNonCode(text, 'mssql', true)
+  return /^\s*(?:create\s+(?:or\s+alter\s+)?|alter\s+)(?:proc(?:edure)?|function|trigger|view)\b/iu.test(code)
+}
+
+/**
+ * Parse a SQL Server `GO` batch separator at `index`. `GO` is a client command,
+ * not T-SQL: it only counts as its own line, optionally followed by a comment,
+ * and is never sent to the server. A positive count repeats the preceding
+ * batch, matching sqlcmd.
+ */
+function mssqlGoDirective(input: string, index: number): BatchDirective | null {
+  let lineStart = index
+  while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
+  if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
+  const word = /^go\b/iu.exec(input.slice(index))
+  if (word === null) return null
+  let cursor = index + word[0].length
+  let count = 1
+  const countMatch = /^[ \t]+(\d+)/u.exec(input.slice(cursor))
+  if (countMatch !== null) {
+    count = Number(countMatch[1])
+    if (!Number.isSafeInteger(count) || count < 1) return null
+    cursor += countMatch[0].length
+  }
+  // SQL Server accepts comments after GO, including nested block comments.
+  // A line comment consumes the rest of the line; block comments may span
+  // lines and may be followed by another comment.
+  for (;;) {
+    while (input[cursor] === ' ' || input[cursor] === '\t') cursor += 1
+    if (input[cursor] === '-' && input[cursor + 1] === '-') {
+      const newline = input.indexOf('\n', cursor)
+      cursor = newline < 0 ? input.length : newline
+      break
+    }
+    if (input[cursor] === '/' && input[cursor + 1] === '*') {
+      const close = blockCommentEnd(input, cursor, 'mssql')
+      if (close < 0) return null
+      cursor = close
+      continue
+    }
+    break
+  }
+  while (input[cursor] === ' ' || input[cursor] === '\t') cursor += 1
+  if (input[cursor] === '\r') {
+    cursor += 1
+    if (input[cursor] === '\n') cursor += 1
+  } else if (input[cursor] === '\n') {
+    cursor += 1
+  } else if (cursor !== input.length) {
+    return null
+  }
+  return { end: cursor, count }
+}
 
 /**
  * Split a SQL script into individual statements.
@@ -14,33 +323,118 @@ import { backslashEscapes, dashStartsComment, dollarDelimiterAt, oracleQuotedLit
  * MySQL rule; standard SQL treats it as an ordinary character, so `'C:\'` ends
  * at the quote instead of swallowing the rest of the script. PostgreSQL is the
  * exception among the standard dialects: its `E'...'` string does escape.
+ *
+ * MySQL's `DELIMITER $$` client command is handled here too: the directive is
+ * removed, the chosen token terminates statements, and semicolons inside the
+ * body stay part of the statement. SQL Server's `GO` batch separator is also a
+ * client command; a line containing only `GO` splits batches and is removed.
  */
 export function splitStatements(input: string, dialect: SqlDialect = 'generic'): string[] {
+  // Files saved by Windows editors often start with a UTF-8 BOM. It is not
+  // SQL, and leaving it on the first word breaks read-only classification.
+  if (input.charCodeAt(0) === 0xfeff) input = input.slice(1)
   const statements: string[] = []
   let current = ''
+  let delimiter = ';'
+  let batchStart = 0
+  let mssqlProgram: boolean | undefined
   let index = 0
 
   const flush = (): void => {
     const trimmed = current.trim()
     if (trimmed !== '') statements.push(trimmed)
     current = ''
+    mssqlProgram = undefined
   }
 
   while (index < input.length) {
     const char = input[index] ?? ''
 
+    // SQL*Plus scripts put a lone `/` after a PL/SQL block to run it. The
+    // splitter already executed the preceding statement, so this line is not
+    // SQL and must not be sent to Oracle (which would report ORA-00900).
+    if (
+      (dialect === 'oracle' || dialect === 'oceanbase-oracle') &&
+      char === '/' &&
+      (current.trim() === '' || hasOnlyOracleComments(current))
+    ) {
+      const end = oracleSlashLineEnd(input, index)
+      if (end !== null) {
+        // A slash is a client-side "run the buffer" marker. Drop any comments
+        // collected before it instead of sending them as a statement.
+        current = ''
+        index = end
+        continue
+      }
+    }
+
+    // `GO` is a SQL Server client command, not T-SQL. It only counts when it
+    // starts its own line; strings and comments are consumed by their own
+    // branches before the scanner can see a `GO` inside them.
+    const batchWord = char === 'g' || char === 'G' ? input.slice(index, index + 2).toLowerCase() : ''
+    if (dialect === 'mssql' && batchWord === 'go') {
+      const batch = mssqlGoDirective(input, index)
+      if (batch !== null) {
+        if (!hasOnlyComments(current)) flush()
+        const batchStatements = statements.slice(batchStart)
+        if (batch.count > 1 && batchStatements.length > 0) {
+          for (let repeat = 1; repeat < batch.count; repeat += 1) statements.push(...batchStatements)
+        }
+        batchStart = statements.length
+        index = batch.end
+        continue
+      }
+    }
+
+    // `DELIMITER` is a mysql client command; it chooses the separator but is
+    // never sent to the server. Only recognise it at the start of a line so a
+    // string or identifier that happens to contain the word is left alone.
+    const directiveWord = char === 'd' || char === 'D' ? input.slice(index, index + 9).toLowerCase() : ''
+    if (
+      dialect === 'mysql' &&
+      directiveWord === 'delimiter' &&
+      (current.trim() === '' || hasOnlyComments(current))
+    ) {
+      const directive = mysqlDelimiterDirective(input, index)
+      if (directive !== null) {
+        delimiter = directive.token
+        index = directive.end
+        continue
+      }
+    }
+
+    // A custom delimiter replaces `;` until the next DELIMITER command. It is
+    // checked before PostgreSQL dollar quotes because MySQL uses `$$` for both
+    // a stored-program terminator and an ordinary delimiter token.
+    if (delimiter !== ';' && input.startsWith(delimiter, index)) {
+      flush()
+      index += delimiter.length
+      continue
+    }
+
     // PostgreSQL dollar quotes: a function body may contain semicolons, and the
     // matching tag is what ends it. An opener without a closer is left alone,
     // so MySQL's `$`-in-identifier scripts keep splitting at their semicolons.
-    if (char === '$') {
-      const delimiter = dollarDelimiterAt(input, index)
-      if (delimiter !== null) {
-        const close = input.indexOf(delimiter, index + delimiter.length)
+    if (char === '$' && dialect === 'postgres') {
+      const tag = dollarDelimiterAt(input, index)
+      if (tag !== null) {
+        const close = input.indexOf(tag, index + tag.length)
         if (close !== -1) {
-          current += input.slice(index, close + delimiter.length)
-          index = close + delimiter.length
+          current += input.slice(index, close + tag.length)
+          index = close + tag.length
           continue
         }
+      }
+    }
+
+    // SQL Server and SQLite bracket identifiers may contain semicolons; keep
+    // the whole name together so `[a;b]` does not become two statements.
+    if (char === '[' && (dialect === 'mssql' || dialect === 'sqlite')) {
+      const end = bracketIdentifierEnd(input, index)
+      if (end !== null) {
+        current += input.slice(index, end)
+        index = end
+        continue
       }
     }
 
@@ -64,8 +458,8 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
     // Block comments span lines; keep them attached to the current statement.
     if (char === '/' && input[index + 1] === '*') {
-      const close = input.indexOf('*/', index + 2)
-      const stop = close === -1 ? input.length : close + 2
+      const close = blockCommentEnd(input, index, dialect)
+      const stop = close === -1 ? input.length : close
       current += input.slice(index, stop)
       index = stop
       continue
@@ -111,7 +505,34 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
       }
     }
 
-    if (char === ';') {
+    if (char === ';' && delimiter === ';') {
+      if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && oracleBlockNeedsMore(current)) {
+        current += char
+        index += 1
+        continue
+      }
+      // The final semicolon of a PL/SQL block is part of the block syntax, so
+      // keep it; ordinary Oracle statements are still sent without the
+      // terminator (the server rejects a trailing `;` with ORA-00933).
+      if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && oracleBlockStart(current)) {
+        current += char
+        flush()
+        index += 1
+        continue
+      }
+      if (dialect === 'sqlite' && sqliteTriggerNeedsMore(current)) {
+        current += char
+        index += 1
+        continue
+      }
+      if (dialect === 'mssql') {
+        if (mssqlProgram === undefined) mssqlProgram = isMssqlProgram(current)
+        if (mssqlProgram) {
+          current += char
+          index += 1
+          continue
+        }
+      }
       flush()
       index += 1
       continue

@@ -63,6 +63,12 @@ describe('sortKeysByTtl', () => {
     expect(sortKeysByTtl(keys, 'desc').map((item) => item.key)).toEqual(['a', 'c', 'b'])
   })
 
+  it('orders an expired key by its negative TTL instead of treating it as permanent', () => {
+    const withExpired = [...keys, { key: 'd', type: 'string', ttl: -2, size: 1 }]
+    expect(sortKeysByTtl(withExpired, 'asc').map((item) => item.key)).toEqual(['d', 'c', 'a', 'b'])
+    expect(sortKeysByTtl(withExpired, 'desc').map((item) => item.key)).toEqual(['a', 'c', 'd', 'b'])
+  })
+
   it('keeps scan order and the input untouched', () => {
     expect(sortKeysByTtl(keys, 'none')).toBe(keys)
     const before = keys.map((item) => item.key)

@@ -73,12 +73,15 @@ const settings = {
 
 const tab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })
 
-async function runQuery(): Promise<void> {
+async function runQuery(
+  columns: { name: string; typeName: string }[] = [{ name: 'name', typeName: 'VARCHAR' }],
+  rows: (string | number)[][] = [['alpha'], ['beta'], ['gamma']],
+): Promise<void> {
   mocks.query.mockResolvedValueOnce({
     sql: 'SELECT * FROM t',
-    columns: [{ name: 'name', typeName: 'VARCHAR' }],
-    rows: [['alpha'], ['beta'], ['gamma']],
-    rowCount: 3,
+    columns,
+    rows,
+    rowCount: rows.length,
     truncated: false,
     elapsedMs: 1,
     warnings: [],
@@ -90,7 +93,7 @@ async function runQuery(): Promise<void> {
   if (editor === null) throw new Error('missing SQL editor')
   fireEvent.change(editor, { target: { value: 'SELECT * FROM t' } })
   fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
-  await screen.findByText('alpha')
+  await waitFor(() => expect(screen.getAllByRole('row').length).toBeGreaterThan(1))
 }
 
 describe('console row numbers while sorting', () => {
@@ -113,5 +116,28 @@ describe('console row numbers while sorting', () => {
     await waitFor(() => expect(screen.getAllByRole('row')[1]?.textContent).toMatch(/^3gamma/))
     const rows = screen.getAllByRole('row').slice(1)
     expect(rows.map((row) => row.textContent?.replace(/\s+/gu, ''))).toEqual(['3gamma', '2beta', '1alpha'])
+  })
+
+  it('sorts the duplicate header that was clicked', async () => {
+    await runQuery(
+      [
+        { name: 'id', typeName: 'INT' },
+        { name: 'id', typeName: 'INT' },
+      ],
+      [
+        [1, 30],
+        [2, 10],
+        [3, 20],
+      ],
+    )
+    const header = screen.getAllByRole('columnheader', { name: /^id/ })[1] as HTMLElement
+    fireEvent.click(header)
+    fireEvent.click(header)
+    const headers = screen.getAllByRole('columnheader', { name: /^id/ })
+    expect(headers[0]?.getAttribute('aria-sort')).toBe('none')
+    expect(headers[1]?.getAttribute('aria-sort')).toBe('descending')
+    await waitFor(() =>
+      expect(screen.getAllByRole('row')[1]?.textContent?.replace(/\s+/gu, '')).toBe('1130'),
+    )
   })
 })

@@ -6,7 +6,8 @@
  */
 export function agoText(seconds: number): string {
   if (!Number.isFinite(seconds)) return '刚刚'
-  const whole = Math.max(0, Math.round(seconds))
+  // Floor the age itself: 59.9s is still "刚刚", not the next unit.
+  const whole = Math.max(0, Math.floor(seconds))
   if (whole < 60) return '刚刚'
   const minutes = Math.floor(whole / 60)
   if (minutes < 60) return `${minutes} 分钟前`

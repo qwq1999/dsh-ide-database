@@ -53,7 +53,7 @@ const settings = {
 }
 
 const tab = () => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })
-const ORDER_KEY = 'dsh-ide-database.table-order.v1:shop.orders'
+const ORDER_KEY = 'dsh-ide-database.table-order.v1:mysql-1:shop.orders'
 
 describe('remembered ORDER BY', () => {
   afterEach(() => {

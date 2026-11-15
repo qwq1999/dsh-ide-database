@@ -74,6 +74,16 @@ describe('completion history', () => {
     expect(completionFrequency()).toEqual({ id: 3 })
   })
 
+  it('keeps a completion named __proto__ as ordinary data', () => {
+    rememberCompletion('__proto__')
+    rememberCompletion('__proto__')
+
+    const counts = completionFrequency()
+    expect(Object.prototype.hasOwnProperty.call(counts, '__proto__')).toBe(true)
+    expect(counts['__proto__']).toBe(2)
+    expect(Object.getPrototypeOf(counts)).toBeNull()
+  })
+
   it('keeps the most picked names when the frequency map is full', () => {
     for (let index = 0; index < 220; index += 1) rememberCompletion(`name-${index}`)
     rememberCompletion('hot')

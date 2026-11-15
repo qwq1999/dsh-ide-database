@@ -28,6 +28,7 @@ import type {
   TableDescription,
 } from '../../shared/types'
 import { api, ApiError } from '../api'
+import { treeFolderKey, treeFolderSelectedKey, treeObjectKey, treeSchemaKey, treeSchemaSelectedKey } from '../treekeys'
 import { objectKindLabel } from '../format'
 
 export interface Snapshot {
@@ -481,7 +482,14 @@ export function useDataSources(notify: Notify): DataSources {
           }
           const rest = key.slice(connectionId.length + 1)
           const hash = rest.indexOf('#')
-          const schema = hash === -1 ? rest : rest.slice(0, hash)
+          const encodedSchema = hash === -1 ? rest : rest.slice(0, hash)
+          let schema: string
+          try {
+            schema = decodeURIComponent(encodedSchema)
+          } catch {
+            // Keys from the previous in-memory format were not encoded.
+            schema = encodedSchema
+          }
           if (!listed.has(schema)) continue
           kept[key] = value
           if (hash === -1 && value === true && schema !== 'redis') open.push(schema)
@@ -675,20 +683,21 @@ export function useDataSources(notify: Notify): DataSources {
   }, [notify, refresh])
 
   const toggleFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
-    const key = `${connectionId}:${schema}#${folder}`
+    const key = treeFolderKey(connectionId, schema, folder)
     setExpanded((previous) => ({ ...previous, [key]: previous[key] !== true }))
   }, [])
 
   const toggleSchema = useCallback(
     async (connectionId: string, schema: string): Promise<void> => {
-      const key = `${connectionId}:${schema}`
-      const isExpanded = expandedRef.current[key] === true
-      setExpanded((previous) => ({ ...previous, [key]: !isExpanded }))
-      if (isExpanded || objectsRef.current[key] !== undefined) return
-      setLoadingObjects((previous) => ({ ...previous, [key]: true }))
+      const expandedKey = treeSchemaKey(connectionId, schema)
+      const objectsKey = `${connectionId}:${schema}`
+      const isExpanded = expandedRef.current[expandedKey] === true
+      setExpanded((previous) => ({ ...previous, [expandedKey]: !isExpanded }))
+      if (isExpanded || objectsRef.current[objectsKey] !== undefined) return
+      setLoadingObjects((previous) => ({ ...previous, [objectsKey]: true }))
       try {
         const result = await api.objects(connectionId, schema)
-        setObjects((previous) => ({ ...previous, [key]: result.objects }))
+        setObjects((previous) => ({ ...previous, [objectsKey]: result.objects }))
         if (result.fetchedAt !== undefined) {
           const stamp = result.fetchedAt
           setCachedAt((previous) => ({ ...previous, [connectionId]: stamp }))
@@ -696,7 +705,7 @@ export function useDataSources(notify: Notify): DataSources {
       } catch (error) {
         notify(`加载对象失败：${errorText(error)}`, 'error')
       } finally {
-        setLoadingObjects((previous) => ({ ...previous, [key]: false }))
+        setLoadingObjects((previous) => ({ ...previous, [objectsKey]: false }))
       }
     },
     [notify],
@@ -728,7 +737,7 @@ export function useDataSources(notify: Notify): DataSources {
 
   const selectObject = useCallback(
     async (connectionId: string, schema: string, object: SchemaObject): Promise<void> => {
-      const key = `${connectionId}|${schema}.${object.name}`
+      const key = treeObjectKey(connectionId, schema, object.name)
       const request = detailRequest.current + 1
       detailRequest.current = request
       setSelectedId(connectionId)
@@ -808,7 +817,7 @@ export function useDataSources(notify: Notify): DataSources {
     setDetail(null)
     setRedisDetail(null)
     setRedisDetailDb(-1)
-    setSelectedKey(`${connectionId}|schema:${schema}`)
+    setSelectedKey(treeSchemaSelectedKey(connectionId, schema))
     setSelectedSchema(schema)
   }, [])
 
@@ -818,7 +827,7 @@ export function useDataSources(notify: Notify): DataSources {
     setDetail(null)
     setRedisDetail(null)
     setRedisDetailDb(-1)
-    setSelectedKey(`${connectionId}|${schema}#${folder}`)
+    setSelectedKey(treeFolderSelectedKey(connectionId, schema, folder))
     setSelectedSchema(schema)
   }, [])
 

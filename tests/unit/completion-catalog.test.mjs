@@ -21,6 +21,7 @@ import {
   CATALOG_TABLE_LIMIT,
   ConsoleCompletionCatalog,
 } from '../../src/client/completion/catalog'
+import { completionColumnKey } from '../../src/shared/completionkey'
 
 const EMPTY_METADATA = { cached: false, schemas: [], tables: {}, columns: {} }
 
@@ -60,7 +61,7 @@ describe('ConsoleCompletionCatalog', () => {
         cached: true,
         schemas: [],
         tables: {},
-        columns: { 'shop.orders': [{ name: 'id', typeName: 'INT' }] },
+        columns: { [completionColumnKey('shop', 'orders')]: [{ name: 'id', typeName: 'INT' }] },
       })
     const subject = catalog()
     await expect(subject.schemas()).resolves.toEqual(['shop'])
@@ -69,6 +70,21 @@ describe('ConsoleCompletionCatalog', () => {
     expect(mocks.schemas).not.toHaveBeenCalled()
     expect(mocks.objects).not.toHaveBeenCalled()
     expect(mocks.describe).not.toHaveBeenCalled()
+  })
+
+  it('keeps dotted schema/table pairs in separate column caches', async () => {
+    mocks.completionMetadata.mockResolvedValue({
+      cached: true,
+      schemas: [],
+      tables: {},
+      columns: {
+        [completionColumnKey('a.b', 'c')]: [{ name: 'left' }],
+        [completionColumnKey('a', 'b.c')]: [{ name: 'right' }],
+      },
+    })
+    const subject = catalog(['a.b', 'a'])
+    await expect(subject.columns('a.b', 'c')).resolves.toEqual([{ name: 'left' }])
+    await expect(subject.columns('a', 'b.c')).resolves.toEqual([{ name: 'right' }])
   })
 
   it('caches relation lists per schema', async () => {

@@ -48,7 +48,9 @@ function normalizeSchemas(value: unknown): SchemaInfo[] {
 }
 
 function normalizeObjects(value: unknown): Record<string, SchemaObject[]> {
-  const out: Record<string, SchemaObject[]> = {}
+  // Schema names come from the server and may be `__proto__`; a plain object
+  // would route that assignment through the prototype setter and lose the list.
+  const out: Record<string, SchemaObject[]> = Object.create(null)
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
   for (const [schema, list] of Object.entries(value as Record<string, unknown>)) {
     if (!Array.isArray(list)) continue
@@ -289,7 +291,7 @@ export class StructureStore {
 
   putSchemas(connectionId: string, schemas: SchemaInfo[]): void {
     const previous = this.data[connectionId]
-    const objects: Record<string, SchemaObject[]> = {}
+    const objects: Record<string, SchemaObject[]> = Object.create(null)
     for (const schema of schemas) {
       const kept = previous?.objects[schema.name]
       if (kept !== undefined) objects[schema.name] = kept
@@ -311,13 +313,13 @@ export class StructureStore {
     const previous = this.data[connectionId] ?? {
       fetchedAt: new Date().toISOString(),
       schemas: [],
-      objects: {},
+      objects: Object.create(null),
       descriptions: {},
     }
     // Drop descriptions of objects that disappeared from the refreshed list,
     // so renames/drops do not leave unreachable entries behind. Routines keep
     // their definition in the same cache, so every listed kind counts here.
-    const listed = new Set(objects.map((object) => `${schema}.${object.name}`))
+    const listed = new Set(objects.map((object) => object.name))
     this.descriptions.pruneObjects(connectionId, schema, listed)
     previous.objects[schema] = objects
     previous.fetchedAt = new Date().toISOString()
@@ -325,7 +327,7 @@ export class StructureStore {
     this.schedule()
   }
 
-  /** `schema.table` keys the description cache; relations only. */
+  /** The description cache is keyed by the schema/table pair; relations only. */
   putDescription(connectionId: string, schema: string, table: string, description: TableDescription): void {
     // The per-connection log takes the write; its timestamp makes the background
     // prefetcher incremental (a fresh entry is skipped, a stale one refreshed).
@@ -333,7 +335,7 @@ export class StructureStore {
     const entry = this.data[connectionId] ?? {
       fetchedAt: new Date().toISOString(),
       schemas: [],
-      objects: {},
+      objects: Object.create(null),
       descriptions: {},
     }
     entry.fetchedAt = new Date().toISOString()
@@ -355,7 +357,7 @@ export class StructureStore {
       this.data[connectionId] ?? {
         fetchedAt: new Date().toISOString(),
         schemas: [],
-        objects: {},
+        objects: Object.create(null),
         descriptions: {},
       }
     if (entry.redis === undefined) entry.redis = { databases: 16, dbs: {} }

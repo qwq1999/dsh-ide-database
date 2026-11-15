@@ -111,6 +111,50 @@ describe('exporting selected console rows', () => {
     await waitFor(() => expect(screen.queryByText('已选 2 行')).toBeNull())
   })
 
+  it('keeps hidden columns in a selected-row export', async () => {
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT id, name FROM t',
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'name', typeName: 'VARCHAR' },
+      ],
+      rows: [
+        [1, 'alpha'],
+        [2, 'beta'],
+      ],
+      rowCount: 2,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT id, name FROM t' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('alpha')
+
+    const idHeader = screen.getAllByRole('columnheader').find((cell) => (cell.textContent ?? '').startsWith('id'))
+    if (idHeader === undefined) throw new Error('missing id header')
+    fireEvent.contextMenu(idHeader)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '隐藏列「id」' }))
+    await waitFor(() =>
+      expect(screen.getAllByRole('columnheader').filter((cell) => (cell.textContent ?? '').startsWith('id'))).toHaveLength(0),
+    )
+
+    fireEvent.click(screen.getByLabelText('选择第 1 行'))
+    fireEvent.click(screen.getByLabelText('导出结果'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^已选 CSV/ }))
+
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
+    const [, , text] = downloads.mock.calls[0] as [string, string, string]
+    expect(text).toContain('id,name')
+    expect(text).toContain('1,alpha')
+    expect(text).not.toContain('beta')
+  })
+
   it('does not offer selected-row exports before a row is checked', async () => {
     mocks.query.mockResolvedValueOnce({
       sql: 'SELECT name FROM t',

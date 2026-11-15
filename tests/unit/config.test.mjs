@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -31,6 +31,25 @@ describe('ConfigStore', () => {
     })
   })
 
+  it('does not let a __proto__ secret alias every missing name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-config-'))
+    dirs.push(dir)
+    const file = join(dir, 'secrets.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        entries: JSON.parse(
+          '{"__proto__":{"value":"c2VjcmV0","updatedAt":"2026-01-01T00:00:00.000Z"}}',
+        ),
+      }),
+    )
+
+    const secrets = new SecretStore(file)
+    expect(secrets.resolve('DSH_IDE_DB_MISSING')).toBeUndefined()
+    expect(secrets.resolve('__proto__')?.value).toBe('secret')
+  })
+
   it('saves a connection and keeps the password in the secret store', () => {
     const { config, secrets } = store()
     const saved = config.saveConnection({
@@ -49,6 +68,23 @@ describe('ConfigStore', () => {
     expect(JSON.stringify(config.snapshot())).not.toContain('s3cret')
     expect(secrets.has(saved.secretName)).toBe(true)
     expect(secrets.resolve(saved.secretName)?.value).toBe('s3cret')
+  })
+
+  it('keeps a JDBC parameter named __proto__', () => {
+    const { config, dir } = store()
+    const saved = config.saveConnection({
+      name: 'Proto', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', database: 'app',
+      params: JSON.parse('{"__proto__":"custom"}'),
+    })
+    expect(Object.hasOwn(saved.params, '__proto__')).toBe(true)
+    expect(saved.params['__proto__']).toBe('custom')
+
+    const reopened = new ConfigStore(config.file, new SecretStore(join(dir, 'secrets.json')))
+    reopened.load()
+    const loaded = reopened.snapshot().connections.find((connection) => connection.id === saved.id)
+    expect(loaded).toBeTruthy()
+    expect(Object.hasOwn(loaded.params, '__proto__')).toBe(true)
+    expect(loaded.params['__proto__']).toBe('custom')
   })
 
   it('updates an existing connection and can clear its password', () => {
