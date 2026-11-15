@@ -7,9 +7,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   archivePath,
+  assertArchiveEntries,
   extractArchive,
   extractTarGz,
   extractZip,
+  MAX_ARCHIVE_ENTRIES,
   MAX_ARCHIVE_ENTRY_BYTES,
   safeArchiveLink,
 } from '../../lib/host/archive.js'
@@ -150,6 +152,11 @@ describe('archive extraction', () => {
     header.write('-1001\0', 124, 'utf8')
     const archive = gzipSync(Buffer.concat([header, Buffer.alloc(1024)]))
     expect(() => extractTarGz(archive, target)).toThrow('tar 条目大小非法')
+  })
+
+  it('caps the number of archive entries', () => {
+    expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES)).not.toThrow()
+    expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES + 1)).toThrow('归档条目过多')
   })
 
   it('unpacks tar.gz entries and keeps bin/java executable on Unix', () => {

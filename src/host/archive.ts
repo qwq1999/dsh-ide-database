@@ -20,6 +20,12 @@ const ZIP_EOCD_SEARCH = 65_557
 /** A downloaded JDBC driver or runtime should never expand into gigabytes. */
 export const MAX_ARCHIVE_ENTRY_BYTES = 512 * 1024 * 1024
 export const MAX_ARCHIVE_TOTAL_BYTES = 1024 * 1024 * 1024
+/** A huge number of empty entries can exhaust time and descriptors without exceeding the byte cap. */
+export const MAX_ARCHIVE_ENTRIES = 20_000
+
+export function assertArchiveEntries(count: number): void {
+  if (count > MAX_ARCHIVE_ENTRIES) throw new Error('归档条目过多')
+}
 
 function isBufferTooLarge(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE'
@@ -112,6 +118,7 @@ function endOfCentralDirectory(zip: Buffer): number {
 export function extractZip(zip: Buffer, destination: string): void {
   const eocd = endOfCentralDirectory(zip)
   const count = zip.readUInt16LE(eocd + 10)
+  assertArchiveEntries(count)
   let offset = zip.readUInt32LE(eocd + 16)
   let total = 0
   for (let index = 0; index < count; index += 1) {
@@ -208,10 +215,13 @@ export function extractTarGz(archive: Buffer, destination: string): void {
   const tar = gunzipArchive(archive)
   let offset = 0
   let total = 0
+  let entries = 0
   let pax: Record<string, string> = {}
   while (offset + BLOCK <= tar.length) {
     const header = tar.subarray(offset, offset + BLOCK)
     if (header.every((byte) => byte === 0)) break
+    entries += 1
+    assertArchiveEntries(entries)
     const size = headerSize(header)
     const mode = octal(header.subarray(100, 108))
     const type = String.fromCharCode(header[156] ?? 0)
