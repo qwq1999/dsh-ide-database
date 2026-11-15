@@ -77,6 +77,21 @@ describe('column hiding helpers', () => {
     expect(pruneHidden([first, second], duplicate)).toEqual([first, second])
   })
 
+  it('keeps duplicate column identities when columns are reordered', () => {
+    const duplicate = [
+      { name: 'id', typeName: 'INT' },
+      { name: 'id', typeName: 'INT' },
+      { name: 'name', typeName: 'VARCHAR' },
+    ]
+    const second = hiddenColumnId(duplicate, 1)
+    const reordered = [duplicate[2]!, duplicate[1]!, duplicate[0]!]
+    const view = hideColumns(reordered, [[20, '手机', 1]], [second], duplicate)
+    expect(view.positions).toEqual([0, 2])
+    expect(view.columns.map((column) => column.name)).toEqual(['name', 'id'])
+    expect(view.columns[1]).toBe(duplicate[0])
+    expect(onlyColumn(reordered, second, duplicate)).toEqual(['name', 'id'])
+  })
+
   it('persists a set per grid and clears it on null', () => {
     writeHidden('console:sql', ['name'])
     expect(window.localStorage.getItem(`${HIDDEN_STORAGE_PREFIX}console:sql`)).toBe('["name"]')

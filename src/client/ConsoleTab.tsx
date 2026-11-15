@@ -1315,7 +1315,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const displayRows = useMemo(() => orderRows(filteredRows, columnOrder), [filteredRows, columnOrder])
   // Hiding is display-only: positions map back into the displayed columns, so
   // reordering and row copying keep addressing the full result.
-  const hiddenView = useMemo(() => hideColumns(displayColumns, displayRows, hiddenColumns), [displayColumns, displayRows, hiddenColumns])
+  const hiddenView = useMemo(
+    () => hideColumns(displayColumns, displayRows, hiddenColumns, columns),
+    [columns, displayColumns, displayRows, hiddenColumns],
+  )
   const shownColumns = hiddenView.columns
   const shownRows = hiddenView.rows
   shownRowsRef.current = shownRows
@@ -1354,8 +1357,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }, [hiddenColumns])
   const columnMenu = useCallback((column: ColumnInfo): ColumnMenuItem[] => {
     const index = columns.findIndex((item) => item === column)
-    const displayIndex = displayColumns.findIndex((item) => item === column)
-    const hiddenId = displayIndex >= 0 ? hiddenColumnId(displayColumns, displayIndex) : column.name
+    const hiddenId = index >= 0 ? hiddenColumnId(columns, index) : column.name
     const active =
       rowSort?.column === column.name && (rowSort.index === undefined || rowSort.index === index)
         ? rowSort.direction
@@ -1417,7 +1419,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       {
         label: '只看这一列',
         disabled: displayColumns.length <= 1,
-        run: () => setHiddenColumns(onlyColumn(displayColumns, displayIndex)),
+        run: () => setHiddenColumns(onlyColumn(displayColumns, hiddenId, columns)),
       },
       {
         label: hiddenCount === 0 ? '显示全部列' : `显示全部列（已隐藏 ${hiddenCount} 列）`,

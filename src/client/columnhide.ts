@@ -31,6 +31,14 @@ export function hiddenColumnId(columns: ColumnInfo[], index: number): string {
     : `${column.name}#${encodeURIComponent(JSON.stringify([column.name, occurrence]))}`
 }
 
+/** Stable ID for a display column, using the original result order. */
+function displayColumnId(columns: ColumnInfo[], index: number, identityColumns: ColumnInfo[]): string {
+  const column = columns[index]
+  if (column === undefined) return ''
+  const identityIndex = identityColumns.indexOf(column)
+  return identityIndex >= 0 ? hiddenColumnId(identityColumns, identityIndex) : hiddenColumnId(columns, index)
+}
+
 /** Add or remove one column; an empty set collapses back to `null` (all visible). */
 export function toggleHidden(hidden: string[] | null, name: string): string[] | null {
   const current = hidden ?? []
@@ -39,11 +47,17 @@ export function toggleHidden(hidden: string[] | null, name: string): string[] | 
 }
 
 /** Hide every column except one, so a wide result can be narrowed to a single field. */
-export function onlyColumn(columns: ColumnInfo[], target: string | number): string[] | null {
-  const targetId = typeof target === 'number' ? hiddenColumnId(columns, target) : target
-  const index = columns.findIndex((_, current) => hiddenColumnId(columns, current) === targetId)
+export function onlyColumn(
+  columns: ColumnInfo[],
+  target: string | number,
+  identityColumns: ColumnInfo[] = columns,
+): string[] | null {
+  const targetId = typeof target === 'number' ? displayColumnId(columns, target, identityColumns) : target
+  const index = columns.findIndex((_, current) => displayColumnId(columns, current, identityColumns) === targetId)
   if (index < 0 || columns.length <= 1) return null
-  return columns.flatMap((_, current) => (current === index ? [] : [hiddenColumnId(columns, current)]))
+  return columns.flatMap((_, current) =>
+    current === index ? [] : [displayColumnId(columns, current, identityColumns)],
+  )
 }
 
 /** Drop remembered identities that the current result no longer has. */
@@ -62,9 +76,10 @@ export function hideColumns(
   columns: ColumnInfo[],
   rows: Row[],
   hidden: string[] | null,
+  identityColumns: ColumnInfo[] = columns,
 ): { positions: number[]; columns: ColumnInfo[]; rows: Row[] } {
   const positions = columns
-    .map((_, index) => (isHidden(hidden, hiddenColumnId(columns, index)) ? -1 : index))
+    .map((_, index) => (isHidden(hidden, displayColumnId(columns, index, identityColumns)) ? -1 : index))
     .filter((index) => index >= 0)
   // Never hide every column: an empty grid with no way back is worse than the
   // extra wide column the user just asked to hide.
