@@ -330,6 +330,9 @@ function mssqlGoDirective(input: string, index: number): BatchDirective | null {
  * client command; a line containing only `GO` splits batches and is removed.
  */
 export function splitStatements(input: string, dialect: SqlDialect = 'generic'): string[] {
+  // Files saved by Windows editors often start with a UTF-8 BOM. It is not
+  // SQL, and leaving it on the first word breaks read-only classification.
+  if (input.charCodeAt(0) === 0xfeff) input = input.slice(1)
   const statements: string[] = []
   let current = ''
   let delimiter = ';'

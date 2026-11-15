@@ -6,6 +6,11 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1; select 2;\n')).toEqual(['select 1', 'select 2'])
   })
 
+  it('strips a leading UTF-8 BOM', () => {
+    expect(splitStatements('\ufeffselect 1; select 2')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('\ufeffselect 1')).toEqual(['select 1'])
+  })
+
   it('keeps semicolons inside strings, quoted identifiers and escapes', () => {
     expect(splitStatements("select 'a;b', \"c;d\"; select `x;y`;")).toEqual([
       "select 'a;b', \"c;d\"",

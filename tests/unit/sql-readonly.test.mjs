@@ -6,6 +6,11 @@ import { isReadOnlySql } from '../../lib/host/sql.js'
  * read-only connection mutate data, a false "no" only annoys the user.
  */
 describe('isReadOnlySql', () => {
+  it('accepts a UTF-8 BOM before the first keyword', () => {
+    expect(isReadOnlySql('\ufeffSELECT 1', 'mysql')).toBe(true)
+    expect(isReadOnlySql('\ufeffDELETE FROM t', 'mysql')).toBe(false)
+  })
+
   it('accepts plain reads', () => {
     expect(isReadOnlySql('SELECT 1')).toBe(true)
     expect(isReadOnlySql('select * from `shop`.`orders` where id > 10')).toBe(true)

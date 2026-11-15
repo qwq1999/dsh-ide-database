@@ -538,7 +538,9 @@ function executableComment(text: string): ExecutableComment | null {
 }
 
 export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {
-  const text = stripLeadingComments(sql, dialect)
+  // A UTF-8 BOM from an imported script is not part of the first keyword.
+  const source = sql.charCodeAt(0) === 0xfeff ? sql.slice(1) : sql
+  const text = stripLeadingComments(source, dialect)
   if (text === null) return false
   // MySQL runs the body of a leading `/*! ... */` as part of the statement.
   // Judge that body too, then the statement after it, instead of rejecting every
