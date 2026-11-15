@@ -83,6 +83,18 @@ describe('connection modal editing', () => {
     expect(mocks.saveConnection.mock.calls[0][0].password).toBe('new-secret')
   })
 
+  it('keeps a JDBC parameter named __proto__', async () => {
+    renderModal()
+
+    fireEvent.change(screen.getByPlaceholderText(/useSSL=false/), { target: { value: '__proto__=custom' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(mocks.saveConnection).toHaveBeenCalledTimes(1))
+    const params = mocks.saveConnection.mock.calls[0][0].params
+    expect(Object.hasOwn(params, '__proto__')).toBe(true)
+    expect(params['__proto__']).toBe('custom')
+  })
+
   it('can explicitly clear the saved password', async () => {
     renderModal()
 

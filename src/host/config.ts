@@ -116,7 +116,9 @@ function sanitizeParams(value: unknown): Record<string, string> {
   if (!isRecord(value)) throw new DbError('invalid', '连接参数必须是对象')
   const entries = Object.entries(value)
   if (entries.length > PARAM_KEYS_MAX) throw new DbError('invalid', `连接参数不能超过 ${PARAM_KEYS_MAX} 项`)
-  const out: Record<string, string> = {}
+  // Keep JDBC properties such as `__proto__` as own entries instead of
+  // letting a plain object's prototype setter swallow them.
+  const out: Record<string, string> = Object.create(null)
   for (const [key, raw] of entries) {
     if (!PARAM_KEY_PATTERN.test(key)) throw new DbError('invalid', `非法的参数名：${key}`)
     if (typeof raw !== 'string') throw new DbError('invalid', `参数 ${key} 的值必须是字符串`)

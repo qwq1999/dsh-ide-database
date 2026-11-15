@@ -30,7 +30,9 @@ function toParamsText(params: Record<string, string>): string {
 }
 
 function parseParamsText(text: string): Record<string, string> {
-  const params: Record<string, string> = {}
+  // A JDBC property may legitimately be named `__proto__`; a plain object
+  // would send that assignment to the prototype setter instead of keeping it.
+  const params: Record<string, string> = Object.create(null)
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim()
     if (trimmed === '' || trimmed.startsWith('#')) continue

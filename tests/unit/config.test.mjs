@@ -51,6 +51,23 @@ describe('ConfigStore', () => {
     expect(secrets.resolve(saved.secretName)?.value).toBe('s3cret')
   })
 
+  it('keeps a JDBC parameter named __proto__', () => {
+    const { config, dir } = store()
+    const saved = config.saveConnection({
+      name: 'Proto', driver: 'mysql', host: '127.0.0.1', port: 3306, user: 'root', database: 'app',
+      params: JSON.parse('{"__proto__":"custom"}'),
+    })
+    expect(Object.hasOwn(saved.params, '__proto__')).toBe(true)
+    expect(saved.params['__proto__']).toBe('custom')
+
+    const reopened = new ConfigStore(config.file, new SecretStore(join(dir, 'secrets.json')))
+    reopened.load()
+    const loaded = reopened.snapshot().connections.find((connection) => connection.id === saved.id)
+    expect(loaded).toBeTruthy()
+    expect(Object.hasOwn(loaded.params, '__proto__')).toBe(true)
+    expect(loaded.params['__proto__']).toBe('custom')
+  })
+
   it('updates an existing connection and can clear its password', () => {
     const { config, secrets } = store()
     const saved = config.saveConnection({
