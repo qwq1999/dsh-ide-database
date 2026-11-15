@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { gunzipSync, inflateRawSync } from 'node:zlib'
 
 /**
@@ -8,7 +8,8 @@ import { gunzipSync, inflateRawSync } from 'node:zlib'
  * formats is not worth it, so both readers stay dependency-free.
  *
  * Every entry is written relative to `destination` and anything that would
- * escape it (absolute paths, `..`, drive letters) is skipped.
+ * escape it (absolute paths, `..`, drive letters) is skipped; symlink targets
+ * must also resolve inside the destination.
  */
 
 const BLOCK = 512
@@ -36,8 +37,22 @@ function writeEntry(destination: string, name: string, data: Buffer, mode?: numb
   if (mode !== undefined && mode !== 0 && process.platform !== 'win32') chmodSync(target, mode & 0o777)
 }
 
+/**
+ * Resolve a tar symlink target and keep it only when it stays inside the
+ * extraction directory. A link like `../../outside` would otherwise let a
+ * later archive entry write through it outside the destination.
+ */
+export function safeArchiveLink(destination: string, name: string, link: string): string | undefined {
+  if (link === '' || isAbsolute(link) || /^[A-Za-z]:/.test(link)) return undefined
+  const resolved = resolve(dirname(join(destination, name)), link)
+  const inside = relative(destination, resolved)
+  if (isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`)) return undefined
+  return resolved
+}
+
 function createLink(destination: string, name: string, link: string): void {
   const target = join(destination, name)
+  if (safeArchiveLink(destination, name, link) === undefined) return
   mkdirSync(dirname(target), { recursive: true })
   try {
     symlinkSync(link, target)

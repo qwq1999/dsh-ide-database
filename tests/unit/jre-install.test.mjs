@@ -5,7 +5,7 @@ import { crc32, gzipSync } from 'node:zlib'
 import { randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { extractArchive, extractTarGz, extractZip } from '../../lib/host/archive.js'
+import { extractArchive, extractTarGz, extractZip, safeArchiveLink } from '../../lib/host/archive.js'
 import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
 
 const JAVA_BIN = process.platform === 'win32' ? 'java.exe' : 'java'
@@ -97,6 +97,15 @@ describe('archive extraction', () => {
     extractZip(buildZip([['../evil.txt', Buffer.from('nope')]]), target)
     expect(existsSync(join(target, '..', 'evil.txt'))).toBe(false)
     expect(existsSync(join(target, 'evil.txt'))).toBe(false)
+  })
+
+  it('keeps tar symlink targets inside the extraction directory', () => {
+    const target = tempDir()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '../lib/java')).toBe(join(target, 'jdk-21', 'lib', 'java'))
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '..foo')).toBe(join(target, 'jdk-21', 'bin', '..foo'))
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '../../../evil')).toBeUndefined()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '/etc/passwd')).toBeUndefined()
+    expect(safeArchiveLink(target, 'jdk-21/bin/java', '')).toBeUndefined()
   })
 
   it('unpacks tar.gz entries and keeps bin/java executable on Unix', () => {
