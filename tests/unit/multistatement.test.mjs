@@ -262,12 +262,13 @@ describe('splitStatements', () => {
       '  END LOOP;',
       'END;',
     ].join('\n')
-    expect(splitStatements(block, 'oracle')).toEqual([block.slice(0, -1)])
-    expect(splitStatements(`${block}\nSELECT 2;`, 'oracle')).toEqual([block.slice(0, -1), 'SELECT 2'])
-    expect(splitStatements(block, 'oceanbase-oracle')).toEqual([block.slice(0, -1)])
+    expect(splitStatements(block, 'oracle')).toEqual([block])
+    expect(splitStatements(`${block}\nSELECT 2;`, 'oracle')).toEqual([block, 'SELECT 2'])
+    expect(splitStatements(block, 'oceanbase-oracle')).toEqual([block])
+    expect(splitStatements('SELECT 1;', 'oracle')).toEqual(['SELECT 1'])
 
     const declare = ['DECLARE', '  x NUMBER;', 'BEGIN', '  x := 1;', 'END;'].join('\n')
-    expect(splitStatements(declare, 'oracle')).toEqual([declare.slice(0, -1)])
+    expect(splitStatements(declare, 'oracle')).toEqual([declare])
 
     const noisy = [
       'BEGIN',
@@ -276,7 +277,7 @@ describe('splitStatements', () => {
       '  NULL;',
       'END;',
     ].join('\n')
-    expect(splitStatements(noisy, 'oracle')).toEqual([noisy.slice(0, -1)])
+    expect(splitStatements(noisy, 'oracle')).toEqual([noisy])
     expect(splitStatements(block, 'generic').length).toBeGreaterThan(1)
   })
 

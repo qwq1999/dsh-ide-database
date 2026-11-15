@@ -81,6 +81,15 @@ function oracleBlockNeedsMore(text: string): boolean {
   return seenBegin && depth > 0
 }
 
+/**
+ * Whether the statement starts an Oracle anonymous block. Unlike ordinary
+ * statements, the final `;` belongs to the PL/SQL syntax and must be sent to
+ * the server; the splitter removes it for a plain `SELECT`.
+ */
+function oracleBlockStart(text: string): boolean {
+  return /^\s*(?:begin|declare)\b/iu.test(maskNonCode(text, 'oracle', true))
+}
+
 /** A script may put explanatory comments before its first DELIMITER line. */
 function hasOnlyComments(text: string): boolean {
   const rest = text
@@ -310,6 +319,15 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     if (char === ';' && delimiter === ';') {
       if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && oracleBlockNeedsMore(current)) {
         current += char
+        index += 1
+        continue
+      }
+      // The final semicolon of a PL/SQL block is part of the block syntax, so
+      // keep it; ordinary Oracle statements are still sent without the
+      // terminator (the server rejects a trailing `;` with ORA-00933).
+      if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && oracleBlockStart(current)) {
+        current += char
+        flush()
         index += 1
         continue
       }
