@@ -351,6 +351,9 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
     if (code === '') return false
     const analyzed = unwrapExplainAnalyze(code)
     if (DDL_STATEMENT.test(analyzed)) return true
+    // SQLite ATTACH/DETACH add or remove a database schema even though the
+    // statement is not CREATE/ALTER/DROP; the schema list must refresh too.
+    if (dialect === 'sqlite' && /^\s*(?:attach|detach)\b/iu.test(analyzed)) return true
     // PostgreSQL masks the body of a `DO` block as a string, so its DDL is
     // invisible here; any DO block may create or drop objects, so refresh.
     if (dialect === 'postgres' && /^\s*do\b/iu.test(analyzed)) return true
