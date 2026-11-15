@@ -89,10 +89,11 @@ export function redisValueTable(value: RedisValue): RedisTable | null {
   }
 }
 
-/** `永久` when the key has no expiry, otherwise seconds; -2 means the key vanished. */
+/**
+ * `永久` when the key has no expiry, otherwise seconds; -2 means the key
+ * vanished. Delegate to the shared formatter so a TTL that rounds up to 60
+ * seconds switches to `1m` here just as it does in the table TTL badge.
+ */
 export function redisTtlLabel(ttl: number): string {
-  // -1 no expiry, -2 vanished, and other negatives/invalid values share the
-  // generic TTL wording instead of turning into `0s` or `NaNs`.
-  if (!Number.isFinite(ttl) || ttl < 0 || ttl >= 60) return formatTtl(ttl)
-  return `${Math.max(0, Math.round(ttl))}s`
+  return formatTtl(ttl)
 }
