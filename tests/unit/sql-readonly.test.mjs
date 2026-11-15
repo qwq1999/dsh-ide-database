@@ -287,6 +287,8 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT * FROM t WITH (UPDLOCK)', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t WITH (UPDLOCK, ROWLOCK)', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t WITH (TABLOCKX)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t WITH (REPEATABLEREAD)', 'mssql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t WITH (READCOMMITTEDLOCK)', 'mssql')).toBe(false)
     expect(isReadOnlySql('SELECT * FROM t WITH (NOLOCK)', 'mssql')).toBe(true)
     expect(isReadOnlySql("SELECT 'with (updlock)' AS note", 'mssql')).toBe(true)
     // The words in a string or comment, and a plain EXPLAIN, stay reads.

@@ -274,7 +274,7 @@ const FILE_WRITE = /\binto\s+(?:outfile|dumpfile)\b/
 
 /** `SELECT ... FOR UPDATE` / `LOCK IN SHARE MODE` takes row locks even without writing. */
 const LOCKING_READ =
-  /\bfor\s+(?:update|share|key\s+share|no\s+key\s+update)\b|\block\s+in\s+share\s+mode\b|\bwith\s*\(\s*(?:updlock|holdlock|tablockx|tablock|xlock|serializable)\b/
+  /\bfor\s+(?:update|share|key\s+share|no\s+key\s+update)\b|\block\s+in\s+share\s+mode\b|\bwith\s*\(\s*(?:updlock|holdlock|tablockx|tablock|xlock|serializable|repeatableread|readcommittedlock)\b/
 
 /**
  * The end (exclusive) of the Oracle alternative-quoted literal starting at
