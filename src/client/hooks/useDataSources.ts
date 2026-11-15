@@ -28,6 +28,7 @@ import type {
   TableDescription,
 } from '../../shared/types'
 import { api, ApiError } from '../api'
+import { treeObjectKey } from '../treekeys'
 import { objectKindLabel } from '../format'
 
 export interface Snapshot {
@@ -728,7 +729,7 @@ export function useDataSources(notify: Notify): DataSources {
 
   const selectObject = useCallback(
     async (connectionId: string, schema: string, object: SchemaObject): Promise<void> => {
-      const key = `${connectionId}|${schema}.${object.name}`
+      const key = treeObjectKey(connectionId, schema, object.name)
       const request = detailRequest.current + 1
       detailRequest.current = request
       setSelectedId(connectionId)

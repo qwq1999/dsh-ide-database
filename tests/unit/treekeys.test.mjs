@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextRowIndex } from '../../src/client/treekeys'
+import { nextRowIndex, treeObjectKey } from '../../src/client/treekeys'
 
 describe('nextRowIndex', () => {
   it('moves down and stops at the last row', () => {
@@ -26,5 +26,21 @@ describe('nextRowIndex', () => {
   it('ignores unrelated keys and empty trees', () => {
     expect(nextRowIndex(0, 3, 'Enter')).toBeNull()
     expect(nextRowIndex(0, 0, 'ArrowDown')).toBeNull()
+  })
+})
+
+describe('treeObjectKey', () => {
+  it('keeps the readable key for ordinary names', () => {
+    expect(treeObjectKey('c1', 'shop', 'orders')).toBe('c1|shop.orders')
+  })
+
+  it('keeps dotted schema and object names apart', () => {
+    expect(treeObjectKey('c1', 'a', 'b.c')).not.toBe(treeObjectKey('c1', 'a.b', 'c'))
+  })
+
+  it('still tells an object apart from a differently split dotted name', () => {
+    expect(treeObjectKey('c1', 'a.b', 'c.d')).toBe(
+      `c1|a.b.c.d#${encodeURIComponent(JSON.stringify(['a.b', 'c.d']))}`,
+    )
   })
 })

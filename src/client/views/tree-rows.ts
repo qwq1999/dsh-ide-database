@@ -12,6 +12,7 @@ import { relativeTime } from '../relativetime'
 import { matchesFilteredObject, parseFilter } from '../treefilter'
 import { redisTtlLabel } from '../redisvalue'
 import { OBJECT_PAGE, objectWindow } from './objectlimit'
+import { treeObjectKey } from '../treekeys'
 
 /**
  * Flat row model of the object tree.
@@ -511,7 +512,7 @@ function appendObject(
   object: SchemaObject,
 ): void {
   const { state, filter, query, rows } = context
-  const objectKey = `${connection.id}|${schema.name}.${object.name}`
+  const objectKey = treeObjectKey(connection.id, schema.name, object.name)
   const relation = object.kind === 'table' || object.kind === 'view'
   const description = state.descriptions[objectKey]
   const loading = state.loadingDescriptions[objectKey] === true
