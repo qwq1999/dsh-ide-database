@@ -138,6 +138,10 @@ describe('splitStatements', () => {
     expect(splitStatements('select 1\nGO\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
     // The GO line itself may contain comments (Microsoft sqlcmd semantics).
     expect(splitStatements('select 1\nGO /* end batch */\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
+    expect(splitStatements('select 1\nGO /* outer /* inner */ */ /* more */\nselect 2', 'mssql')).toEqual([
+      'select 1',
+      'select 2',
+    ])
     expect(splitStatements('select 1\nGO 2 /* repeat */\nselect 2', 'mssql')).toEqual(['select 1', 'select 1', 'select 2'])
     expect(splitStatements('select 1\n  go  -- next batch\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])
     expect(splitStatements('select 1\nGO\nGO\nselect 2', 'mssql')).toEqual(['select 1', 'select 2'])

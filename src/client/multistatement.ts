@@ -247,11 +247,44 @@ function mssqlGoDirective(input: string, index: number): BatchDirective | null {
   let lineStart = index
   while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
   if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
-  const match = /^go(?:[ \t]+(\d+))?[ \t]*(?:(?:--[^\n]*)|(?:\/\*[\s\S]*?\*\/))?[ \t]*(?:\r?\n|$)/iu.exec(input.slice(index))
-  if (match === null) return null
-  const count = match[1] === undefined ? 1 : Number(match[1])
-  if (!Number.isSafeInteger(count) || count < 1) return null
-  return { end: index + match[0].length, count }
+  const word = /^go\b/iu.exec(input.slice(index))
+  if (word === null) return null
+  let cursor = index + word[0].length
+  let count = 1
+  const countMatch = /^[ \t]+(\d+)/u.exec(input.slice(cursor))
+  if (countMatch !== null) {
+    count = Number(countMatch[1])
+    if (!Number.isSafeInteger(count) || count < 1) return null
+    cursor += countMatch[0].length
+  }
+  // SQL Server accepts comments after GO, including nested block comments.
+  // A line comment consumes the rest of the line; block comments may span
+  // lines and may be followed by another comment.
+  for (;;) {
+    while (input[cursor] === ' ' || input[cursor] === '\t') cursor += 1
+    if (input[cursor] === '-' && input[cursor + 1] === '-') {
+      const newline = input.indexOf('\n', cursor)
+      cursor = newline < 0 ? input.length : newline
+      break
+    }
+    if (input[cursor] === '/' && input[cursor + 1] === '*') {
+      const close = blockCommentEnd(input, cursor, 'mssql')
+      if (close < 0) return null
+      cursor = close
+      continue
+    }
+    break
+  }
+  while (input[cursor] === ' ' || input[cursor] === '\t') cursor += 1
+  if (input[cursor] === '\r') {
+    cursor += 1
+    if (input[cursor] === '\n') cursor += 1
+  } else if (input[cursor] === '\n') {
+    cursor += 1
+  } else if (cursor !== input.length) {
+    return null
+  }
+  return { end: cursor, count }
 }
 
 /**
