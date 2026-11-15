@@ -77,6 +77,25 @@ describe('StructureStore accessors', () => {
     expect(reloaded.get('c1')?.schemas).toEqual([{ name: 'app' }])
   })
 
+  it('keeps a schema named __proto__ as an own entry', () => {
+    const { file, instance } = store()
+    const objects = [{ name: 'orders', kind: 'table' }]
+    instance.putSchemas('c1', [{ name: '__proto__' }])
+    instance.putObjects('c1', '__proto__', objects)
+    instance.putSchemas('c1', [{ name: '__proto__' }])
+
+    const cached = instance.get('c1')
+    expect(cached).toBeDefined()
+    expect(Object.prototype.hasOwnProperty.call(cached?.objects, '__proto__')).toBe(true)
+    expect(cached?.objects['__proto__']).toEqual(objects)
+    expect(JSON.parse(instance.snapshotJson()).c1.objects['__proto__']).toEqual(objects)
+
+    instance.flush()
+    const reloaded = new StructureStore(file, () => {})
+    expect(Object.prototype.hasOwnProperty.call(reloaded.get('c1')?.objects, '__proto__')).toBe(true)
+    expect(reloaded.get('c1')?.objects['__proto__']).toEqual(objects)
+  })
+
   it('stamps a description with when it was read and reloads it', () => {
     const { file, instance } = store()
     instance.putSchemas('c1', [{ name: 'app' }])

@@ -373,7 +373,7 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
         : []
       const cached = deps.structure.get(id)
       const schemas = cached?.schemas ?? []
-      const tables: Record<string, SchemaObject[]> = {}
+      const tables: Record<string, SchemaObject[]> = Object.create(null)
       for (const schema of schemaNames) {
         const objects = cached?.objects[schema]
         if (objects !== undefined) tables[schema] = objects
