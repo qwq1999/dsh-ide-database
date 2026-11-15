@@ -55,6 +55,8 @@ export interface DataViewProps {
   detail: TableDescription | null
   detailLoading: boolean
   selectedKey: string
+  /** Bumped by the toolbar funnel button: reveal the floating filter and focus it. */
+  filterRequest?: number
   redisKeys: Record<string, Record<string, RedisKeyInfo[]>>
   redisCursor: Record<string, Record<string, string>>
   loadingRedisKeys: Record<string, Record<string, boolean>>
@@ -225,6 +227,18 @@ export function DataView(props: DataViewProps): ReactElement {
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)
   }, [filterOpen, filterFocus])
+
+  // The toolbar's funnel button bumps a counter instead of sharing the
+  // open/closed state: the box belongs to this view, so a click and Ctrl+F
+  // end up in the same place. Only a change counts, so remounting the view
+  // with an old counter baked in does not pop the box open on its own.
+  const filterRequestRef = useRef(props.filterRequest ?? 0)
+  useEffect(() => {
+    const request = props.filterRequest ?? 0
+    if (request === filterRequestRef.current) return
+    filterRequestRef.current = request
+    focusTreeFilter()
+  }, [props.filterRequest, focusTreeFilter])
 
   const openObjectMenu = useCallback(
     (

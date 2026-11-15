@@ -7,13 +7,14 @@
  */
 import { useEffect, useState, type ReactElement } from 'react'
 import { orderToolbarActions, type ToolbarActionId } from '../shared/toolbaractions'
-import { EditIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
+import { EditIcon, FilterIcon, PlusIcon, RecycleIcon, RefreshIcon, SettingsIcon, TerminalIcon, TrashIcon } from './icons'
 
 export const TOOLBAR_ACTION_LABEL: Record<ToolbarActionId, string> = {
   add: '新增',
   edit: '编辑',
   refresh: '刷新',
   delete: '删除',
+  filter: '筛选',
   console: '控制台',
   trash: '回收站',
   settings: '设置',
@@ -25,6 +26,7 @@ export const TOOLBAR_ACTION_TITLE: Record<ToolbarActionId, string> = {
   edit: '编辑选中的数据源',
   refresh: '刷新选中的数据源',
   delete: '删除选中的数据源',
+  filter: '筛选库表',
   console: '查询控制台',
   trash: '回收站',
   settings: '设置',
@@ -40,6 +42,8 @@ export function toolbarActionIcon(id: ToolbarActionId, size = 14): ReactElement 
       return <RefreshIcon size={size} />
     case 'delete':
       return <TrashIcon size={size} />
+    case 'filter':
+      return <FilterIcon size={size} />
     case 'console':
       return <TerminalIcon size={size} />
     case 'trash':

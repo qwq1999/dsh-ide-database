@@ -20,16 +20,17 @@ describe('toolbar action order', () => {
       'edit',
       'refresh',
       'delete',
+      'filter',
       'trash',
       'settings',
     ])
-    expect(TOOLBAR_ACTION_IDS).toHaveLength(7)
+    expect(TOOLBAR_ACTION_IDS).toHaveLength(8)
     expect(orderToolbarActions(undefined)).toEqual([...TOOLBAR_ACTION_IDS])
   })
 
   it('ignores duplicates instead of listing an action twice', () => {
     const order = orderToolbarActions(['add', 'add', 'add'])
-    expect(order).toHaveLength(7)
-    expect(new Set(order).size).toBe(7)
+    expect(order).toHaveLength(8)
+    expect(new Set(order).size).toBe(8)
   })
 })

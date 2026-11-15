@@ -81,7 +81,7 @@ describe('data-source toolbar', () => {
   it('renders the saved order and appends actions it does not mention', async () => {
     mockStatus(['trash', 'settings'])
     render(<App />)
-    await waitFor(() => expect(slots()).toHaveLength(7))
+    await waitFor(() => expect(slots()).toHaveLength(8))
     await waitFor(() => expect(slotIds()[0]).toBe('trash'))
     expect(slotIds()).toEqual([
       'trash',
@@ -90,6 +90,7 @@ describe('data-source toolbar', () => {
       'edit',
       'refresh',
       'delete',
+      'filter',
       'console',
     ])
   })
@@ -97,7 +98,7 @@ describe('data-source toolbar', () => {
   it('keeps the "…" button hidden while every action fits', async () => {
     mockStatus()
     render(<App />)
-    await waitFor(() => expect(slots()).toHaveLength(7))
+    await waitFor(() => expect(slots()).toHaveLength(8))
     expect(moreSlot().className).toContain('dshdb-toolbar-slot-hidden')
   })
 

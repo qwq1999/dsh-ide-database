@@ -12,7 +12,7 @@ import type { ClientConnection, ClientTrashedConnection, DbSettings, DriverStatu
 import { api } from './api'
 import { downloadText } from './export'
 import { useDataSources } from './hooks/useDataSources'
-import { setKeybindings } from './keymap'
+import { setKeybindings, shortcutLabel } from './keymap'
 import { setConsoleActionOrder } from './consoleactions'
 import { setConsoleAutoComplete } from './consoleprefs'
 import {
@@ -97,6 +97,9 @@ export function App(props: AppProps): ReactElement {
   const [trashBusy, setTrashBusy] = useState<TrashBusy | null>(null)
   const [emptyingTrash, setEmptyingTrash] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // 工具栏的「筛选」按钮只递增这个计数：筛选框本身的状态归 DataView 所有，
+  // 在这里再存一份「开着/关着」会和 Ctrl+F 走成两条互相打架的路径。
+  const [filterRequest, setFilterRequest] = useState(0)
   const [confirm, setConfirm] = useState<{ request: ConfirmRequest; resolve: (ok: boolean) => void } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [connModal, setConnModal] = useState<{ open: boolean; editing: ClientConnection | null }>({
@@ -431,6 +434,13 @@ export function App(props: AppProps): ReactElement {
       },
     },
     {
+      id: 'filter',
+      label: '筛选',
+      title: `${selected?.dialect === 'redis' ? '筛选键' : '筛选库表'}（${shortcutLabel('tree.filter')}）`,
+      disabled: connections.length === 0,
+      onClick: () => setFilterRequest((count) => count + 1),
+    },
+    {
       id: 'console',
       label: '控制台',
       title: selectedSchema === '' ? '查询控制台' : `查询控制台（${selectedSchema}）`,
@@ -698,6 +708,7 @@ export function App(props: AppProps): ReactElement {
               redisDetail={redisDetail}
               redisDetailDb={redisDetailDb}
               redisDetailLoading={redisDetailLoading}
+              filterRequest={filterRequest}
               onAddConnection={openAddConnection}
               onSelectConnection={selectConnection}
               onToggleConnection={toggleConnection}
