@@ -86,6 +86,8 @@ describe('format helpers', () => {
     expect(looksLikeWrite('PRAGMA table_info(users)', 'sqlite')).toBe(false)
     expect(looksLikeWrite('PRAGMA main.table_info(users)', 'sqlite')).toBe(false)
     expect(looksLikeWrite("PRAGMA table_info('a=b')", 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA table_info("a=b")', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA table_info([a=b])', 'sqlite')).toBe(false)
     expect(looksLikeWrite('PRAGMA user_version = 1', 'sqlite')).toBe(true)
     expect(looksLikeWrite('PRAGMA journal_mode = WAL', 'sqlite')).toBe(true)
     expect(looksLikeWrite('PRAGMA writable_schema = ON', 'sqlite')).toBe(true)

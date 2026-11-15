@@ -271,7 +271,9 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     if (dialect !== 'sqlite') return true
     const pragma = parseSqlitePragma(code)
     if (pragma === null || !SQLITE_READ_PRAGMAS.has(pragma.name)) return true
-    return pragma.rest.includes('=')
+    // `code` deliberately keeps double-quoted identifiers, so mask them again
+    // before looking for the assignment sign: `table_info("a=b")` is a read.
+    return maskNonCode(pragma.rest, 'sqlite', true, false).includes('=')
   }
   if (head.word === 'explain') {
     const body = explainAnalyzeBody(code)
