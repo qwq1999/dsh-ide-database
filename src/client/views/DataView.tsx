@@ -524,12 +524,16 @@ export function DataView(props: DataViewProps): ReactElement {
 
   const { containerRef, range, totalHeight, viewportHeight, onScroll, scrollToIndex } = useWindow(rows.length)
 
-  // Pressing a row is part of using the filter, not leaving it: only presses
-  // outside both the box and the tree dismiss the search.
-  const filterAnchors = useMemo(
-    () => (props.filterTrigger ? [filterFloatRef, containerRef, props.filterTrigger] : [filterFloatRef, containerRef]),
-    [containerRef, props.filterTrigger],
-  )
+  // Pressing a row is part of using the filter, not leaving it: while there is
+  // a term, only presses outside both the box and the tree dismiss the search.
+  // An empty box is just standing by (the clear button leaves the caret
+  // behind), so a press anywhere else puts it away.
+  const filterAnchors = useMemo(() => {
+    const anchors: RefObject<HTMLElement | null>[] = [filterFloatRef]
+    if (filter !== '') anchors.push(containerRef)
+    if (props.filterTrigger) anchors.push(props.filterTrigger)
+    return anchors
+  }, [containerRef, filter, props.filterTrigger])
   usePopoverDismiss(filterOpen, closeTreeFilter, filterAnchors)
 
   // A changing tree (async rows above the cursor, collapsed branch, narrower

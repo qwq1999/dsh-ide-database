@@ -171,6 +171,19 @@ describe('tree filter keys', () => {
     expect(screen.queryByLabelText('清空筛选')).toBeNull()
   })
 
+  it('puts the cleared box away when the user presses the tree', async () => {
+    render(<Harness calls={{ load: 0 }} />)
+    const box = openFilter()
+    fireEvent.change(box, { target: { value: 'cus' } })
+    fireEvent.click(screen.getByLabelText('清空筛选'))
+    await act(async () => {})
+    expect(box.value).toBe('')
+    // The clear button takes the caret with it, so no blur will fire on the
+    // way out: the outside press alone has to dismiss the empty box.
+    fireEvent.pointerDown(screen.getByRole('tree', { name: '数据源' }))
+    expect(screen.queryByLabelText('筛选库表')).toBeNull()
+  })
+
   it('clears the box and the matches with Escape', async () => {
     render(<Harness calls={{ load: 0 }} />)
     const box = openFilter()
