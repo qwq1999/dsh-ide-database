@@ -202,6 +202,24 @@ function oracleBlockStart(text: string): boolean {
   return /\bbegin\b/iu.test(code)
 }
 
+/** Index just past a SQL*Plus `/` line, or null when it is not on its own line. */
+function oracleSlashLineEnd(input: string, index: number): number | null {
+  if (input[index] !== '/') return null
+  let lineStart = index
+  while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
+  if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
+  let cursor = index + 1
+  while (cursor < input.length && (input[cursor] === ' ' || input[cursor] === '\t')) cursor += 1
+  if (cursor < input.length && input[cursor] !== '\n' && input[cursor] !== '\r') return null
+  if (input[cursor] === '\r') {
+    cursor += 1
+    if (input[cursor] === '\n') cursor += 1
+  } else if (input[cursor] === '\n') {
+    cursor += 1
+  }
+  return cursor
+}
+
 /** A script may put explanatory comments before its first DELIMITER line. */
 function hasOnlyComments(text: string): boolean {
   const rest = text
@@ -323,6 +341,17 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
   while (index < input.length) {
     const char = input[index] ?? ''
+
+    // SQL*Plus scripts put a lone `/` after a PL/SQL block to run it. The
+    // splitter already executed the preceding statement, so this line is not
+    // SQL and must not be sent to Oracle (which would report ORA-00900).
+    if ((dialect === 'oracle' || dialect === 'oceanbase-oracle') && char === '/' && current.trim() === '') {
+      const end = oracleSlashLineEnd(input, index)
+      if (end !== null) {
+        index = end
+        continue
+      }
+    }
 
     // `GO` is a SQL Server client command, not T-SQL. It only counts when it
     // starts its own line; strings and comments are consumed by their own

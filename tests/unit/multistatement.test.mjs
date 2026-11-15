@@ -45,6 +45,15 @@ describe('splitStatements', () => {
     expect(splitStatements(`${quoted}; select 2`, 'mssql')).not.toEqual(splitStatements(`${quoted}; select 2`, 'oracle'))
   })
 
+  it('drops SQL*Plus slash terminators for Oracle PL/SQL', () => {
+    const script = 'BEGIN NULL; END;\n/\nSELECT 1 FROM dual;'
+    expect(splitStatements(script, 'oracle')).toEqual(['BEGIN NULL; END;', 'SELECT 1 FROM dual'])
+    expect(splitStatements('SELECT 1 FROM dual;\n/\nSELECT 2 FROM dual;', 'oracle')).toEqual([
+      'SELECT 1 FROM dual',
+      'SELECT 2 FROM dual',
+    ])
+  })
+
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
     expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])
