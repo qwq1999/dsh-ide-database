@@ -11,6 +11,28 @@ interface BatchDirective {
   count: number
 }
 
+/**
+ * SQLite keeps a trigger body between `BEGIN` and `END`; its internal
+ * semicolons are part of the definition. A `CASE ... END` expression inside
+ * the body has its own `END`, so count both `BEGIN` and `CASE` while scanning
+ * the already string/comment-masked statement.
+ */
+function sqliteTriggerNeedsMore(text: string): boolean {
+  const code = maskNonCode(text, 'sqlite', true)
+  if (!/^\s*create\s+(?:temp(?:orary)?\s+)?trigger\b/iu.test(code)) return false
+  let depth = 0
+  let body = false
+  for (const match of code.matchAll(/\b(begin|case|end)\b/giu)) {
+    const word = match[1]?.toLowerCase()
+    if (word === 'end') depth -= 1
+    else {
+      depth += 1
+      if (word === 'begin') body = true
+    }
+  }
+  return body && depth > 0
+}
+
 /** A script may put explanatory comments before its first DELIMITER line. */
 function hasOnlyComments(text: string): boolean {
   const rest = text
@@ -238,6 +260,11 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
     }
 
     if (char === ';' && delimiter === ';') {
+      if (dialect === 'sqlite' && sqliteTriggerNeedsMore(current)) {
+        current += char
+        index += 1
+        continue
+      }
       if (dialect === 'mssql') {
         if (mssqlProgram === undefined) mssqlProgram = isMssqlProgram(current)
         if (mssqlProgram) {

@@ -214,6 +214,37 @@ describe('splitStatements', () => {
     expect(splitStatements('ALTER TABLE t ADD c int; SELECT 1', 'mssql')).toEqual(['ALTER TABLE t ADD c int', 'SELECT 1'])
   })
 
+  it('keeps a SQLite trigger body intact', () => {
+    const trigger = [
+      'CREATE TRIGGER bump AFTER INSERT ON t',
+      'BEGIN',
+      '  UPDATE t SET n = n + 1;',
+      '  INSERT INTO log VALUES (NEW.id);',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(trigger, 'sqlite')).toEqual([trigger.slice(0, -1)])
+    expect(splitStatements(`${trigger}\nSELECT 2;`, 'sqlite')).toEqual([trigger.slice(0, -1), 'SELECT 2'])
+
+    const withCase = [
+      'CREATE TEMP TRIGGER IF NOT EXISTS tr AFTER INSERT ON t',
+      'BEGIN',
+      '  UPDATE t SET x = CASE WHEN NEW.x > 0 THEN 1 ELSE 0 END;',
+      '  INSERT INTO log VALUES (NEW.id);',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(withCase, 'sqlite')).toEqual([withCase.slice(0, -1)])
+    const noisy = [
+      'CREATE TRIGGER noisy AFTER INSERT ON t',
+      'BEGIN',
+      "  INSERT INTO log VALUES ('END; not a terminator');",
+      '  -- END; in a comment is not a terminator',
+      '  UPDATE t SET n = n + 1;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(noisy, 'sqlite')).toEqual([noisy.slice(0, -1)])
+    expect(splitStatements(trigger, 'generic').length).toBeGreaterThan(1)
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
