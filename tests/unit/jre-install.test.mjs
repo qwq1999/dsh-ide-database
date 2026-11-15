@@ -15,7 +15,7 @@ import {
   MAX_ARCHIVE_ENTRY_BYTES,
   safeArchiveLink,
 } from '../../lib/host/archive.js'
-import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
+import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, resolveMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
 
 const JAVA_BIN = process.platform === 'win32' ? 'java.exe' : 'java'
 const tempDirs = []
@@ -250,6 +250,16 @@ describe('mirror listing', () => {
     expect(pickMirrorArchive(listing, '.zip')).toBe('OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip')
     expect(pickMirrorArchive(listing, '.tar.gz')).toBe('OpenJDK21U-jre_aarch64_linux_hotspot_21.0.13_9.tar.gz')
     expect(pickMirrorArchive('<html>no archives</html>', '.zip')).toBeUndefined()
+  })
+
+  it('keeps archive links on the mirror origin', () => {
+    const base = 'https://mirror.example/Adoptium/21/jre/x64/windows/'
+    expect(resolveMirrorArchive(base, 'OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip')).toBe(
+      'https://mirror.example/Adoptium/21/jre/x64/windows/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip',
+    )
+    expect(resolveMirrorArchive(base, 'https://evil.example/jre.zip')).toBeUndefined()
+    expect(resolveMirrorArchive(base, '//evil.example/jre.zip')).toBeUndefined()
+    expect(resolveMirrorArchive(base, 'https://mirror.example/other/jre.zip')).toBe('https://mirror.example/other/jre.zip')
   })
 })
 

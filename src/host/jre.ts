@@ -86,6 +86,13 @@ export function pickMirrorArchive(html: string, extension: string): string | und
   return best?.name
 }
 
+/** Resolve a listing link but never let a mirror redirect the download to another origin. */
+export function resolveMirrorArchive(listing: string, name: string): string | undefined {
+  const base = new URL(listing)
+  const url = new URL(name, base)
+  return url.origin === base.origin ? url.toString() : undefined
+}
+
 export function javaExecutablePath(directory: string, platform: NodeJS.Platform = process.platform): string {
   return join(directory, 'bin', platform === 'win32' ? 'java.exe' : 'java')
 }
@@ -220,7 +227,11 @@ export class JreManager {
     if (name === undefined) {
       throw new DbError('download-failed', 'Java 镜像里没有找到可下载的运行环境', listing)
     }
-    return new URL(name, listing).toString()
+    const archive = resolveMirrorArchive(listing, name)
+    if (archive === undefined) {
+      throw new DbError('download-failed', 'Java 镜像返回了外部下载地址', listing)
+    }
+    return archive
   }
 
   private async fetchArchive(url: string): Promise<Buffer> {
