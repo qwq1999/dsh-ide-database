@@ -173,6 +173,11 @@ describe('archive extraction', () => {
     if (process.platform !== 'win32') expect(statSync(executable).mode & 0o111).not.toBe(0)
   })
 
+  it('rejects a zip shorter than its end-of-central-directory record', () => {
+    const target = tempDir()
+    expect(() => extractZip(Buffer.from([0x50, 0x4b, 0x03, 0x04]), target)).toThrow('zip 文件缺少中央目录')
+  })
+
   it('rejects data that is neither zip nor gzip', () => {
     expect(() => extractArchive(Buffer.from('not an archive'), tempDir())).toThrow(/无法识别/)
   })

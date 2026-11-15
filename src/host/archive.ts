@@ -108,6 +108,7 @@ function createLink(destination: string, name: string, link: string): void {
 }
 
 function endOfCentralDirectory(zip: Buffer): number {
+  if (zip.length < 22) throw new Error('zip 文件缺少中央目录')
   const start = Math.max(0, zip.length - ZIP_EOCD_SEARCH)
   for (let offset = zip.length - 22; offset >= start; offset -= 1) {
     if (zip.readUInt32LE(offset) === ZIP_EOCD) return offset
