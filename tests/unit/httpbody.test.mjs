@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readResponseLimited } from '../../lib/host/httpbody.js'
+import { readResponseLimited, readResponseTextLimited } from '../../lib/host/httpbody.js'
 
 const tooLarge = (received) => new Error(`limit ${String(received)}`)
 
@@ -30,5 +30,18 @@ describe('readResponseLimited', () => {
       },
     })
     await expect(readResponseLimited(new Response(body), 3, tooLarge)).resolves.toEqual(Buffer.from([1, 2, 3]))
+  })
+})
+
+
+describe('readResponseTextLimited', () => {
+  it('decodes a bounded text body', async () => {
+    const response = new Response('alpha')
+    await expect(readResponseTextLimited(response, 16, tooLarge)).resolves.toBe('alpha')
+  })
+
+  it('reuses the byte cap for text responses', async () => {
+    const response = new Response('0123456789', { headers: { 'content-length': '10' } })
+    await expect(readResponseTextLimited(response, 8, tooLarge)).rejects.toThrow('limit 10')
   })
 })

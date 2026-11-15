@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { extractArchive } from './archive.js'
 import { DbError } from './errors.js'
-import { readResponseLimited } from './httpbody.js'
+import { readResponseLimited, readResponseTextLimited } from './httpbody.js'
 import type { PluginPaths } from './paths.js'
 
 /**
@@ -24,6 +24,8 @@ export const JAVA_FEATURE_VERSION = 21
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000
 /** The mirror listing is a few KB; do not let a blocked mirror stall the install. */
 const LISTING_TIMEOUT_MS = 20 * 1000
+/** A real mirror listing is a few KB; cap a hostile response before decoding it. */
+const MAX_LISTING_BYTES = 2 * 1024 * 1024
 /** A real JRE archive is 40 MB+; anything smaller is an error page or truncation. */
 const MIN_ARCHIVE_BYTES = 10 * 1024 * 1024
 /** A real JRE archive is well below this; reject an oversized mirror response before buffering it. */
@@ -204,7 +206,16 @@ export class JreManager {
     if (!response.ok) {
       throw new DbError('download-failed', `访问 Java 镜像失败（HTTP ${String(response.status)}）`, listing)
     }
-    const html = await response.text()
+    const html = await readResponseTextLimited(
+      response,
+      MAX_LISTING_BYTES,
+      (size) =>
+        new DbError(
+          'download-failed',
+          'Java 镜像列表过大',
+          `列表超过 ${String(MAX_LISTING_BYTES)} 字节（收到 ${String(size)} 字节）`,
+        ),
+    )
     const name = pickMirrorArchive(html, extension)
     if (name === undefined) {
       throw new DbError('download-failed', 'Java 镜像里没有找到可下载的运行环境', listing)

@@ -38,3 +38,13 @@ export async function readResponseLimited(
   }
   return Buffer.concat(chunks, total)
 }
+
+
+/** Same limit, decoded as UTF-8 for small metadata responses (listings, checksums). */
+export async function readResponseTextLimited(
+  response: Response,
+  maxBytes: number,
+  tooLarge: (received: number) => Error,
+): Promise<string> {
+  return (await readResponseLimited(response, maxBytes, tooLarge)).toString('utf8')
+}
