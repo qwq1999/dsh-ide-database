@@ -147,7 +147,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const [pageDraft, setPageDraft] = useState('1')
   const [whereText, setWhereText] = useState('')
   /** Two table tabs open at once must not share one datalist id. */
-  const columnsListId = `dshdb-columns-${params.table.replace(/[^\w-]/gu, '-')}`
+  const columnsListId = `dshdb-columns-${encodeURIComponent(
+    JSON.stringify([params.connectionId, params.schema, params.table]),
+  )}`
   /** Sort order survives closing the tab, the same way column widths do. */
   const tableScope = `${params.connectionId}:${params.schema}.${params.table}`
   const legacyTableScope = `${params.schema}.${params.table}`
