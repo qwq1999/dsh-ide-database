@@ -276,6 +276,9 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     return maskNonCode(pragma.rest, 'sqlite', true, false).includes('=')
   }
   if (head.word === 'explain') {
+    // Oracle's EXPLAIN is `EXPLAIN PLAN FOR ...`, which writes the plan table;
+    // it is not a side-effect-free plan request.
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle') return true
     const body = explainAnalyzeBody(code)
     return body !== null && looksLikeWrite(body, dialect)
   }

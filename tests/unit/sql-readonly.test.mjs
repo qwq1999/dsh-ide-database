@@ -99,6 +99,14 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN DELETE FROM t')).toBe(true)
   })
 
+  it('rejects Oracle EXPLAIN PLAN because it writes the plan table', () => {
+    expect(isReadOnlySql('EXPLAIN PLAN FOR SELECT * FROM t', 'oracle')).toBe(false)
+    expect(isReadOnlySql("EXPLAIN PLAN SET STATEMENT_ID = 'x' FOR SELECT 1", 'oracle')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN SELECT * FROM t', 'oceanbase-oracle')).toBe(false)
+    // Other dialects keep their side-effect-free plain EXPLAIN.
+    expect(isReadOnlySql('EXPLAIN SELECT * FROM t', 'postgres')).toBe(true)
+  })
+
   it('judges an EXPLAIN (...) option list by whether ANALYZE runs the statement', () => {
     expect(isReadOnlySql('EXPLAIN (ANALYZE) SELECT 1')).toBe(true)
     expect(isReadOnlySql('EXPLAIN (ANALYZE, FORMAT JSON) DELETE FROM t')).toBe(false)

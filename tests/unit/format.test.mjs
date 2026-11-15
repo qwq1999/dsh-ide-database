@@ -72,6 +72,8 @@ describe('format helpers', () => {
     expect(looksLikeWrite('EXPLAIN ANALYZE DELETE FROM t')).toBe(true)
     expect(looksLikeWrite('explain analyze format=tree update t set a = 1')).toBe(true)
     expect(looksLikeWrite('EXPLAIN DELETE FROM t')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN PLAN FOR SELECT 1', 'oracle')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN SELECT 1', 'postgres')).toBe(false)
     expect(looksLikeWrite('WITH recent AS (SELECT 1) DELETE FROM users')).toBe(true)
     expect(looksLikeWrite('with a as (select 1), b (id) as (select 2) select * from a')).toBe(false)
     expect(looksLikeWrite('WITH a AS (SELECT 1), b AS (SELECT 2) UPDATE users SET age = 1')).toBe(true)

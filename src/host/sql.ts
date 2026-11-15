@@ -568,6 +568,9 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
     )
   }
   if (head === 'explain') {
+    // Oracle has no side-effect-free EXPLAIN: `EXPLAIN PLAN FOR ...` inserts
+    // rows into the plan table. A read-only connection must not run it.
+    if (dialect === 'oracle' || dialect === 'oceanbase-oracle') return false
     // `EXPLAIN ANALYZE <statement>` and the parenthesised `EXPLAIN (ANALYZE, ...)`
     // form run <statement>; plain EXPLAIN only plans. Comments between the
     // keywords are whitespace, so `EXPLAIN /*x*/ ANALYZE DELETE` still runs.
