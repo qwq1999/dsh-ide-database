@@ -42,24 +42,32 @@ function sqliteTriggerNeedsMore(text: string): boolean {
  * not counted as an extra opener.
  */
 const ORACLE_PROGRAM_START =
-  /^\s*create\s+(?:or\s+replace\s+)?(?:editionable\s+|noneditionable\s+)?(?:procedure|function|trigger)\b/iu
+  /^\s*create\s+(?:or\s+replace\s+)?(?:editionable\s+|noneditionable\s+)?(procedure|function|trigger|package(?:\s+body)?|type\s+body)\b/iu
+
+function oracleProgramKind(text: string): string | null {
+  return ORACLE_PROGRAM_START.exec(text)?.[1]?.toLowerCase() ?? null
+}
 
 function oracleBlockNeedsMore(text: string): boolean {
   const code = maskNonCode(text, 'oracle', true)
   const anonymous = /^\s*(begin|declare)\b/iu.exec(code)
-  const program = anonymous === null && ORACLE_PROGRAM_START.test(code)
+  const kind = anonymous === null ? oracleProgramKind(code) : null
+  const program = kind !== null
   if (anonymous === null && !program) return false
+  const callable = kind === 'procedure' || kind === 'function' || kind === 'trigger'
   // External procedures and `CALL` triggers have no BEGIN block. Without this
   // check their first semicolon would be swallowed forever waiting for one.
-  if (program && !/\bbegin\b/iu.test(code) && /\b(?:external|language|call)\b/iu.test(code)) return false
+  if (callable && !/\bbegin\b/iu.test(code) && /\b(?:external|language|call)\b/iu.test(code)) return false
   const words = Array.from(code.matchAll(/;|\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
   let declaration = anonymous?.[1]?.toLowerCase() === 'declare' || program
-  // The first PROCEDURE/FUNCTION in a program is its own header, not a local
-  // subprogram declaration. Skip it so its BEGIN is treated as the main body.
-  let headerKeywordSkipped = !program
+  // A procedure/function/trigger header is its own first PROCEDURE/FUNCTION
+  // token. Package and type bodies have no such header, so their first local
+  // subprogram must be treated as local.
+  let headerKeywordSkipped = !program || !callable
   let localHeader = false
   let inLocal = false
   let localDepth = 0
+  let declarationEnd = false
   let seenBegin = false
   let depth = 0
   for (let index = 0; index < words.length; index += 1) {
@@ -97,6 +105,12 @@ function oracleBlockNeedsMore(text: string): boolean {
           seenBegin = true
           depth = 1
         }
+        continue
+      }
+      if (word === 'end') {
+        // Package/type bodies have no main BEGIN, but still end with
+        // `END [name];`; this is the terminator we are waiting for.
+        declarationEnd = true
       }
       continue
     }
@@ -121,7 +135,8 @@ function oracleBlockNeedsMore(text: string): boolean {
   // A DECLARE section (or a program's declaration section) has no `BEGIN`
   // yet; its semicolons are not terminators. A local subprogram may have
   // closed, but the main body has not started.
-  if (declaration || inLocal) return true
+  if (inLocal) return true
+  if (declaration) return !declarationEnd
   return seenBegin && depth > 0
 }
 
@@ -133,9 +148,13 @@ function oracleBlockNeedsMore(text: string): boolean {
 function oracleBlockStart(text: string): boolean {
   const code = maskNonCode(text, 'oracle', true)
   if (/^\s*(?:begin|declare)\b/iu.test(code)) return true
-  // Only a program that actually reached a BEGIN body keeps the terminator;
-  // `CREATE ... AS EXTERNAL` and `CREATE TRIGGER ... CALL` are ordinary SQL.
-  return ORACLE_PROGRAM_START.test(code) && /\bbegin\b/iu.test(code)
+  const kind = oracleProgramKind(code)
+  if (kind === null) return false
+  // Package/type specifications and bodies have a final `END ...;` even when
+  // they have no executable section. Callable programs only keep the
+  // terminator when their body actually started.
+  if (kind === 'package' || kind === 'package body' || kind === 'type body') return /\bend\b/iu.test(code)
+  return /\bbegin\b/iu.test(code)
 }
 
 /** A script may put explanatory comments before its first DELIMITER line. */

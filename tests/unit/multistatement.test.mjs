@@ -355,6 +355,53 @@ describe('splitStatements', () => {
     expect(splitStatements(anonymous, 'oracle')).toEqual([anonymous])
   })
 
+  it('keeps Oracle package specifications and bodies intact', () => {
+    const spec = [
+      'CREATE OR REPLACE PACKAGE pkg AS',
+      '  PROCEDURE p;',
+      '  FUNCTION f RETURN NUMBER;',
+      'END pkg;',
+    ].join('\n')
+    expect(splitStatements(spec, 'oracle')).toEqual([spec])
+
+    const body = [
+      'CREATE OR REPLACE PACKAGE BODY pkg AS',
+      '  PROCEDURE p IS',
+      '  BEGIN',
+      '    NULL;',
+      '  END;',
+      '  FUNCTION f RETURN NUMBER IS',
+      '  BEGIN',
+      '    RETURN 1;',
+      '  END;',
+      'END pkg;',
+    ].join('\n')
+    expect(splitStatements(body, 'oracle')).toEqual([body])
+    expect(splitStatements(`${body}\nSELECT 2;`, 'oracle')).toEqual([body, 'SELECT 2'])
+
+    const withInit = [
+      'CREATE OR REPLACE PACKAGE BODY pkg AS',
+      '  PROCEDURE p IS',
+      '  BEGIN',
+      '    NULL;',
+      '  END;',
+      'BEGIN',
+      '  p;',
+      'END pkg;',
+    ].join('\n')
+    expect(splitStatements(withInit, 'oracle')).toEqual([withInit])
+
+    const typeBody = [
+      'CREATE OR REPLACE TYPE BODY t AS',
+      '  MEMBER PROCEDURE p IS',
+      '  BEGIN',
+      '    NULL;',
+      '  END;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(typeBody, 'oracle')).toEqual([typeBody])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
