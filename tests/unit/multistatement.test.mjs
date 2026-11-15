@@ -364,6 +364,14 @@ describe('splitStatements', () => {
     ].join('\n')
     expect(splitStatements(spec, 'oracle')).toEqual([spec])
 
+    const specWithCase = [
+      'CREATE OR REPLACE PACKAGE pkg AS',
+      '  c CONSTANT NUMBER := CASE WHEN 1 = 1 THEN 1 ELSE 0 END;',
+      '  PROCEDURE p;',
+      'END pkg;',
+    ].join('\n')
+    expect(splitStatements(specWithCase, 'oracle')).toEqual([specWithCase])
+
     const body = [
       'CREATE OR REPLACE PACKAGE BODY pkg AS',
       '  PROCEDURE p IS',

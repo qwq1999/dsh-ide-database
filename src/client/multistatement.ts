@@ -68,6 +68,7 @@ function oracleBlockNeedsMore(text: string): boolean {
   let inLocal = false
   let localDepth = 0
   let declarationEnd = false
+  let declarationCaseDepth = 0
   let seenBegin = false
   let depth = 0
   for (let index = 0; index < words.length; index += 1) {
@@ -107,7 +108,17 @@ function oracleBlockNeedsMore(text: string): boolean {
         }
         continue
       }
+      if (word === 'case') {
+        // A declaration initializer may contain a CASE expression; its END
+        // does not terminate a package/type declaration section.
+        declarationCaseDepth += 1
+        continue
+      }
       if (word === 'end') {
+        if (declarationCaseDepth > 0) {
+          declarationCaseDepth -= 1
+          continue
+        }
         // Package/type bodies have no main BEGIN, but still end with
         // `END [name];`; this is the terminator we are waiting for.
         declarationEnd = true
