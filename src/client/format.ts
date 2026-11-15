@@ -2,6 +2,7 @@ import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
 import { isRedisReadCommand } from '../shared/redisread'
+import { parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
 export function dialectLabel(dialect: Dialect | undefined): string {
@@ -263,6 +264,15 @@ function looksLikeWriteCode(code: string, dialect: SqlDialect): boolean {
     return /\bfrom\b/iu.test(code)
   }
   const head = firstWord(code)
+  if (head.word === 'pragma') {
+    // PRAGMA is only read-only for SQLite introspection names; `user_version =
+    // 1` and `journal_mode = WAL` mutate. A non-SQLite dialect has no PRAGMA,
+    // so ask conservatively instead of claiming a write is a read.
+    if (dialect !== 'sqlite') return true
+    const pragma = parseSqlitePragma(code)
+    if (pragma === null || !SQLITE_READ_PRAGMAS.has(pragma.name)) return true
+    return pragma.rest.includes('=')
+  }
   if (head.word === 'explain') {
     const body = explainAnalyzeBody(code)
     return body !== null && looksLikeWrite(body, dialect)

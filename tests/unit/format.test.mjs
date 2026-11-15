@@ -82,6 +82,17 @@ describe('format helpers', () => {
     expect(looksLikeRedisWrite('DEL foo')).toBe(true)
   })
 
+  it('flags mutating SQLite pragmas', () => {
+    expect(looksLikeWrite('PRAGMA table_info(users)', 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA main.table_info(users)', 'sqlite')).toBe(false)
+    expect(looksLikeWrite("PRAGMA table_info('a=b')", 'sqlite')).toBe(false)
+    expect(looksLikeWrite('PRAGMA user_version = 1', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA journal_mode = WAL', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA writable_schema = ON', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA unknown_pragma', 'sqlite')).toBe(true)
+    expect(looksLikeWrite('PRAGMA table_info(users); PRAGMA user_version = 1', 'sqlite')).toBe(true)
+  })
+
   it('treats the same pure Redis commands as the host guard', () => {
     const reads = [
       'XREAD',
