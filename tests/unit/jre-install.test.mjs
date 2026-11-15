@@ -329,6 +329,53 @@ describe('JreManager', () => {
     })
   })
 
+  it('follows same-origin mirror redirects', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const archiveUrl = `${listingUrl}${archiveName}`
+    const redirectUrl = `${listingUrl}redirected${extension}`
+    const entries = [
+      [`jdk-21/bin/${JAVA_BIN}`, Buffer.from('java-bytes')],
+      ['jdk-21/filler.bin', randomBytes(10.5 * 1024 * 1024)],
+    ]
+    const archive = extension === '.zip' ? buildZip(entries) : gzipSync(buildTar(entries))
+    const calls = []
+    const impl = async (url) => {
+      const href = String(url)
+      calls.push(href)
+      if (href === listingUrl) return new Response(`<a href="${archiveName}">jre</a>`)
+      if (href === archiveUrl) return new Response(null, { status: 302, headers: { location: `./redirected${extension}` } })
+      if (href === redirectUrl) return new Response(archive)
+      return new Response('nope', { status: 404 })
+    }
+    const dataDir = tempDir()
+    const { jre } = manager(dataDir, impl)
+    await jre.install()
+    expect(calls).toEqual([listingUrl, archiveUrl, redirectUrl])
+    expect(jre.installed).toBe(true)
+    expect(readFileSync(join(dataDir, 'jre', 'bin', JAVA_BIN), 'utf8')).toBe('java-bytes')
+  })
+
+  it('rejects a mirror redirect to another origin', async () => {
+    const extension = process.platform === 'win32' ? '.zip' : '.tar.gz'
+    const listingUrl = tunaMirrorUrl()
+    const archiveName = `OpenJDK21U-jre_x64_${process.platform}_hotspot_21.0.13_9${extension}`
+    const archiveUrl = `${listingUrl}${archiveName}`
+    const impl = async (url) => {
+      if (String(url) === listingUrl) return new Response(`<a href="${archiveName}">jre</a>`)
+      if (String(url) === archiveUrl) {
+        return new Response(null, { status: 302, headers: { location: 'https://evil.example/jre.zip' } })
+      }
+      return new Response('nope', { status: 404 })
+    }
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('外部地址'),
+    })
+  })
+
   it('falls back to the official API when the mirror listing is unavailable', async () => {
     const archive = gzipSync(
       buildTar([

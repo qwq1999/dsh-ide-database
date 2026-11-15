@@ -189,7 +189,7 @@ export class JreManager {
       try {
         const url = source === 'mirror' ? await this.mirrorArchiveUrl(extension) : adoptiumUrl()
         this.log(`downloading Java ${String(JAVA_FEATURE_VERSION)} runtime: ${url}`)
-        return await this.fetchArchive(url)
+        return await this.fetchArchive(url, source === 'mirror' ? new URL(url).origin : undefined)
       } catch (error) {
         if (error instanceof DbError && error.code === 'unsupported') throw error
         failures.push(describe(error))
@@ -234,14 +234,36 @@ export class JreManager {
     return archive
   }
 
-  private async fetchArchive(url: string): Promise<Buffer> {
+  /** A mirror archive may redirect, but never to another origin. */
+  private async fetchFollowingSameOrigin(url: string, origin: string, signal: AbortSignal): Promise<Response> {
+    let current = url
+    for (let hop = 0; hop < 5; hop += 1) {
+      const response = await this.fetchImpl(current, { redirect: 'manual', signal })
+      if (response.status < 300 || response.status >= 400) return response
+      const location = response.headers.get('location')
+      if (location === null) return response
+      const next = new URL(location, current)
+      await response.body?.cancel()
+      if (next.origin !== origin) {
+        throw new DbError('download-failed', 'Java 镜像重定向到外部地址', next.toString())
+      }
+      current = next.toString()
+    }
+    throw new DbError('download-failed', 'Java 镜像重定向次数过多', url)
+  }
+
+  private async fetchArchive(url: string, allowedOrigin?: string): Promise<Buffer> {
     let response: Response
     try {
-      response = await this.fetchImpl(url, {
-        redirect: 'follow',
-        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-      })
+      response =
+        allowedOrigin === undefined
+          ? await this.fetchImpl(url, {
+              redirect: 'follow',
+              signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+            })
+          : await this.fetchFollowingSameOrigin(url, allowedOrigin, AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS))
     } catch (error) {
+      if (error instanceof DbError) throw error
       throw new DbError('download-failed', `无法访问 ${url}`, messageOf(error))
     }
     if (!response.ok) {
