@@ -68,6 +68,8 @@ export const REDIS_READ_COMMANDS: ReadonlySet<string> = new Set([
   'geohash',
   'geosearch',
   'pfcount',
+  'dump',
+  'pubsub',
   'srandmember',
   'sinter',
   'sunion',

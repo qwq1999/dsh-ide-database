@@ -64,6 +64,8 @@ describe('Redis command guard', () => {
       'ROLE',
       'COMMAND',
       'SUBSTR',
+      'DUMP',
+      'PUBSUB',
     ]) {
       expect(isReadOnlyCommand(command)).toBe(true)
     }
