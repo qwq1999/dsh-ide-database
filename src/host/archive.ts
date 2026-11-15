@@ -43,11 +43,24 @@ function gunzipArchive(archive: Buffer): Buffer {
   }
 }
 
-function archivePath(raw: string): string | undefined {
+const WINDOWS_BAD_CHARS = /[<>:"|?*\u0000-\u001f]/
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
+
+function isUnsafeWindowsPart(part: string): boolean {
+  if (process.platform !== 'win32') return false
+  return (
+    part.endsWith('.') ||
+    part.endsWith(' ') ||
+    WINDOWS_BAD_CHARS.test(part) ||
+    WINDOWS_RESERVED_NAME.test(part)
+  )
+}
+
+export function archivePath(raw: string): string | undefined {
   const normalized = raw.replace(/\\/g, '/').replace(/^\.\/+/, '')
   if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) return undefined
   const parts = normalized.split('/').filter((part) => part !== '' && part !== '.')
-  if (parts.length === 0 || parts.includes('..')) return undefined
+  if (parts.length === 0 || parts.includes('..') || parts.some(isUnsafeWindowsPart)) return undefined
   return parts.join('/')
 }
 
@@ -69,6 +82,8 @@ function writeEntry(destination: string, name: string, data: Buffer, mode?: numb
  */
 export function safeArchiveLink(destination: string, name: string, link: string): string | undefined {
   if (link === '' || isAbsolute(link) || /^[A-Za-z]:/.test(link)) return undefined
+  const linkParts = link.replace(/\\/g, '/').split('/')
+  if (linkParts.filter((part) => part !== '' && part !== '.' && part !== '..').some(isUnsafeWindowsPart)) return undefined
   const resolved = resolve(dirname(join(destination, name)), link)
   const inside = relative(destination, resolved)
   if (isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`)) return undefined

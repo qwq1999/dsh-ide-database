@@ -5,7 +5,14 @@ import { crc32, gzipSync } from 'node:zlib'
 import { randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { extractArchive, extractTarGz, extractZip, MAX_ARCHIVE_ENTRY_BYTES, safeArchiveLink } from '../../lib/host/archive.js'
+import {
+  archivePath,
+  extractArchive,
+  extractTarGz,
+  extractZip,
+  MAX_ARCHIVE_ENTRY_BYTES,
+  safeArchiveLink,
+} from '../../lib/host/archive.js'
 import { adoptiumUrl, findRuntimeRoot, JreManager, pickMirrorArchive, tunaMirrorUrl } from '../../lib/host/jre.js'
 
 const JAVA_BIN = process.platform === 'win32' ? 'java.exe' : 'java'
@@ -115,6 +122,16 @@ describe('archive extraction', () => {
     tar.write(`${(MAX_ARCHIVE_ENTRY_BYTES + 1).toString(8).padStart(11, '0')}\0`, 124, 'utf8')
     expect(() => extractTarGz(gzipSync(tar), target)).toThrow(/tar 条目过大/)
     expect(existsSync(join(target, 'big.txt'))).toBe(false)
+  })
+
+  it('rejects Windows-normalized archive paths', () => {
+    if (process.platform !== 'win32') return
+    expect(archivePath('.. /evil')).toBeUndefined()
+    expect(archivePath('CON')).toBeUndefined()
+    expect(archivePath('foo. ')).toBeUndefined()
+    expect(archivePath('foo:bar')).toBeUndefined()
+    expect(archivePath('dir/file.txt')).toBe('dir/file.txt')
+    expect(safeArchiveLink(tempDir(), 'jdk/bin/java', '.. /evil')).toBeUndefined()
   })
 
   it('keeps tar symlink targets inside the extraction directory', () => {
