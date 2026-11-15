@@ -247,7 +247,7 @@ function mssqlGoDirective(input: string, index: number): BatchDirective | null {
   let lineStart = index
   while (lineStart > 0 && (input[lineStart - 1] === ' ' || input[lineStart - 1] === '\t')) lineStart -= 1
   if (lineStart > 0 && input[lineStart - 1] !== '\n' && input[lineStart - 1] !== '\r') return null
-  const match = /^go(?:[ \t]+(\d+))?[ \t]*(?:--[^\n]*)?(?:\r?\n|$)/iu.exec(input.slice(index))
+  const match = /^go(?:[ \t]+(\d+))?[ \t]*(?:(?:--[^\n]*)|(?:\/\*[\s\S]*?\*\/))?[ \t]*(?:\r?\n|$)/iu.exec(input.slice(index))
   if (match === null) return null
   const count = match[1] === undefined ? 1 : Number(match[1])
   if (!Number.isSafeInteger(count) || count < 1) return null
