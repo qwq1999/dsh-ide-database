@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 import { extractArchive } from './archive.js'
 import { DbError } from './errors.js'
+import { readResponseLimited } from './httpbody.js'
 import type { PluginPaths } from './paths.js'
 
 /**
@@ -225,34 +226,14 @@ export class JreManager {
       throw new DbError('download-failed', `下载 Java 运行环境失败（HTTP ${String(response.status)}）`, url)
     }
     const tooLarge = (size: number): DbError =>
-      new DbError('download-failed', '下载的 Java 运行环境过大', `安装包超过 ${String(MAX_DOWNLOAD_BYTES)} 字节（收到 ${String(size)} 字节）`)
-    const declared = response.headers.get('content-length')
-    if (declared !== null && Number(declared) > MAX_DOWNLOAD_BYTES) throw tooLarge(Number(declared))
+      new DbError(
+        'download-failed',
+        '下载的 Java 运行环境过大',
+        `安装包超过 ${String(MAX_DOWNLOAD_BYTES)} 字节（收到 ${String(size)} 字节）`,
+      )
     let buffer: Buffer
     try {
-      if (response.body === null) {
-        buffer = Buffer.from(await response.arrayBuffer())
-        if (buffer.length > MAX_DOWNLOAD_BYTES) throw tooLarge(buffer.length)
-      } else {
-        const reader = response.body.getReader()
-        const chunks: Buffer[] = []
-        let total = 0
-        try {
-          for (;;) {
-            const { done, value } = await reader.read()
-            if (done) break
-            total += value.byteLength
-            if (total > MAX_DOWNLOAD_BYTES) {
-              void reader.cancel().catch(() => {})
-              throw tooLarge(total)
-            }
-            chunks.push(Buffer.from(value))
-          }
-        } finally {
-          reader.releaseLock()
-        }
-        buffer = Buffer.concat(chunks, total)
-      }
+      buffer = await readResponseLimited(response, MAX_DOWNLOAD_BYTES, tooLarge)
     } catch (error) {
       if (error instanceof DbError) throw error
       throw new DbError('download-failed', '读取 Java 运行环境安装包失败', messageOf(error))
