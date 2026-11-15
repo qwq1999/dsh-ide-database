@@ -18,6 +18,30 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('select 1;;;')).toBe(true)
   })
 
+  it('accepts read-only SQLite pragmas', () => {
+    expect(isReadOnlySql('PRAGMA table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql("PRAGMA main.table_info('users')", 'sqlite')).toBe(true)
+    expect(isReadOnlySql("PRAGMA \"main\".index_info('idx')", 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA foreign_key_check', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA integrity_check(1)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA schema_version', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA user_version', 'sqlite')).toBe(true)
+    expect(isReadOnlySql("PRAGMA table_info('a=b')", 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA table_info(users) /* = */', 'sqlite')).toBe(true)
+    // PRAGMA is not a read-only starter outside SQLite.
+    expect(isReadOnlySql('PRAGMA table_info(users)')).toBe(false)
+  })
+
+  it('rejects mutating or ambiguous SQLite pragmas', () => {
+    expect(isReadOnlySql('PRAGMA user_version = 1', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA user_version /* x */ = 1', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA main.user_version = 1', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA journal_mode = WAL', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA writable_schema = ON', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA table_info(users) = 1', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA table_info(users); DROP TABLE users', 'sqlite')).toBe(false)
+  })
+
   it('accepts reads behind leading comments', () => {
     expect(isReadOnlySql('-- fetch orders\nSELECT 1')).toBe(true)
     expect(isReadOnlySql('/* hint */ select 1')).toBe(true)

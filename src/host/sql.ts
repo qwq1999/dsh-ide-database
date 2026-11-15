@@ -43,6 +43,50 @@ interface Connected {
 
 const READ_ONLY_STARTERS = new Set(['select', 'with', 'show', 'describe', 'desc', 'explain', 'values'])
 
+/**
+ * SQLite pragmas that only inspect the database. They are useful on a
+ * read-only connection, but PRAGMA is not generally read-only: `user_version =
+ * 1`, `journal_mode = WAL` and `optimize` all mutate something. Keep this list
+ * to introspection commands and reject an assignment even for a listed name.
+ */
+const SQLITE_READ_PRAGMAS = new Set([
+  'table_info',
+  'table_xinfo',
+  'table_list',
+  'index_info',
+  'index_list',
+  'index_xinfo',
+  'foreign_key_list',
+  'foreign_key_check',
+  'database_list',
+  'collation_list',
+  'compile_options',
+  'function_list',
+  'module_list',
+  'pragma_list',
+  'integrity_check',
+  'quick_check',
+  'freelist_count',
+  'page_count',
+  'schema_version',
+  'data_version',
+  'user_version',
+  'application_id',
+])
+
+/** Whether a SQLite `PRAGMA` statement is a safe introspection read. */
+function sqliteReadOnlyPragma(text: string): boolean {
+  const match =
+    /^pragma\s+(?:(?:[^\s.]+|"[^"]*"|`[^`]*`|\[[^\]]*\])\s*\.\s*)?([A-Za-z_][A-Za-z0-9_]*)\b/iu.exec(text)
+  if (match === null) return false
+  const name = match[1]?.toLowerCase()
+  if (name === undefined || !SQLITE_READ_PRAGMAS.has(name)) return false
+  // Even an introspection pragma can be assigned a value in some SQLite
+  // versions; a plain read has no `=`. Mask strings/comments so an argument
+  // such as `table_info('a=b')` stays a read.
+  return !withoutLiterals(text.slice(match[0].length), 'sqlite').includes('=')
+}
+
 /** True for identifier characters; deliberately ASCII plus anything above 127. */
 function isWordChar(char: string): boolean {
   if (char === '_' || char === '$') return true
@@ -538,6 +582,7 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
   const first = /^[A-Za-z]+/.exec(withoutTrailing)
   if (first === null) return false
   const head = first[0].toLowerCase()
+  if (dialect === 'sqlite' && head === 'pragma') return sqliteReadOnlyPragma(withoutTrailing)
   if (!READ_ONLY_STARTERS.has(head)) return false
   if (head === 'with') {
     // A CTE list can front any statement, including DELETE; judge what it runs.
