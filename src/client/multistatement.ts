@@ -52,17 +52,51 @@ function oracleBlockNeedsMore(text: string): boolean {
   // External procedures and `CALL` triggers have no BEGIN block. Without this
   // check their first semicolon would be swallowed forever waiting for one.
   if (program && !/\bbegin\b/iu.test(code) && /\b(?:external|language|call)\b/iu.test(code)) return false
-  const words = Array.from(code.matchAll(/\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
+  const words = Array.from(code.matchAll(/;|\b[A-Za-z_][A-Za-z0-9_$#]*\b/gu), (match) => match[0].toLowerCase())
   let declaration = anonymous?.[1]?.toLowerCase() === 'declare' || program
+  // The first PROCEDURE/FUNCTION in a program is its own header, not a local
+  // subprogram declaration. Skip it so its BEGIN is treated as the main body.
+  let headerKeywordSkipped = !program
+  let localHeader = false
+  let inLocal = false
+  let localDepth = 0
   let seenBegin = false
   let depth = 0
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index]
+    if (inLocal) {
+      if (word === 'begin' || word === 'if' || word === 'loop' || word === 'case') {
+        localDepth += 1
+        continue
+      }
+      if (word === 'end') {
+        const next = words[index + 1]
+        if (next === 'if' || next === 'loop' || next === 'case') index += 1
+        localDepth -= 1
+        if (localDepth === 0) inLocal = false
+      }
+      continue
+    }
     if (declaration) {
+      if (word === ';') {
+        localHeader = false
+        continue
+      }
+      if (word === 'procedure' || word === 'function') {
+        if (!headerKeywordSkipped) headerKeywordSkipped = true
+        else localHeader = true
+        continue
+      }
       if (word === 'begin') {
-        declaration = false
-        seenBegin = true
-        depth = 1
+        if (localHeader) {
+          inLocal = true
+          localDepth = 1
+          localHeader = false
+        } else {
+          declaration = false
+          seenBegin = true
+          depth = 1
+        }
       }
       continue
     }
@@ -85,8 +119,9 @@ function oracleBlockNeedsMore(text: string): boolean {
     }
   }
   // A DECLARE section (or a program's declaration section) has no `BEGIN`
-  // yet; its semicolons are not terminators.
-  if (declaration) return true
+  // yet; its semicolons are not terminators. A local subprogram may have
+  // closed, but the main body has not started.
+  if (declaration || inLocal) return true
   return seenBegin && depth > 0
 }
 

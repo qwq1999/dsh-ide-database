@@ -324,6 +324,37 @@ describe('splitStatements', () => {
     ])
   })
 
+  it('keeps Oracle local subprograms inside the declaration section', () => {
+    const procedure = [
+      'CREATE OR REPLACE PROCEDURE p AS',
+      '  PROCEDURE inner_proc AS',
+      '  BEGIN',
+      '    NULL;',
+      '  END;',
+      '  FUNCTION inner_fn RETURN NUMBER IS',
+      '  BEGIN',
+      '    RETURN 1;',
+      '  END;',
+      'BEGIN',
+      '  inner_proc;',
+      '  NULL;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(procedure, 'oracle')).toEqual([procedure])
+
+    const anonymous = [
+      'DECLARE',
+      '  PROCEDURE inner_proc AS',
+      '  BEGIN',
+      '    NULL;',
+      '  END;',
+      'BEGIN',
+      '  inner_proc;',
+      'END;',
+    ].join('\n')
+    expect(splitStatements(anonymous, 'oracle')).toEqual([anonymous])
+  })
+
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
