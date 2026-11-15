@@ -195,6 +195,22 @@ function headerSize(header: Buffer): number {
   return value
 }
 
+/** The historic signed-byte checksum is still emitted by some BSD tars. */
+function verifyTarChecksum(header: Buffer): void {
+  const text = cString(header, 148, 8).trim()
+  if (text === '' || !/^[0-7]+$/.test(text)) throw new Error('tar 头校验和非法')
+  const expected = Number.parseInt(text, 8)
+  let unsigned = 0
+  let signed = 0
+  for (let index = 0; index < BLOCK; index += 1) {
+    const byte = index >= 148 && index < 156 ? 0x20 : (header[index] ?? 0)
+    unsigned += byte
+    signed += byte > 127 ? byte - 256 : byte
+  }
+  if (expected !== unsigned && expected !== signed) throw new Error('tar 头校验和非法')
+}
+
+
 /** PAX extended headers are `"<length> key=value\n"` records. */
 function parsePax(body: Buffer): Record<string, string> {
   const records: Record<string, string> = {}
@@ -234,6 +250,7 @@ export function extractTarGz(archive: Buffer, destination: string): void {
     if (total + size > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('tar 解压后过大')
     offset += BLOCK
     if (offset + size > tar.length) throw new Error(`tar 条目数据不完整：${entryName}`)
+    verifyTarChecksum(header)
     const body = tar.subarray(offset, offset + size)
     offset += Math.ceil(size / BLOCK) * BLOCK
     total += size

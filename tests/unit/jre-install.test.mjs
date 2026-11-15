@@ -154,6 +154,13 @@ describe('archive extraction', () => {
     expect(() => extractTarGz(archive, target)).toThrow('tar 条目大小非法')
   })
 
+  it('rejects a tar header whose checksum was corrupted', () => {
+    const target = tempDir()
+    const tar = buildTar([['evil.txt', Buffer.from('payload')]])
+    tar[0] ^= 0x01
+    expect(() => extractTarGz(gzipSync(tar), target)).toThrow('tar 头校验和非法')
+  })
+
   it('caps the number of archive entries', () => {
     expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES)).not.toThrow()
     expect(() => assertArchiveEntries(MAX_ARCHIVE_ENTRIES + 1)).toThrow('归档条目过多')
