@@ -272,6 +272,17 @@ describe('JreManager', () => {
     await expect(jre.install()).rejects.toMatchObject({ code: 'download-failed' })
   })
 
+  it('rejects an oversized download before buffering it', async () => {
+    const { impl } = fakeFetch(
+      () => new Response(new Uint8Array(0), { headers: { 'content-length': String(512 * 1024 * 1024 + 1) } }),
+    )
+    const { jre } = manager(tempDir(), impl)
+    await expect(jre.install()).rejects.toMatchObject({
+      code: 'download-failed',
+      detail: expect.stringContaining('过大'),
+    })
+  })
+
   it('falls back to the official API when the mirror listing is unavailable', async () => {
     const archive = gzipSync(
       buildTar([
