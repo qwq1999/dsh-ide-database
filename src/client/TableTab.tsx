@@ -152,12 +152,21 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   )}`
   /** Sort order survives closing the tab, the same way column widths do. */
   const tableScope = `${params.connectionId}:${params.schema}.${params.table}`
+  // A dot in either name makes the old `connection:schema.table` key ambiguous:
+  // (`a`, `b.c`) and (`a.b`, `c`) would share it. Keep the old key for ordinary
+  // names so existing preferences still apply, and append the exact pair only
+  // when the dotted key could collide. Those old ambiguous keys are not
+  // migrated because they cannot be attributed to one table.
+  const dottedTableName = params.schema.includes('.') || params.table.includes('.')
+  const preferenceScope = dottedTableName
+    ? `${tableScope}#${encodeURIComponent(JSON.stringify([params.schema, params.table]))}`
+    : tableScope
   const legacyTableScope = `${params.schema}.${params.table}`
-  const orderStorageKey = `${ORDER_KEY}:${tableScope}`
-  const gridStorageKey = `table:${tableScope}`
+  const orderStorageKey = `${ORDER_KEY}:${preferenceScope}`
+  const gridStorageKey = `table:${preferenceScope}`
   const legacyGridStorageKey = `table:${legacyTableScope}`
   const [orderText, setOrderText] = useState(() =>
-    readMigratedText(orderStorageKey, `${ORDER_KEY}:${legacyTableScope}`),
+    dottedTableName ? readText(orderStorageKey) : readMigratedText(orderStorageKey, `${ORDER_KEY}:${legacyTableScope}`),
   )
   const [filters, setFilters] = useState<ColumnFilters>({})
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false))
@@ -178,9 +187,9 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     setOrderText(remembered)
     applyRef.current({ orderBy: remembered, page: 0, recount: false })
   }, [columns, orderStorageKey])
-  const hiddenStorageKey = `table:${tableScope}`
+  const hiddenStorageKey = `table:${preferenceScope}`
   const [hiddenColumns, setHiddenColumns] = useState<string[] | null>(() =>
-    readMigratedHidden(hiddenStorageKey, `table:${legacyTableScope}`),
+    dottedTableName ? readHidden(hiddenStorageKey) : readMigratedHidden(hiddenStorageKey, `table:${legacyTableScope}`),
   )
   const [cellView, setCellView] = useState<CellValueView | null>(null)
   const objectKind = params.kind === 'view' ? 'view' : 'table'
@@ -254,8 +263,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   // Widths are indexed by the columns the grid actually paints, so use the
   // visible count both for migration and for the DataGrid storage key.
   const widthStorageKey = useMemo(
-    () => migrateWidths(gridStorageKey, legacyGridStorageKey, shownColumns.length),
-    [gridStorageKey, legacyGridStorageKey, shownColumns.length],
+    () =>
+      dottedTableName
+        ? gridStorageKey
+        : migrateWidths(gridStorageKey, legacyGridStorageKey, shownColumns.length),
+    [dottedTableName, gridStorageKey, legacyGridStorageKey, shownColumns.length],
   )
 
   // Reordering while a column is hidden is handled by the page, not the grid:
