@@ -193,7 +193,7 @@ URL 模板支持 `{{host}}`、`{{port}}`、`{{database}}`、`{{user}}` 占位符
 | `db_test_connection` | 测试保存的连接或临时草稿（不落盘） |
 | `db_list_schemas` | 列出 Schema/数据库（MySQL 列库，Oracle/达梦列 Schema） |
 | `db_list_objects` | 列出指定 Schema 下的表、视图、例程、序列与触发器；大 Schema 按 `limit` 截断 |
-| `db_describe_table` | 列、类型、可空、主键、索引、注释；未连接或离线时回退到结构缓存并标注 `cached: true` |
+| `db_describe_table` | 表注释、列、类型、可空、主键、索引与列注释；未连接或离线时回退到结构缓存并标注 `cached: true` |
 | `db_get_ddl` | 表/视图/例程/序列/触发器的建表语句；服务端拿不到时按描述生成，并标注来源与告警 |
 | `db_execute_sql` | 执行单条 SQL；默认只读，`allowAgentWrites` 开启后才允许写；空语句直接拒绝 |
 | `db_explain` | MySQL `EXPLAIN`、Oracle/达梦执行计划 |

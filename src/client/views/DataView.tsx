@@ -144,12 +144,13 @@ export function DataView(props: DataViewProps): ReactElement {
 
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
-  // The detail payload carries columns and indexes only. The object comment
-  // comes from the same connection's object list, where the tree got it.
+  // The description now carries the comment itself; descriptions cached before
+  // 0.4.3 do not, so fall back to the object list the tree was built from.
   const detailComment =
     detail === null
       ? undefined
-      : objects[`${selectedId}:${detail.schema}`]?.find((object) => object.name === detail.table)?.comment
+      : detail.comment ??
+        objects[`${selectedId}:${detail.schema}`]?.find((object) => object.name === detail.table)?.comment
   /** What the tree filter searches, for the placeholder and the aria label. */
   const treeFilterLabel = selected?.dialect === 'redis' ? '键' : '库表'
 

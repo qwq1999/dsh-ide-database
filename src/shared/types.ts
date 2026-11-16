@@ -419,6 +419,8 @@ export interface TableDescription {
   schema: string
   table: string
   kind: ObjectKind
+  /** Server-side table/view comment; absent when the object has none. */
+  comment?: string
   columns: ColumnDetail[]
   indexes: IndexInfo[]
   /**

@@ -615,7 +615,7 @@ final class SqlExecutor {
                 try {
                     readMysqlColumns(entry, schema, table, columns);
                     readMysqlIndexes(entry, schema, table, indexes);
-                    return columnBundle(columns, indexes);
+                    return withTableComment(entry, schema, table, columnBundle(columns, indexes));
                 } catch (SQLException error) {
                     columns.clear();
                     indexes.clear();
@@ -624,14 +624,14 @@ final class SqlExecutor {
                 try {
                     readOracleColumns(entry, schema, table, columns);
                     readOracleIndexes(entry, schema, table, indexes);
-                    return columnBundle(columns, indexes);
+                    return withTableComment(entry, schema, table, columnBundle(columns, indexes));
                 } catch (SQLException error) {
                     columns.clear();
                     indexes.clear();
                 }
             }
             metadataColumns(entry, schema, table, columns, indexes);
-            return columnBundle(columns, indexes);
+            return withTableComment(entry, schema, table, columnBundle(columns, indexes));
         } finally {
             entry.lock.unlock();
         }
@@ -642,6 +642,73 @@ final class SqlExecutor {
         data.put("columns", columns);
         data.put("indexes", indexes);
         return data;
+    }
+
+    /**
+     * Attaches the table/view comment to a column bundle. The comment only
+     * decorates the description: a server without privileges or catalog views
+     * must still return columns and indexes, so failures are swallowed.
+     */
+    private Map<String, Object> withTableComment(
+            Conn entry, String schema, String table, Map<String, Object> data) {
+        String comment = tableComment(entry, schema, table);
+        if (comment != null) {
+            data.put("comment", comment);
+        }
+        return data;
+    }
+
+    private String tableComment(Conn entry, String schema, String table) {
+        try {
+            if ("mysql".equals(entry.dialect)) {
+                String sql = "SELECT table_comment FROM information_schema.tables"
+                        + " WHERE table_schema = ? AND table_name = ?";
+                try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+                    statement.setString(1, schema);
+                    statement.setString(2, table);
+                    try (ResultSet rs = statement.executeQuery()) {
+                        if (rs.next()) {
+                            return nonEmpty(rs.getString(1));
+                        }
+                    }
+                }
+                return null;
+            }
+            if ("oracle".equals(entry.dialect)
+                    || "oceanbase-oracle".equals(entry.dialect)
+                    || "dameng".equals(entry.dialect)) {
+                String sql = "SELECT comments FROM all_tab_comments"
+                        + " WHERE owner = ? AND table_name = ?";
+                try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+                    statement.setString(1, schema);
+                    statement.setString(2, table);
+                    try (ResultSet rs = statement.executeQuery()) {
+                        if (rs.next()) {
+                            return nonEmpty(rs.getString(1));
+                        }
+                    }
+                }
+                return null;
+            }
+            // JDBC remarks carry the comment on drivers that report it (PostgreSQL,
+            // SQL Server, ...); a null REMARKS simply leaves the comment out.
+            try (ResultSet rs = entry.connection.getMetaData().getTables(null, schema, table, null)) {
+                if (rs.next()) {
+                    return nonEmpty(rs.getString("REMARKS"));
+                }
+            }
+        } catch (SQLException ignored) {
+            // The comment is optional decoration; describe still returns the rest.
+        }
+        return null;
+    }
+
+    private static String nonEmpty(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void readMysqlColumns(

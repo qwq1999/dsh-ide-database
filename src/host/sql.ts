@@ -961,15 +961,17 @@ export class SqlService {
       return { schema, table, kind, columns: [], indexes: [] }
     }
     const bridge = await this.ensureBridge()
-    const reply = await bridge.request<{ columns?: ColumnDetail[]; indexes?: IndexInfo[] }>(
+    const reply = await bridge.request<{ columns?: ColumnDetail[]; indexes?: IndexInfo[]; comment?: string }>(
       'columns',
       { connId, schema, table },
       60_000,
     )
+    const comment = typeof reply.comment === 'string' && reply.comment.trim() !== '' ? reply.comment.trim() : undefined
     return {
       schema,
       table,
       kind,
+      ...(comment === undefined ? {} : { comment }),
       columns: Array.isArray(reply.columns) ? reply.columns : [],
       indexes: Array.isArray(reply.indexes) ? reply.indexes : [],
     }

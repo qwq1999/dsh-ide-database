@@ -178,6 +178,23 @@ describe('createDatabaseTools', () => {
     expect(value.plan.rowCount).toBe(1)
   })
 
+  it('describes a table with its comment', async () => {
+    const { byName, deps } = harness()
+    deps.sql.describe.mockResolvedValue({
+      schema: 'shop',
+      table: 'orders',
+      kind: 'table',
+      comment: '订单主表',
+      columns: [{ name: 'id', typeName: 'int', nullable: false, primaryKey: true }],
+      indexes: [],
+    })
+
+    const value = await byName('db_describe_table').execute({ connection: 'c1', schema: 'shop', table: 'orders' })
+
+    expect(value.comment).toBe('订单主表')
+    expect(value.columns).toHaveLength(1)
+  })
+
   it('returns the DDL of a table and keeps redis out', async () => {
     const { byName, deps } = harness()
     const value = await byName('db_get_ddl').execute({ connection: 'c1', schema: 'shop', object: 'users' })

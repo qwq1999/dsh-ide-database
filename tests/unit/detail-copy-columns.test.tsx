@@ -115,6 +115,29 @@ describe('detail panel', () => {
     expect(container.querySelector('.dshdb-head-comment')).toBeNull()
   })
 
+  it('prefers the comment carried by the description over the cached object list', () => {
+    const { container } = render(
+      <DataView
+        {...props({
+          objects: { 'c1:shop': [{ ...orders, comment: '缓存的旧注释' }, users] },
+          detail: {
+            schema: 'shop',
+            table: 'orders',
+            kind: 'table',
+            comment: '订单主表',
+            columns: [
+              { name: 'id', typeName: 'int', nullable: false, primaryKey: true },
+              { name: 'total', typeName: 'decimal(10,2)', nullable: true },
+            ],
+            indexes: [],
+          },
+        })}
+      />,
+    )
+
+    expect(container.querySelector('.dshdb-head-comment')?.textContent).toBe('订单主表')
+  })
+
   it('copies the column names from the detail header', async () => {
     render(<DataView {...props()} />)
 

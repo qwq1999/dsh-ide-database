@@ -512,7 +512,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
 
     tool({
       name: 'db_describe_table',
-      description: 'Describe a table or view: columns (type, nullability, default, comment, primary key) and indexes. Use db_list_objects to find names first.',
+      description: 'Describe a table or view: columns (type, nullability, default, comment, primary key), indexes and the table comment. Use db_list_objects to find names first.',
       parameters: {
         type: 'object',
         properties: {
