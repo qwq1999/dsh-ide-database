@@ -146,7 +146,7 @@ const drawLabel = (row: TreeRow, showComments = false): ReactNode => {
       ) : (
         <Highlight text={row.label ?? ''} query={row.query} />
       )}
-      {comment === '' ? null : <span className="dshdb-row-comment">{` — ${comment}`}</span>}
+      {comment === '' ? null : <span className="dshdb-row-comment">{comment}</span>}
     </span>
   )
 }

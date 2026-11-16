@@ -101,7 +101,7 @@ describe('数据源树的表注释', () => {
   it('开启后注释跟在表名后面，并沿用弱化样式类', () => {
     setup(true)
     const comment = commentOf('customers')
-    expect(comment?.textContent).toBe(' — 客户')
+    expect(comment?.textContent).toBe('客户')
     // The comment sits inside the label so the label's ellipsis trims it last.
     expect(comment?.parentElement?.className).toContain('dshdb-row-label')
   })

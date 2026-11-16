@@ -316,8 +316,10 @@ export const CSS = `
   font-size: 11px;
 }
 /* A table's comment hangs off its name: dimmer and smaller, so the tree is still
-   scanned by name; the label's ellipsis trims the comment last. */
+   scanned by name; the label's ellipsis trims the comment last. A margin gap
+   separates it from the name -- no dash, which read as an underline. */
 .dshdb-row-comment {
+  margin-left: 6px;
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
 }
