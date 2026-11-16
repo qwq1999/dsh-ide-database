@@ -4,8 +4,26 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（260）
+## 新功能（278）
 
+- `6dc0df8` feat(client): 补全注释与刷新改用不冲突的快捷键
+- `a5bf845` feat(client): 筛选按钮再次点击收起筛选框
+- `1316909` feat(client): 工具栏新增筛选按钮，点击弹出筛选框
+- `db8b625` feat(client): 字节大小支持 EB
+- `00ef034` feat(client): 字节大小支持 PB
+- `49af374` feat(client): 忽略 Oracle SQL*Plus 斜杠行
+- `28e0f88` feat(redis): 只读连接允许只读脚本命令
+- `a35db6f` feat(sql): 只读 SQLite 连接允许只读 PRAGMA
+- `74efd92` feat(client): 支持 SQL Server GO 重复批次
+- `c6cf27a` feat(client): 支持 SQL Server GO 批处理
+- `f95e8f4` feat(client): 支持 MySQL DELIMITER 脚本
+- `5868f5e` feat(client): 树筛选框改为右上角浮层，Esc 关闭
+- `726445d` feat(client): 树筛选框默认收起按快捷键展开
+- `70360b4` feat(client): 控制台数据源与数据库下拉支持查找
+- `cd8fc61` feat(client): Schema 选择弹层支持查找过滤
+- `542e2ed` feat(cache): 缓存例程、序列与触发器的定义以支持离线查看
+- `9a21007` feat(client): 控制台按树中选中的 Schema 打开
+- `be80113` feat(connection): 只读标记改为创建后不可修改
 - `850afc6` feat(client): 补齐锁模式链、维护语句与赋值子查询尾部
 - `00c6f94` feat(client): 补齐 ALTER 子句列表与字面量参数补全
 - `b55b604` feat(client): 补齐例程、游标与 FROM 别名尾部补全
@@ -267,8 +285,221 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（95）
+## 修复（308）
 
+- `8db1ad1` fix(client): 删除按钮默认排在回收站前面
+- `db29bc8` fix(client): 筛选有关键词时点别处不关闭筛选框
+- `31b8322` fix(client): 清空筛选后点击别处收起筛选框
+- `5656679` fix(host): 校验 Java 镜像列表重定向来源
+- `97d3268` fix(host): 校验 Java 镜像重定向来源
+- `36b9c57` fix(host): 忽略 zip 注释中的中央目录签名
+- `447cf39` fix(host): 拒绝外部 Java 镜像下载地址
+- `deae609` fix(host): 校验 tar 头校验和
+- `032ab58` fix(host): 空 zip 给出明确错误
+- `b8d9d06` fix(host): 限制归档条目数量
+- `e55078b` fix(host): 限制镜像元数据响应大小
+- `b6cff7f` fix(host): 限制驱动下载大小
+- `a4d8f87` fix(host): 限制 JRE 下载大小
+- `777a0dd` fix(host): 拒绝负数 tar 条目大小
+- `835c884` fix(host): 拒绝 Windows 归档路径归一化逃逸
+- `43694fe` fix(host): 限制归档解压大小
+- `0eb6d06` fix(host): 拒绝逃出解压目录的符号链接
+- `b672fbf` fix(secrets): 避免 __proto__ 密钥别名
+- `842f4d0` fix(client): 零毫秒显示为 0 ms
+- `9e5a195` fix(tools): 保留 __proto__ 连接参数
+- `22b2ae3` fix(client): 列重排后隐藏仍按原列身份
+- `3f97a18` fix(sql): 忽略 SQL 开头的 UTF-8 BOM
+- `1543f56` fix(client): Redis TTL 与通用 TTL 边界一致
+- `aa684c5` fix(client): 分钟边界按取整秒判断
+- `5fd8a87` fix(client): Oracle 斜杠行允许前导注释
+- `fadddb4` fix(client): GO 行支持嵌套注释
+- `6928451` fix(client): 重复列名隐藏互不影响
+- `79fd3cd` fix(client): GO 行允许块注释
+- `b89c2cf` fix(sql): 正确识别 PostgreSQL 与 SQL Server 嵌套注释
+- `be0bf6e` fix(sql): SQLite PRAGMA 允许关键字前注释
+- `83b0cae` fix(client): Oracle 复合触发器不按内部分号拆分
+- `4d55801` fix(client): Oracle 声明段 CASE 不提前结束
+- `65ac709` fix(client): Oracle 包与类型体不按内部分号拆分
+- `52fe525` fix(client): Oracle 声明段局部子程序不提前拆分
+- `1cc46ec` fix(client): Oracle 程序体不按内部分号拆分
+- `51f78ca` fix(client): Oracle 匿名块保留终止分号
+- `2da5c2e` fix(client): Oracle 匿名块不按内部分号拆分
+- `3e2c615` fix(redis): 只读连接允许 DUMP 与 PUBSUB
+- `3ddc6d1` fix(client): SQLite 触发器体不按内部分号拆分
+- `c2546d1` fix(client): SQLite ATTACH/DETACH 触发结构刷新
+- `ba54605` fix(client): SQLite ATTACH 与 DETACH 触发写确认
+- `652da1d` fix(sql): 只读 SQLite 拒绝括号形式 PRAGMA 赋值
+- `065e83b` fix(sql): 只读 Oracle 连接拒绝 EXPLAIN PLAN
+- `6b8cc04` fix(config): 保留名为 __proto__ 的连接参数
+- `81e6193` fix(client): PRAGMA 双引号参数不误判写入
+- `42a5ea5` fix(client): SQLite PRAGMA 写入触发写确认
+- `9ca3e7a` fix(client): 对象树键区分含井号的对象名
+- `ddf7da4` fix(client): 树行键区分含井号的 schema
+- `f1cf56d` fix(sql): 只读连接拒绝无 WITH 的 SQL Server 锁提示
+- `59d8ac4` fix(client): 对象树行键区分点号 schema 与表名
+- `8d80023` fix(client): 表偏好键区分点号 schema 与表名
+- `2bd10dd` fix(host): Redis 值对象保留 __proto__ 字段
+- `efc8f65` fix(host): 结构缓存保留 __proto__ 模式
+- `aaa7e72` fix(client): 表页签列提示使用唯一列表 id
+- `9c32812` fix(completion): 补全元数据键避免点号碰撞
+- `2aca6ea` fix(sql): 只读连接拒绝更多 SQL Server 锁提示
+- `ccf067a` fix(sql): 只读连接拒绝 SQL Server 锁提示
+- `c149835` fix(client): 长时长按小时显示
+- `6c489d0` fix(client): 切换表时清除列筛选
+- `573c3a3` fix(client): 字节大小按显示值选单位并支持 GB
+- `cc7caed` fix(redis): 补齐纯读命令白名单
+- `845fd9a` fix(client): 按住 Shift 点击不再清空已选范围
+- `bca1145` fix(client): 计数格式化忽略无效数值
+- `8e984a5` fix(client): 可执行注释中的 INTO 要求写确认
+- `e4057a1` fix(client): 补全排序忽略继承频率键
+- `f77b3d6` fix(client): 补全频率保留 __proto__ 列名
+- `962a75d` fix(client): Markdown 导出展平单独回车
+- `e9c6630` fix(client): 无空格 COPY 也要求写确认
+- `1dea401` fix(client): 负时长与负字节显示为无效
+- `14e50d0` fix(client): DELIMITER 行支持井号注释
+- `9c01260` fix(client): 非法 Redis TTL 不再显示 0s
+- `95b1d3e` fix(client): SQL Server 时间列筛选保留精度
+- `c9a2cba` fix(client): 字节大小按取整后的值选择单位
+- `b1f41c4` fix(client): SQLite 方括号标识符不再拆句
+- `59ca6ff` fix(client): 修正计时显示的分钟边界
+- `d60dc55` fix(client): 相对时间亚秒年龄不再进位
+- `3615c64` fix(client): 行数减少时限制滚动位置
+- `2e88db7` fix(sql): 可执行注释版本号不再隐藏关键字
+- `44a9206` fix(client): 宽表也能记住列宽
+- `7665b6e` fix(client): 自动刷新行数变化不再重置滚动
+- `1e2b4db` fix(client): 纯读 Redis 命令不再要求写确认
+- `6921699` fix(client): 隐藏列重排后列宽跟随列
+- `24feec6` fix(client): 隐藏列时排列不覆盖已存列宽
+- `57cdbad` fix(client): 自动刷新不再重置滚动位置
+- `02a64cb` fix(client): 翻页后网格回到顶部
+- `a6db6a3` fix(client): 分页保留尾随注释
+- `0231968` fix(client): 隐藏列时不再覆盖保存的列宽
+- `7d217e7` fix(client): 区分已过期与永久 TTL
+- `04aa643` fix(client): 隐藏列后恢复保存的列宽
+- `acfa656` fix(client): 列宽跟随表头拖拽顺序
+- `5ca6fc9` fix(client): 列宽测量不再受选择列影响
+- `939c0f1` fix(client): 控制台重跑不再丢失列顺序
+- `e5487c3` fix(client): EXEC 赋值不再误判动态 SQL
+- `679ff61` fix(client): 动态 SQL 也触发结构缓存刷新
+- `86b2f32` fix(client): SQL Server Unicode 文本使用 N 字面量
+- `87c57c8` fix(client): Oracle PL/SQL 块执行后刷新结构缓存
+- `01e2c6b` fix(client): sp_rename 执行后刷新结构缓存
+- `26e14b2` fix(client): DDL 检测覆盖 COMMENT 与 DO 块
+- `330ce2c` fix(client): SQL Server 块内 DDL 刷新结构缓存
+- `8294b7d` fix(client): SQL Server 控制流中的 SELECT INTO 确认
+- `0b08004` fix(client): SELECT INTO 建表后刷新结构缓存
+- `3f277c0` fix(client): 表格导出拦截控制字符公式
+- `08123c1` fix(client): 表页签导出已选保留隐藏列
+- `cb29b46` fix(client): 导出与复制保留隐藏列
+- `25b6dd4` fix(client): 列宽迁移按可见列数
+- `672070c` fix(client): 列宽迁移后删除旧键
+- `3ab07e4` fix(client): 表视图偏好按数据源隔离
+- `a29bb1e` fix(client): 模糊二进制列不复制 IN 列表
+- `7be3f03` fix(sql): 只读守卫识别前置可执行注释
+- `7ad54cb` fix(client): 可执行注释中的 DDL 不再漏判
+- `3d0368c` fix(client): 已过期 Redis 键按剩余寿命排序
+- `4a20df9` fix(client): EXPLAIN 括号选项中的 DDL 也清缓存
+- `6f73b84` fix(client): 控制台隐藏列偏好不再启动时丢失
+- `1f0307a` fix(client): DDL 检测不再被字符串分号误判
+- `3d68066` fix(sql): 尊重 EXPLAIN ANALYZE 的 false 选项
+- `0b8ca54` fix(client): 隐藏列后复制 INSERT 不再错位
+- `0eb62e3` fix(host): 描述缓存避免带点表名键冲突
+- `405581e` fix(redis): 只读连接允许 ZUNION 与 ZINTER
+- `bf55bc9` fix(redis): 只读连接允许更多纯读命令
+- `9bf5923` fix(client): 重复列名只高亮实际排序列
+- `1dbc56a` fix(client): 重复列名排序按列位置区分
+- `92baaea` fix(client): 筛选状态安全处理原型属性列名
+- `a9d7b0c` fix(client): 原型属性列名不再导致筛选崩溃
+- `3383885` fix(client): SQL Server 控制流写确认
+- `0e4f93d` fix(client): SQL Server 写块要求确认
+- `aa774b2` fix(client): Oracle 匿名块要求写确认
+- `5311143` fix(client): PostgreSQL DO 块要求写确认
+- `09d8a24` fix(client): 二进制列不写入 INSERT 脚本
+- `7e0b514` fix(client): 恢复隐藏列并修正二进制筛选判断
+- `294fdaf` fix(client): 二进制占位值不再提供筛选
+- `e8b1f04` fix(client): SQL Server rowversion 按二进制列处理
+- `c7861d8` fix(client): COPY TO PROGRAM 要求写确认
+- `fd9616e` fix(client): DELIMITER 行支持尾随注释
+- `cc74684` fix(client): 空间类型按二进制列处理
+- `7de8c39` fix(sql): 只读连接拒绝加锁读取
+- `d32ce63` fix(client): COPY 查询形式不再要求写确认
+- `08407f3` fix(client): 二进制列不复制 IN 列表
+- `f91f2f8` fix(client): 二进制列不再提供文本筛选
+- `1762552` fix(client): 写确认识别批量与维护语句
+- `10e7a86` fix(client): 复制整行 TSV 防止公式注入
+- `ad6dbd1` fix(redis): 只读连接允许集合读取
+- `7fee206` fix(client): 写确认覆盖 GO 与 DELIMITER 批次
+- `99d7855` fix(client): 写确认识别批量导入语句
+- `c87729e` fix(client): 移除不存在的 OceanBase 方言分支
+- `630c10e` fix(client): 写确认识别无空格的可执行注释
+- `f418f97` fix(client): 写确认跳过方括号标识符内的括号
+- `9d27c18` fix(client): 复制 INSERT 支持多语言与 ONLY 表名
+- `7cabf55` fix(client): 写确认识别引号 CTE 与 NOT MATERIALIZED
+- `faed314` fix(sql): 只读守卫识别带引号的 CTE 名
+- `342fa2b` fix(client): 转义 CSV 与 TSV 中的公式文本
+- `927eac9` fix(client): JSON 列等值筛选先转文本
+- `ffaf48a` fix(client): 写语句确认识别 CTE 与文件写入
+- `3b34545` fix(client): SQL Server ALTER 程序体保持完整
+- `c6c1181` fix(sql): 可执行注释只在 MySQL 生效
+- `2f88922` fix(sql): 行注释不再套用 MySQL 规则
+- `f07c64d` fix(sql): 美元引号仅在 PostgreSQL 方言生效
+- `5a28c38` fix(client): 长注释后的 SQL Server 程序体
+- `06eb3e8` fix(bridge): 数组列显示元素而非 JVM 标识
+- `94dc913` fix(client): Redis 过期键不再显示为永久
+- `7255b1f` fix(host): 描述缓存保留带点表名
+- `77222f3` fix(sql): 只读守卫识别 PostgreSQL 转义字符串
+- `ccdfbc1` fix(sql): 只读守卫识别 MySQL 反斜杠转义
+- `f7c9846` fix(sql): 只读守卫按方言识别井号注释
+- `e2aa579` fix(client): 布尔列筛选使用布尔字面量
+- `9270bc5` fix(client): 复制整行时展平换行
+- `f4991ad` fix(client): JSON 导出不再丢失特殊列名
+- `854f648` fix(client): 导出文件名替换非法字符
+- `af3bb68` fix(client): Oracle 本地时区值按区域名解析
+- `1caab77` fix(sql): 只读守卫按 MySQL 规则识别行注释
+- `5ecf747` fix(sql): 只读守卫识别 MySQL 可执行注释
+- `462c73d` fix(client): 保持 SQL Server 程序体完整
+- `7978499` fix(sql): 只读守卫识别注释后的 EXPLAIN ANALYZE
+- `49cfd34` fix(client): 表头排序识别带引号的列名
+- `10b7621` fix(client): Oracle 时间戳筛选保留小数秒与时区
+- `2c5de4f` fix(sql): 转义 MySQL 注释中的反斜杠
+- `6772a14` fix(client): 复制 INSERT 不再把表函数当表
+- `196c0b1` fix(client): 复制 INSERT 优先取外层表名
+- `5cd9c94` fix(client): SQL Server 分页不再包裹 ORDER BY
+- `330bc8a` fix(client): 修正 LIKE 通配符与三段表名
+- `7043dc0` fix(client): 复制 INSERT 支持带空格的表名
+- `a8fd4b2` fix(sql): SQL Server 方括号标识符不再拆句
+- `395c82c` fix(client): 参数化数组不按数字类型处理
+- `f998c9e` fix(client): 类型识别按完整类型名匹配
+- `5ca9b75` fix(client): Oracle 时间值 INSERT 使用类型字面量
+- `d948030` fix(client): Oracle 时间筛选支持分钟精度
+- `4bdafe7` fix(client): Oracle 时区筛选支持单位数偏移
+- `3b4319c` fix(client): 表页签非文本列筛选先转文本
+- `e4cbbb3` fix(client): 复制 INSERT 忽略字面量中的表名
+- `2654265` fix(client): Oracle 布尔值按 1/0 输出
+- `36f5c82` fix(client): 异步加载后保持树焦点行
+- `5319a0a` fix(client): 分页判断按方言扫描字面量
+- `b1bdffd` fix(client): SQL Server 布尔值按 1/0 输出
+- `7d84bc9` fix(sql): 只读守卫识别 PostgreSQL 美元引号
+- `d0aa67d` fix(sql): 只读守卫忽略字面量中的分号
+- `e56564e` fix(client): 脚本拆分支持 Oracle 替代引号
+- `097f8fa` fix(client): 脚本拆分仅在 MySQL 转义反斜杠
+- `9e51a1a` fix(client): 复制 INSERT 时跳过生成列
+- `aca2692` fix(client): 脚本拆分按方言识别注释
+- `3d8a441` fix(client): 转义标识符中的方言引号
+- `c8e16c5` fix(client): 分页判断只看代码不看注释与字符串
+- `fcff852` fix(sql): 只读守卫拒绝 SELECT INTO 建表语句
+- `799388e` fix(sql): 只读守卫拒绝 CTE 内的写语句
+- `404d796` fix(client): 脚本拆分支持 PostgreSQL 美元引号
+- `28cdd00` fix(client): 修正筛选命中与空结果提示
+- `4435830` fix(client): 快速滚动数据源树时不再出现空白
+- `e605bb6` fix(client): 点击筛选命中不再退出搜索
+- `08c37bb` fix(client): 点击筛选命中不再退出搜索
+- `c17549d` fix(client): 加载提示改为浮层避免挤动树
+- `23b8e16` fix(client): 无内容时不再渲染树工具栏
+- `41166d8` fix(client): 树筛选框默认隐藏，仅快捷键唤出
+- `eb0bd4e` fix(client): 嵌套弹窗显示在父弹窗之上
+- `b15d8b4` fix(client): 连接后保留已展开的树节点
+- `c8a59a9` fix(client): SQL 格式化保留多字符运算符
 - `634189d` fix(client): 自动补全不再空弹窗并保留引号
 - `8d72c10` fix(client): 字符串与注释内不再弹出补全候选
 - `6a0a8a7` fix(console): 补全候选按子句刷新并保留关键字
@@ -365,8 +596,11 @@
 - `020ecc5` fix(sql): 只读校验识破 EXPLAIN ANALYZE 与 WITH 后的写语句
 - `b4e1530` fix(export): MySQL 字面量转义反斜杠，导出的 INSERT 还原原值
 
-## 性能（29）
+## 性能（32）
 
+- `268a03f` perf(client): 数据源树改为虚拟化渲染
+- `9081368` perf(client): 树改为扁平虚拟列表
+- `915daf9` perf(client): 树筛选命中索引与派生展开
 - `d61a94b` perf(console): 补全目录接入批量元数据并限制缓存大小
 - `7ca94bf` perf(console): 补全元数据增加失败负缓存
 - `2a12edb` perf(cache): 描述改为追加式日志并瘦身结构快照
@@ -397,8 +631,13 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（11）
+## 重构（16）
 
+- `bc948fa` refactor(sql): 统一 Redis 连接的 SQL 方言归一
+- `eaca661` refactor(redis): 只读命令列表共用一份
+- `d11d1f3` refactor(sql): 修正错位的函数文档注释
+- `56b47ba` refactor(client): 统一加载提示样式
+- `70da990` refactor(client): 移除虚拟树不再使用的筛选索引
 - `4c37147` refactor(redis): 键名筛选抽成 filterRedisKeys
 - `f5122ec` refactor(ddl): 单行文本查询收成一个私有方法
 - `864db0f` refactor(ui): 历史与树详情共用一个时间描述函数
@@ -411,8 +650,12 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（35）
+## 测试（39）
 
+- `efb8d76` test(client): 等待控制台数据源界面就绪
+- `cbcf314` test(client): 完成度基准偶发超时重试一次
+- `dedc641` test(client): 覆盖虚拟树窗口与行模型
+- `d3ca4e1` test(client): 补充树筛选、缓存与行预算用例
 - `2407f02` test(console): 补全性能基准与专项测试脚本
 - `4a6089c` test: 列名提示用例等输入框挂载后再断言
 - `7415e23` test(console): 逻辑库回退用例等待记忆写入完成
@@ -449,8 +692,9 @@
 - `9e57421` test: 控制台用例等数据源就绪再操作
 - `ce31875` test: 统一放宽 jsdom 异步查询超时避免并发偶发失败
 
-## 文档（35）
+## 文档（36）
 
+- `962f4e8` docs(client): 修正导出文件名的注释
 - `24f631b` docs: README 只留两张截图，其余收进截图索引
 - `d72ed9c` docs: 快捷键表补上数据表页的 Esc
 - `cfbdd77` docs: 重新生成变更日志
@@ -487,8 +731,9 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（19）
+## 杂项（20）
 
+- `7caacaa` chore(release): 发布 0.4.0
 - `98f6fed` chore(cache): 补全旧缓存迁移的 0.5.0 移除标记
 - `73dd463` chore(cache): 标记 0.5.0 移除旧缓存迁移
 - `b7e5ff8` chore(release): 发布 0.3.2
@@ -509,8 +754,11 @@
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 
-## 其它（10）
+## 其它（13）
 
+- `2474099` Merge pull request #6 from qwq1999/dsh-c9855a9c-d93c
+- `9d3ad88` Merge pull request #5 from qwq1999/dsh-c9855a9c-d93c
+- `be99106` Merge pull request #4 from qwq1999/dsh-c9855a9c-d93c
 - `04a451a` build: 重新构建客户端 bundle
 - `5f91b56` ci(release): Release 附件补充无版本号副本
 - `15606ad` Merge branch 'main' of github.com:qwq1999/dsh-ide-database
