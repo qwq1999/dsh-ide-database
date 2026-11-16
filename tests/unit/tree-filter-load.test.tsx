@@ -172,6 +172,35 @@ describe('筛选时加载对象列表', () => {
     expect(screen.getByRole('treeitem', { name: /customers/ })).toBeTruthy()
   })
 
+  it('keeps a data source folded when the user closes it while filtering', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('cus')
+    await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
+    const row = (): HTMLElement => screen.getByRole('treeitem', { name: /演示 MySQL/ })
+    await waitFor(() => expect(row().getAttribute('aria-expanded')).toBe('true'))
+
+    fireEvent.click(screen.getByTitle('收起数据源'))
+    await waitFor(() => expect(row().getAttribute('aria-expanded')).toBe('false'))
+    // The auto-open pass runs again after it settles; it must not undo the fold.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(row().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('keeps a schema folded when the user closes it while filtering', async () => {
+    const calls = { load: 0 }
+    render(<Harness objects={{ 'c1:crm': [customers] }} loadingObjects={{}} calls={calls} />)
+    typeFilter('cus')
+    await waitFor(() => expect(screen.getByText('1 个对象匹配')).toBeTruthy())
+    const schemaRow = (): HTMLElement => screen.getByRole('treeitem', { name: /crm/ })
+    await waitFor(() => expect(schemaRow().getAttribute('aria-expanded')).toBe('true'))
+
+    fireEvent.click(screen.getByTitle('收起 Schema'))
+    await waitFor(() => expect(schemaRow().getAttribute('aria-expanded')).toBe('false'))
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(schemaRow().getAttribute('aria-expanded')).toBe('false')
+  })
+
   it('does not ask again while the same list is still loading', async () => {
     const calls = { load: 0, toggle: 0 }
     render(<Harness objects={{}} loadingObjects={{ 'c1:crm': true }} calls={calls} />)

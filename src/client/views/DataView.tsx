@@ -22,7 +22,7 @@ import type {
 } from '../../shared/types'
 import { objectKindLabel } from '../format'
 import { filterTargets, matchesFilteredObject, parseFilter } from '../treefilter'
-import { treeFolderKey } from '../treekeys'
+import { treeFolderKey, treeSchemaKey } from '../treekeys'
 import { shortcutHit } from '../keymap'
 import { RedisValuePanel } from '../redisview'
 import { copyText } from '../colmenu'
@@ -432,14 +432,28 @@ export function DataView(props: DataViewProps): ReactElement {
     settledFilter,
   ])
 
+  // While filtering, the tree opens the branches that hold a match (see
+  // below). A branch the user folds on purpose has to stay folded until the
+  // term changes: otherwise the next pass re-opens it and the tree cannot be
+  // put away while a filter is active.
+  const filterKeptClosed = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    filterKeptClosed.current = new Set()
+  }, [normalizedFilter])
+
   // While filtering, open the branches that contain a match so hits are not
   // hidden inside collapsed data sources or schemas.
   useEffect(() => {
     if (normalizedFilter === '') return
     const timer = window.setTimeout(() => {
       const targets = filterTargets(filter, connections, schemas, objects, expanded)
-      for (const id of targets.connections) props.onToggleConnection(id)
+      const keptClosed = filterKeptClosed.current
+      for (const id of targets.connections) {
+        if (keptClosed.has(id)) continue
+        props.onToggleConnection(id)
+      }
       for (const key of targets.schemas) {
+        if (keptClosed.has(key)) continue
         const separator = key.indexOf(':')
         void props.onToggleSchema(key.slice(0, separator), key.slice(separator + 1))
       }
@@ -453,7 +467,9 @@ export function DataView(props: DataViewProps): ReactElement {
         const hits = list.filter((object) => matchesFilteredObject(filterQuery, schema, object.name))
         if (hits.length === 0) continue
         for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
-          if (expanded[treeFolderKey(connectionId, schema, folder)] === true) continue
+          const folderKey = treeFolderKey(connectionId, schema, folder)
+          if (keptClosed.has(folderKey)) continue
+          if (expanded[folderKey] === true) continue
           props.onToggleFolder(connectionId, schema, folder)
         }
       }
@@ -462,10 +478,13 @@ export function DataView(props: DataViewProps): ReactElement {
         if (connection.dialect !== 'redis') continue
         const keysByDb = props.redisKeys[connection.id]
         if (keysByDb === undefined) continue
+        if (keptClosed.has(connection.id)) continue
         for (const [db, keys] of Object.entries(keysByDb)) {
           if (!keys.some((key) => matches(key.key))) continue
+          const dbKey = `${connection.id}:redis:db${db}`
+          if (keptClosed.has(dbKey)) continue
           if (expanded[connection.id] !== true) props.onToggleConnection(connection.id)
-          if (expanded[`${connection.id}:redis:db${db}`] === false) props.onToggleRedisDb(connection.id, Number(db))
+          if (expanded[dbKey] === false) props.onToggleRedisDb(connection.id, Number(db))
         }
       }
     }, 300)
@@ -570,21 +589,30 @@ export function DataView(props: DataViewProps): ReactElement {
   /** Expansion semantics of the chevron: selecting the branch too, like JetBrains. */
   const toggleRow = useCallback((row: TreeRow): void => {
     const current = propsRef.current
+    // Closing a branch while the filter is on is a deliberate "I am done with
+    // this one": the auto-open pass must not undo it (see filterKeptClosed).
+    const remember = (key: string): void => {
+      if (row.open === true) filterKeptClosed.current.add(key)
+      else filterKeptClosed.current.delete(key)
+    }
     switch (row.kind) {
       case 'connection':
         if (row.connectionId !== undefined) {
+          remember(row.connectionId)
           current.onSelectConnection(row.connectionId)
           current.onToggleConnection(row.connectionId)
         }
         return
       case 'schema':
         if (row.connectionId !== undefined && row.schema !== undefined) {
+          remember(treeSchemaKey(row.connectionId, row.schema))
           current.onSelectSchema(row.connectionId, row.schema)
           current.onToggleSchema(row.connectionId, row.schema)
         }
         return
       case 'folder':
         if (row.connectionId !== undefined && row.schema !== undefined && row.folder !== undefined) {
+          remember(treeFolderKey(row.connectionId, row.schema, row.folder))
           current.onSelectFolder(row.connectionId, row.schema, row.folder)
           current.onToggleFolder(row.connectionId, row.schema, row.folder)
         }
@@ -599,7 +627,10 @@ export function DataView(props: DataViewProps): ReactElement {
         if (row.toggleKey !== undefined) current.onToggleKey(row.toggleKey)
         return
       case 'redis-db':
-        if (row.connectionId !== undefined && row.db !== undefined) current.onToggleRedisDb(row.connectionId, row.db)
+        if (row.connectionId !== undefined && row.db !== undefined) {
+          remember(`${row.connectionId}:redis:db${row.db}`)
+          current.onToggleRedisDb(row.connectionId, row.db)
+        }
         return
       default:
         return
