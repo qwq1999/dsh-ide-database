@@ -150,6 +150,15 @@ public final class Bridge {
         if ("query".equals(method)) {
             return executor.query(params);
         }
+        if ("cell".equals(method)) {
+            Map<String, Object> data = new LinkedHashMap<String, Object>();
+            data.put(
+                    "text",
+                    executor.cellText(
+                            Json.string(params.get("column"), ""),
+                            Json.string(params.get("text"), "")));
+            return data;
+        }
         if ("explain".equals(method)) {
             return executor.explain(params);
         }

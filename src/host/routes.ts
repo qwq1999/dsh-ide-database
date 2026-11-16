@@ -498,6 +498,13 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       sendJson(response, 200, { ok: true, data: result })
       return
     }
+    case '/query/cell': {
+      const column = typeof data.column === 'string' ? data.column : ''
+      const text = typeof data.text === 'string' ? data.text : ''
+      const full = await deps.sql.cellText(column, text)
+      sendJson(response, 200, { ok: true, data: { text: full } })
+      return
+    }
     case '/tx': {
       const id = typeof data.id === 'string' ? data.id : ''
       const action = data.action

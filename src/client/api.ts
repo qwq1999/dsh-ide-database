@@ -127,6 +127,9 @@ export const api = {
     allowWrite?: boolean
   }) => post<QueryResult>('/query', options),
   cancel: (stmtKey: string) => post<{ cancelled: boolean }>('/query/cancel', { stmtKey }),
+  /** Full text behind a cell the bridge capped; null once it is no longer retained. */
+  cellText: async (column: string, text: string): Promise<string | null> =>
+    (await post<{ text: string | null }>('/query/cell', { column, text })).text,
 
   redisScan: (options: { id: string; db?: number; cursor?: string; pattern?: string; type?: string; count?: number }) =>
     post<RedisScanResult>('/redis/scan', options),

@@ -623,6 +623,17 @@ export const CSS = `
   border-radius: var(--dsw-radius-sm);
 }
 
+.dshdb-cellvalue-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-primary));
+}
+
 .dshdb-grid-wrap {
   min-height: 0;
   min-width: 0;

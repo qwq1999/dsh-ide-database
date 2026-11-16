@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,12 +45,33 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** Owns JDBC connections and turns JDBC results into protocol JSON. */
 final class SqlExecutor {
+    /**
+     * Longest cell text a query result carries. A page of JSON blobs would
+     * otherwise ship tens of megabytes to the UI, so longer cells travel as
+     * their prefix plus {@link #TRUNCATED}; the rest stays behind for the
+     * "full value" dialog (see {@link #cellText}).
+     */
     private static final int MAX_TEXT = 16384;
+    /** What the UI looks for; mirrored by TRUNCATED_SUFFIX in src/client/cellvalue.ts. */
+    private static final String TRUNCATED = "…<truncated>";
+    /** Longest value this bridge reads from a CLOB or retains for the dialog. */
+    private static final int MAX_CELL_TEXT = 4 * 1024 * 1024;
+    /** Characters of capped cell text kept around; least recently asked for goes first. */
+    private static final long CELL_TEXT_BUDGET = 16L * 1024 * 1024;
 
     private final Map<String, Conn> connections = new ConcurrentHashMap<String, Conn>();
     private final Map<String, Statement> statements = new ConcurrentHashMap<String, Statement>();
     private final Set<String> cancelled =
             Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    /**
+     * Capped cell text, keyed by column and the prefix the result carried. It is
+     * access-ordered so the budget drops the least recently opened value, and it
+     * only ever holds what some query already read: opening a dialog never runs
+     * SQL a second time, so a sorted or filtered grid keeps working.
+     */
+    private final Map<String, String> cellTexts =
+            new LinkedHashMap<String, String>(16, 0.75f, true);
+    private long cellTextChars;
 
     private static final Set<String> MYSQL_SYSTEM =
             new HashSet<String>(Arrays.asList("information_schema", "mysql", "performance_schema", "sys"));
@@ -1082,12 +1104,14 @@ final class SqlExecutor {
             ResultSetMetaData meta = rs.getMetaData();
             int count = meta.getColumnCount();
             Map<String, Set<String>> generated = generatedColumns(statement.getConnection(), meta, count);
+            String[] labels = new String[count + 1];
             for (int i = 1; i <= count; i++) {
                 Map<String, Object> column = new LinkedHashMap<String, Object>();
                 String label = meta.getColumnLabel(i);
                 if (label == null || label.isEmpty()) {
                     label = meta.getColumnName(i);
                 }
+                labels[i] = label == null ? "" : label;
                 column.put("name", label);
                 column.put("typeName", meta.getColumnTypeName(i));
                 column.put("jdbcType", Integer.valueOf(meta.getColumnType(i)));
@@ -1112,7 +1136,7 @@ final class SqlExecutor {
                 }
                 List<Object> row = new ArrayList<Object>(count);
                 for (int i = 1; i <= count; i++) {
-                    row.add(value(rs, i));
+                    row.add(value(rs, i, labels[i]));
                 }
                 rows.add(row);
             }
@@ -1231,14 +1255,19 @@ final class SqlExecutor {
         }
     }
 
-    private static Object value(ResultSet rs, int index) throws SQLException {
+    /**
+     * Turns one JDBC column into protocol JSON. Text is capped last and with the
+     * column name in hand, so whatever gets cut can be retained for the dialog.
+     */
+    private Object value(ResultSet rs, int index, String column) throws SQLException {
         Object raw;
         try {
             raw = rs.getObject(index);
         } catch (SQLException error) {
             return "<unreadable: " + error.getMessage() + ">";
         }
-        return normalize(raw, rs, index);
+        Object normalized = normalize(raw, rs, index);
+        return normalized instanceof String ? cap((String) normalized, column) : normalized;
     }
 
     private static Object normalize(Object raw, ResultSet rs, int index) throws SQLException {
@@ -1249,7 +1278,7 @@ final class SqlExecutor {
             return raw;
         }
         if (raw instanceof String) {
-            return cap((String) raw);
+            return raw;
         }
         if (raw instanceof Byte || raw instanceof Short || raw instanceof Integer) {
             return Long.valueOf(((Number) raw).longValue());
@@ -1297,7 +1326,7 @@ final class SqlExecutor {
         if (raw instanceof Clob) {
             Clob clob = (Clob) raw;
             long length = clob.length();
-            int read = (int) Math.min(length, 4096L);
+            int read = (int) Math.min(length, MAX_CELL_TEXT);
             try (Reader reader = clob.getCharacterStream()) {
                 char[] buffer = new char[read];
                 int offset = 0;
@@ -1309,7 +1338,7 @@ final class SqlExecutor {
                     offset += count;
                 }
                 String text = new String(buffer, 0, offset);
-                return length > read ? text + "…<truncated>" : text;
+                return length > read ? text + TRUNCATED : text;
             } catch (Exception error) {
                 return "<clob " + length + " chars>";
             }
@@ -1322,22 +1351,22 @@ final class SqlExecutor {
         }
         if (raw instanceof SQLXML) {
             try {
-                return cap(((SQLXML) raw).getString());
+                return ((SQLXML) raw).getString();
             } catch (SQLException error) {
                 return "<xml>";
             }
         }
         if (raw instanceof Array) {
             try {
-                return cap(arrayText((Array) raw));
+                return arrayText((Array) raw);
             } catch (SQLException error) {
                 return "<array>";
             }
         }
         try {
-            return cap(rs.getString(index));
+            return rs.getString(index);
         } catch (SQLException error) {
-            return cap(String.valueOf(raw));
+            return String.valueOf(raw);
         }
     }
 
@@ -1388,11 +1417,67 @@ final class SqlExecutor {
         text.append(String.valueOf(value));
     }
 
-    private static String cap(String text) {
+    private String cap(String text, String column) {
         if (text == null) {
             return null;
         }
-        return text.length() <= MAX_TEXT ? text : text.substring(0, MAX_TEXT) + "…<truncated>";
+        if (text.length() <= MAX_TEXT) {
+            return text;
+        }
+        int end = MAX_TEXT;
+        // Never split a surrogate pair: the UI sends this prefix back as a lookup
+        // key, and a dangling half does not survive a UTF-8 round trip.
+        if (Character.isHighSurrogate(text.charAt(end - 1))) {
+            end -= 1;
+        }
+        keepCellText(column, text, end);
+        return text.substring(0, end) + TRUNCATED;
+    }
+
+    /**
+     * Full text of a cell whose result only carried a prefix. The UI passes back
+     * what it displayed, which identifies the retained copy. Returns null when it
+     * is gone (bridge restarted, budget evicted it, or the query is old).
+     */
+    String cellText(String column, String text) {
+        String prefix = text.endsWith(TRUNCATED)
+                ? text.substring(0, text.length() - TRUNCATED.length())
+                : text;
+        if (prefix.length() > MAX_TEXT) {
+            prefix = prefix.substring(0, MAX_TEXT);
+        }
+        synchronized (cellTexts) {
+            return cellTexts.get(cellKey(column, prefix));
+        }
+    }
+
+    private void keepCellText(String column, String text, int prefixEnd) {
+        if (text.length() > MAX_CELL_TEXT) {
+            return;
+        }
+        String key = cellKey(column, text.substring(0, prefixEnd));
+        synchronized (cellTexts) {
+            String previous = cellTexts.put(key, text);
+            if (previous != null) {
+                cellTextChars -= previous.length();
+            }
+            cellTextChars += text.length();
+            Iterator<Map.Entry<String, String>> stale = cellTexts.entrySet().iterator();
+            while (cellTextChars > CELL_TEXT_BUDGET && stale.hasNext()) {
+                Map.Entry<String, String> eldest = stale.next();
+                // The value just asked about never evicts itself; it is at most
+                // MAX_CELL_TEXT, far below the budget.
+                if (eldest.getKey().equals(key)) {
+                    break;
+                }
+                stale.remove();
+                cellTextChars -= eldest.getValue().length();
+            }
+        }
+    }
+
+    private static String cellKey(String column, String prefix) {
+        return column + '\0' + prefix;
     }
 
     private static boolean isSystem(String dialect, String name) {

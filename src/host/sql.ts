@@ -1215,6 +1215,20 @@ export class SqlService {
     }
   }
 
+  /**
+   * Full text of a cell whose result only carried its first 16 KB. Results stay
+   * small that way, and the bridge keeps the cut part for the "full value"
+   * dialog instead of re-running the statement — a sorted or filtered grid no
+   * longer has a stable row to re-read. Returns null once it is gone.
+   */
+  async cellText(column: string, text: string): Promise<string | null> {
+    if (text === '') return null
+    const shown = text.slice(0, 16_448)
+    const bridge = await this.ensureBridge()
+    const reply = await bridge.request<{ text?: unknown }>('cell', { column, text: shown }, 30_000)
+    return typeof reply.text === 'string' ? reply.text : null
+  }
+
   async cancel(stmtKey: string): Promise<boolean> {
     if (this.bridge === undefined) return false
     const reply = await this.bridge.request<{ cancelled?: boolean }>('cancel', { stmtKey }, 15_000)
