@@ -425,7 +425,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
           />
         </div>
         <div className="dshdb-muted" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
-          默认关闭。开启后注释以更淡的颜色跟在表名后面，行宽不够时随表名一起截断。
+          默认开启。注释以更淡的颜色跟在表名后面，行宽不够时随表名一起截断。
         </div>
       </Panel>
 

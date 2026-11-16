@@ -184,18 +184,18 @@ describe('ConfigStore', () => {
     expect(reloaded.snapshot().settings.consoleAutoComplete).toBe(false)
   })
 
-  it('defaults table comments in the tree off and persists the switch', () => {
+  it('defaults table comments in the tree on and persists turning them off', () => {
     const { config, dir } = store()
-    expect(config.snapshot().settings.showTableComments).toBe(false)
+    expect(config.snapshot().settings.showTableComments).toBe(true)
     expect(() => config.updateSettings({ showTableComments: 'yes' })).toThrow(/showTableComments/)
 
-    config.updateSettings({ showTableComments: true })
-    expect(config.snapshot().settings.showTableComments).toBe(true)
+    config.updateSettings({ showTableComments: false })
+    expect(config.snapshot().settings.showTableComments).toBe(false)
 
     const secrets = new SecretStore(join(dir, 'secrets.json'))
     const reloaded = new ConfigStore(join(dir, 'connections.json'), secrets)
     reloaded.load()
-    expect(reloaded.snapshot().settings.showTableComments).toBe(true)
+    expect(reloaded.snapshot().settings.showTableComments).toBe(false)
   })
 
   it('persists custom drivers and settings to disk', () => {

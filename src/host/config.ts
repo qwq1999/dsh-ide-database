@@ -37,7 +37,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   consoleActions: [],
   consoleAutoComplete: true,
   toolbarActions: [],
-  showTableComments: false,
+  showTableComments: true,
 }
 
 const NAME_MAX = 80
@@ -231,7 +231,7 @@ export class ConfigStore {
             settings.toolbarActions = readToolbarActionOrder(value)
             break
           case 'showTableComments':
-            settings.showTableComments = value === true
+            settings.showTableComments = value !== false
             break
         }
       } catch {

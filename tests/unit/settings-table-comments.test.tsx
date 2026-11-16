@@ -16,6 +16,7 @@ const settings = {
   redisScanCount: 200,
   confirmDestructive: false,
   keybindings: {},
+  showTableComments: true,
 }
 
 type Overrides = Partial<typeof settings> & { showTableComments?: boolean }
@@ -67,26 +68,26 @@ describe('settings table comments in the tree', () => {
     cleanup()
   })
 
-  it('defaults the switch to off', () => {
+  it('defaults the switch to on', () => {
     setup()
     const panel = openPanel()
     const toggle = within(panel).getByRole('switch', { name: switchName })
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
   })
 
-  it('saves the switch turned on', () => {
+  it('saves the switch turned off', () => {
     const onSave = setup()
     const panel = openPanel()
     fireEvent.click(within(panel).getByRole('switch', { name: switchName }))
-    expect(within(panel).getByRole('switch', { name: switchName }).getAttribute('aria-checked')).toBe('true')
+    expect(within(panel).getByRole('switch', { name: switchName }).getAttribute('aria-checked')).toBe('false')
     fireEvent.click(within(panel).getByRole('button', { name: '保存' }))
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ showTableComments: true })
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ showTableComments: false })
   })
 
-  it('reflects a saved on value', () => {
-    setup({ showTableComments: true })
+  it('reflects a saved off value', () => {
+    setup({ showTableComments: false })
     const panel = openPanel()
-    expect(within(panel).getByRole('switch', { name: switchName }).getAttribute('aria-checked')).toBe('true')
+    expect(within(panel).getByRole('switch', { name: switchName }).getAttribute('aria-checked')).toBe('false')
   })
 })

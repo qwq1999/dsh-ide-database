@@ -131,8 +131,8 @@ export interface DbSettings {
    */
   toolbarActions?: ToolbarActionId[]
   /**
-   * Show each object's comment after its name in the data-source tree. Off by
-   * default: comments are long, and the tree is mostly scanned by name.
+   * Show each object's comment after its name in the data-source tree. On by
+   * default; the comment stays dim and truncates with the name.
    */
   showTableComments?: boolean
 }
