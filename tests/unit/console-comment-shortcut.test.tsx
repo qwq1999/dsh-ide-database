@@ -93,12 +93,12 @@ describe('console comment shortcut', () => {
     mocks.schemas.mockResolvedValue({ schemas: [{ name: 'shop' }] })
   })
 
-  it('comments the line holding the caret on Ctrl+/', async () => {
+  it('comments the line holding the caret on Ctrl+Shift+/', async () => {
     const editor = await openEditor()
     type(editor, 'SELECT 1;\nSELECT 2;')
     editor.setSelectionRange(7, 7)
     fireEvent.select(editor)
-    fireEvent.keyDown(editor, { key: '/', ctrlKey: true })
+    fireEvent.keyDown(editor, { key: '/', ctrlKey: true, shiftKey: true })
 
     expect(editor.value).toBe('-- SELECT 1;\nSELECT 2;')
   })
@@ -108,11 +108,11 @@ describe('console comment shortcut', () => {
     type(editor, 'SELECT 1;\nSELECT 2;')
     editor.setSelectionRange(0, editor.value.length)
     fireEvent.select(editor)
-    fireEvent.keyDown(editor, { key: '/', metaKey: true })
+    fireEvent.keyDown(editor, { key: '/', metaKey: true, shiftKey: true })
 
     await waitFor(() => expect(editor.value).toBe('-- SELECT 1;\n-- SELECT 2;'))
 
-    fireEvent.keyDown(editor, { key: '/', metaKey: true })
+    fireEvent.keyDown(editor, { key: '/', metaKey: true, shiftKey: true })
     await waitFor(() => expect(editor.value).toBe('SELECT 1;\nSELECT 2;'))
   })
 })

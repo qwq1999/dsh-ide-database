@@ -151,12 +151,12 @@ describe('tree filter keys', () => {
     expect(screen.queryByRole('search')).toBeNull()
   })
 
-  it('re-reads the tree on Ctrl+R instead of reloading the app', () => {
+  it('re-reads the tree on Alt+R instead of reloading the app', () => {
     const calls = { load: 0 }
     render(<Harness calls={calls} />)
     const tree = screen.getByRole('tree', { name: '数据源' })
 
-    fireEvent.keyDown(tree, { key: 'r', ctrlKey: true })
+    fireEvent.keyDown(tree, { key: 'r', altKey: true })
 
     expect(calls.refreshed).toBe(1)
   })

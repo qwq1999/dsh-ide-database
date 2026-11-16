@@ -128,7 +128,7 @@ describe('console column completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM orders WHERE orders.' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table'))
@@ -149,7 +149,7 @@ describe('console column completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM shop.orders.' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     await screen.findByRole('listbox', { name: '补全候选' })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table'))
@@ -166,7 +166,7 @@ describe('console column completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM shop.' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     await waitFor(() => expect(mocks.objects).toHaveBeenCalledWith('mysql-1', 'shop'))
@@ -185,7 +185,7 @@ describe('console column completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM orders.' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledTimes(1))
 
     fireEvent.keyDown(area, { key: 'Escape' })
@@ -195,7 +195,7 @@ describe('console column completion', () => {
 
     fireEvent.change(area, { target: { value: 'SELECT * FROM orders.' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledTimes(2))
   })
 })

@@ -120,7 +120,7 @@ describe('console table completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
     caret(area, 18)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     expect(mocks.objects).toHaveBeenCalledWith('mysql-1', 'shop')
@@ -139,7 +139,7 @@ describe('console table completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
     caret(area, 18)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
 
     fireEvent.keyDown(area, { key: 'ArrowDown' })
@@ -155,7 +155,7 @@ describe('console table completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
     caret(area, 18)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
 
     fireEvent.keyDown(area, { key: 'ArrowDown' })
@@ -177,13 +177,13 @@ describe('console table completion', () => {
     const area = editor()
     fireEvent.change(area, { target: { value: 'SELECT * FROM ' } })
     caret(area, 14)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
 
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('listbox', { name: '补全候选' })).toBeNull())
 
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
     expect(mocks.objects).toHaveBeenCalledTimes(1)
   })
@@ -193,7 +193,7 @@ describe('console table completion', () => {
     const area = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     fireEvent.change(area, { target: { value: 'SELECT * FROM ord' } })
     caret(area, area.value.length)
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
     await screen.findByRole('listbox', { name: '补全候选' })
 
     const list = screen.getByRole('listbox', { name: '补全候选' })
@@ -218,7 +218,7 @@ describe('console table completion', () => {
       const editor = await screen.findByPlaceholderText(/输入 SQL/)
       fireEvent.change(editor, { target: { value: 'SELECT * FROM ord' } })
       caret(editor as HTMLTextAreaElement, (editor as HTMLTextAreaElement).value.length)
-      fireEvent.keyDown(editor, { key: ' ', ctrlKey: true })
+      fireEvent.keyDown(editor, { key: '/', altKey: true })
       await screen.findByRole('listbox', { name: '补全候选' })
       expect(scrolled).toHaveBeenCalled()
       const calls = scrolled.mock.calls.length

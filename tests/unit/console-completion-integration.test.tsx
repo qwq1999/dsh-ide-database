@@ -98,7 +98,7 @@ function typeSql(area: HTMLTextAreaElement, value: string): void {
 }
 
 function completeAt(area: HTMLTextAreaElement): void {
-  fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+  fireEvent.keyDown(area, { key: '/', altKey: true })
 }
 
 /** Let the 120ms auto-complete debounce fire and its metadata reads settle. */

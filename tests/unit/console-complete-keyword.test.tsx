@@ -101,7 +101,7 @@ describe('console keyword completion', () => {
     area.focus()
     area.setSelectionRange(3, 3)
     fireEvent.select(area)
-    fireEvent.keyDown(area, { key: ' ', code: 'Space', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', code: 'Slash', altKey: true })
 
     await waitFor(() => expect(screen.getByText('SELECT')).toBeTruthy())
     expect(screen.getByText('关键字')).toBeTruthy()

@@ -42,6 +42,7 @@ describe('shortcut registry', () => {
     expect(bindingFromEvent(press({ ctrlKey: true }))).toBe('mod+enter')
     expect(bindingFromEvent(press({ metaKey: true }))).toBe('mod+enter')
     expect(bindingFromEvent(press({ key: ' ', ctrlKey: true }))).toBe('mod+space')
+    expect(bindingFromEvent(press({ key: '?', ctrlKey: true, shiftKey: true }))).toBe('mod+shift+/')
     expect(bindingFromEvent(press({ key: 'F5', ctrlKey: false }))).toBe('f5')
     expect(bindingFromEvent(press({ key: 'Shift', shiftKey: true }))).toBeNull()
     expect(bindingFromEvent(press({ key: 'k', ctrlKey: false }))).toBeNull()
@@ -53,12 +54,27 @@ describe('shortcut registry', () => {
     expect(matchesBinding(press({ key: 'l', ctrlKey: false, metaKey: true }), 'mod+l')).toBe(true)
     expect(matchesBinding(press({ key: 'l', ctrlKey: true, altKey: true }), 'mod+l')).toBe(false)
     expect(matchesBinding(press({ ctrlKey: true }), 'mod+nonsense')).toBe(false)
+    expect(matchesBinding(press({ key: '/', altKey: true }), 'alt+/')).toBe(true)
+    // Ctrl+Shift+/ reports a question mark: the slash key with Shift held.
+    expect(matchesBinding(press({ key: '?', ctrlKey: true, shiftKey: true }), 'mod+shift+/')).toBe(true)
   })
 
   it('formats for the platform', () => {
     expect(formatBinding('mod+shift+arrowdown')).toBe('Ctrl + Shift + ↓')
     expect(formatBinding('mod+shift+arrowdown', true)).toBe('⌘ + ⇧ + ↓')
     expect(formatBinding('alt+f5')).toBe('Alt + F5')
+    expect(formatBinding('alt+/')).toBe('Alt + /')
+    expect(formatBinding('mod+shift+/')).toBe('Ctrl + Shift + /')
+  })
+
+  it('keeps the browser-safe defaults', () => {
+    expect(bindingOf('console.complete', {})).toBe('alt+/')
+    expect(bindingOf('console.comment', {})).toBe('mod+shift+/')
+    expect(bindingOf('result.rerun', {})).toBe('alt+r')
+    expect(bindingOf('table.refresh', {})).toBe('alt+r')
+    expect(bindingOf('tree.refresh', {})).toBe('alt+r')
+    // The symbol the browser reports folds back to the key that types it.
+    expect(parseBinding('mod+shift+?')).toEqual({ mod: true, alt: false, shift: true, key: '/' })
   })
 
   it('falls back to the default when the stored override is unusable', () => {

@@ -131,7 +131,7 @@ describe('console context-aware completion', () => {
 
     const area = editor()
     typeSql(area, 'SELECT * FROM orders WHERE ')
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table'))
@@ -148,7 +148,7 @@ describe('console context-aware completion', () => {
 
     const area = editor()
     typeSql(area, 'SELECT * FROM orders o WHERE o.')
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     const list = await screen.findByRole('listbox', { name: '补全候选' })
     await waitFor(() => expect(mocks.describe).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table'))
@@ -163,7 +163,7 @@ describe('console context-aware completion', () => {
 
     const area = editor()
     typeSql(area, 'SELECT * FROM orders WHERE crat')
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     await waitFor(() => expect(screen.getByText('created_at')).toBeTruthy())
   })
@@ -175,7 +175,7 @@ describe('console context-aware completion', () => {
 
     const area = editor()
     typeSql(area, 'SELECT * FROM orders WHERE cou')
-    fireEvent.keyDown(area, { key: ' ', ctrlKey: true })
+    fireEvent.keyDown(area, { key: '/', altKey: true })
 
     await waitFor(() => expect(screen.getByText('COUNT')).toBeTruthy())
     fireEvent.mouseDown(screen.getByText('COUNT'))

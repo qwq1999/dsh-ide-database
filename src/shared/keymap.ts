@@ -49,20 +49,20 @@ export const SHORTCUT_SCOPE_LABEL: Record<ShortcutScope, string> = {
 export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: 'console.run', scope: 'console', label: '执行（有选中内容时只执行选中部分）', defaultBinding: 'mod+enter' },
   { id: 'console.runCaret', scope: 'console', label: '只执行光标所在的那条语句', defaultBinding: 'mod+shift+enter' },
-  { id: 'console.complete', scope: 'console', label: '补全表名、库名、列名与关键字', defaultBinding: 'mod+space' },
+  { id: 'console.complete', scope: 'console', label: '补全表名、库名、列名与关键字', defaultBinding: 'alt+/' },
   { id: 'console.save', scope: 'console', label: '把编辑器里的 SQL 存成 .sql 文件', defaultBinding: 'mod+s' },
   { id: 'console.explain', scope: 'console', label: '查看执行计划（不执行语句）', defaultBinding: 'mod+e' },
-  { id: 'console.comment', scope: 'console', label: '注释或取消注释选中的行', defaultBinding: 'mod+/' },
+  { id: 'console.comment', scope: 'console', label: '注释或取消注释选中的行', defaultBinding: 'mod+shift+/' },
   { id: 'console.clear', scope: 'console', label: '清空编辑器（不影响已拿到的结果）', defaultBinding: 'mod+l' },
   { id: 'console.format', scope: 'console', label: '格式化 SQL', defaultBinding: 'mod+shift+f' },
   { id: 'console.historyOlder', scope: 'console', label: '回看上一条执行过的语句', defaultBinding: 'mod+arrowup' },
   { id: 'console.historyNewer', scope: 'console', label: '回看下一条执行过的语句', defaultBinding: 'mod+arrowdown' },
   { id: 'result.filter', scope: 'result', label: '跳到结果筛选框', defaultBinding: 'mod+f' },
-  { id: 'result.rerun', scope: 'result', label: '重新执行当前语句（不刷新页面）', defaultBinding: 'mod+r' },
+  { id: 'result.rerun', scope: 'result', label: '重新执行当前语句（不刷新页面）', defaultBinding: 'alt+r' },
   { id: 'table.where', scope: 'table', label: '跳到 WHERE 输入框', defaultBinding: 'mod+f' },
-  { id: 'table.refresh', scope: 'table', label: '只刷新当前页（重算总数）', defaultBinding: 'mod+r' },
+  { id: 'table.refresh', scope: 'table', label: '只刷新当前页（重算总数）', defaultBinding: 'alt+r' },
   { id: 'tree.filter', scope: 'tree', label: '跳到筛选框', defaultBinding: 'mod+f' },
-  { id: 'tree.refresh', scope: 'tree', label: '重读当前数据源的结构', defaultBinding: 'mod+r' },
+  { id: 'tree.refresh', scope: 'tree', label: '重读当前数据源的结构', defaultBinding: 'alt+r' },
   { id: 'redis.clear', scope: 'redis', label: '清空命令框', defaultBinding: 'mod+l' },
 ]
 
@@ -146,6 +146,39 @@ function keyOf(raw: string): string {
   return lower
 }
 
+/**
+ * Shifted symbols on a US layout, folded back to the key that types them.
+ * Ctrl+Shift+/ arrives as a question mark, and a binding stored verbatim from
+ * that event could never match the same press again once Shift is compared.
+ */
+const SHIFTED_SYMBOLS: Record<string, string> = {
+  '!': '1',
+  '@': '2',
+  '#': '3',
+  '$': '4',
+  '%': '5',
+  '^': '6',
+  '&': '7',
+  '*': '8',
+  '(': '9',
+  ')': '0',
+  '_': '-',
+  '+': '=',
+  '{': '[',
+  '}': ']',
+  '|': '\\',
+  ':': ';',
+  '"': "'",
+  '<': ',',
+  '>': '.',
+  '?': '/',
+}
+
+/** The key that produced this character before Shift was held. */
+function baseKeyOf(key: string): string {
+  return SHIFTED_SYMBOLS[key] ?? key
+}
+
 function isTypableKey(key: string): boolean {
   return /^(?:[a-z0-9]|[^\w\s])$/.test(key) || NAMED_KEYS.has(key) || /^f(?:[1-9]|1[0-2])$/.test(key)
 }
@@ -158,7 +191,7 @@ function isSafeStroke(stroke: KeyStroke): boolean {
 export function parseBinding(text: string): KeyStroke | null {
   const parts = text.trim().toLowerCase().split('+')
   if (parts.some((part) => part === '')) return null
-  const key = parts[parts.length - 1]!
+  const key = baseKeyOf(parts[parts.length - 1]!)
   const modifiers = parts.slice(0, -1)
   if (new Set(modifiers).size !== modifiers.length) return null
   if (modifiers.some((part) => part !== 'mod' && part !== 'alt' && part !== 'shift')) return null
@@ -191,7 +224,7 @@ export function bindingFromEvent(event: KeyLike): string | null {
     mod: event.ctrlKey || event.metaKey,
     alt: event.altKey,
     shift: event.shiftKey,
-    key,
+    key: baseKeyOf(key),
   }
   return isSafeStroke(stroke) ? strokeText(stroke) : null
 }
@@ -202,7 +235,7 @@ export function matchesBinding(event: KeyLike, binding: string): boolean {
   if (stroke.mod !== (event.ctrlKey || event.metaKey)) return false
   if (stroke.alt !== event.altKey) return false
   if (stroke.shift !== event.shiftKey) return false
-  return stroke.key === keyOf(event.key)
+  return stroke.key === baseKeyOf(keyOf(event.key))
 }
 
 /** Human readable form, e.g. `Ctrl + Shift + Enter`. */

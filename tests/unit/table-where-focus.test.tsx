@@ -90,7 +90,7 @@ describe('table filter shortcut', () => {
     await waitFor(() => expect(document.activeElement).toBe(where))
   })
 
-  it('reloads this page on Ctrl+R instead of the whole app', async () => {
+  it('reloads this page on Alt+R instead of the whole app', async () => {
     render(
       <TableTab
         useTabInfo={() => ({
@@ -102,7 +102,7 @@ describe('table filter shortcut', () => {
     const refresh = screen.getByRole('button', { name: /刷新/ })
     const before = mocks.query.mock.calls.length
     refresh.focus()
-    fireEvent.keyDown(refresh, { key: 'r', ctrlKey: true })
+    fireEvent.keyDown(refresh, { key: 'r', altKey: true })
     await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(before))
   })
 })

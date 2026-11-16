@@ -120,13 +120,13 @@ describe('run the statement under the caret', () => {
     expect(mocks.query).toHaveBeenCalledTimes(2)
   })
 
-  it('re-runs the statement on Ctrl+R instead of reloading the page', async () => {
+  it('re-runs the statement on Alt+R instead of reloading the page', async () => {
     render(<ConsoleTab useTabInfo={() => tab} />)
     await waitForConsoleSource(mocks)
 
     const editor = (await screen.findByPlaceholderText(/输入 SQL/)) as HTMLTextAreaElement
     fireEvent.change(editor, { target: { value: 'SELECT 1' } })
-    fireEvent.keyDown(editor, { key: 'r', ctrlKey: true })
+    fireEvent.keyDown(editor, { key: 'r', altKey: true })
 
     expect(await screen.findByText('one')).toBeTruthy()
     expect(mocks.query).toHaveBeenCalledTimes(1)
