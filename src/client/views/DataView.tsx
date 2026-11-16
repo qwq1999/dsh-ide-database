@@ -1024,12 +1024,9 @@ export function DataView(props: DataViewProps): ReactElement {
               </span>
               <Tag>{objectKindLabel(detail.kind)}</Tag>
               {detailComment === undefined || detailComment === '' ? null : (
-                <>
-                  <span className="dshdb-head-sep" aria-hidden="true" />
-                  <span className="dshdb-head-comment" title={detailComment}>
-                    {detailComment}
-                  </span>
-                </>
+                <span className="dshdb-head-comment" title={detailComment}>
+                  {detailComment}
+                </span>
               )}
             </span>
           }
