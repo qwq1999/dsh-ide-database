@@ -137,3 +137,81 @@ describe('MariaDB style sequences', () => {
     expect(result).toMatchObject({ kind: 'sequence', source: 'server' })
   })
 })
+
+describe('comments missing from the server DDL', () => {
+  function makeDameng(ddlText, description) {
+    const { service, calls } = makeService(connection('dm', 'dameng', 'dameng', 'APP'), ddlText)
+    service.describe = async () => description
+    return { service, calls }
+  }
+
+  const description = {
+    schema: 'APP',
+    table: 'BL_CHANGE',
+    kind: 'table',
+    comment: '账务工单',
+    columns: [
+      { name: 'ID', typeName: 'NUMBER(20,0)', nullable: false, comment: 'ID' },
+      { name: 'ORGID', typeName: 'VARCHAR2(144)', nullable: false, comment: '水司ID' },
+      { name: 'PLAIN', typeName: 'VARCHAR2(20)', nullable: false },
+      { name: 'SPACED', typeName: 'VARCHAR2(20)', nullable: true, comment: '   ' },
+    ],
+    indexes: [],
+  }
+
+  const serverDdl = 'CREATE TABLE "APP"."BL_CHANGE" (\n  "ID" NUMBER(20,0) NOT NULL\n)\nSTORAGE(ON "MAIN", CLUSTERBTR);'
+
+  it('appends the COMMENT ON statements the structure panel shows', async () => {
+    const { service } = makeDameng(serverDdl, description)
+
+    const result = await service.ddl('dm', 'dameng', 'APP', 'BL_CHANGE', 'table')
+
+    expect(result.source).toBe('server')
+    expect(result.ddl.startsWith(serverDdl)).toBe(true)
+    expect(result.ddl).toContain('COMMENT ON TABLE "APP"."BL_CHANGE" IS \'账务工单\';')
+    expect(result.ddl).toContain('COMMENT ON COLUMN "APP"."BL_CHANGE"."ORGID" IS \'水司ID\';')
+    // Columns without a comment, and blank ones, add nothing.
+    expect(result.ddl).not.toContain('"PLAIN"')
+    expect(result.ddl).not.toContain('"SPACED"')
+    expect(result.warnings).toContain('表与列的注释按数据字典补充为 COMMENT ON 语句')
+  })
+
+  it('doubles quotes so the appended statement stays valid', async () => {
+    const { service } = makeDameng(serverDdl, { ...description, comment: 'it\'s "fine"' })
+
+    const result = await service.ddl('dm', 'dameng', 'APP', 'BL_CHANGE', 'table')
+
+    expect(result.ddl).toContain(`COMMENT ON TABLE "APP"."BL_CHANGE" IS 'it''s "fine"';`)
+  })
+
+  it('leaves DDL that already carries comments alone', async () => {
+    const withComment = `${serverDdl}\nCOMMENT ON TABLE "APP"."BL_CHANGE" IS '账务工单';`
+    const { service } = makeDameng(withComment, description)
+
+    const result = await service.ddl('dm', 'dameng', 'APP', 'BL_CHANGE', 'table')
+
+    expect(result.ddl).toBe(withComment)
+    expect(result.warnings).toEqual([])
+  })
+
+  it('still returns the server DDL when the comments cannot be read', async () => {
+    const { service } = makeService(connection('dm', 'dameng', 'dameng', 'APP'), serverDdl)
+    service.describe = async () => {
+      throw new Error('columns failed')
+    }
+
+    const result = await service.ddl('dm', 'dameng', 'APP', 'BL_CHANGE', 'table')
+
+    expect(result.ddl).toBe(serverDdl)
+    expect(result.warnings).toEqual([])
+  })
+
+  it('does not touch DDL for other kinds', async () => {
+    const schema = 'CREATE TABLE "APP"."BL_CHANGE" (\n  "ID" NUMBER(20,0) NOT NULL\n);'
+    const { service } = makeDameng(schema, description)
+
+    const result = await service.ddl('dm', 'dameng', 'APP', 'BL_CHANGE', 'view')
+
+    expect(result.ddl).toBe(schema)
+  })
+})
