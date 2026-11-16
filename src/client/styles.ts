@@ -170,10 +170,27 @@ export const CSS = `
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
-/* Table/view comment next to the object name; shrinks before the kind tag does.
-   It is the same tier of annotation as the kind tag, so it takes the tag's size and
-   box height: a CJK glyph at the tag's 10.5px sits the same distance below the
-   baseline, where 11px ran taller and dipped under the name's baseline. */
+/* The header line reads as one sentence: name, kind, then the object's comment.
+   The name is the panel's subject, so it takes the primary label colour while the
+   schema stays dim; the comment is set off by a hairline rule instead of running
+   into the kind tag. */
+.dshdb-inline.dshdb-head-line { gap: 6px; max-width: 100%; }
+.dshdb-head-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--dsw-alias-label-primary);
+}
+.dshdb-head-schema { font-weight: 400; color: var(--dsw-alias-label-tertiary); }
+.dshdb-head-sep { flex: none; width: 1px; height: 11px; background: var(--dsw-alias-border-l2); }
+/* Same tier of annotation as the kind tag, so it takes the tag's size and box
+   height: a CJK glyph at 10.5px sits the same distance below the baseline, where
+   11px ran taller and dipped under the name's baseline. Truncates before the tag. */
 .dshdb-head-comment {
   flex: 0 1 auto;
   min-width: 0;

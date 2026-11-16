@@ -1014,16 +1014,22 @@ export function DataView(props: DataViewProps): ReactElement {
       {detail ? (
         <Panel
           title={
-            <span className="dshdb-inline">
+            <span className="dshdb-inline dshdb-head-line">
               {objectIcon(detail.kind)}
-              <span className="dshdb-mono">
-                {detail.schema}.{detail.table}
+              <span className="dshdb-head-name" title={`${detail.schema}.${detail.table}`}>
+                {detail.schema === '' ? null : (
+                  <span className="dshdb-head-schema">{detail.schema}.</span>
+                )}
+                {detail.table}
               </span>
               <Tag>{objectKindLabel(detail.kind)}</Tag>
               {detailComment === undefined || detailComment === '' ? null : (
-                <span className="dshdb-head-comment" title={detailComment}>
-                  {detailComment}
-                </span>
+                <>
+                  <span className="dshdb-head-sep" aria-hidden="true" />
+                  <span className="dshdb-head-comment" title={detailComment}>
+                    {detailComment}
+                  </span>
+                </>
               )}
             </span>
           }
