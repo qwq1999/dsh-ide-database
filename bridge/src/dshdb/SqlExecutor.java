@@ -32,6 +32,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -440,6 +441,9 @@ final class SqlExecutor {
             if ("oracle".equals(entry.dialect)
                     || "oceanbase-oracle".equals(entry.dialect)
                     || "dameng".equals(entry.dialect)) {
+                // The dictionary read comes first: DM and Oracle refuse a second
+                // statement while the object cursor is still open.
+                Map<String, String> comments = dictionaryComments(entry, schema);
                 String sql = "SELECT object_name, object_type FROM all_objects"
                         + " WHERE owner = ? AND object_type IN ('TABLE','VIEW','MATERIALIZED VIEW',"
                         + "'PROCEDURE','FUNCTION','PACKAGE','SEQUENCE','TRIGGER')"
@@ -448,9 +452,14 @@ final class SqlExecutor {
                     statement.setString(1, schema);
                     try (ResultSet rs = statement.executeQuery()) {
                         while (rs.next()) {
+                            String name = rs.getString(1);
                             Map<String, Object> row = new LinkedHashMap<String, Object>();
-                            row.put("name", rs.getString(1));
+                            row.put("name", name);
                             row.put("kind", oracleObjectKind(rs.getString(2)));
+                            String comment = comments.get(name);
+                            if (comment != null) {
+                                row.put("comment", comment);
+                            }
                             result.add(row);
                         }
                     }
@@ -480,6 +489,31 @@ final class SqlExecutor {
         } finally {
             entry.lock.unlock();
         }
+    }
+
+    /**
+     * Table and view comments for one owner, read in a single dictionary pass.
+     * The tree shows them beside each object name. Comments are decoration: a
+     * restricted dictionary yields an empty map and the list still loads.
+     */
+    private Map<String, String> dictionaryComments(Conn entry, String schema) {
+        Map<String, String> comments = new HashMap<String, String>();
+        String sql = "SELECT table_name, comments FROM all_tab_comments WHERE owner = ?";
+        try (PreparedStatement statement = entry.connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    String name = rs.getString(1);
+                    String comment = nonEmpty(rs.getString(2));
+                    if (name != null && comment != null) {
+                        comments.put(name, comment);
+                    }
+                }
+            }
+        } catch (SQLException ignored) {
+            // Optional decoration; the object list is the payload.
+        }
+        return comments;
     }
 
     /** Routines, triggers and sequences from sys.objects (tables/views come from metadata). */
