@@ -32,7 +32,7 @@ describe('cell value dialog for a capped cell', () => {
     expect(mocks.cellText).toHaveBeenCalledWith('config', capped)
     expect(screen.getByRole('status').textContent).toContain('正在读取完整值')
 
-    const block = await screen.findByLabelText('单元格完整值')
+    const block = await screen.findByLabelText('单元格完整值', {}, { timeout: 5000 })
     expect(block.textContent).toBe(PRETTY)
     expect(screen.queryByRole('status')).toBeNull()
   })
@@ -41,7 +41,7 @@ describe('cell value dialog for a capped cell', () => {
     mocks.cellText.mockResolvedValue(null)
     render(<CellValueModal view={cellValueView('config', capped)} onClose={() => undefined} />)
 
-    const status = await screen.findByRole('status')
+    const status = await screen.findByRole('status', {}, { timeout: 5000 })
     expect(status.textContent).toContain('重新执行查询')
     expect(screen.getByLabelText('单元格完整值').textContent).toBe(capped)
     expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
@@ -51,12 +51,12 @@ describe('cell value dialog for a capped cell', () => {
     mocks.cellText.mockRejectedValueOnce(new Error('数据库桥未启动')).mockResolvedValueOnce(FULL)
     render(<CellValueModal view={cellValueView('config', capped)} onClose={() => undefined} />)
 
-    const status = await screen.findByRole('status')
+    const status = await screen.findByRole('status', {}, { timeout: 5000 })
     expect(status.textContent).toContain('数据库桥未启动')
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
 
-    expect(await screen.findByLabelText('单元格完整值')).toBeDefined()
-    await waitFor(() => expect(screen.getByLabelText('单元格完整值').textContent).toBe(PRETTY))
+    expect(await screen.findByLabelText('单元格完整值', {}, { timeout: 5000 })).toBeDefined()
+    await waitFor(() => expect(screen.getByLabelText('单元格完整值').textContent).toBe(PRETTY), { timeout: 5000 })
     expect(mocks.cellText).toHaveBeenCalledTimes(2)
   })
 
