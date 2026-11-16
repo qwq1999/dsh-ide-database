@@ -203,7 +203,7 @@ function buildBuckets(state: TreeRowsState, filter: string, query: ReturnType<ty
     const grouped = emptyBuckets()
     const schemaName = key.slice(key.indexOf(':') + 1)
     for (const object of list) {
-      if (filter !== '' && !matchesFilteredObject(query, schemaName, object.name)) continue
+      if (filter !== '' && !matchesFilteredObject(query, schemaName, object.name, object.comment)) continue
       grouped[folderOf(object.kind)].push(object)
     }
     buckets.set(key, grouped)
@@ -267,7 +267,7 @@ export function treeFilterSummary(state: TreeFilterState): TreeFilterSummary {
       if (shownSchemas !== null && !shownSchemas.includes(schema.name)) continue
       let objectHits = 0
       for (const object of state.objects[`${connection.id}:${schema.name}`] ?? []) {
-        if (matchesFilteredObject(query, schema.name, object.name)) objectHits += 1
+        if (matchesFilteredObject(query, schema.name, object.name, object.comment)) objectHits += 1
       }
       if (objectHits > 0 || matches(schema.name)) {
         summary.objects += objectHits

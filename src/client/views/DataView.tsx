@@ -471,7 +471,7 @@ export function DataView(props: DataViewProps): ReactElement {
         const schema = key.slice(separator + 1)
         // Same rule as the row model: a qualified filter must also match the
         // schema, otherwise `shop.ord` would never open the 表 folder.
-        const hits = list.filter((object) => matchesFilteredObject(filterQuery, schema, object.name))
+        const hits = list.filter((object) => matchesFilteredObject(filterQuery, schema, object.name, object.comment))
         if (hits.length === 0) continue
         for (const folder of new Set(hits.map((object) => folderOf(object.kind)))) {
           const folderKey = treeFolderKey(connectionId, schema, folder)
@@ -907,6 +907,11 @@ export function DataView(props: DataViewProps): ReactElement {
                 }}
                 placeholder={`筛选${treeFilterLabel}…`}
                 aria-label={`筛选${treeFilterLabel}`}
+                title={
+                  selected?.dialect === 'redis'
+                    ? '输入键名片段筛选'
+                    : '输入名称或注释片段筛选；也可以写 库.表'
+                }
                 autoFocus
               />
               {filter !== '' ? (

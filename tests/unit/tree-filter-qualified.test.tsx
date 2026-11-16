@@ -24,7 +24,7 @@ const connection = {
   createdAt: '2026-10-23T00:00:00.000Z',
 } as ClientConnection
 
-const orders = { name: 'orders', kind: 'table' } as SchemaObject
+const orders = { name: 'orders', kind: 'table', comment: '合同签署方' } as SchemaObject
 const customers = { name: 'customers', kind: 'table' } as SchemaObject
 const companies = { name: 'companies', kind: 'table' } as SchemaObject
 
@@ -179,11 +179,23 @@ describe('qualified tree filter', () => {
     expect(shown('crm')).toBe(true)
   })
 
-  it('keeps unqualified filters matching object names only', async () => {
+  it('keeps unqualified filters matching object names', async () => {
     render(<DataView {...props()} />)
     typeFilter('cust')
 
     await waitFor(() => expect(shown('orders')).toBe(false))
     expect(shown('customers')).toBe(true)
+  })
+
+  it('keeps an object whose comment matches even when its name does not', async () => {
+    render(<DataView {...props()} />)
+    typeFilter('合同')
+
+    // `orders` is only described by its comment here; the row must still show
+    // (without a highlighted name fragment) because the tooltip explains it.
+    await waitFor(() => expect(shown('customers')).toBe(false))
+    expect(shown('orders')).toBe(true)
+    expect(shown('companies')).toBe(false)
+    expect(screen.getByText('1 个对象匹配')).toBeTruthy()
   })
 })

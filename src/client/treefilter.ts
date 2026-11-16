@@ -3,7 +3,8 @@
  *
  * Filtering only hides rows; the matching ones may still sit inside collapsed
  * branches. This helper decides which data sources and schemas have to be
- * expanded so that every name matching the filter becomes visible. Names are
+ * expanded so that every name matching the filter becomes visible. Names and
+ * object comments (the table description shown in the row tooltip) are
  * compared case-insensitively and by substring, the same rule the tree uses
  * when it renders filtered rows.
  *
@@ -34,14 +35,22 @@ export function parseFilter(filter: string): FilterQuery {
 }
 
 /**
- * Whether an object survives the filter. Unqualified filters only look at the
- * object name, qualified ones require the schema to match and then look at the
- * rest (`shop.` alone matches every object of that schema).
+ * Whether an object survives the filter. Unqualified filters look at the object
+ * name and its comment; qualified ones require the schema to match and then look
+ * at the rest (`shop.` alone matches every object of that schema). A comment hit
+ * keeps the row, which is how a table whose name shares nothing with its purpose
+ * still shows up: `合同` finds `ec_contract_signatory` when its comment says so.
  */
-export function matchesFilteredObject(query: FilterQuery, schemaName: string, objectName: string): boolean {
+export function matchesFilteredObject(
+  query: FilterQuery,
+  schemaName: string,
+  objectName: string,
+  objectComment?: string,
+): boolean {
   if (query.schema !== '' && !schemaName.toLowerCase().includes(query.schema)) return false
-  if (query.name !== '') return objectName.toLowerCase().includes(query.name)
-  return query.schema !== ''
+  if (query.name === '') return query.schema !== ''
+  if (objectName.toLowerCase().includes(query.name)) return true
+  return objectComment !== undefined && objectComment.toLowerCase().includes(query.name)
 }
 
 interface ConnectionLike {
@@ -52,6 +61,7 @@ interface ConnectionLike {
 interface ObjectLike {
   name: string
   kind?: string
+  comment?: string
 }
 
 export function filterTargets(
@@ -74,7 +84,7 @@ export function filterTargets(
     const objectHits = Object.keys(objects).filter((key) => {
       if (!key.startsWith(`${connection.id}:`)) return false
       const schemaName = key.slice(connection.id.length + 1)
-      return (objects[key] ?? []).some((object) => matchesFilteredObject(query, schemaName, object.name))
+      return (objects[key] ?? []).some((object) => matchesFilteredObject(query, schemaName, object.name, object.comment))
     })
     const connectionHit = (query.name !== '' && hitName(connection.name)) || hits.length > 0 || objectHits.length > 0
     if (!connectionHit) continue

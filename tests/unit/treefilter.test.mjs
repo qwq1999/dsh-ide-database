@@ -89,3 +89,41 @@ describe('qualified filters', () => {
     })
   })
 })
+
+describe('comment matching', () => {
+  const commented = {
+    'demo-mysql:shop': [
+      { name: 'orders', kind: 'table', comment: '订单主表' },
+      { name: 'ec_contract_signatory', kind: 'table', comment: '合同签署方' },
+    ],
+  }
+
+  it('matches an object by a fragment of its comment', () => {
+    expect(matchesFilteredObject(parseFilter('合同'), 'shop', 'ec_contract_signatory', '合同签署方')).toBe(true)
+    expect(matchesFilteredObject(parseFilter('签署'), 'shop', 'ec_contract_signatory', '合同签署方')).toBe(true)
+    expect(matchesFilteredObject(parseFilter('合同'), 'shop', 'ec_contract_signatory')).toBe(false)
+    expect(matchesFilteredObject(parseFilter('合同'), 'shop', 'orders', '订单主表')).toBe(false)
+    expect(matchesFilteredObject(parseFilter('MASTER'), 'shop', 'sales', 'Order master')).toBe(true)
+  })
+
+  it('still requires the schema half of a qualified filter to match', () => {
+    const query = parseFilter('shop.签署')
+    expect(matchesFilteredObject(query, 'shop', 'ec_contract_signatory', '合同签署方')).toBe(true)
+    expect(matchesFilteredObject(query, 'crm', 'ec_contract_signatory', '合同签署方')).toBe(false)
+    expect(matchesFilteredObject(parseFilter('shop.'), 'shop', 'ec_contract_signatory', '合同签署方')).toBe(true)
+  })
+
+  it('opens the schema holding a comment hit', () => {
+    expect(filterTargets('合同', connections, schemas, commented, {})).toEqual({
+      connections: ['demo-mysql'],
+      schemas: ['demo-mysql:shop'],
+    })
+    expect(filterTargets('合同', connections, schemas, commented, { 'demo-mysql': true })).toEqual({
+      connections: [],
+      schemas: ['demo-mysql:shop'],
+    })
+    expect(
+      filterTargets('合同', connections, schemas, commented, { 'demo-mysql': true, 'demo-mysql:shop': true }),
+    ).toEqual({ connections: [], schemas: [] })
+  })
+})

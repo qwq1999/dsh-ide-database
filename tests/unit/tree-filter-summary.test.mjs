@@ -44,6 +44,18 @@ describe('treeFilterSummary', () => {
     expect(summary({ filter: 'shop.' })).toEqual({ connections: 1, objects: 2 })
   })
 
+  it('counts a table whose comment matches the filter', () => {
+    const commented = {
+      'c1:shop': [
+        { name: 'ec_contract_signatory', kind: 'table', comment: '合同签署方' },
+        { name: 'customers', kind: 'table' },
+      ],
+      'c1:crm': [{ name: 'companies', kind: 'table' }],
+    }
+
+    expect(summary({ filter: '合同', objects: commented })).toEqual({ connections: 1, objects: 1 })
+  })
+
   it('does not count objects inside a schema hidden by the row picker', () => {
     expect(summary({ filter: 'ord', visibleSchemas: { c1: ['crm'] } })).toEqual({ connections: 0, objects: 0 })
     expect(summary({ filter: 'ord', visibleSchemas: { c1: ['shop'] } })).toEqual({ connections: 1, objects: 1 })
