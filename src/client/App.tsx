@@ -722,6 +722,7 @@ export function App(props: AppProps): ReactElement {
               expanded={expanded}
               loadingSchemas={loadingSchemas}
               loadingObjects={loadingObjects}
+              showTableComments={snapshot?.settings.showTableComments === true}
               cachedAt={cachedAt}
               descriptions={descriptions}
               loadingDescriptions={loadingDescriptions}

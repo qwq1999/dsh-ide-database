@@ -130,6 +130,11 @@ export interface DbSettings {
    * order; orderToolbarActions() appends actions it does not mention.
    */
   toolbarActions?: ToolbarActionId[]
+  /**
+   * Show each object's comment after its name in the data-source tree. Off by
+   * default: comments are long, and the tree is mostly scanned by name.
+   */
+  showTableComments?: boolean
 }
 
 export interface ConnectionConfig {

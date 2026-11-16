@@ -48,6 +48,8 @@ export interface TreeRowViewProps {
   drop: '' | 'before' | 'after'
   /** True when data-source reordering is wired up; only connection rows drag. */
   dragEnabled: boolean
+  /** 设置 > 数据源：append each table's comment to its row label. */
+  showComments: boolean
   actions: TreeRowActions
 }
 
@@ -135,20 +137,24 @@ const drawToggle = (row: TreeRow, actions: TreeRowActions): ReactNode => {
   return <span className="dshdb-row-toggle" />
 }
 
-const drawLabel = (row: TreeRow): ReactNode => (
-  <span className={`dshdb-row-label${row.mono === true ? ' dshdb-mono' : ''}`}>
-    {row.query === undefined || row.query === '' ? (
-      row.label
-    ) : (
-      <Highlight text={row.label ?? ''} query={row.query} />
-    )}
-  </span>
-)
+const drawLabel = (row: TreeRow, showComments = false): ReactNode => {
+  const comment = showComments && row.kind === 'object' ? row.object?.comment ?? '' : ''
+  return (
+    <span className={`dshdb-row-label${row.mono === true ? ' dshdb-mono' : ''}`}>
+      {row.query === undefined || row.query === '' ? (
+        row.label
+      ) : (
+        <Highlight text={row.label ?? ''} query={row.query} />
+      )}
+      {comment === '' ? null : <span className="dshdb-row-comment">{` — ${comment}`}</span>}
+    </span>
+  )
+}
 
 const drawMeta = (row: TreeRow): ReactNode =>
   row.meta === undefined ? null : <span className="dshdb-row-meta">{row.meta}</span>
 
-function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
+function drawContent(row: TreeRow, actions: TreeRowActions, showComments: boolean): ReactNode {
   switch (row.kind) {
     case 'connection':
       return (
@@ -243,7 +249,7 @@ function drawContent(row: TreeRow, actions: TreeRowActions): ReactNode {
             <span className="dshdb-row-toggle" />
           )}
           <span className="dshdb-row-icon">{rowIcon(row)}</span>
-          {drawLabel(row)}
+          {drawLabel(row, showComments)}
           {row.loading === true ? <Loading bare /> : null}
         </>
       )
@@ -344,6 +350,7 @@ export const TreeRowView = memo(function TreeRowView({
   dragging,
   drop,
   dragEnabled,
+  showComments,
   actions,
 }: TreeRowViewProps): ReactElement {
   const style = { '--dshdb-depth': row.depth } as CSSProperties
@@ -419,7 +426,7 @@ export const TreeRowView = memo(function TreeRowView({
       }
       onDragEnd={row.kind === 'connection' ? actions.dragEnd : undefined}
     >
-      {drawContent(row, actions)}
+      {drawContent(row, actions, showComments)}
     </button>
   )
 })

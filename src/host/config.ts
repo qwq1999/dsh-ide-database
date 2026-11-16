@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: DbSettings = {
   consoleActions: [],
   consoleAutoComplete: true,
   toolbarActions: [],
+  showTableComments: false,
 }
 
 const NAME_MAX = 80
@@ -63,6 +64,7 @@ export const SETTING_KEYS: (keyof DbSettings)[] = [
   'consoleActions',
   'consoleAutoComplete',
   'toolbarActions',
+  'showTableComments',
 ]
 
 function nowIso(): string {
@@ -227,6 +229,9 @@ export class ConfigStore {
             break
           case 'toolbarActions':
             settings.toolbarActions = readToolbarActionOrder(value)
+            break
+          case 'showTableComments':
+            settings.showTableComments = value === true
             break
         }
       } catch {
@@ -555,6 +560,10 @@ export class ConfigStore {
         case 'toolbarActions':
           if (!Array.isArray(value)) throw new DbError('invalid', 'toolbarActions 必须是数组')
           next.toolbarActions = readToolbarActionOrder(value)
+          break
+        case 'showTableComments':
+          if (typeof value !== 'boolean') throw new DbError('invalid', 'showTableComments 必须是布尔值')
+          next.showTableComments = value
           break
       }
     }

@@ -49,6 +49,8 @@ export interface DataViewProps {
   expanded: Record<string, boolean>
   loadingSchemas: Record<string, boolean>
   loadingObjects: Record<string, boolean>
+  /** 设置 > 数据源：show each object's comment after its name in the tree. */
+  showTableComments?: boolean
   /** ISO timestamp of the cached structure snapshot per connection. */
   cachedAt: Record<string, string>
   descriptions: Record<string, TableDescription>
@@ -974,6 +976,7 @@ export function DataView(props: DataViewProps): ReactElement {
                       domId={rowDomId(index)}
                       selected={isSelected(row)}
                       active={index === activeIndex}
+                      showComments={props.showTableComments === true}
                       dragging={dragging !== null && dragging.id === row.key}
                       dragEnabled={props.onReorderConnections !== undefined}
                       drop={

@@ -315,6 +315,12 @@ export const CSS = `
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
 }
+/* A table's comment hangs off its name: dimmer and smaller, so the tree is still
+   scanned by name; the label's ellipsis trims the comment last. */
+.dshdb-row-comment {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
 .dshdb-row-icon { display: inline-flex; align-items: center; flex: none; color: var(--dsw-alias-label-tertiary); }
 
 /* Dragging a data source above or below another one reorders the saved list.

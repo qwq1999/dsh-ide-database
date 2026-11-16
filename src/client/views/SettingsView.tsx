@@ -407,6 +407,29 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
       </Panel>
 
       <Panel
+        title="数据源"
+        collapsible
+        defaultOpen={false}
+        actions={
+          <Button size="sm" variant="primary" loading={props.saving} onClick={() => props.onSave(draft)}>
+            保存
+          </Button>
+        }
+        bodyClassName="dshdb-panel-body-pad"
+      >
+        <div className="dshdb-list">
+          <Switch
+            checked={draft.showTableComments === true}
+            onChange={(checked) => update('showTableComments', checked)}
+            label="在数据源树的表名后显示表注释"
+          />
+        </div>
+        <div className="dshdb-muted" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+          默认关闭。开启后注释以更淡的颜色跟在表名后面，行宽不够时随表名一起截断。
+        </div>
+      </Panel>
+
+      <Panel
         title="数据源工具栏"
         collapsible
         defaultOpen={false}
