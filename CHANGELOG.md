@@ -285,8 +285,9 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（308）
+## 修复（309）
 
+- `e7671a4` fix(client): 筛选时允许收起数据源树
 - `8db1ad1` fix(client): 删除按钮默认排在回收站前面
 - `db29bc8` fix(client): 筛选有关键词时点别处不关闭筛选框
 - `31b8322` fix(client): 清空筛选后点击别处收起筛选框
@@ -731,8 +732,9 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（20）
+## 杂项（21）
 
+- `416eb1e` chore(release): 发布 0.4.1
 - `7caacaa` chore(release): 发布 0.4.0
 - `98f6fed` chore(cache): 补全旧缓存迁移的 0.5.0 移除标记
 - `73dd463` chore(cache): 标记 0.5.0 移除旧缓存迁移
