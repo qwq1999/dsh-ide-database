@@ -103,7 +103,8 @@ export interface DataSources {
   redisDetailDb: number
   redisDetailLoading: boolean
   refresh: () => Promise<void>
-  connect: (connectionId: string) => Promise<void>
+  /** Resolves to whether the server accepted the connection. */
+  connect: (connectionId: string) => Promise<boolean>
   disconnect: (connectionId: string) => Promise<void>
   refreshSelected: () => Promise<void>
   resetDetail: () => void
@@ -611,9 +612,9 @@ export function useDataSources(notify: Notify): DataSources {
   )
 
   const connect = useCallback(
-    async (connectionId: string): Promise<void> => {
+    async (connectionId: string): Promise<boolean> => {
       const connection = connections.find((item) => item.id === connectionId)
-      if (!connection) return
+      if (!connection) return false
       setConnectingId(connectionId)
       try {
         const connected = await api.connect(connectionId)
@@ -631,9 +632,11 @@ export function useDataSources(notify: Notify): DataSources {
         } else {
           await loadSchemas(connectionId)
         }
+        return true
       } catch (error) {
         setSetupError(setupErrorOf(error))
         notify(`连接失败：${errorText(error)}`, 'error')
+        return false
       } finally {
         setConnectingId('')
       }
@@ -975,8 +978,17 @@ export function useDataSources(notify: Notify): DataSources {
       return
     }
     if (!servers[selected.id]) {
-      await connect(selected.id)
+      // Refreshing an offline source reconnects first. The refresh still has to
+      // finish like one on a live source: connect() only fills the missing
+      // descriptions, so without this pass a warm cache would report no
+      // 「缓存结构」 progress at all.
+      if (!(await connect(selected.id))) {
+        await refresh()
+        return
+      }
+      schedulePrefetch(selected.id, true)
       await refresh()
+      notify('已刷新数据源', 'success')
       return
     }
     await loadSchemas(selected.id, true)

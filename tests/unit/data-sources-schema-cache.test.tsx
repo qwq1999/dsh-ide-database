@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   schemas: vi.fn(),
   objects: vi.fn(),
   connect: vi.fn(),
+  disconnect: vi.fn(),
   prefetchConnection: vi.fn(),
 }))
 
@@ -19,6 +20,7 @@ vi.mock('../../src/client/api', () => ({
     schemas: mocks.schemas,
     objects: mocks.objects,
     connect: mocks.connect,
+    disconnect: mocks.disconnect,
     prefetchConnection: mocks.prefetchConnection,
   },
 }))
@@ -72,6 +74,7 @@ describe('data sources cache only visible schemas', () => {
     })
     mocks.objects.mockResolvedValue({ objects: [] })
     mocks.connect.mockResolvedValue({ version: '8.0.35', user: 'root' })
+    mocks.disconnect.mockResolvedValue({ disconnected: 'a' })
     mocks.prefetchConnection.mockResolvedValue({ id: 'a' })
   })
 
@@ -137,6 +140,32 @@ describe('data sources cache only visible schemas', () => {
       await hook.result.current.refreshSelected()
     })
 
+    expect(mocks.prefetchConnection).toHaveBeenCalledWith('a', { refresh: true, schemas: ['shop'] })
+  })
+
+  it('keeps the refresh semantics when the data source reconnects first', async () => {
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+    await act(async () => {
+      await hook.result.current.connect('a')
+    })
+    await waitFor(() => expect(hook.result.current.visibleSchemas.a).toEqual(['shop']))
+
+    await act(async () => {
+      await hook.result.current.disconnect('a')
+    })
+    expect(hook.result.current.servers.a).toBeUndefined()
+    mocks.connect.mockClear()
+    mocks.prefetchConnection.mockClear()
+
+    await act(async () => {
+      await hook.result.current.refreshSelected()
+    })
+
+    // The connecting refresh must not stop at a plain connect: that only fills
+    // the descriptions that are missing, leaving the status bar without the
+    // 「缓存结构」 progress the user expects from the refresh button.
+    expect(mocks.connect).toHaveBeenCalledWith('a')
     expect(mocks.prefetchConnection).toHaveBeenCalledWith('a', { refresh: true, schemas: ['shop'] })
   })
 
