@@ -8,6 +8,10 @@ import type { ClientConnection, SchemaObject } from '../../src/shared/types'
 const copy = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('../../src/client/colmenu', () => ({ copyText: copy }))
 
+// The jsdom environment has no global `afterEach`, so Testing Library does not
+// clean up on its own and leftover renders leak into the next test.
+afterEach(cleanup)
+
 const connection = {
   id: 'c1',
   name: '演示 MySQL',
@@ -95,6 +99,22 @@ function schemaRow(): HTMLElement {
 }
 
 describe('detail panel', () => {
+  it('shows the table comment from the object list', () => {
+    const { container } = render(
+      <DataView {...props({ objects: { 'c1:shop': [{ ...orders, comment: '订单主表' }, users] } })} />,
+    )
+
+    const comment = container.querySelector('.dshdb-head-comment')
+    expect(comment?.textContent).toBe('订单主表')
+    expect(comment?.getAttribute('title')).toBe('订单主表')
+  })
+
+  it('leaves the header without a comment when the table carries none', () => {
+    const { container } = render(<DataView {...props()} />)
+
+    expect(container.querySelector('.dshdb-head-comment')).toBeNull()
+  })
+
   it('copies the column names from the detail header', async () => {
     render(<DataView {...props()} />)
 

@@ -144,6 +144,12 @@ export function DataView(props: DataViewProps): ReactElement {
 
   const { connections, selectedId, servers, expanded, schemas, objects, cachedAt, detail, detailLoading } = props
   const selected = connections.find((connection) => connection.id === selectedId)
+  // The detail payload carries columns and indexes only. The object comment
+  // comes from the same connection's object list, where the tree got it.
+  const detailComment =
+    detail === null
+      ? undefined
+      : objects[`${selectedId}:${detail.schema}`]?.find((object) => object.name === detail.table)?.comment
   /** What the tree filter searches, for the placeholder and the aria label. */
   const treeFilterLabel = selected?.dialect === 'redis' ? '键' : '库表'
 
@@ -1008,6 +1014,11 @@ export function DataView(props: DataViewProps): ReactElement {
                 {detail.schema}.{detail.table}
               </span>
               <Tag>{objectKindLabel(detail.kind)}</Tag>
+              {detailComment === undefined || detailComment === '' ? null : (
+                <span className="dshdb-head-comment" title={detailComment}>
+                  {detailComment}
+                </span>
+              )}
             </span>
           }
           actions={

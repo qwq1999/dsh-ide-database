@@ -170,6 +170,16 @@ export const CSS = `
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
+/* Table/view comment next to the object name; shrinks before the kind tag does. */
+.dshdb-head-comment {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
 .dshdb-panel-toggle {
   flex: 1;
   min-width: 0;
