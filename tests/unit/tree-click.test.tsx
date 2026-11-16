@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { DataView, type DataViewProps } from '../../src/client/views/DataView'
@@ -190,7 +190,7 @@ describe('数据源树：选中与展开分离', () => {
   it('点击明细里的文件夹名不折叠，点箭头才折叠', () => {
     setup()
     fireEvent.click(tree().getByText('customers'))
-    const toggle = screen
+    const toggle = tree()
       .getByText('customers')
       .closest('button')!
       .querySelector('.dshdb-row-toggle-action') as HTMLElement
