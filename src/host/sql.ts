@@ -1055,7 +1055,7 @@ export class SqlService {
         const statement = `SELECT DBMS_METADATA.GET_DDL(${quoteLiteral(objectType)}, ${quoteLiteral(table)}, ${quoteLiteral(schema)}) AS DDL FROM DUAL`
         const ddl = await this.firstCell(connId, statement)
         if (ddl.trim() !== '') {
-          const withComments = await this.withComments(connId, dialect, schema, table, kind, ddl, warnings)
+          const withComments = await this.withComments(connId, dialect, schema, table, kind, ddl)
           return { schema, table, kind, ddl: withComments, source: 'server', warnings }
         }
         warnings.push('DBMS_METADATA.GET_DDL 没有返回内容')
@@ -1094,8 +1094,8 @@ export class SqlService {
    * DM and Oracle keep table and column comments in the data dictionary, not in
    * the text DBMS_METADATA returns, so the structure panel shows comments while
    * the DDL right below it does not. Append the COMMENT ON statements behind
-   * that panel. The dialog says so, since the result is then no longer purely
-   * what the server printed.
+   * that panel, so the definition the dialog shows is the one that rebuilds the
+   * table as it stands.
    */
   private async withComments(
     connId: string,
@@ -1104,7 +1104,6 @@ export class SqlService {
     table: string,
     kind: ObjectKind,
     ddl: string,
-    warnings: string[],
   ): Promise<string> {
     // Views and routines have their own COMMENT ON forms; only tables matter here.
     if (kind !== 'table' || /\bCOMMENT\s+ON\b/i.test(ddl)) return ddl
@@ -1125,7 +1124,6 @@ export class SqlService {
       lines.push(`COMMENT ON COLUMN ${name}.${quoteIdent(dialect, column.name)} IS ${quoteLiteral(columnComment, dialect)};`)
     }
     if (lines.length === 0) return ddl
-    warnings.push('表与列的注释按数据字典补充为 COMMENT ON 语句')
     return `${ddl}\n\n${lines.join('\n')}`
   }
 

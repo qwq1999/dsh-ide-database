@@ -173,7 +173,7 @@ describe('comments missing from the server DDL', () => {
     // Columns without a comment, and blank ones, add nothing.
     expect(result.ddl).not.toContain('"PLAIN"')
     expect(result.ddl).not.toContain('"SPACED"')
-    expect(result.warnings).toContain('表与列的注释按数据字典补充为 COMMENT ON 语句')
+    expect(result.warnings).toEqual([])
   })
 
   it('doubles quotes so the appended statement stays valid', async () => {
