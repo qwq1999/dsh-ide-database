@@ -7,6 +7,8 @@
  * and string literals blanked out, so a half-written `FROM shop.` or a stray
  * `JOIN orders o` never throws — it just produces the relations found so far.
  */
+import type { SqlDialect } from '../../shared/types'
+import { maskNonCode } from '../sqllex'
 import { qualifierBefore, wordAtCaret } from './edit'
 import {
   isInsideCommentOrString,
@@ -4337,10 +4339,16 @@ function collectRelations(
  * the caret; `word` offsets stay relative to `text` so they can be handed to
  * `applyCompletion` unchanged.
  */
-export function analyze(text: string, caret: number): Analysis {
+export function analyze(text: string, caret: number, dialect: SqlDialect = 'generic'): Analysis {
   const at = Math.max(0, Math.min(caret, text.length))
-  const maskedFull = maskCommentsAndStrings(text)
-  const bounds = statementBounds(maskedFull, at, text.length)
+  const maskedFull = maskCommentsAndStrings(text, dialect)
+  // Statement boundaries must ignore semicolons that are not separators. The
+  // parse mask deliberately keeps quoted identifiers (so `"a"."b"` is readable)
+  // and the completion lexer does not know MySQL `#` comments. Reuse the real
+  // splitter's non-code mask, which blanks strings, quoted identifiers and all
+  // comment forms, so `;` inside any of them is not mistaken for a boundary.
+  const boundaryMask = maskNonCode(text, dialect, true)
+  const bounds = statementBounds(boundaryMask, at, text.length)
   const statement = text.slice(bounds.start, bounds.end)
   const masked = maskedFull.slice(bounds.start, bounds.end)
 
@@ -4358,7 +4366,7 @@ export function analyze(text: string, caret: number): Analysis {
   // statement keeps string literals as single `string` tokens (a comparison
   // with a literal still ends an operand), while the tokenizer itself skips
   // comments and never splits the contents of a string.
-  const tokens = tokenize(statement)
+  const tokens = tokenize(statement, dialect)
   const caretRelative = at - bounds.start
   const wordStartRelative = word.start - bounds.start
   const before = tokens.filter(
@@ -4446,7 +4454,7 @@ export function analyze(text: string, caret: number): Analysis {
   }
 
   const analysis: Analysis = { masked, statement, relations, expectation, qualifier, word }
-  if (isInsideCommentOrString(text, at)) analysis.inLiteral = true
+  if (isInsideCommentOrString(text, at, dialect)) analysis.inLiteral = true
   if (ctes.length > 0) analysis.ctes = ctes
   if (cteRelations.length > 0) analysis.cteRelations = cteRelations
   return analysis

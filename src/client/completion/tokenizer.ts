@@ -6,7 +6,39 @@
  * end of the text. Comments are dropped, everything else keeps its source
  * offsets so the callers can map tokens back to the editor.
  */
+import type { SqlDialect } from '../../shared/types'
+import { backslashEscapes } from '../sqllex'
 import { isKeyword } from './keywords'
+
+/**
+ * Scan the single-quoted literal starting at `quote`.
+ *
+ * Besides doubled quotes, MySQL (and PostgreSQL `E'...'`) treat `\` as an
+ * escape, so `\'` must not end the literal. Returns the exclusive end and
+ * whether a closing quote was actually found; an unterminated literal simply
+ * runs to the end of the text, which keeps the lexer tolerant of half-written
+ * input.
+ */
+function scanString(text: string, quote: number, dialect: SqlDialect): { end: number; terminated: boolean } {
+  const length = text.length
+  const escapes = backslashEscapes(text, quote, "'", dialect)
+  let index = quote + 1
+  while (index < length) {
+    const current = text[index] as string
+    if (escapes && current === '\\') {
+      index = Math.min(length, index + 2)
+      continue
+    }
+    index += 1
+    if (current !== "'") continue
+    if (text[index] === "'") {
+      index += 1
+      continue
+    }
+    return { end: index, terminated: true }
+  }
+  return { end: index, terminated: false }
+}
 
 /** Kinds produced by {@link tokenize}. */
 export type TokenKind = 'ident' | 'keyword' | 'string' | 'number' | 'punct' | 'param'
@@ -52,7 +84,7 @@ function makeToken(
 /**
  * Split `text` into tokens. Whitespace and comments are skipped, not emitted.
  */
-export function tokenize(text: string): Token[] {
+export function tokenize(text: string, dialect: SqlDialect = 'generic'): Token[] {
   const tokens: Token[] = []
   const length = text.length
   let index = 0
@@ -80,20 +112,11 @@ export function tokenize(text: string): Token[] {
       continue
     }
 
-    // 'string literal', with '' as the escaped quote
+    // 'string literal', with '' (and, in MySQL/E'', \') as the escaped quote
     if (char === "'") {
       const start = index
-      index += 1
-      while (index < length) {
-        const current = text[index]
-        index += 1
-        if (current !== "'") continue
-        if (text[index] === "'") {
-          index += 1
-          continue
-        }
-        break
-      }
+      const { end } = scanString(text, index, dialect)
+      index = end
       tokens.push(makeToken('string', text.slice(start, index), start, index))
       continue
     }
@@ -187,6 +210,8 @@ export interface MaskSpan {
   start: number
   /** One past the last character, including a closing delimiter when present. */
   end: number
+  /** True when the closing delimiter was found (false for an unterminated span). */
+  terminated: boolean
 }
 
 /**
@@ -196,7 +221,7 @@ export interface MaskSpan {
  * runs to the end of the text. Quoted identifiers are deliberately absent: the
  * context parser still needs to read `"shop"."orders"`.
  */
-export function maskedRanges(text: string): MaskSpan[] {
+export function maskedRanges(text: string, dialect: SqlDialect = 'generic'): MaskSpan[] {
   const spans: MaskSpan[] = []
   const length = text.length
   let index = 0
@@ -207,31 +232,27 @@ export function maskedRanges(text: string): MaskSpan[] {
       const start = index
       index += 2
       while (index < length && text[index] !== '\n') index += 1
-      spans.push({ start, end: index })
+      // A `--` comment ends at the newline; running out of text leaves it open.
+      spans.push({ start, end: index, terminated: index < length })
       continue
     }
     if (char === '/' && text[index + 1] === '*') {
       const start = index
       index += 2
+      let closed = false
       while (index < length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
-      index = Math.min(length, index + 2)
-      spans.push({ start, end: index })
+      if (index < length) {
+        index += 2
+        closed = true
+      }
+      spans.push({ start, end: index, terminated: closed })
       continue
     }
     if (char === "'") {
       const start = index
-      index += 1
-      while (index < length) {
-        const current = text[index] as string
-        index += 1
-        if (current !== "'") continue
-        if (text[index] === "'") {
-          index += 1
-          continue
-        }
-        break
-      }
-      spans.push({ start, end: index })
+      const { end, terminated } = scanString(text, index, dialect)
+      index = end
+      spans.push({ start, end: index, terminated })
       continue
     }
     index += 1
@@ -244,9 +265,9 @@ export function maskedRanges(text: string): MaskSpan[] {
  * Replace comments and string literals with spaces while keeping every offset
  * (and every newline) in place.
  */
-export function maskCommentsAndStrings(text: string): string {
+export function maskCommentsAndStrings(text: string, dialect: SqlDialect = 'generic'): string {
   const chars = text.split('')
-  for (const span of maskedRanges(text)) {
+  for (const span of maskedRanges(text, dialect)) {
     for (let cursor = span.start; cursor < Math.min(span.end, chars.length); cursor += 1) {
       if (chars[cursor] !== '\n') chars[cursor] = ' '
     }
@@ -260,12 +281,15 @@ export function maskCommentsAndStrings(text: string): string {
  * A caret right after a closed literal or comment is outside; inside an
  * unterminated one the very end of the text still counts as inside.
  */
-export function isInsideCommentOrString(text: string, index: number): boolean {
+export function isInsideCommentOrString(text: string, index: number, dialect: SqlDialect = 'generic'): boolean {
   const at = Math.max(0, Math.min(index, text.length))
-  for (const span of maskedRanges(text)) {
+  for (const span of maskedRanges(text, dialect)) {
     if (at <= span.start) continue
     if (at < span.end) return true
-    if (at === span.end && span.end === text.length) return true
+    // Only an unterminated span counts at its end-of-text boundary. A closed
+    // literal/comment ending exactly at the caret leaves the caret outside, so
+    // expression-tail completions (AS/FROM/…) remain available.
+    if (at === span.end && span.end === text.length && !span.terminated) return true
   }
   return false
 }

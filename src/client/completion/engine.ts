@@ -7,6 +7,7 @@
  * are swallowed on purpose: a slow or broken server must never make the popup
  * show an error, it just shows fewer (or no) entries.
  */
+import { sqlDialectOf } from '../../shared/dialect'
 import { analyze } from './context'
 import {
   CHARSET_NAMES,
@@ -462,7 +463,7 @@ async function qualifiedCandidates(
 export async function complete(request: CompletionRequest): Promise<CompletionResult> {
   if (request.signal?.aborted === true) throw abortError()
 
-  const analysis = analyze(request.statement, request.caret)
+  const analysis = analyze(request.statement, request.caret, sqlDialectOf(request.dialect))
   // Nothing written inside a string literal or comment is an identifier;
   // offering names there would only paste them into prose.
   if (analysis.inLiteral === true) return { items: [], analysis }
