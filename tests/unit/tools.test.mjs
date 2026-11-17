@@ -59,6 +59,7 @@ function harness(initial = {}) {
     purgeConnection,
   }
   const structure = { clear: vi.fn(), putSchemas: vi.fn(), get: vi.fn(() => undefined) }
+  const prefetch = { cancel: vi.fn() }
   const deps = {
     config,
     drivers: { statuses: () => [{ id: 'mysql', allJarsPresent: true, jars: [] }] },
@@ -76,6 +77,7 @@ function harness(initial = {}) {
     },
     redis: { scan: vi.fn(), inspect: vi.fn(), command: vi.fn(), connect: vi.fn(), disconnect: vi.fn(async () => undefined) },
     structure,
+    prefetch,
   }
   const tools = createDatabaseTools(deps)
   const byName = (name) => {
@@ -96,6 +98,7 @@ function harness(initial = {}) {
     trashConnection,
     purgeConnection,
     structure,
+    prefetch,
   }
 }
 
@@ -337,10 +340,13 @@ describe('createDatabaseTools', () => {
     await expect(byName('db_explain').execute({ connection: 'c1', sql: '' })).rejects.toThrow(/SQL 不能为空/)
   })
 
-  it('drops the cached session after an update', async () => {
-    const { byName, deps } = harness()
+  it('drops the cached session and stale structure after an update', async () => {
+    const { byName, deps, structure, prefetch } = harness()
     await byName('db_update_connection').execute({ connection: 'c1', port: 3307 })
     expect(deps.sql.disconnect).toHaveBeenCalledWith('c1')
+    expect(deps.redis.disconnect).toHaveBeenCalledWith('c1')
+    expect(structure.clear).toHaveBeenCalledWith('c1')
+    expect(prefetch.cancel).toHaveBeenCalledWith('c1')
   })
 
   it('guards EXPLAIN ANALYZE like a write', async () => {

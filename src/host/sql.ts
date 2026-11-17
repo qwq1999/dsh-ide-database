@@ -833,8 +833,14 @@ export class SqlService {
 
   async test(draft: ConnectionDraft): Promise<ConnectionTestResult> {
     const started = Date.now()
-    const syntheticId = typeof draft.id === 'string' && draft.id !== '' ? draft.id : `probe-${randomBytes(3).toString('hex')}`
-    const existing = this.config.connection(syntheticId)
+    // The draft id is only used to resolve the stored secret. The bridge keys
+    // JDBC sessions by connId and `connect` evicts any session under that key,
+    // so a probe must use its own id — reusing a live connection's id would
+    // close that connection's session and leave the host thinking it is still
+    // open. Always generate a fresh probe id.
+    const lookupId = typeof draft.id === 'string' && draft.id !== '' ? draft.id : undefined
+    const probeId = `probe-${randomBytes(6).toString('hex')}`
+    const existing = lookupId === undefined ? undefined : this.config.connection(lookupId)
     let driver: ResolvedJdbcDriver | undefined
     try {
       driver = this.drivers.resolveDriver(draft.driver, draft.customDriverId)
@@ -842,7 +848,7 @@ export class SqlService {
       const javaStatus = this.java.locate(this.config.settings().javaPath)
       if (!javaStatus.available) throw new DbError('java-missing', javaStatus.message ?? '未找到 Java')
       const connection: ConnectionConfig = {
-        id: syntheticId,
+        id: probeId,
         name: draft.name,
         driver: draft.driver,
         ...(draft.customDriverId === undefined ? {} : { customDriverId: draft.customDriverId }),
@@ -864,7 +870,7 @@ export class SqlService {
       const server = await bridge.request<ServerInfo>(
         'connect',
         {
-          connId: syntheticId,
+          connId: probeId,
           url: this.buildUrl(connection, driver),
           driverClass: driver.driverClass,
           dialect: driver.dialect,
@@ -876,12 +882,12 @@ export class SqlService {
         },
         (settings.connectTimeoutSec + 15) * 1000,
       )
-      await bridge.request('disconnect', { connId: syntheticId }, 15_000).catch(() => undefined)
+      await bridge.request('disconnect', { connId: probeId }, 15_000).catch(() => undefined)
       const note = fileDatabaseNote(driver.dialect, connection.database, existsSync(connection.database))
       return { ok: true, server, latencyMs: Date.now() - started, ...(note === null ? {} : { note }) }
     } catch (error) {
       if (this.bridge !== undefined && driver !== undefined) {
-        await this.bridge.request('disconnect', { connId: syntheticId }, 10_000).catch(() => undefined)
+        await this.bridge.request('disconnect', { connId: probeId }, 10_000).catch(() => undefined)
       }
       return { ok: false, latencyMs: Date.now() - started, message: errorMessage(error) }
     }
