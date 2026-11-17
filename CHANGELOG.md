@@ -4,8 +4,14 @@
 
 由 `npm run changelog` 根据 `git log` 生成，不要手工编辑。
 
-## 新功能（278）
+## 新功能（284）
 
+- `426b748` feat(client): 数据源树上方显示可关闭的更新提示
+- `12cd162` feat(client): 表注释在数据源树中默认显示
+- `c5600eb` feat(client): 设置项控制数据源树是否显示表注释
+- `539e89e` feat(client): 树筛选同时匹配表注释
+- `b003c81` feat(describe): 表结构描述返回表注释
+- `5ea6967` feat(client): 表结构面板标题显示表注释
 - `6dc0df8` feat(client): 补全注释与刷新改用不冲突的快捷键
 - `a5bf845` feat(client): 筛选按钮再次点击收起筛选框
 - `1316909` feat(client): 工具栏新增筛选按钮，点击弹出筛选框
@@ -285,8 +291,14 @@
 - `334013a` feat(console): 支持把编辑器 SQL 保存为脚本文件
 - `57d5388` feat(console): 支持导入 .sql 文件到编辑器
 
-## 修复（309）
+## 修复（315）
 
+- `7f5893c` fix(bridge): 达梦与 Oracle 的对象列表带出表注释
+- `470cb47` fix(client): 树里的表注释不再用破折号前缀
+- `271603c` fix(client): 表注释与类型标签统一字号和盒高
+- `d28f5c4` fix(ddl): DDL 补上数据字典里的表与列注释
+- `eba3f0f` fix(client): 完整值弹层按需取回被截断的单元格文本
+- `6c3e698` fix(client): 刷新时重连也重读全部表描述
 - `e7671a4` fix(client): 筛选时允许收起数据源树
 - `8db1ad1` fix(client): 删除按钮默认排在回收站前面
 - `db29bc8` fix(client): 筛选有关键词时点别处不关闭筛选框
@@ -632,8 +644,11 @@
 - `b2ec0e1` perf(structure): 新增免拷贝访问器并去掉分页冗余写入
 - `9770cba` perf(redis): SCAN 键元信息改为流水线批量读取
 
-## 重构（16）
+## 重构（19）
 
+- `29d6cf6` refactor(client): 表结构标题行去掉竖线
+- `1e3fc5e` refactor(client): 重构表结构面板标题行
+- `73a06d8` refactor(ddl): 去掉注释补充的提示语
 - `bc948fa` refactor(sql): 统一 Redis 连接的 SQL 方言归一
 - `eaca661` refactor(redis): 只读命令列表共用一份
 - `d11d1f3` refactor(sql): 修正错位的函数文档注释
@@ -651,8 +666,10 @@
 - `7a005aa` refactor(console): 拆出历史、键网格与分页按钮等展示组件
 - `e6a6af4` refactor(export): 抽出分页收集器供两处全量导出复用
 
-## 测试（39）
+## 测试（41）
 
+- `f31a308` test(client): 完整值弹层测试放宽等待，避免并发偶发超时
+- `bdc05b8` test(client): 数据源树测试在树内查询表名，避开标题重名
 - `efb8d76` test(client): 等待控制台数据源界面就绪
 - `cbcf314` test(client): 完成度基准偶发超时重试一次
 - `dedc641` test(client): 覆盖虚拟树窗口与行模型
@@ -732,8 +749,9 @@
 - `5f4e78c` docs: 补上树筛选命中数的说明
 - `44061d4` docs: 去掉键表格说明里重复的排序描述
 
-## 杂项（21）
+## 杂项（22）
 
+- `302a835` chore(release): 发布 0.4.2
 - `416eb1e` chore(release): 发布 0.4.1
 - `7caacaa` chore(release): 发布 0.4.0
 - `98f6fed` chore(cache): 补全旧缓存迁移的 0.5.0 移除标记
@@ -756,8 +774,10 @@
 - `909ab5d` chore(console): 删除不再使用的整行筛选辅助函数
 - `69d3148` chore(format): 删掉没人调用的单元格/Redis 预览辅助函数
 
-## 其它（13）
+## 其它（15）
 
+- `c7456ec` style(client): 表结构标题行的表描述与表名同样式
+- `93bd9d4` style(client): 表结构标题行的表名不加粗
 - `2474099` Merge pull request #6 from qwq1999/dsh-c9855a9c-d93c
 - `9d3ad88` Merge pull request #5 from qwq1999/dsh-c9855a9c-d93c
 - `be99106` Merge pull request #4 from qwq1999/dsh-c9855a9c-d93c
