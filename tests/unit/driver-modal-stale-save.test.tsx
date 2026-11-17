@@ -78,3 +78,28 @@ describe('driver modal stale save', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+
+describe('driver modal validation feedback', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('clears the name validation error once the name is corrected', () => {
+    render(
+      <DriverModal open editing={null} onClose={() => undefined} onSaved={() => undefined} notify={() => undefined} />,
+    )
+    // Empty the name -> save -> validation error.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByText(/请填写驱动名称/u)).toBeTruthy()
+
+    // Correcting the name clears the error immediately.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '有效驱动' } })
+    expect(screen.queryByText(/请填写驱动名称/u)).toBeNull()
+  })
+})

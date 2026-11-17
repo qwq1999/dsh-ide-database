@@ -55,6 +55,11 @@ describe('connection modal editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.saveConnection.mockResolvedValue({ connection: existing })
+    mocks.testConnection.mockResolvedValue({
+      ok: true,
+      latencyMs: 12,
+      server: { product: 'MySQL', version: '8.0' },
+    })
   })
 
   it('never pre-fills the saved password and keeps it when left empty', async () => {
@@ -217,5 +222,58 @@ describe('connection modal stale save', () => {
     expect(notify).not.toHaveBeenCalled()
     expect(onSaved).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('connection modal feedback invalidation', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.saveConnection.mockResolvedValue({ connection: existing })
+    mocks.testConnection.mockResolvedValue({
+      ok: true,
+      latencyMs: 12,
+      server: { product: 'MySQL', version: '8.0' },
+    })
+  })
+
+  it('clears a stale success banner when a field is edited after testing', async () => {
+    renderModal()
+    // Produce a success banner.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    await waitFor(() => expect(screen.getByText(/连接成功/u)).toBeTruthy())
+
+    // Editing the host must drop the now-stale success banner.
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
+  })
+
+  it('does not show an old success banner alongside a new validation error', async () => {
+    renderModal()
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    await waitFor(() => expect(screen.getByText(/连接成功/u)).toBeTruthy())
+
+    // Make the port invalid and test again: validation fails.
+    fireEvent.change(screen.getByLabelText(/^端口/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+
+    await waitFor(() => expect(screen.getByText(/端口需在 1-65535 之间/u)).toBeTruthy())
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
+  })
+
+  it('clears a validation error once the offending field is corrected', () => {
+    renderModal()
+    // Empty the name and save -> validation error.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByText(/请填写连接名称/u)).toBeTruthy()
+
+    // Correcting the name clears the error immediately.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '有效名称' } })
+    expect(screen.queryByText(/请填写连接名称/u)).toBeNull()
   })
 })

@@ -143,20 +143,20 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
       <div className="dshdb-form">
         <div className="dshdb-form-grid">
           <Field label="名称" required span>
-            <TextInput value={name} autoFocus placeholder="例如 ClickHouse" onChange={(event) => setName(event.target.value)} />
+            <TextInput value={name} autoFocus placeholder="例如 ClickHouse" onChange={(event) => { setName(event.target.value); setError('') }} />
           </Field>
           <Field label="方言" required>
             <Select
               options={DIALECT_OPTIONS}
               value={dialect}
-              onValueChange={(value) => setDialect(value as SqlDialect)}
+              onValueChange={(value) => { setDialect(value as SqlDialect); setError('') }}
             />
           </Field>
           <Field label="驱动类" required>
             <TextInput
               value={driverClass}
               placeholder="com.example.jdbc.Driver"
-              onChange={(event) => setDriverClass(event.target.value)}
+              onChange={(event) => { setDriverClass(event.target.value); setError('') }}
             />
           </Field>
           <Field
@@ -165,7 +165,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
             span
             hint="占位符：{{host}} {{port}} {{database}}，例如 jdbc:mysql://{{host}}:{{port}}/{{database}}"
           >
-            <TextInput value={urlTemplate} onChange={(event) => setUrlTemplate(event.target.value)} />
+            <TextInput value={urlTemplate} onChange={(event) => { setUrlTemplate(event.target.value); setError('') }} />
           </Field>
           <Field
             label="Maven 依赖"
@@ -175,7 +175,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
           >
             <TextArea
               value={jarsText}
-              onChange={(event) => setJarsText(event.target.value)}
+              onChange={(event) => { setJarsText(event.target.value); setError('') }}
               placeholder={'com.example:example-jdbc:1.0.0'}
               style={{ minHeight: 84 }}
             />

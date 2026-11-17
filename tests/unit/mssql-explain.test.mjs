@@ -45,7 +45,7 @@ describe('SQL Server execution plan', () => {
 
     expect(calls).toEqual([
       { sql: 'SET SHOWPLAN_ALL ON', allowWrite: true },
-      { sql: 'SELECT 1', allowWrite: false },
+      { sql: 'SELECT 1', allowWrite: true },
       { sql: 'SET SHOWPLAN_ALL OFF', allowWrite: true },
     ])
     expect(result.dialect).toBe('mssql')
@@ -65,4 +65,18 @@ describe('SQL Server execution plan', () => {
     await expect(service.explain('mssql-1', 'SELECT FROM')).rejects.toThrow('Incorrect syntax near')
     expect(calls.map((call) => call.sql)).toEqual(['SET SHOWPLAN_ALL ON', 'SELECT FROM', 'SET SHOWPLAN_ALL OFF'])
   })
+
+  it('compiles DML too: the plan statement bypasses the read-only guard', async () => {
+    const calls = []
+    const service = makeService(calls)
+    const result = await service.explain('mssql-1', 'DELETE FROM users WHERE id = 1')
+
+    expect(calls).toEqual([
+      { sql: 'SET SHOWPLAN_ALL ON', allowWrite: true },
+      { sql: 'DELETE FROM users WHERE id = 1', allowWrite: true },
+      { sql: 'SET SHOWPLAN_ALL OFF', allowWrite: true },
+    ])
+    expect(result.plan.rows).toEqual([['SELECT 1']])
+  })
+
 })

@@ -1187,7 +1187,10 @@ export class SqlService {
       await this.query(connId, 'SET SHOWPLAN_ALL ON', { ...queryOptions, allowWrite: true })
       try {
         statements.push(sql)
-        const plan = await this.query(connId, sql, queryOptions)
+        // SHOWPLAN_ALL is on, so this statement is only compiled, not executed.
+        // isReadOnlySql still flags DML by its leading keyword; let it through the
+        // guard just like the SET switches above (and Oracle's EXPLAIN PLAN FOR).
+        const plan = await this.query(connId, sql, { ...queryOptions, allowWrite: true })
         return { dialect: connection.dialect, statements, plan, warnings }
       } finally {
         statements.push('SET SHOWPLAN_ALL OFF')

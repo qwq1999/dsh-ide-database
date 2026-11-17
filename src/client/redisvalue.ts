@@ -39,9 +39,108 @@ function parseJsonContainer(text: string): object | null {
   }
 }
 
+/**
+ * Indent an already-validated JSON container without reparsing it.
+ *
+ * JSON.parse → JSON.stringify would round every number through IEEE754, which
+ * silently corrupts integers beyond 2^53 (64-bit ids, bigint amounts) and
+ * normalises literals (`1.0`→`1`, `1e3`→`1000`). Scanning the original text
+ * instead keeps every number and string byte-for-byte, changing only structural
+ * whitespace. Structural chars and string escapes are handled lexically; the
+ * caller has already verified the text parses as an object/array.
+ */
+function indentJsonContainer(text: string): string {
+  type Token = { kind: 'open' | 'close' | 'comma' | 'colon' | 'value'; text: string }
+  const tokens: Token[] = []
+  const structural = '{}[],:'
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    if (/\s/u.test(ch)) {
+      i += 1
+      continue
+    }
+    if (ch === '{' || ch === '[') {
+      tokens.push({ kind: 'open', text: ch })
+      i += 1
+      continue
+    }
+    if (ch === '}' || ch === ']') {
+      tokens.push({ kind: 'close', text: ch })
+      i += 1
+      continue
+    }
+    if (ch === ',') {
+      tokens.push({ kind: 'comma', text: ch })
+      i += 1
+      continue
+    }
+    if (ch === ':') {
+      tokens.push({ kind: 'colon', text: ch })
+      i += 1
+      continue
+    }
+    if (ch === '"') {
+      const start = i
+      i += 1
+      while (i < text.length) {
+        if (text[i] === '\\') {
+          i += 2
+          continue
+        }
+        if (text[i] === '"') {
+          i += 1
+          break
+        }
+        i += 1
+      }
+      tokens.push({ kind: 'value', text: text.slice(start, i) })
+      continue
+    }
+    // number / true / false / null — copy verbatim up to the next structural
+    // char or whitespace so no numeric literal is ever reinterpreted.
+    const start = i
+    while (i < text.length && !structural.includes(text[i]) && !/\s/u.test(text[i])) i += 1
+    tokens.push({ kind: 'value', text: text.slice(start, i) })
+  }
+
+  const out: string[] = []
+  let indent = 0
+  const pad = (): string => '  '.repeat(indent)
+  for (let k = 0; k < tokens.length; k += 1) {
+    const token = tokens[k]
+    const next = tokens[k + 1]
+    if (token.kind === 'open') {
+      out.push(token.text)
+      indent += 1
+      // Keep empty containers on one line.
+      if (!(next !== undefined && next.kind === 'close')) out.push('\n' + pad())
+    } else if (token.kind === 'close') {
+      indent -= 1
+      const last = out[out.length - 1] ?? ''
+      if (last === '{' || last === '[') {
+        out.push(token.text)
+      } else {
+        // Drop the indent we appended for the current level, then close on a
+        // fresh line at the parent level.
+        if (last.endsWith('  '.repeat(indent + 1))) out[out.length - 1] = last.replace(/ +$/u, '')
+        out.push('\n' + pad() + token.text)
+      }
+    } else if (token.kind === 'comma') {
+      out.push(',\n' + pad())
+    } else if (token.kind === 'colon') {
+      out.push(': ')
+    } else {
+      out.push(token.text)
+    }
+  }
+  return out.join('')
+}
+
 export function prettyJsonText(text: string): string {
+  const trimmed = text.trim()
   const parsed = parseJsonContainer(text)
-  return parsed === null ? text : JSON.stringify(parsed, null, 2)
+  return parsed === null ? text : indentJsonContainer(trimmed)
 }
 
 /** What the value panel prints when the payload cannot be tabulated. */

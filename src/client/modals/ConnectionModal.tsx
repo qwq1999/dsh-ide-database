@@ -123,10 +123,17 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     ...customDrivers.map((driver) => ({ value: `custom:${driver.id}`, label: `${driver.name}（自定义）` })),
   ]
 
-  const changeChoice = (value: string) => {
-    setChoice(value)
+  // A test result or validation error only describes the draft that produced
+  // it. Editing any field invalidates both, otherwise a stale 'connected'
+  // banner sits next to a new validation error.
+  const clearFeedback = (): void => {
     setTestResult(null)
     setError('')
+  }
+
+  const changeChoice = (value: string) => {
+    setChoice(value)
+    clearFeedback()
     if (value.startsWith('custom:')) return
     const spec = presetOf(value)
     if (spec) setPort(String(spec.defaultPort))
@@ -168,10 +175,12 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     const draft = buildDraft()
     const problem = validate(draft)
     if (problem) {
+      setTestResult(null)
       setError(problem)
       return
     }
     if (isRedis) {
+      setTestResult(null)
       setError('Redis 连接请在保存后通过面板连接验证')
       return
     }
@@ -198,6 +207,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     const draft = buildDraft()
     const problem = validate(draft)
     if (problem) {
+      setTestResult(null)
       setError(problem)
       return
     }
@@ -253,7 +263,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
               value={name}
               autoFocus
               placeholder="例如 本地 MySQL"
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => { setName(event.target.value); clearFeedback() }}
             />
           </Field>
           <Field label="驱动" required span hint={dialect ? `方言：${dialectLabel(dialect)}` : undefined}>
@@ -267,30 +277,30 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
           {fileBased ? null : (
             <>
               <Field label="主机" required>
-                <TextInput value={host} onChange={(event) => setHost(event.target.value)} placeholder="127.0.0.1" />
+                <TextInput value={host} onChange={(event) => { setHost(event.target.value); clearFeedback() }} placeholder="127.0.0.1" />
               </Field>
               <Field label="端口" required>
                 <TextInput
                   value={port}
                   inputMode="numeric"
-                  onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ''))}
+                  onChange={(event) => { setPort(event.target.value.replace(/[^0-9]/g, '')); clearFeedback() }}
                 />
               </Field>
               <Field label="用户名">
-                <TextInput value={user} onChange={(event) => setUser(event.target.value)} placeholder={isRedis ? 'default' : '用户名'} />
+                <TextInput value={user} onChange={(event) => { setUser(event.target.value); clearFeedback() }} placeholder={isRedis ? 'default' : '用户名'} />
               </Field>
               <Field label="密码" hint={editing?.hasPassword ? '已保存密码，留空则保持不变' : undefined}>
                 <TextInput
                   type="password"
                   value={password}
                   autoComplete="new-password"
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => { setPassword(event.target.value); clearFeedback() }}
                   placeholder={editing?.hasPassword ? '留空则保持不变' : '密码'}
                 />
               </Field>
               {editing?.hasPassword ? (
                 <div className="dshdb-span-2">
-                  <Switch checked={clearPassword} onChange={setClearPassword} label="清除已保存的密码" />
+                  <Switch checked={clearPassword} onChange={(value) => { setClearPassword(value); clearFeedback() }} label="清除已保存的密码" />
                 </div>
               ) : null}
             </>
@@ -300,14 +310,14 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
               <TextInput
                 value={redisDb}
                 inputMode="numeric"
-                onChange={(event) => setRedisDb(event.target.value.replace(/[^0-9]/g, ''))}
+                onChange={(event) => { setRedisDb(event.target.value.replace(/[^0-9]/g, '')); clearFeedback() }}
               />
             </Field>
           ) : (
             <Field label="数据库 / 服务名" span={fileBased} hint={preset?.databaseHint ?? '可留空，连接后再选择 schema'}>
               <TextInput
                 value={database}
-                onChange={(event) => setDatabase(event.target.value)}
+                onChange={(event) => { setDatabase(event.target.value); clearFeedback() }}
                 placeholder={fileBased ? '例如 ./data/app.db' : '可留空'}
               />
             </Field>
@@ -316,7 +326,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
             <Field label="额外 JDBC 参数" span hint="每行一个 key=value，例如 useSSL=false">
               <TextArea
                 value={paramsText}
-                onChange={(event) => setParamsText(event.target.value)}
+                onChange={(event) => { setParamsText(event.target.value); clearFeedback() }}
                 placeholder={'useSSL=false\nconnectTimeout=10000'}
               />
             </Field>
@@ -324,7 +334,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
           <div className="dshdb-span-2 dshdb-list">
             <Switch
               checked={readOnly}
-              onChange={setReadOnly}
+              onChange={(value) => { setReadOnly(value); clearFeedback() }}
               disabled={editing != null}
               label={
                 editing == null
