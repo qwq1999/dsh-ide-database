@@ -96,4 +96,20 @@ describe('SearchSelect', () => {
     expect(filter.value).toBe('')
     expect(screen.getAllByRole('option')).toHaveLength(OPTIONS.length)
   })
+
+  it('restores focus to the trigger after Escape or pick', () => {
+    const { trigger } = picker()
+    const filter = open(trigger)
+    expect(document.activeElement).toBe(filter)
+
+    fireEvent.keyDown(filter, { key: 'Escape' })
+    expect(document.activeElement).toBe(trigger)
+
+    // Pick via Enter after reopening.
+    const filter2 = open(trigger)
+    fireEvent.change(filter2, { target: { value: 'nacos' } })
+    fireEvent.keyDown(filter2, { key: 'Enter' })
+    expect(document.activeElement).toBe(trigger)
+  })
+
 })

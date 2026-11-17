@@ -32,6 +32,8 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA schema_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA user_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA user_version /* keep */', 'sqlite')).toBe(true)
+    // A long gap must not trigger exponential backtracking in PRAGMA_HEAD.
+    expect(isReadOnlySql('PRAGMA ' + ' '.repeat(200) + 'user_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql("PRAGMA table_info('a=b')", 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info("a=b")', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info([a=b])', 'sqlite')).toBe(true)

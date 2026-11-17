@@ -154,9 +154,13 @@ export function SearchSelect({
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const anchor = useRef<HTMLSpanElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const close = useCallback(() => {
     setOpen(false)
     setQuery('')
+    // The search input unmounts with the popover; without this, focus falls
+    // back to <body> and keyboard users lose their place (WCAG 2.4.3).
+    triggerRef.current?.focus()
   }, [])
   usePopoverDismiss(open, close, anchor)
   const current = options.find((option) => option.value === value)
@@ -175,6 +179,7 @@ export function SearchSelect({
   return (
     <span className="dshdb-search-select" ref={anchor}>
       <button
+        ref={triggerRef}
         type="button"
         className={`dshdb-select dshdb-select-inline dshdb-search-trigger ${className}`.trim()}
         aria-label={label}

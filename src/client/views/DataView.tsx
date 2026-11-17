@@ -228,6 +228,9 @@ export function DataView(props: DataViewProps): ReactElement {
     setFilterOpen(false)
     setFilter('')
     setSettledFilter('')
+    // The filter input unmounts on close; return focus to the tree so arrow
+    // keys keep working from where the user was before Ctrl+F / Escape.
+    containerRef.current?.focus()
   }, [])
 
   // Focus after the box has been committed to the DOM, so Ctrl+F works from
