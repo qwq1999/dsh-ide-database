@@ -187,6 +187,18 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN /*!50000 SQL_NO_CACHE */ DELETE FROM t', 'mysql')).toBe(true)
   })
 
+  it('does not let MariaDB /*M! executable comments hide writes or locks', () => {
+    // MariaDB executes the body of `/*M! ... */` just like MySQL's `/*! ... */`.
+    expect(isReadOnlySql("SELECT 1 /*M!50000 INTO OUTFILE '/tmp/pwn.txt' */", 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 /*M!50000 FROM t FOR UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 /*M!50000 LOCK IN SHARE MODE */', 'mysql')).toBe(false)
+    // A leading executable comment's SELECT body is judged too (BUG C).
+    expect(isReadOnlySql('/*M!50000 SELECT 1 */ SELECT 2', 'mysql')).toBe(true)
+    expect(isReadOnlySql('/*M!50000 SELECT 1 */ DELETE FROM t', 'mysql')).toBe(false)
+    // Harmless MariaDB hints stay read-only.
+    expect(isReadOnlySql('SELECT 1 /*M!50000 SQL_NO_CACHE */', 'mysql')).toBe(true)
+  })
+
   it('judges the statement a CTE list runs', () => {
     expect(isReadOnlySql('WITH c AS (SELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('with recursive c as (select 1) select 1 from c')).toBe(true)

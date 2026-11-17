@@ -14,6 +14,24 @@ import { IconWarningOutlineRegular, Toast as PrimitiveToast } from '@deepseek-ai
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
 import { usePopoverDismiss } from './popover'
 
+// Nested dialogs share one page-scroll lock. Saving/restoring body.overflow per
+// instance breaks when two dialogs unmount in the same commit: React runs
+// cleanups in tree order, so the later one restores the `'hidden'` the earlier
+// one just saved, leaving the page permanently unscrollable. Refcount instead.
+let scrollLocks = 0
+let savedOverflow = ''
+function lockPageScroll(): void {
+  if (scrollLocks === 0) {
+    savedOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  scrollLocks += 1
+}
+function unlockPageScroll(): void {
+  scrollLocks = Math.max(0, scrollLocks - 1)
+  if (scrollLocks === 0) document.body.style.overflow = savedOverflow
+}
+
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger'
 export type BannerTone = 'info' | 'success' | 'warn' | 'error'
 
@@ -534,8 +552,7 @@ export function Modal({
     }
     document.addEventListener('keydown', onKeyDown, true)
     // The page behind the overlay must not scroll while the dialog is up.
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockPageScroll()
     const start = box?.querySelector<HTMLElement>(
       'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]):not([aria-label="关闭"])',
     )
@@ -543,7 +560,7 @@ export function Modal({
     else box?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
-      document.body.style.overflow = previousOverflow
+      unlockPageScroll()
       if (previous !== null && previous.isConnected) previous.focus()
     }
   }, [open])

@@ -159,6 +159,19 @@ function startsLineComment(text: string, index: number, dialect: SqlDialect): bo
   return after === undefined || /\s/u.test(after)
 }
 
+/**
+ * MySQL and MariaDB both execute the body of a versioned executable comment.
+ * MySQL spells the opener bang-after-star, MariaDB also accepts M-bang.
+ * Return the opener length (3 for the MySQL form, 4 for the MariaDB form) at
+ * `index`, or 0 when there is no executable comment there.
+ */
+function executableCommentOpener(text: string, index: number): number {
+  if (text[index] !== '/' || text[index + 1] !== '*') return 0
+  if (text[index + 2] === '!') return 3
+  if (text[index + 2] === 'M' && text[index + 3] === '!') return 4
+  return 0
+}
+
 function matchingParen(text: string, open: number, dialect: SqlDialect = 'generic'): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
@@ -229,8 +242,9 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
       // MySQL executes `/*! ... */` bodies, so their parentheses and quotes
       // must participate in matching. Other dialects treat `/*!` as a normal
       // comment and skip it.
-      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
-        index += 2
+      if (isMysqlDialect(dialect) && executableCommentOpener(text, index) > 0) {
+        // Step onto the `!` so the body characters participate in matching.
+        index += executableCommentOpener(text, index) - 1
         continue
       }
       const end = text.indexOf('*/', index + 2)
@@ -426,12 +440,13 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       // inert comments. Keeping the body visible makes the INTO checks below
       // reject `SELECT ... /*!50000 INTO OUTFILE ... */` while still allowing
       // harmless hints such as `/*!50000 SQL_NO_CACHE */`.
-      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
-        // MySQL treats the digits after `/*!` as a version, not SQL. Replace
-        // them with spaces so `/*!50000INTO OUTFILE` still has a word boundary
-        // before `INTO`; the comment body itself must stay visible.
-        out += '/*!'
-        index += 2
+      const opener = isMysqlDialect(dialect) ? executableCommentOpener(text, index) : 0
+      if (opener > 0) {
+        // MySQL/MariaDB treat the digits after the opener as a version, not SQL.
+        // Replace them with spaces so `/*!50000INTO OUTFILE` still has a word
+        // boundary before `INTO`; the comment body itself must stay visible.
+        out += text.slice(index, index + opener)
+        index += opener - 1
         // Stop on the last digit: the outer for-loop advances to the first body
         // character, so moving straight to it here would skip that character.
         while (index + 1 < text.length && /\d/u.test(text[index + 1] ?? '')) {
@@ -531,10 +546,11 @@ interface ExecutableComment {
 
 /** Read one executable comment at the start of `text`; null when there is none. */
 function executableComment(text: string): ExecutableComment | null {
-  if (!text.startsWith('/*!')) return null
-  const close = text.indexOf('*/', 2)
+  const opener = executableCommentOpener(text, 0)
+  if (opener === 0) return null
+  const close = text.indexOf('*/', opener)
   if (close < 0) return null
-  return { body: text.slice(3, close), end: close + 2 }
+  return { body: text.slice(opener, close), end: close + 2 }
 }
 
 export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {

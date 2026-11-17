@@ -376,4 +376,12 @@ describe('executable comment keyword matching', () => {
     expect(looksLikeWrite('/*!40101 DELETE FROM users */ SELECT 1', 'mysql')).toBe(true)
     expect(looksLikeDdl('/*!50000 CREATE TABLE t (a int) */ SELECT 1', 'mysql')).toBe(true)
   })
+
+  it('recognizes MariaDB /*M! executable comments as code too', () => {
+    expect(looksLikeWrite('/*M!50000 DELETE FROM t */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*M!50000 DROP TABLE t */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*M!50000 CREATE TABLE t(a int) */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeWrite("/*M!50000 SELECT 1 INTO OUTFILE '/x' */", 'mysql')).toBe(true)
+    expect(looksLikeWrite("/*M!50000 SQL_NO_CACHE */ SELECT REPLACE(a, 'x', 'y') FROM t", 'mysql')).toBe(false)
+  })
 })

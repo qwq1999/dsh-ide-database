@@ -51,13 +51,20 @@ const COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: '
 type DecimalKey = { n: bigint; scale: number } | { inf: -1 | 1 }
 type SortKey = { domain: 0; dec: DecimalKey } | { domain: 1; str: string }
 
-const DECIMAL_RE = /^([+-]?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/
+const DECIMAL_RE = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/
 
 function decimalKey(text: string): DecimalKey | null {
   const m = DECIMAL_RE.exec(text.trim())
   if (!m) return null
-  const digits = (m[2] ?? '') + (m[3] ?? '')
-  const scale = (m[3] ?? '').length - Number(m[4] ?? 0)
+  // A huge exponent would materialise 10n ** huge and either throw RangeError
+  // or stall the comparator; treat it as text instead. The exponent is the
+  // last capture group (m[5]).
+  const exponent = Number(m[5] ?? 0)
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 1000) return null
+  const fraction = m[3] ?? m[4] ?? ''
+  const digits = (m[2] ?? '') + fraction
+  if (digits === '') return null
+  const scale = fraction.length - exponent
   let n = BigInt(digits) * (m[1] === '-' ? -1n : 1n)
   if (scale < 0) {
     n *= 10n ** BigInt(-scale)
@@ -73,6 +80,10 @@ function sortKey(value: CellValue): SortKey {
   }
   if (typeof value === 'boolean') return { domain: 0, dec: { n: value ? 1n : 0n, scale: 0 } }
   const text = String(value)
+  // The JDBC bridge sends Double infinities as the strings produced by Java's
+  // Double.toString(); fold them into the same numeric order as JS Infinity.
+  if (text === 'Infinity' || text === '+Infinity') return { domain: 0, dec: { inf: 1 } }
+  if (text === '-Infinity') return { domain: 0, dec: { inf: -1 } }
   const dec = decimalKey(text)
   return dec === null ? { domain: 1, str: text } : { domain: 0, dec }
 }
@@ -119,8 +130,8 @@ export function sortRowsWithOrder(
     const b = rows[right]?.[index]
     // NaN minus anything is NaN, which breaks comparator transitivity and
     // leaves the finite values unordered. Group it with the empty cells.
-    const aEmpty = a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a))
-    const bEmpty = b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b))
+    const aEmpty = a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a)) || a === 'NaN'
+    const bEmpty = b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b)) || b === 'NaN'
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
     return factor * order(a, b)
   })

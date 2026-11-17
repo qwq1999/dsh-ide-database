@@ -136,6 +136,32 @@ describe('mixed number / numeric-string ordering', () => {
     const out = sortRowsWithOrder(cols, page, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
     expect(out).toEqual(['-20', '-10', '-2', -1])
   })
+
+describe('non-finite and exotic numeric strings', () => {
+  const cols = [{ name: 'v', typeName: 'DOUBLE' }]
+  const asc = { column: 'v', direction: 'asc' }
+  const run = (vals) => sortRowsWithOrder(cols, vals.map((v) => [v]), asc).rows.map((r) => r[0])
+
+  it('orders Infinity/-Infinity strings with the numbers', () => {
+    // The JDBC bridge encodes Double infinities as Java's Double.toString().
+    expect(run(['1', '2', '-5', 'Infinity', '-Infinity'])).toEqual(['-Infinity', '-5', '1', '2', 'Infinity'])
+  })
+
+  it('sinks a NaN string with the empty cells', () => {
+    expect(run(['3', 'NaN', '1'])).toEqual(['1', '3', 'NaN'])
+  })
+
+  it('accepts leading-dot and explicit-plus decimals', () => {
+    expect(run(['1', '2', '+3', '+1.5'])).toEqual(['1', '+1.5', '2', '+3'])
+    expect(run(['0.5', '0.6', '-.5'])).toEqual(['-.5', '0.5', '0.6'])
+  })
+
+  it('does not throw or stall on huge exponents', () => {
+    expect(() => run(['1e400000000', '2', '3'])).not.toThrow()
+    expect(run(['1e400000000', '2', '3'])).toEqual(['2', '3', '1e400000000'])
+  })
+})
+
 })
 
 
