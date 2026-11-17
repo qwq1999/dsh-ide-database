@@ -1045,7 +1045,6 @@ final class SqlExecutor {
                     index.put("name", name);
                     index.put("columns", new ArrayList<Object>());
                     index.put("unique", Boolean.valueOf(!rs.getBoolean("NON_UNIQUE")));
-                    index.put("primary", Boolean.valueOf(primary.contains(name)));
                     grouped.put(name, index);
                 }
                 String column = rs.getString("COLUMN_NAME");
@@ -1054,6 +1053,21 @@ final class SqlExecutor {
                     List<Object> list = (List<Object>) index.get("columns");
                     list.add(column);
                 }
+            }
+            // getIndexInfo() reports the index NAME, not a column name, so comparing it
+            // to the primary-key COLUMN_NAME set always yields false. Identify the
+            // primary index by comparing its actual column set to the primary columns.
+            for (Map<String, Object> index : grouped.values()) {
+                @SuppressWarnings("unchecked")
+                List<Object> indexColumns = (List<Object>) index.get("columns");
+                Set<String> columnSet = new HashSet<String>();
+                for (Object column : indexColumns) {
+                    if (column != null) {
+                        columnSet.add((String) column);
+                    }
+                }
+                index.put("primary", Boolean.valueOf(
+                        !primary.isEmpty() && columnSet.equals(primary)));
             }
             indexes.addAll(grouped.values());
         }
