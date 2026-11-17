@@ -137,3 +137,50 @@ describe('mixed number / numeric-string ordering', () => {
     expect(out).toEqual(['-20', '-10', '-2', -1])
   })
 })
+
+
+describe('large integer ordering', () => {
+  const cols = [{ name: 'v', typeName: 'BIGINT' }]
+
+  it('sorts >2^53 integer strings exactly (BIGINTs arrive as strings)', () => {
+    // SqlExecutor.normalize returns >2^53 integers as strings to avoid JS
+    // rounding. Number() folding collapses these onto one double, leaving the
+    // page unsorted; BigInt keys keep them distinct and correctly ordered.
+    const page = [
+      ['1900000000000000003'],
+      ['1900000000000000001'],
+      ['1900000000000000002'],
+      ['1900000000000000000'],
+    ]
+    const asc = sortRowsWithOrder(cols, page, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
+    expect(asc).toEqual([
+      '1900000000000000000',
+      '1900000000000000001',
+      '1900000000000000002',
+      '1900000000000000003',
+    ])
+    const desc = sortRowsWithOrder(cols, page, { column: 'v', direction: 'desc' }).rows.map((r) => r[0])
+    expect(desc).toEqual([...asc].reverse())
+  })
+
+  it('orders a numeric bigint string against a nearby number without depending on row order', () => {
+    // 9007199254740993 > 9007199254740992, but Number("9007199254740993")
+    // rounds down to 9007199254740992. The result must not depend on which
+    // row came first.
+    const a = [['9007199254740993'], [9007199254740992]]
+    const b = [[9007199254740992], ['9007199254740993']]
+    const outA = sortRowsWithOrder(cols, a, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
+    const outB = sortRowsWithOrder(cols, b, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
+    // The numeric 2^53 is smaller than the string 2^53+1 in both orders.
+    expect(outA[0]).toBe(9007199254740992)
+    expect(outB[0]).toBe(9007199254740992)
+    expect(outA[1]).toBe('9007199254740993')
+    expect(outB[1]).toBe('9007199254740993')
+  })
+
+  it('sorts negative big integer strings correctly', () => {
+    const page = [['-9007199254740993'], ['-9007199254740992'], ['0'], ['9007199254740992']]
+    const asc = sortRowsWithOrder(cols, page, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
+    expect(asc).toEqual(['-9007199254740993', '-9007199254740992', '0', '9007199254740992'])
+  })
+})

@@ -332,6 +332,8 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const runningRef = useRef(0)
   /** Plans are invalidated by the same switching actions as query results. */
   const planToken = useRef(0)
+  /** schema listings are per-source; a late response from the old source must not land. */
+  const schemaRequest = useRef(0)
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
   const resultBeforePlan = useRef<QueryResult | null>(null)
   /** Row count and duration of the run that just finished, for the history list. */
@@ -465,8 +467,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   // and from a live listing once it is connected.
   const loadSchemaList = useCallback(async (id: string): Promise<void> => {
     if (id === '') return
+    const request = ++schemaRequest.current
     try {
       const list = await api.schemas(id)
+      if (request !== schemaRequest.current) return
       setSchemas(list.schemas)
     } catch {
       // Keep the login default; the list retries after the first successful query.
@@ -1047,15 +1051,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         )
         if (token !== runToken.current) return
         if (!redisDatabasesLoaded.current) {
-          void api.redisDatabases(selectedId)
+          const dbRequest = runToken.current
+          const dbSource = selectedId
+          void api.redisDatabases(dbSource)
             .then((info) => {
+              if (dbRequest !== runToken.current) return
               redisDatabasesLoaded.current = true
               setRedisDatabases(info.databases)
               // The remembered index can outlive the server that had that many
               // databases; sending it would fail before the first scan.
               if (info.databases > 0 && activeRedisDb >= info.databases) {
                 setRedisDb(0)
-                writeNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, 0)
+                writeNumber(`${REDIS_DB_KEY_PREFIX}${dbSource}`, 0)
               }
             })
             .catch(() => undefined)
@@ -1085,6 +1092,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const invalidateRun = useCallback((): void => {
     runToken.current += 1
     planToken.current += 1
+    schemaRequest.current += 1
+    setSchemas([])
+    // A Redis value refresh holds its own busy flag; its token-guarded finally
+    // is skipped after a switch, so reset it here like the other busy states.
+    setValueRefreshing(false)
     // The old in-flight query still holds a runningRef slot until its finally
     // runs; after a source switch that promise is voided by runToken, so free
     // the slot now or the guard in execute/executeScript blocks the new source.

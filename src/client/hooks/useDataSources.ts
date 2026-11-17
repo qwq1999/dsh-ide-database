@@ -201,6 +201,8 @@ export function useDataSources(notify: Notify): DataSources {
   const [selectedId, setSelectedId] = useState('')
   const [servers, setServers] = useState<Record<string, ServerInfo>>({})
   const [connectingId, setConnectingId] = useState('')
+  /** Concurrent connects: only the still-latest request owns the spinner. */
+  const connectingRequest = useRef(0)
 
   const [schemas, setSchemas] = useState<Record<string, SchemaInfo[]>>({})
   const [objects, setObjects] = useState<Record<string, SchemaObject[]>>({})
@@ -646,6 +648,7 @@ export function useDataSources(notify: Notify): DataSources {
     async (connectionId: string): Promise<boolean> => {
       const connection = connections.find((item) => item.id === connectionId)
       if (!connection) return false
+      const request = ++connectingRequest.current
       setConnectingId(connectionId)
       try {
         const connected = await api.connect(connectionId)
@@ -672,7 +675,7 @@ export function useDataSources(notify: Notify): DataSources {
         notify(`连接失败：${errorText(error)}`, 'error')
         return false
       } finally {
-        setConnectingId('')
+        if (request === connectingRequest.current) setConnectingId('')
       }
     },
     [connections, loadSchemas, loadRedisDatabases, loadRedisKeys, redisDbs, notify],

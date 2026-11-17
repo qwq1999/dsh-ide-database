@@ -40,31 +40,59 @@ export function nextRowSort(current: RowSort | null, column: string, index?: num
  */
 const COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 
-type SortKey = { domain: 0; num: number } | { domain: 1; str: string }
-
 /**
- * Reduce every cell to one total-order key before comparing. Choosing the
- * comparison domain from each value's runtime type is not transitive: the
- * numeric collator ignores a leading minus, so order(-2, -1) uses subtraction
- * (-2 < -1) while order(-2, "-1") uses the collator ("-2" > "-1"), even though
- * -1 and "-1" compare equal. A column mixing numbers and numeric strings
- * (BIGINT / JSON / VARIANT where a driver returns inconsistent types) then
- * sorts differently depending on the original row order. Numeric strings are
- * folded into the numeric domain here so every pair shares one total order.
+ * An exact decimal value: `n / 10^scale`, plus signed infinities. Integers
+ * beyond 2^53 arrive as strings from the JDBC bridge (SqlExecutor.normalize
+ * deliberately keeps them as text to avoid JS rounding), so folding them
+ * through Number() collapses distinct BIGINTs onto one double and makes a
+ * sort silently depend on row order. Scaled BigInts keep precision at any
+ * magnitude while giving numbers and numeric strings one shared total order.
  */
+type DecimalKey = { n: bigint; scale: number } | { inf: -1 | 1 }
+type SortKey = { domain: 0; dec: DecimalKey } | { domain: 1; str: string }
+
+const DECIMAL_RE = /^([+-]?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/
+
+function decimalKey(text: string): DecimalKey | null {
+  const m = DECIMAL_RE.exec(text.trim())
+  if (!m) return null
+  const digits = (m[2] ?? '') + (m[3] ?? '')
+  const scale = (m[3] ?? '').length - Number(m[4] ?? 0)
+  let n = BigInt(digits) * (m[1] === '-' ? -1n : 1n)
+  if (scale < 0) {
+    n *= 10n ** BigInt(-scale)
+    return { n, scale: 0 }
+  }
+  return { n, scale }
+}
+
 function sortKey(value: CellValue): SortKey {
-  if (typeof value === 'number') return { domain: 0, num: value }
-  if (typeof value === 'boolean') return { domain: 0, num: Number(value) }
+  if (typeof value === 'number') {
+    if (value === Infinity) return { domain: 0, dec: { inf: 1 } }
+    if (value === -Infinity) return { domain: 0, dec: { inf: -1 } }
+  }
+  if (typeof value === 'boolean') return { domain: 0, dec: { n: value ? 1n : 0n, scale: 0 } }
   const text = String(value)
-  const trimmed = text.trim()
-  if (trimmed !== '' && Number.isFinite(Number(text))) return { domain: 0, num: Number(text) }
-  return { domain: 1, str: text }
+  const dec = decimalKey(text)
+  return dec === null ? { domain: 1, str: text } : { domain: 0, dec }
+}
+
+function compareDecimal(a: DecimalKey, b: DecimalKey): number {
+  const aFinite = 'n' in a
+  const bFinite = 'n' in b
+  if (!aFinite && !bFinite) return a.inf - b.inf
+  if (!aFinite) return a.inf
+  if (!bFinite) return -b.inf
+  const scale = Math.max(a.scale, b.scale)
+  const left = scale === a.scale ? a.n : a.n * 10n ** BigInt(scale - a.scale)
+  const right = scale === b.scale ? b.n : b.n * 10n ** BigInt(scale - b.scale)
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 function order(left: CellValue, right: CellValue): number {
   const a = sortKey(left)
   const b = sortKey(right)
-  if (a.domain === 0 && b.domain === 0) return a.num - b.num
+  if (a.domain === 0 && b.domain === 0) return compareDecimal(a.dec, b.dec)
   if (a.domain === 1 && b.domain === 1) return COLLATOR.compare(a.str, b.str)
   return a.domain - b.domain
 }
