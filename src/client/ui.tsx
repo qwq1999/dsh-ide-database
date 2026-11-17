@@ -497,6 +497,12 @@ export function Modal({
         box.querySelectorAll<HTMLElement>(
           'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
         ),
+      ).filter(
+        // Collapsed Panels keep their controls in the DOM behind a `hidden`
+        // attribute. Counting them as trap boundaries would let Tab escape the
+        // dialog from the last visible control. jsdom has no layout, so filter
+        // by the attribute rather than getClientRects().
+        (element) => !element.closest('[hidden]') && element.getAttribute('aria-hidden') !== 'true',
       )
     }
     const onKeyDown = (event: KeyboardEvent) => {

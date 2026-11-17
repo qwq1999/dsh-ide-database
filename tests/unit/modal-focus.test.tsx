@@ -95,6 +95,33 @@ describe('Modal focus', () => {
     expect(dialog.contains(document.activeElement)).toBe(true)
   })
 
+  it('wraps Tab from the last visible control even when a hidden control follows it', () => {
+    function HiddenHarness(): React.ReactElement {
+      const [open, setOpen] = useState(false)
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            打开
+          </button>
+          <Modal open={open} title="含隐藏控件" onClose={() => setOpen(false)}>
+            <input aria-label="可见输入" />
+            <div hidden>
+              <button type="button">隐藏按钮</button>
+            </div>
+          </Modal>
+        </div>
+      )
+    }
+    render(<HiddenHarness />)
+    fireEvent.click(screen.getByRole('button', { name: '打开' }))
+    const visible = screen.getByLabelText('可见输入')
+    visible.focus()
+    fireEvent.keyDown(visible, { key: 'Tab' })
+    // The last *visible* control is the input (the trailing button is hidden),
+    // so Tab must wrap back to the first control instead of escaping the dialog.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '关闭' }))
+  })
+
   it('does not close on Escape when the target owns Escape itself', () => {
     function OwnerHarness(): React.ReactElement {
       const [open, setOpen] = useState(false)

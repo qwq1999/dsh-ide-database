@@ -78,6 +78,29 @@ describe('redis value panel', () => {
     expect(screen.getAllByText(/值太大，只显示了前 64 KB/)).toHaveLength(1)
   })
 
+  it('renders a single ordinal column for LIST and SET values', () => {
+    const list = { ...stored('[]'), type: 'list', value: ['alpha', 'beta'] }
+    const { container } = render(<RedisValuePanel value={list} />)
+    const headers = Array.from(container.querySelectorAll('thead th')).map((th) => th.textContent)
+    expect(headers).toEqual(['#', '值'])
+    const firstRow = Array.from(container.querySelectorAll('tbody tr:first-child td')).map((td) => td.textContent)
+    expect(firstRow).toEqual(['1', 'alpha'])
+
+    cleanup()
+    const set = { ...stored('[]'), type: 'set', value: ['alpha', 'beta'] }
+    const setView = render(<RedisValuePanel value={set} />)
+    const setHeaders = Array.from(setView.container.querySelectorAll('thead th')).map((th) => th.textContent)
+    expect(setHeaders).toEqual(['#', '成员'])
+  })
+
+  it('does not warn about 64 KB truncation when every table cell fits', () => {
+    // 200 fields x 400 chars stringifies to >64 KB, yet every cell is small.
+    const record: Record<string, string> = {}
+    for (let i = 0; i < 200; i += 1) record['f' + i] = 'x'.repeat(400)
+    render(<RedisValuePanel value={{ ...stored('{}'), type: 'hash', value: record }} />)
+    expect(screen.queryByText(/值太大，只显示了前 64 KB/)).toBeNull()
+  })
+
   it('resets the copy feedback when the value is replaced in place', async () => {
     const view = render(<RedisValuePanel value={stored('OLD_VALUE')} />)
     fireEvent.click(screen.getByLabelText('复制值'))

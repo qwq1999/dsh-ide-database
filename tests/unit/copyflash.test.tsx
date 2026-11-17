@@ -49,4 +49,19 @@ describe('useCopyFlash', () => {
     act(() => screen.getByRole('button', { name: 'reset' }).click())
     expect(screen.getByTestId('state').textContent).toBe('复制')
   })
+
+  it('restarts the timer on a second flash before the first expires', () => {
+    vi.useFakeTimers()
+    render(<Harness />)
+    act(() => screen.getByRole('button', { name: 'copy' }).click())
+    expect(screen.getByTestId('state').textContent).toBe('已复制')
+
+    act(() => vi.advanceTimersByTime(800))
+    act(() => screen.getByRole('button', { name: 'copy' }).click())
+    // The first timer would have expired at t=1000; the second must live until t=1800.
+    act(() => vi.advanceTimersByTime(250))
+    expect(screen.getByTestId('state').textContent).toBe('已复制')
+    act(() => vi.advanceTimersByTime(750))
+    expect(screen.getByTestId('state').textContent).toBe('复制')
+  })
 })

@@ -26,13 +26,19 @@ export const RedisValuePanel = memo(function RedisValuePanel({
   onRefresh?: () => void
 }): ReactElement {
   const table = redisValueTable(value)
+  // LIST/SET tables already carry their own '#' ordinal column and row prefix.
+  // Adding another one here would render two ordinal columns.
+  const tableHasOwnIndex = table !== null && table.headers[0] === '#'
   // A multi-megabyte string would otherwise land in one text node and stall the
   // panel; showing a prefix keeps the key browsable while copy still gets it all.
   const fullText = redisValueText(value.value)
   const text = fullText.slice(0, DISPLAY_TEXT_LIMIT)
   const clippedCells =
     table !== null && table.rows.some((row) => row.some((cell) => cell.length > DISPLAY_TEXT_LIMIT))
-  const clipped = fullText.length > DISPLAY_TEXT_LIMIT || clippedCells
+  // In the table branch each cell is rendered independently, so the length of
+  // the whole stringified value is irrelevant — only oversized cells clip. Using
+  // fullText here would warn "only 64 KB shown" even when every cell is complete.
+  const clipped = table === null ? fullText.length > DISPLAY_TEXT_LIMIT : clippedCells
   const keyFlash = useCopyFlash()
   const valueFlash = useCopyFlash()
   // refreshValue() replaces `value` in place while the panel stays mounted;
@@ -107,7 +113,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
           <table className="dshdb-grid">
             <thead>
               <tr>
-                <th className="dshdb-num">#</th>
+                {tableHasOwnIndex ? null : <th className="dshdb-num">#</th>}
                 {table.headers.map((header) => (
                   <th key={header}>{header}</th>
                 ))}
@@ -116,7 +122,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
             <tbody>
               {table.rows.map((row, index) => (
                 <tr key={index}>
-                  <td className="dshdb-num">{index + 1}</td>
+                  {tableHasOwnIndex ? null : <td className="dshdb-num">{index + 1}</td>}
                   {row.map((cell, column) => (
                     <td key={column} title={cell.slice(0, 512)}>
                       <span className="dshdb-mono">{cell.slice(0, DISPLAY_TEXT_LIMIT)}</span>
