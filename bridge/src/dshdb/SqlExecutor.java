@@ -1339,7 +1339,13 @@ final class SqlExecutor {
             return Long.valueOf(((Number) raw).longValue());
         }
         if (raw instanceof Long) {
-            return raw;
+            long value = ((Long) raw).longValue();
+            // A bare JSON number is only exact to 2^53 in JavaScript. BIGINT
+            // columns and large counters routinely exceed that, and the host
+            // parses bridge frames with JSON.parse, silently rounding them.
+            // Keep large LONGs as strings, matching BigInteger/BigDecimal.
+            return value > 9007199254740992L || value < -9007199254740992L
+                    ? (Object) Long.toString(value) : raw;
         }
         if (raw instanceof BigInteger) {
             BigInteger value = (BigInteger) raw;

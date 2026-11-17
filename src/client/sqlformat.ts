@@ -5,8 +5,9 @@
  * 它不解析语法，因此对任何输入都不会失败：无法判断的地方原样保留。
  */
 
+import { blockCommentEnd } from '../shared/sqlcomment'
 import type { SqlDialect } from '../shared/types'
-import { backslashEscapes } from './sqllex'
+import { backslashEscapes, bracketIdentifierEnd, dollarDelimiterAt } from './sqllex'
 
 const KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'BETWEEN',
@@ -51,8 +52,17 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
       continue
     }
     if (ch === '/' && next === '*') {
-      const end = sql.indexOf('*/', i + 2)
-      const stop = end === -1 ? sql.length : end + 2
+      // PostgreSQL / SQL Server nest block comments; a naive indexOf('*/')
+      // would end at the inner closer and leave the rest as code (turning a
+      // valid comment into an unterminated one after formatting).
+      let stop: number
+      if (dialect === undefined) {
+        const end = sql.indexOf('*/', i + 2)
+        stop = end === -1 ? sql.length : end + 2
+      } else {
+        const end = blockCommentEnd(sql, i, dialect)
+        stop = end === -1 ? sql.length : end
+      }
       push('comment', sql.slice(i, stop))
       i = stop
       continue
@@ -82,6 +92,30 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
       push('literal', sql.slice(i, j))
       i = j
       continue
+    }
+    // PostgreSQL dollar-quoted literals ($$...$$, $tag$...$tag$) may contain
+    // semicolons and newlines. Consume the whole body as one literal so its
+    // contents are never reformatted or split into statements.
+    if (ch === '$' && dialect === 'postgres') {
+      const tag = dollarDelimiterAt(sql, i)
+      if (tag !== null) {
+        const close = sql.indexOf(tag, i + tag.length)
+        if (close !== -1) {
+          push('literal', sql.slice(i, close + tag.length))
+          i = close + tag.length
+          continue
+        }
+      }
+    }
+    // SQL Server / SQLite bracket identifiers ([odd name], [a;b]) keep spaces
+    // and semicolons as part of the name; treat the whole thing as one literal.
+    if (ch === '[' && (dialect === 'mssql' || dialect === 'sqlite')) {
+      const end = bracketIdentifierEnd(sql, i)
+      if (end !== null) {
+        push('literal', sql.slice(i, end))
+        i = end
+        continue
+      }
     }
     if (/\s/.test(ch)) {
       i += 1

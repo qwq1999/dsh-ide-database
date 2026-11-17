@@ -85,4 +85,36 @@ describe('formatSql', () => {
   it('多条语句各占一行', () => {
     expect(formatSql('select 1; select 2')).toBe('SELECT 1;\nSELECT 2')
   })
+
+  it('PostgreSQL dollar-quoted 字面量内的分号不被拆行', () => {
+    expect(formatSql('select $$a;b$$ as x from t', 'postgres').split(String.fromCharCode(10))).toEqual([
+      'SELECT $$a;b$$ AS x',
+      'FROM t',
+    ])
+    expect(formatSql('select $tag$a;b$tag$ as x from t', 'postgres').split(String.fromCharCode(10))).toEqual([
+      'SELECT $tag$a;b$tag$ AS x',
+      'FROM t',
+    ])
+  })
+
+  it('MSSQL/SQLite 方括号标识符内的空格与分号原样保留', () => {
+    expect(formatSql('select [odd name] from t', 'mssql').split(String.fromCharCode(10))).toEqual([
+      'SELECT [odd name]',
+      'FROM t',
+    ])
+    expect(formatSql('select [a;b] from t', 'sqlite').split(String.fromCharCode(10))).toEqual([
+      'SELECT [a;b]',
+      'FROM t',
+    ])
+  })
+
+  it('PostgreSQL/MSSQL 嵌套块注释完整闭合', () => {
+    for (const dialect of ['postgres', 'mssql']) {
+      const out = formatSql('select /* outer /* inner */ still */ a from t', dialect)
+      expect(out).toContain('/* outer /* inner */ still */')
+      expect(out).not.toContain('* /')
+      expect(formatSql(out, dialect)).toBe(out)
+    }
+  })
+
 })
