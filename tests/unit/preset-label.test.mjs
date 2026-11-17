@@ -54,4 +54,20 @@ describe('jarCacheName', () => {
     expect(jre8).toContain('jre8')
     expect(jre11).toContain('jre11')
   })
+
+
+  it('keeps groups with literal underscores distinct from dot-separated ones', () => {
+    // JAR_PART_PATTERN allows `_` inside a group, so `com.acme.team` and
+    // `com_acme_team` are distinct Maven coordinates and must not share a
+    // cache file (otherwise one loads the other's jar bytecode).
+    const dotted = { group: 'com.acme.team', artifact: 'jdbc', version: '1.0' }
+    const underscored = { group: 'com_acme_team', artifact: 'jdbc', version: '1.0' }
+    expect(jarCacheName(dotted)).not.toBe(jarCacheName(underscored))
+    // A custom group must not collide with a built-in driver's cache either.
+    const mysql = { group: 'com.mysql', artifact: 'mysql-connector-j', version: '8.4.0' }
+    const fakeMysql = { group: 'com_mysql', artifact: 'mysql-connector-j', version: '8.4.0' }
+    expect(jarCacheName(mysql)).not.toBe(jarCacheName(fakeMysql))
+    // Groups without `_` keep their historic name (cache compatibility).
+    expect(jarCacheName(mysql)).toBe('com_mysql__mysql-connector-j__8.4.0.jar')
+  })
 })

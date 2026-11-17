@@ -119,8 +119,13 @@ function unwrapExplainAnalyze(statement: string): string {
     return rest.slice(close).trimStart()
   }
   const analyze = firstWord(rest)
-  if (analyze.word !== 'analyze') return statement
-  return skipFormatOption(analyze.rest)
+  if (analyze.word !== 'analyze' && analyze.word !== 'analyse') return statement
+  // Keep this in step with explainAnalyzeBody (the looksLikeWrite path): both
+  // spellings of ANALYZE are accepted and an optional VERBOSE is skipped before
+  // FORMAT, or a DDL body such as `EXPLAIN ANALYSE VERBOSE CREATE TABLE ...`
+  // would look like a plain read and never refresh the schema tree.
+  const verbose = firstWord(analyze.rest)
+  return skipFormatOption(verbose.word === 'verbose' ? verbose.rest : analyze.rest)
 }
 
 /** Index just past a CTE name starting at `index`, or null when it is empty. */

@@ -117,4 +117,16 @@ describe('formatSql', () => {
     }
   })
 
+
+  it('Oracle 替代引号 q 字面量内的引号与分号原样保留', () => {
+    for (const dialect of ['oracle', 'oceanbase-oracle']) {
+      expect(formatSql("select q'[hello world]' from dual", dialect)).toBe(
+        ["SELECT q'[hello world]'", 'FROM dual'].join('\n'),
+      )
+      const inner = formatSql("select q'[it's; fine]' from dual", dialect)
+      expect(inner).toContain("q'[it's; fine]'")
+      expect(inner).not.toContain('\n\n')
+      expect(formatSql(inner, dialect)).toBe(inner)
+    }
+  })
 })

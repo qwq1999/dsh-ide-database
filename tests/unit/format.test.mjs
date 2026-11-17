@@ -316,6 +316,13 @@ describe('format helpers', () => {
     expect(looksLikeDdl('WITH c AS (SELECT * FROM users) SELECT * INTO staged FROM c', 'postgres')).toBe(true)
     expect(looksLikeDdl('EXPLAIN (ANALYZE true) SELECT * INTO staged FROM users', 'postgres')).toBe(true)
     expect(looksLikeDdl('EXPLAIN (ANALYZE false) SELECT * INTO staged FROM users', 'postgres')).toBe(false)
+    // DDL side must unwrap ANALYSE and VERBOSE just like the write side does;
+    // otherwise an executed CREATE/SELECT INTO won't refresh the schema tree.
+    expect(looksLikeDdl('EXPLAIN ANALYSE SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE VERBOSE SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYSE VERBOSE CREATE TABLE staged (a int)', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYSE FORMAT JSON SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE VERBOSE SELECT * FROM users', 'postgres')).toBe(false)
   })
 
   it('groups counts with thousands separators', () => {

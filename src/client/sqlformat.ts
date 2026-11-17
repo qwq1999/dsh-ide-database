@@ -7,7 +7,7 @@
 
 import { blockCommentEnd } from '../shared/sqlcomment'
 import type { SqlDialect } from '../shared/types'
-import { backslashEscapes, bracketIdentifierEnd, dollarDelimiterAt } from './sqllex'
+import { backslashEscapes, bracketIdentifierEnd, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
 
 const KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'BETWEEN',
@@ -105,6 +105,18 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
           i = close + tag.length
           continue
         }
+      }
+    }
+    // Oracle alternative quoting (q'[it's; fine]', nq'{...}') is one literal
+    // even with quotes and semicolons inside. Consume it whole before the word
+    // scanner splits the leading q/n or the generic string scanner sees the
+    // inner quote — same handling as splitStatements/maskNonCode.
+    if ((ch === 'q' || ch === 'Q' || ch === 'n' || ch === 'N') && (dialect === 'oracle' || dialect === 'oceanbase-oracle')) {
+      const end = oracleQuotedLiteralEnd(sql, ch === 'n' || ch === 'N' ? i + 1 : i)
+      if (end !== null) {
+        push('literal', sql.slice(i, end))
+        i = end
+        continue
       }
     }
     // SQL Server / SQLite bracket identifiers ([odd name], [a;b]) keep spaces

@@ -169,7 +169,16 @@ export function jarCacheName(jar: JarRef): string {
   // without this suffix they share one cache file and a downloaded jre8 is
   // mistaken for a requested jre11 (or vice versa).
   const classifier = jar.classifier === undefined ? '' : `-${jar.classifier}`
-  return `${jar.group.replaceAll('.', '_')}__${jar.artifact}__${jar.version}${classifier}.jar`
+  // A group may contain a literal `_` (JAR_PART_PATTERN allows it), so folding
+  // `.` to `_` alone is not injective: `com.acme.team` and `com_acme_team`
+  // would collapse to one cache file and load each other's bytecode. For
+  // groups containing `_`, encode both `.` and `_` unambiguously; `%` is not a
+  // legal group character so the encoded form can never collide with the plain
+  // form. Groups without `_` keep their familiar name for cache compatibility.
+  const group = jar.group.includes('_')
+    ? jar.group.replaceAll('_', '%5F').replaceAll('.', '%2E')
+    : jar.group.replaceAll('.', '_')
+  return `${group}__${jar.artifact}__${jar.version}${classifier}.jar`
 }
 
 export function mavenBase(mirror: 'central' | 'aliyun'): string {
