@@ -73,11 +73,13 @@ export function CellValueModal({ view, onClose }: CellValueModalProps): ReactEle
   const notice =
     truncated === null || full !== null
       ? null
-      : loading
-        ? `结果只取回了前 ${String(CELL_TEXT_LIMIT / 1024)} KB，正在读取完整值…`
+      : failure !== null
+        ? `完整值读取失败：${failure}`
         : missing
           ? '完整值已失效（数据库桥重启或缓存淘汰），重新执行查询后可以再次打开。'
-          : `完整值读取失败：${failure ?? '未知错误'}`
+          : // Not started yet (effect has not run) or in progress: never flash
+            // an error before the read has actually failed.
+            `结果只取回了前 ${String(CELL_TEXT_LIMIT / 1024)} KB，正在读取完整值…`
 
   return (
     <Modal

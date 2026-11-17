@@ -228,6 +228,18 @@ export function useDataSources(notify: Notify): DataSources {
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
 
+  /**
+   * Invalidate any in-flight detail/key read and clear both spinners. Every
+   * navigation that bumps `detailRequest` must go through this: the stale
+   * request's finally is guarded by the same token and will NOT clear the
+   * spinner once the token changes, so leaving it out strands the loading mask.
+   */
+  const invalidateDetail = useCallback((): void => {
+    detailRequest.current += 1
+    setDetailLoading(false)
+    setRedisDetailLoading(false)
+  }, [])
+
   const refresh = useCallback(async () => {
     try {
       const data = await api.status()
@@ -337,14 +349,13 @@ export function useDataSources(notify: Notify): DataSources {
       const stored = readText(LAST_CONNECTION_KEY)
       const preferred = snapshot.connections.find((connection) => connection.id === stored)
       setSelectedId((preferred ?? snapshot.connections[0])?.id ?? '')
-      detailRequest.current += 1
+      invalidateDetail()
       setServers({})
       setDetail(null)
       setRedisDetail(null)
-      setRedisDetailLoading(false)
       setSelectedKey('')
     }
-  }, [snapshot, selectedId])
+  }, [snapshot, selectedId, invalidateDetail])
 
   const connections = snapshot?.connections ?? []
   const trash = snapshot?.trash ?? []
@@ -446,17 +457,16 @@ export function useDataSources(notify: Notify): DataSources {
    */
   const selectConnection = useCallback((id: string): void => {
     if (selectedRef.current !== id) {
-      detailRequest.current += 1
+      invalidateDetail()
       setDetail(null)
       setRedisDetail(null)
-      setRedisDetailLoading(false)
       setSelectedKey('')
       setSelectedSchema('')
     }
     selectedRef.current = id
     setSelectedId(id)
     writeText(LAST_CONNECTION_KEY, id)
-  }, [])
+  }, [invalidateDetail])
 
   const loadSchemas = useCallback(
     async (connectionId: string, refreshObjects = false): Promise<void> => {
@@ -662,6 +672,9 @@ export function useDataSources(notify: Notify): DataSources {
           delete next[connectionId]
           return next
         })
+        // A detail/key read may still be in flight for this connection; drop
+        // its token so a late response cannot repopulate a disconnected source.
+        invalidateDetail()
         setDetail(null)
         setRedisDetail(null)
         setRedisDetailDb(-1)
@@ -672,7 +685,7 @@ export function useDataSources(notify: Notify): DataSources {
         notify(`断开失败：${errorText(error)}`, 'error')
       }
     },
-    [notify],
+    [notify, invalidateDetail],
   )
 
   const toggleConnection = useCallback((id: string): void => {
@@ -752,7 +765,9 @@ export function useDataSources(notify: Notify): DataSources {
       const key = treeObjectKey(connectionId, schema, object.name)
       const request = detailRequest.current + 1
       detailRequest.current = request
+      setDetailLoading(false)
       setSelectedId(connectionId)
+      writeText(LAST_CONNECTION_KEY, connectionId)
       setRedisDetail(null)
       setRedisDetailLoading(false)
       setRedisDetailDb(-1)
@@ -825,37 +840,37 @@ export function useDataSources(notify: Notify): DataSources {
    * on the chevron so a click never collapses the branch being read.
    */
   const selectSchema = useCallback((connectionId: string, schema: string): void => {
-    detailRequest.current += 1
+    invalidateDetail()
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
-    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(treeSchemaSelectedKey(connectionId, schema))
     setSelectedSchema(schema)
-  }, [])
+    writeText(LAST_CONNECTION_KEY, connectionId)
+  }, [invalidateDetail])
 
   const selectFolder = useCallback((connectionId: string, schema: string, folder: string): void => {
-    detailRequest.current += 1
+    invalidateDetail()
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
-    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(treeFolderSelectedKey(connectionId, schema, folder))
     setSelectedSchema(schema)
-  }, [])
+    writeText(LAST_CONNECTION_KEY, connectionId)
+  }, [invalidateDetail])
 
   const selectRedisDb = useCallback((connectionId: string, db: number): void => {
-    detailRequest.current += 1
+    invalidateDetail()
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
-    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|redisdb:${db}`)
     setSelectedSchema('')
-  }, [])
+    writeText(LAST_CONNECTION_KEY, connectionId)
+  }, [invalidateDetail])
 
   const toggleRedisDb = useCallback(
     (connectionId: string, db: number): void => {
@@ -875,7 +890,9 @@ export function useDataSources(notify: Notify): DataSources {
     async (connectionId: string, db: number, key: string): Promise<void> => {
       const request = detailRequest.current + 1
       detailRequest.current = request
+      setDetailLoading(false)
       setSelectedId(connectionId)
+      writeText(LAST_CONNECTION_KEY, connectionId)
       setDetail(null)
       setRedisDetail(null)
       setRedisDetailDb(db)
@@ -962,13 +979,15 @@ export function useDataSources(notify: Notify): DataSources {
   )
 
   const resetDetail = useCallback((): void => {
+    invalidateDetail()
     setDetail(null)
     setRedisDetail(null)
     setRedisDetailDb(-1)
     setSelectedKey('')
-  }, [])
+  }, [invalidateDetail])
 
   const refreshSelected = useCallback(async (): Promise<void> => {
+    invalidateDetail()
     setDetail(null)
     setRedisDetail(null)
     setSelectedKey('')
@@ -1008,7 +1027,7 @@ export function useDataSources(notify: Notify): DataSources {
     schedulePrefetch(selected.id, true)
     await refresh()
     notify('已刷新数据源', 'success')
-  }, [selected, servers, redisDbs, refresh, connect, loadSchemas, loadRedisDatabases, loadRedisKeys, notify, schedulePrefetch])
+  }, [selected, servers, redisDbs, refresh, connect, loadSchemas, loadRedisDatabases, loadRedisKeys, notify, schedulePrefetch, invalidateDetail])
 
   const updateDrivers = useCallback((drivers: DriverStatus[]): void => {
     setSnapshot((previous) => (previous ? { ...previous, drivers } : previous))

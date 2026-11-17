@@ -51,6 +51,30 @@ describe('console presentational pieces', () => {
     expect(screen.getByText('最近执行 · 0')).toBeTruthy()
   })
 
+  it('stops filtering when the search input unmounts below six entries', () => {
+    const now = Date.now()
+    const many = Array.from({ length: 6 }, (_, i) => ({ statement: `select ${i}`, at: now - i }))
+    const { rerender } = render(
+      <HistoryPanel entries={many} pins={[]} onPick={() => {}} onTogglePin={() => {}} onClear={() => {}} />,
+    )
+    fireEvent.change(screen.getByLabelText('搜索历史语句'), { target: { value: 'no-match' } })
+    expect(screen.getByText('没有匹配的语句')).toBeTruthy()
+
+    // Dropping below six unmounts the search box; the stale query must not
+    // keep hiding a freshly added statement with no visible way to clear it.
+    rerender(
+      <HistoryPanel
+        entries={[{ statement: 'select 99 fresh', at: now }]}
+        pins={[]}
+        onPick={() => {}}
+        onTogglePin={() => {}}
+        onClear={() => {}}
+      />,
+    )
+    expect(screen.queryByLabelText('搜索历史语句')).toBeNull()
+    expect(screen.getByText('select 99 fresh')).toBeTruthy()
+  })
+
   it('asks for a second click before clearing history', () => {
     const onClear = vi.fn()
     render(

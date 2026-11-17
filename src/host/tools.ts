@@ -52,6 +52,14 @@ function integer(args: Record<string, unknown>, name: string, fallback: number, 
   return Math.min(Math.max(Math.trunc(value), min), max)
 }
 
+/** Redis logical database index: validated and clamped to the saved 0-255 range. */
+function redisDbArg(args: Record<string, unknown>, fallback: number): number {
+  const value = args.db
+  if (value === undefined || value === null) return fallback
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new DbError('invalid', '参数 db 必须是数字')
+  return Math.min(Math.max(Math.trunc(value), 0), 255)
+}
+
 function objectArg(args: Record<string, unknown>, name: string): Record<string, unknown> | undefined {
   const value = args[name]
   if (value === undefined || value === null) return undefined
@@ -241,8 +249,14 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (password !== undefined && password !== '') draft.password = password
           const customDriverId = maybeText(args, 'customDriverId')
           if (customDriverId !== undefined && customDriverId !== '') draft.customDriverId = customDriverId
+          // A custom driver has no preset default port; 0 would be rejected by
+          // the save layer with a vague message. Ask for it explicitly instead.
+          if (driver === 'custom' && args.port === undefined) {
+            throw new DbError('invalid', '自定义驱动没有预设端口，必须显式指定 port（1-65535）')
+          }
           const created = deps.config.saveConnection(draft as never)
-          return { created, note: '已保存；可用 db_test_connection 验证，或 db_refresh_connection 拉取结构缓存。' }
+          // params may carry a JDBC password; never echo it back to the model.
+          return { created: maskConnection(created), note: '已保存；可用 db_test_connection 验证，或 db_refresh_connection 拉取结构缓存。' }
         } catch (error) {
           return fail(error)
         }
@@ -286,7 +300,9 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
             name: maybeText(args, 'name') ?? existing.name,
             driver: existing.driver,
             host: maybeText(args, 'host') ?? existing.host,
-            port: args.port === undefined ? existing.port : integer(args, 'port', existing.port, 1, 65535),
+            // Like create, allow 0 for hostOptional presets (SQLite). The
+            // save layer re-normalises it; clamping to 1 here would corrupt it.
+            port: args.port === undefined ? existing.port : integer(args, 'port', existing.port, existing.driver === 'sqlite' ? 0 : 1, 65535),
             user: maybeText(args, 'user') ?? existing.user,
             database: maybeText(args, 'database') ?? existing.database,
             redisDb: args.redisDb === undefined ? existing.redisDb : integer(args, 'redisDb', existing.redisDb, 0, 255),
@@ -305,7 +321,8 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           await deps.sql.disconnect(existing.id).catch(() => undefined)
           await deps.redis.disconnect(existing.id).catch(() => undefined)
           deps.structure.clear(existing.id)
-          return { updated, note: '已保存；下一次调用时会用新参数重新连接。' }
+          // params may carry a JDBC password; never echo it back to the model.
+          return { updated: maskConnection(updated), note: '已保存；下一次调用时会用新参数重新连接。' }
         } catch (error) {
           return fail(error)
         }
@@ -706,7 +723,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           const settings = deps.config.settings()
           await deps.redis.connect(connection.id)
-          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
+          const db = redisDbArg(args, connection.redisDb)
           const result = await deps.redis.scan(
             connection.id,
             db,
@@ -739,7 +756,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           const connection = resolveConnection(deps.config, text(args, 'connection'))
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           await deps.redis.connect(connection.id)
-          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
+          const db = redisDbArg(args, connection.redisDb)
           return { connection: { id: connection.id, name: connection.name }, db, ...(await deps.redis.inspect(connection.id, db, text(args, 'key'))) }
         } catch (error) {
           return fail(error)
@@ -766,7 +783,7 @@ export function createDatabaseTools(deps: ToolDeps): ToolDefinition[] {
           if (connection.dialect !== 'redis') throw new DbError('unsupported', '该连接不是 Redis 连接')
           const settings = deps.config.settings()
           await deps.redis.connect(connection.id)
-          const db = typeof args.db === 'number' && Number.isFinite(args.db) ? Math.trunc(args.db) : connection.redisDb
+          const db = redisDbArg(args, connection.redisDb)
           const allowWrite = settings.allowAgentWrites && !connection.readOnly
           const result = await deps.redis.command(connection.id, db, text(args, 'command'), allowWrite)
           return { connection: { id: connection.id, name: connection.name }, db, ...result }
