@@ -504,6 +504,10 @@ export function Modal({
       // underneath must stay open while a nested one is up.
       if (!isTopmost()) return
       if (event.key === 'Escape') {
+        // A focused control that owns Escape (a shortcut-recording field) handles
+        // it itself. This runs in the capture phase, ahead of React's bubble
+        // handlers, so closing here would swallow that control's cancel action.
+        if (event.target instanceof Element && event.target.closest('[data-owns-escape]')) return
         event.stopPropagation()
         latestClose.current()
         return
@@ -527,7 +531,7 @@ export function Modal({
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const start = box?.querySelector<HTMLElement>(
-      'input, textarea, select, button:not([aria-label="关闭"])',
+      'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]):not([aria-label="关闭"])',
     )
     if (start) start.focus()
     else box?.focus()

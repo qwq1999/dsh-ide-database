@@ -38,7 +38,7 @@ function harness(options = {}) {
     if (method !== 'query') throw new Error(`unexpected bridge method ${method}`)
     queries.push(payload.sql)
     if (options.onQuery) return options.onQuery(payload.sql)
-    return { columns: [], rows: options.rows ?? [], rowCount: (options.rows ?? []).length }
+    return { columns: options.columns ?? [], rows: options.rows ?? [], rowCount: (options.rows ?? []).length }
   })
   const service = new SqlService({}, {}, {}, {}, {}, () => {})
   service.config = {
@@ -67,6 +67,32 @@ describe('对象定义 (DDL)', () => {
     expect(result.source).toBe('server')
     expect(result.ddl).toContain('CREATE DEFINER')
     expect(result.ddl).toContain('END')
+  })
+
+  it('MySQL 例程的 sql_mode 比定义长时也不把模式串当成 DDL', async () => {
+    // Real MySQL 8 sql_mode is ~117 chars, longer than a short routine body.
+    const sqlMode =
+      'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'
+    const definition = 'CREATE PROCEDURE `p`() BEGIN SELECT 1; END'
+    for (const kind of ['procedure', 'function', 'trigger']) {
+      const { service } = harness({
+        rows: [['p', sqlMode, definition, 'utf8mb4', 'utf8mb4_0900_ai_ci', 'utf8mb4_0900_ai_ci']],
+      })
+      const result = await service.ddl('c1', 'mysql', 'shop', 'p', kind)
+      expect(result.ddl).toBe(definition)
+      expect(result.ddl).not.toContain('ONLY_FULL_GROUP_BY')
+    }
+    // Naming the definition column wins even when its text looks shorter.
+    const { service: named } = harness({
+      columns: [
+        { name: 'Procedure' },
+        { name: 'sql_mode' },
+        { name: 'Create Procedure' },
+      ],
+      rows: [['p', sqlMode, definition]],
+    })
+    const result = await named.ddl('c1', 'mysql', 'shop', 'p', 'procedure')
+    expect(result.ddl).toBe(definition)
   })
 
   it('MySQL 触发器使用 SHOW CREATE TRIGGER', async () => {

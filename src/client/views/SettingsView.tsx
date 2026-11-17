@@ -74,6 +74,7 @@ function ShortcutRow(props: {
       </div>
       <TextInput
         readOnly
+        data-owns-escape
         style={{ width: 168, textAlign: 'center' }}
         aria-label={`${def.label} 的快捷键`}
         title="点一下再按新的组合键（Esc 取消，Delete 恢复默认）"

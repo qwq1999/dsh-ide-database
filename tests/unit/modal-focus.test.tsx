@@ -72,4 +72,51 @@ describe('Modal focus', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(trigger)
   })
+
+  it('keeps focus inside the dialog when the only footer button is disabled', () => {
+    function EmptyHarness(): React.ReactElement {
+      const [open, setOpen] = useState(false)
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            打开
+          </button>
+          <Modal open={open} title="空弹层" onClose={() => setOpen(false)} footer={<button type="button" disabled>清空</button>}>
+            <p>没有内容</p>
+          </Modal>
+        </div>
+      )
+    }
+    render(<EmptyHarness />)
+    const trigger = screen.getByRole('button', { name: '打开' })
+    trigger.focus()
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.contains(document.activeElement)).toBe(true)
+  })
+
+  it('does not close on Escape when the target owns Escape itself', () => {
+    function OwnerHarness(): React.ReactElement {
+      const [open, setOpen] = useState(false)
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            打开
+          </button>
+          <Modal open={open} title="录制弹层" onClose={() => setOpen(false)}>
+            <input data-owns-escape aria-label="录制中" />
+          </Modal>
+        </div>
+      )
+    }
+    render(<OwnerHarness />)
+    fireEvent.click(screen.getByRole('button', { name: '打开' }))
+    const field = screen.getByLabelText('录制中')
+    field.focus()
+    fireEvent.keyDown(field, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+    // Escape elsewhere still closes the dialog.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
 })

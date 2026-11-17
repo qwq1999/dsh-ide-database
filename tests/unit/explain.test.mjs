@@ -81,4 +81,22 @@ describe('执行计划 (EXPLAIN)', () => {
     )
     expect(result.plan.rows).toHaveLength(1)
   })
+
+  it('Oracle 的 EXPLAIN PLAN FOR 不被自家只读守卫拦下', async () => {
+    for (const dialect of ['oracle', 'oceanbase-oracle']) {
+      const { service, calls } = harness({
+        connection: { id: 'c1', name: 'Oracle', driver: 'oracle', dialect, database: 'XE' },
+        rows: [['plan line']],
+      })
+      const result = await service.explain('c1', 'SELECT * FROM t')
+      // Both statements must actually reach the bridge: the plan-table write
+      // is an internal, controlled step, not the user's SQL being executed.
+      expect(calls.map((call) => call.payload.sql)).toEqual([
+        'EXPLAIN PLAN FOR SELECT * FROM t',
+        "SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, 'BASIC'))",
+      ])
+      expect(result.statements).toHaveLength(2)
+      expect(result.plan.rows).toHaveLength(1)
+    }
+  })
 })
