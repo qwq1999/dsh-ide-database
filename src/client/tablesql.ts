@@ -538,8 +538,12 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
 }
 
 /** Escape LIKE metacharacters so a contains filter matches the typed text literally. */
-function escapeLikeText(text: string): string {
-  return text.replace(/[!%_]/gu, (char) => `!${char}`)
+function escapeLikeText(text: string, dialect: ClientConnection['dialect']): string {
+  // In T-SQL `[` opens a character set/range wildcard (`[abc]`, `[a-z]`), so
+  // a literal-match filter must escape it too. Other dialects treat `[` as
+  // an ordinary character, so keep their behaviour unchanged.
+  const metachars = dialect === 'mssql' ? /[!%_[]/gu : /[!%_]/gu
+  return text.replace(metachars, (char) => `!${char}`)
 }
 
 export function filterExpression(
@@ -563,7 +567,7 @@ export function filterExpression(
     return `${name} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect, isUnicodeText(column.typeName))
+  const pattern = quoteLiteral(`%${escapeLikeText(text, dialect)}%`, dialect, isUnicodeText(column.typeName))
   // Oracle prints a region as ASIA/SHANGHAI while the bridge shows
   // Asia/Shanghai; compare case-insensitively so both spellings match.
   if (

@@ -14,7 +14,7 @@ export function acceptsGzip(header: string | string[] | undefined): boolean {
     const rejected = tokens.slice(1).some((token) => {
       const [name, value] = token.split('=')
       const quality = (value ?? '').trim()
-      return (name ?? '').trim().toLowerCase() === 'q' && /^0(?:\.0+)?$/u.test(quality)
+      return (name ?? '').trim().toLowerCase() === 'q' && /^(?:0\.?0*|\.0+)$/u.test(quality)
     })
     if (!rejected) return true
   }

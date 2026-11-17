@@ -18,6 +18,10 @@ describe('acceptsGzip', () => {
   it('honours an explicit gzip rejection', () => {
     expect(acceptsGzip('gzip;q=0')).toBe(false)
     expect(acceptsGzip('gzip;q=0.0, br')).toBe(false)
+    // RFC 9110: `0.` is a legal zero qvalue (0 digits after the dot).
+    expect(acceptsGzip('gzip;q=0.')).toBe(false)
+    expect(acceptsGzip('gzip;q=.0')).toBe(false)
+    expect(acceptsGzip('gzip;q=0.000')).toBe(false)
   })
 
   it('ignores other codings', () => {

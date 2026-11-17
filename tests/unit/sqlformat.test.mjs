@@ -79,7 +79,7 @@ describe('formatSql', () => {
 
   it("PostgreSQL 只在 E'' 字符串里把反斜杠当转义", () => {
     expect(formatSql("select 'a" + String.fromCharCode(92) + "', 'b' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT 'a" + String.fromCharCode(92) + "', 'b'", "FROM t"])
-    expect(formatSql("select E'a" + String.fromCharCode(92) + "'b', 'c' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT E 'a" + String.fromCharCode(92) + "'b', 'c'", "FROM t"])
+    expect(formatSql("select E'a" + String.fromCharCode(92) + "'b', 'c' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT E'a" + String.fromCharCode(92) + "'b', 'c'", "FROM t"])
   })
 
   it('多条语句各占一行', () => {
@@ -128,5 +128,22 @@ describe('formatSql', () => {
       expect(inner).not.toContain('\n\n')
       expect(formatSql(inner, dialect)).toBe(inner)
     }
+  })
+})
+
+
+describe('typed string literal prefixes stay glued', () => {
+  it('keeps PostgreSQL E/B/X prefixes attached to the quote', () => {
+    const E = formatSql("select E'a" + String.fromCharCode(92) + "'b' as x from t", 'postgres')
+    expect(E.split(String.fromCharCode(10))).toEqual(["SELECT E'a" + String.fromCharCode(92) + "'b' AS x", 'FROM t'])
+    // Idempotent: formatting twice gives the same result.
+    expect(formatSql(E, 'postgres')).toBe(E)
+    expect(formatSql("select B'101' from t", 'postgres')).toContain("B'101'")
+    expect(formatSql("select X'ff' from t", 'postgres')).toContain("X'ff'")
+  })
+
+  it('keeps SQL Server N prefix attached to the quote', () => {
+    expect(formatSql("select N'你好' as x from t", 'mssql')).toContain("N'你好'")
+    expect(formatSql("select N'abc' from t", 'mssql')).not.toContain('N ')
   })
 })

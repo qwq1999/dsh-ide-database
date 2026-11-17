@@ -72,6 +72,26 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
       // inside a string. The rest of the codebase agrees on this via
       // backslashEscapes; assuming it everywhere merges two adjacent literals
       // such as 'a\', 'b' in standard SQL and silently changes their meaning.
+      // Typed string literals carry a prefix glued to the quote: PostgreSQL
+      // E'..'/B'..'/X'..'/U&'..' and SQL Server N'..'. Keep the prefix in the
+      // same literal atom; splitting it into a separate word inserts a space
+      // (E '..') which turns a valid literal into a `type 'const'` cast.
+      let literalStart = i
+      if (ch === "'" && i > 0) {
+        const prev = sql[i - 1]!
+        const before = i > 1 ? sql[i - 2]! : ''
+        const boundary = before === '' || !/[A-Za-z0-9_$]/u.test(before)
+        if (boundary) {
+          const pgPrefix = dialect === 'postgres' && /[EeBbXx]/.test(prev)
+          const msPrefix = dialect === 'mssql' && /[Nn]/.test(prev)
+          if (pgPrefix || msPrefix) {
+            literalStart = i - 1
+            // The word scanner already emitted the prefix letter as a separate
+            // atom; drop it so the prefix is not duplicated.
+            if (atoms[atoms.length - 1]?.kind === 'word') atoms.pop()
+          }
+        }
+      }
       const escapes = dialect === undefined ? false : backslashEscapes(sql, i, ch, dialect)
       let j = i + 1
       while (j < sql.length) {
@@ -89,7 +109,7 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
         }
         j += 1
       }
-      push('literal', sql.slice(i, j))
+      push('literal', sql.slice(literalStart, j))
       i = j
       continue
     }

@@ -735,3 +735,14 @@ describe('columnNames', () => {
     expect(columnNames('mysql', [])).toBe('')
   })
 })
+
+
+describe('MSSQL LIKE filters escape the [ wildcard', () => {
+  const col = { name: 'v', typeName: 'varchar(50)' }
+  it('escapes [ so a contains filter matches text literally', () => {
+    expect(filterExpression('mssql', col, { op: 'like', text: '[abc]' })).toBe("[v] LIKE '%![abc]%' ESCAPE '!'")
+    expect(filterExpression('mssql', col, { op: 'like', text: '[a-z]' })).toBe("[v] LIKE '%![a-z]%' ESCAPE '!'")
+    // Other dialects treat [ as an ordinary character.
+    expect(filterExpression('mysql', col, { op: 'like', text: '[abc]' })).toBe("`v` LIKE '%[abc]%' ESCAPE '!'")
+  })
+})
