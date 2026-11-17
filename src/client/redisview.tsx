@@ -3,7 +3,7 @@
  * tabulated payload. Shared by the console and the data tree so both present a
  * key the same way.
  */
-import { memo, type ReactElement } from 'react'
+import { memo, useEffect, type ReactElement } from 'react'
 import type { RedisValue } from '../shared/types'
 import { copyText } from './colmenu'
 import { formatCount } from './format'
@@ -35,6 +35,12 @@ export const RedisValuePanel = memo(function RedisValuePanel({
   const clipped = fullText.length > DISPLAY_TEXT_LIMIT || clippedCells
   const keyFlash = useCopyFlash()
   const valueFlash = useCopyFlash()
+  // refreshValue() replaces `value` in place while the panel stays mounted;
+  // clear any stale "已复制" flash so the feedback matches the new content.
+  useEffect(() => {
+    keyFlash.reset()
+    valueFlash.reset()
+  }, [value, keyFlash.reset, valueFlash.reset])
   const copied = keyFlash.copied
   const copiedValue = valueFlash.copied
   return (

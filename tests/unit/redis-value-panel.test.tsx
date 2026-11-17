@@ -77,4 +77,19 @@ describe('redis value panel', () => {
     expect(document.querySelector('pre.dshdb-console-value')?.textContent?.length).toBe(65_536)
     expect(screen.getAllByText(/值太大，只显示了前 64 KB/)).toHaveLength(1)
   })
+
+  it('resets the copy feedback when the value is replaced in place', async () => {
+    const view = render(<RedisValuePanel value={stored('OLD_VALUE')} />)
+    fireEvent.click(screen.getByLabelText('复制值'))
+    fireEvent.click(screen.getByLabelText('复制键名'))
+    await screen.findByLabelText('值已复制')
+    await screen.findByLabelText('键名已复制')
+    // refreshValue() replaces `value` while the panel stays mounted.
+    view.rerender(<RedisValuePanel value={stored('NEW_VALUE_FROM_REFRESH')} />)
+    expect(screen.getByText('NEW_VALUE_FROM_REFRESH')).toBeTruthy()
+    expect(screen.getByLabelText('复制值')).toBeTruthy()
+    expect(screen.getByLabelText('复制键名')).toBeTruthy()
+    expect(screen.queryByLabelText('值已复制')).toBeNull()
+    expect(screen.queryByLabelText('键名已复制')).toBeNull()
+  })
 })

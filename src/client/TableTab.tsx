@@ -611,8 +611,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               label: `取消「${cell.column.name}」列的筛选`,
               disabled: columnFilter(filters, cell.column.name) === undefined,
               run: () => {
-                setColumnFilter(cell.column, undefined)
-                apply({ page: 0 })
+                // Pass the cleared filters explicitly: `apply` closes over the
+                // pre-clear `filters`, so without the override the re-query
+                // would still carry the filter just removed from the UI.
+                const next = withColumnFilter(filters, cell.column.name, undefined)
+                setFilters(next)
+                apply({ page: 0 }, next)
               },
             },
       ]
@@ -785,13 +789,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   /** Toggle one checkbox; shift-click extends from the last clicked row. */
   const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    // Capture the anchor before the state updater runs: setState updaters are
+    // deferred, so reading `selectionAnchor.current` inside it would see the
+    // value reassigned below (the clicked row) and the range would collapse to
+    // the clicked row alone.
+    const anchor = selectionAnchor.current
     setSelectedRows((current) => {
       const next = new Set(current)
-      if (extend && selectionAnchor.current !== null) {
+      if (extend && anchor !== null) {
         // Shift-click extends the selection; it never clears a selected range
         // based on the clicked row's current state.
-        const from = Math.min(selectionAnchor.current, rowIndex)
-        const to = Math.max(selectionAnchor.current, rowIndex)
+        const from = Math.min(anchor, rowIndex)
+        const to = Math.max(anchor, rowIndex)
         for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }

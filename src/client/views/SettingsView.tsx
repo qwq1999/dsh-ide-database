@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type { CustomDriverStatus, DbSettings, DriverStatus, EnvStatus } from '../../shared/types'
 import {
   SHORTCUTS,
@@ -165,8 +165,15 @@ function JavaBadge({ env }: { env: EnvStatus }): ReactElement {
 
 export function SettingsView(props: SettingsViewProps): ReactElement {
   const [draft, setDraft] = useState<DbSettings>(props.settings)
+  // Background refresh rebuilds the settings snapshot with the same content but
+  // a fresh identity every 1.5s. Only re-seed the draft when the content actually
+  // changes, otherwise every poll silently wipes the user's unsaved edits.
+  const syncedSettings = useRef(JSON.stringify(props.settings))
 
   useEffect(() => {
+    const next = JSON.stringify(props.settings)
+    if (next === syncedSettings.current) return
+    syncedSettings.current = next
     setDraft(props.settings)
   }, [props.settings])
 

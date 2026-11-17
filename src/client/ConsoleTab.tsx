@@ -1053,6 +1053,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const invalidateRun = useCallback((): void => {
     runToken.current += 1
     planToken.current += 1
+    // The old in-flight query still holds a runningRef slot until its finally
+    // runs; after a source switch that promise is voided by runToken, so free
+    // the slot now or the guard in execute/executeScript blocks the new source.
+    runningRef.current = 0
     setRunning(false)
     setPlanRunning(false)
     setCommandRunning(false)
@@ -1215,6 +1219,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   // Switching data source resets both modes, so results never look like another source's.
   useEffect(() => {
     setResult(null)
+    // plan/resultBeforePlan outlive the grid: closing a plan restores the saved
+    // result, so both must be cleared on a source switch or the previous source's
+    // grid reappears when the next plan is closed.
+    setPlan(null)
+    resultBeforePlan.current = null
     setScriptResults([])
     setScriptIndex(0)
     setRowFilter('')
