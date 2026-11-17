@@ -13,7 +13,6 @@ import { prettyJsonText } from './redisvalue'
 export const TRUNCATED_SUFFIX = '…<truncated>'
 /** Keep in sync with MAX_TEXT in bridge/src/dshdb/SqlExecutor.java. */
 export const CELL_TEXT_LIMIT = 16_384
-const CAPPED_LENGTH = CELL_TEXT_LIMIT + TRUNCATED_SUFFIX.length
 
 export interface CellValueView {
   /** Column the cell belongs to, used as the dialog title. */
@@ -30,11 +29,15 @@ export interface CellValueView {
 
 /**
  * A result only ever carries the first {@link CELL_TEXT_LIMIT} characters plus
- * the marker, so the exact length tells a capped cell apart from text that
- * merely ends with the marker.
+ * the marker, so the length tells a capped cell apart from text that merely
+ * ends with the marker. The bridge shortens the prefix by one UTF-16 code unit
+ * when a surrogate pair straddles the limit (so it never ships half a
+ * character), hence both prefix lengths are accepted.
  */
 export function isTruncatedCellText(value: string): boolean {
-  return value.length === CAPPED_LENGTH && value.endsWith(TRUNCATED_SUFFIX)
+  if (!value.endsWith(TRUNCATED_SUFFIX)) return false
+  const prefixLength = value.length - TRUNCATED_SUFFIX.length
+  return prefixLength === CELL_TEXT_LIMIT || prefixLength === CELL_TEXT_LIMIT - 1
 }
 
 export function cellValueView(column: string, value: CellValue): CellValueView {

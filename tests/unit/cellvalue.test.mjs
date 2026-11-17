@@ -44,6 +44,14 @@ describe('capped cell text', () => {
     expect(cellValueView('config', `${'a'.repeat(10)}${TRUNCATED_SUFFIX}`).truncated).toBeNull()
   })
 
+  it('recognizes a cut whose prefix was shortened to keep a surrogate pair whole', () => {
+    // The bridge drops one code unit when a surrogate pair straddles the limit.
+    const splitPair = `${'a'.repeat(CELL_TEXT_LIMIT - 1)}${TRUNCATED_SUFFIX}`
+    expect(splitPair).toHaveLength(CELL_TEXT_LIMIT - 1 + TRUNCATED_SUFFIX.length)
+    expect(isTruncatedCellText(splitPair)).toBe(true)
+    expect(cellValueView('config', splitPair).truncated).toBe(splitPair)
+  })
+
   it('leaves complete values alone', () => {
     expect(cellValueView('config', '{"a":1}').truncated).toBeNull()
     expect(cellValueView('config', 'a'.repeat(CELL_TEXT_LIMIT)).truncated).toBeNull()
