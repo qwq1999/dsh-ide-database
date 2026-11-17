@@ -391,13 +391,15 @@ export function DataView(props: DataViewProps): ReactElement {
     for (const connection of connections) {
       const schemaList = schemas[connection.id]
       if (!schemaList || schemaList.length > 64) continue
-      if (searched.current.has(connection.id)) continue
       // Offline data sources only have what the structure cache kept; wait for
       // the connection status before searching so the attempt can retry later.
       if (servers[connection.id] === undefined) continue
-      searched.current.add(connection.id)
       for (const schema of schemaList) {
         const key = `${connection.id}:${schema.name}`
+        // Dedup per schema, not per connection: if schemas grow while the same
+        // filter is active, the new schema's objects must still be searched.
+        if (searched.current.has(key)) continue
+        searched.current.add(key)
         // Object names are already in memory (or on the way): searching a new
         // filter term must not re-query metadata for lists we already hold.
         if (objects[key] !== undefined || props.loadingObjects[key] === true) continue
@@ -853,10 +855,14 @@ export function DataView(props: DataViewProps): ReactElement {
         toggleRow(row)
         return
       }
-      const child = current + 1
-      if (child < rows.length && rows[child].depth > row.depth) {
+      // Skip non-navigable rows (notes, column/key/index children): focusing
+      // one clears aria-activedescendant while aria-current still points at it,
+      // which can strand the keyboard cursor with no visible focus.
+      for (let child = current + 1; child < rows.length && rows[child].depth > row.depth; child += 1) {
+        if (!rows[child].navigable) continue
         event.preventDefault()
         focusIndex(child)
+        return
       }
       return
     }

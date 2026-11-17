@@ -344,7 +344,8 @@ function referencedColumns(lists: readonly RelationColumns[]): Completion[] {
   const items: Completion[] = []
   for (const { columns } of lists) {
     for (const item of columnCandidates(columns)) {
-      const key = item.name.toLowerCase()
+      // Case-sensitive key: `id`/`ID` are distinct columns in PostgreSQL/Oracle.
+      const key = item.name
       if (seen.has(key)) continue
       seen.add(key)
       items.push(item)
@@ -425,6 +426,7 @@ async function qualifiedCandidates(
   qualifier: readonly string[],
   relations: readonly CompletionRelation[],
   cteRelations: readonly CompletionRelation[] = [],
+  inRelation = false,
 ): Promise<Completion[]> {
   if (qualifier.length >= 2) {
     const schema = qualifier[qualifier.length - 2] as string
@@ -433,6 +435,14 @@ async function qualifiedCandidates(
   }
 
   const name = qualifier[0] as string
+  // In a relation position (FROM/JOIN/UPDATE …), a qualifier naming a known
+  // schema means "list that schema's tables". Check this before resolving the
+  // qualifier as a relation: a trailing-dot `shop.` resolves to a same-named
+  // table in the current schema, which would otherwise win with its columns.
+  if (inRelation && name !== request.schema) {
+    const schemas = await load(() => request.catalog.schemas(), request.signal, [])
+    if (schemas.includes(name)) return tableCandidatesOf(request, name)
+  }
   // A CTE is in scope before the main statement's FROM clause mentions it.
   const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
   if (relation !== undefined && relation.columns !== undefined) {
@@ -473,7 +483,10 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   let priorities = prioritiesFor(expectation)
 
   if (qualifier.length > 0) {
-    candidates = await qualifiedCandidates(request, qualifier, relations, analysis.cteRelations ?? [])
+    candidates = await qualifiedCandidates(
+      request, qualifier, relations, analysis.cteRelations ?? [],
+      relationVerbAt(request, analysis.word.start) !== undefined,
+    )
   } else {
     switch (expectation) {
       case 'tableName': {

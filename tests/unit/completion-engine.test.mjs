@@ -2884,3 +2884,66 @@ describe('complete maintenance, lock modes and assignment tails', () => {
     expect(result.items).toEqual([])
   })
 })
+
+
+describe('regression r23: comment, relation qualifier and case-sensitive columns', () => {
+  it('offers no names inside a MySQL # line comment', async () => {
+    const result = await complete(request('SELECT * FROM orders # or'))
+    expect(result.analysis.inLiteral).toBe(true)
+    expect(names(result)).toEqual([])
+  })
+
+  it('does not treat # as a comment in postgres', async () => {
+    const result = await complete(request('SELECT * FROM orders # or', { dialect: 'postgres' }))
+    expect(result.analysis.inLiteral).not.toBe(true)
+    expect(names(result).length).toBeGreaterThan(0)
+  })
+
+  it('lists a schema\'s tables for a known schema qualifier in a relation position', async () => {
+    // Current schema 'shop' has a table also named 'shop'; the qualifier in a
+    // FROM position must be read as the schema, not that same-named table.
+    const catalog = {
+      schemas: async () => ['shop', 'crm'],
+      tables: async (schema) => {
+        if (schema === 'shop') return [{ name: 'orders' }, { name: 'shop' }]
+        if (schema === 'crm') return [{ name: 'products' }, { name: 'prices' }]
+        return []
+      },
+      columns: async (schema, table) => {
+        if (schema === 'shop' && table === 'shop') return [{ name: 'shop_id' }, { name: 'shop_name' }]
+        return []
+      },
+    }
+    for (const stmt of ['SELECT * FROM crm.', 'SELECT * FROM crm.p']) {
+      const result = await complete(request(stmt, { dialect: 'postgres', catalog }))
+      expect(names(result)).toContain('products')
+      expect(names(result)).toContain('prices')
+      expect(names(result)).not.toContain('shop_id')
+    }
+  })
+
+  it('keeps a table alias/name qualifier as columns outside a relation position', async () => {
+    const catalog = {
+      schemas: async () => ['shop', 'crm'],
+      tables: async () => [],
+      columns: async (schema, table) => {
+        if (table === 'orders') return [{ name: 'id' }, { name: 'total' }]
+        return []
+      },
+    }
+    const result = await complete(request('SELECT orders.', { dialect: 'postgres', catalog }))
+    expect(names(result)).toContain('id')
+    expect(names(result)).toContain('total')
+  })
+
+  it('keeps case-different columns of a case-sensitive database distinct', async () => {
+    const catalog = {
+      schemas: async () => ['shop'],
+      tables: async () => [{ name: 'orders' }],
+      columns: async () => [{ name: 'id', typeName: 'int' }, { name: 'ID', typeName: 'text' }],
+    }
+    const result = await complete(request('SELECT * FROM orders WHERE ', { dialect: 'postgres', catalog }))
+    expect(names(result)).toContain('id')
+    expect(names(result)).toContain('ID')
+  })
+})

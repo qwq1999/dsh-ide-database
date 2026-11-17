@@ -248,6 +248,13 @@ export function maskedRanges(text: string, dialect: SqlDialect = 'generic'): Mas
       spans.push({ start, end: index, terminated: closed })
       continue
     }
+    if (char === '#' && dialect === 'mysql') {
+      const start = index
+      index += 1
+      while (index < length && text[index] !== '\n') index += 1
+      spans.push({ start, end: index, terminated: index < length })
+      continue
+    }
     if (char === "'") {
       const start = index
       const { end, terminated } = scanString(text, index, dialect)

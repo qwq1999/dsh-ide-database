@@ -66,15 +66,19 @@ describe('catalog derived candidates', () => {
     ])
   })
 
-  it('deduplicates columns case-insensitively and keeps their type', () => {
+  it('keeps case-different columns distinct while deduplicating exact matches', () => {
+    // A case-sensitive database can hold both `id` and `ID` as different
+    // columns — folding them would complete `"ID"` as `"id"` (wrong column).
     expect(
       columnCandidates([
         { name: 'id', typeName: 'INT' },
         { name: 'ID', typeName: 'INT' },
+        { name: 'id', typeName: 'INT' },
         { name: 'total', typeName: 'DECIMAL' },
       ]),
     ).toEqual([
       { name: 'id', kind: 'column', detail: 'INT' },
+      { name: 'ID', kind: 'column', detail: 'INT' },
       { name: 'total', kind: 'column', detail: 'DECIMAL' },
     ])
   })
