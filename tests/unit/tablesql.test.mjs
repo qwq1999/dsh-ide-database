@@ -689,6 +689,29 @@ describe('temporal literals', () => {
     )
   })
 
+  it('normalizes ISO T separators and bracketed zones for Oracle TO_* formats', () => {
+    expect(temporalLiteral('oracle', 'date', '2024-01-02T03:04:05')).toBe(
+      `TO_DATE('2024-01-02 03:04:05', 'YYYY-MM-DD HH24:MI:SS')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp', '2024-01-02T03:04:05.509')).toBe(
+      `TO_TIMESTAMP('2024-01-02 03:04:05.509', 'YYYY-MM-DD HH24:MI:SS.FF')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp with time zone', '2024-01-02T03:04:05.509+08:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05.509+08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('dameng', 'timestamp', '2024-01-02T03:04:05.509')).toBe(
+      `TO_TIMESTAMP('2024-01-02 03:04:05.509', 'YYYY-MM-DD HH24:MI:SS.FF')`,
+    )
+    // ZonedDateTime.toString() keeps `T` and a trailing [Region]; the offset
+    // must still be recognized as a zone rather than dropped into TO_TIMESTAMP.
+    expect(temporalLiteral('oracle', 'timestamp with local time zone', '2024-01-02T03:04:05.509+08:00[Asia/Shanghai]')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05.509+08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp with local time zone', '2024-01-02T03:04:05Z[UTC]')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05Z', 'YYYY-MM-DD HH24:MI:SS TZH:TZM')`,
+    )
+  })
+
   it('leaves other dialects and non-temporal text alone', () => {
     const column = { name: 'city', typeName: 'VARCHAR(20)' }
     expect(filterExpression('oracle', column, { op: 'eq', text: '2024-11-11' })).toBe(`"city" = '2024-11-11'`)

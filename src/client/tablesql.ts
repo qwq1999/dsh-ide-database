@@ -268,18 +268,24 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
  * dialects parse ISO literals on their own and keep the plain quoted form.
  */
 export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: string, text: string): string {
+  // java.time values (OffsetDateTime/ZonedDateTime) reach the grid with ISO `T`
+  // and an optional `[Region]` suffix via ZonedDateTime.toString(); user-typed
+  // ISO uses `T` too. Oracle's TO_* format models require the literal separator
+  // to match, and a trailing `[Region]` hides a valid offset from our zone regex.
+  // Normalize both to the space-separated form the format models below expect.
+  const normalized = text.replace(/\[[^\]]+\]$/u, '').replace(/^(\d{4}-\d{2}-\d{2})T/u, '$1 ')
   const literal = quoteLiteral(text, dialect)
   if (!isTemporalType(typeName, dialect)) return literal
   if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
-  if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
+  if (!/^\d{4}-\d{2}-\d{2}/u.test(normalized)) return literal
   const type = typeName.toLowerCase()
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
-  const escaped = text.replace(/'/gu, "''")
+  const escaped = normalized.replace(/'/gu, "''")
   // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
-  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(text)
+  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(normalized)
   const hasZone = zone !== null
   // Do not mistake a `+08:00` zone for a time; inspect only the local part.
-  const local = hasZone ? text.slice(0, zone.index) : text
+  const local = hasZone ? normalized.slice(0, zone.index) : normalized
   const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(local)
   // A filter typed as `2024-11-11 09:54` must keep its minutes; a format
   // without them rejects the text with ORA-01830 instead of comparing at 00:00.
@@ -290,7 +296,7 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
     // A `TIMESTAMP WITH LOCAL TIME ZONE` is shown with its region name, which
     // `TO_TIMESTAMP` cannot parse. `TZR` accepts the displayed name and keeps
     // the instant when the value goes back into the column.
-    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(text)) {
+    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(normalized)) {
       const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZR`
       return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
     }

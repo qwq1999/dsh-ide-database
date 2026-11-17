@@ -128,6 +128,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN DELETE FROM t')).toBe(true)
   })
 
+  it('treats PostgreSQL ANALYSE as the ANALYZE synonym (no read-only bypass)', () => {
+    expect(isReadOnlySql('EXPLAIN ANALYSE SELECT 1', 'postgres')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN ANALYSE DELETE FROM t', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYSE UPDATE t SET a = 1', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYSE INSERT INTO t VALUES (1)', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYSE) DELETE FROM t', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYSE false) DELETE FROM t', 'postgres')).toBe(true)
+  })
+
   it('rejects Oracle EXPLAIN PLAN because it writes the plan table', () => {
     expect(isReadOnlySql('EXPLAIN PLAN FOR SELECT * FROM t', 'oracle')).toBe(false)
     expect(isReadOnlySql("EXPLAIN PLAN SET STATEMENT_ID = 'x' FOR SELECT 1", 'oracle')).toBe(false)

@@ -183,4 +183,15 @@ describe('large integer ordering', () => {
     const asc = sortRowsWithOrder(cols, page, { column: 'v', direction: 'asc' }).rows.map((r) => r[0])
     expect(asc).toEqual(['-9007199254740993', '-9007199254740992', '0', '9007199254740992'])
   })
+  it('empty string sinks to the bottom in both directions', () => {
+    const columns = [{ name: 'n', typeName: 'INT' }]
+    const rows = [[3], [null], [''], [1], [2]]
+    const asc = sortRowsWithOrder(columns, rows, { column: 'n', direction: 'asc' })
+    expect(asc.rows.slice(0, 3).map((r) => r[0])).toEqual([1, 2, 3])
+    expect(asc.rows.slice(3).map((r) => r[0])).toEqual([null, ''])
+    const desc = sortRowsWithOrder(columns, rows, { column: 'n', direction: 'desc' })
+    expect(desc.rows.slice(0, 3).map((r) => r[0])).toEqual([3, 2, 1])
+    expect(desc.rows.slice(3).map((r) => r[0])).toEqual([null, ''])
+  })
+
 })

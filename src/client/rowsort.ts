@@ -119,8 +119,8 @@ export function sortRowsWithOrder(
     const b = rows[right]?.[index]
     // NaN minus anything is NaN, which breaks comparator transitivity and
     // leaves the finite values unordered. Group it with the empty cells.
-    const aEmpty = a === null || a === undefined || (typeof a === 'number' && Number.isNaN(a))
-    const bEmpty = b === null || b === undefined || (typeof b === 'number' && Number.isNaN(b))
+    const aEmpty = a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a))
+    const bEmpty = b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b))
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
     return factor * order(a, b)
   })

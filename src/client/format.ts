@@ -236,7 +236,7 @@ const MYSQL_EXECUTABLE_INTO =
 /** The statement after `EXPLAIN ANALYZE`, or null when EXPLAIN does not execute. */
 /** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
 function analyzeOptionEnabled(options: string): boolean {
-  const match = /\banalyze\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
+  const match = /\banaly[sz]e\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
   if (match === null) return false
   const value = match[1]?.toLowerCase()
   return value !== 'false' && value !== 'off' && value !== '0'
@@ -252,7 +252,7 @@ function explainAnalyzeBody(code: string): string | null {
     rest = rest.slice(close).trimStart()
   }
   const next = firstWord(rest)
-  if (next.word === 'analyze') {
+  if (next.word === 'analyze' || next.word === 'analyse') {
     analyze = true
     rest = next.rest
   }
