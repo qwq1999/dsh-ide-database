@@ -788,7 +788,14 @@ final class SqlExecutor {
                     String extra = rs.getString(8);
                     if (extra != null && !extra.isEmpty()) {
                         row.put("extra", extra);
-                        if (extra.toUpperCase(Locale.ROOT).contains("GENERATED")) {
+                        // DEFAULT_GENERATED marks an expression default (a
+                        // normal column since MySQL 8.0.13), not a generated
+                        // column. Only the real generators must be flagged:
+                        // a false positive makes the client drop the column
+                        // from exported INSERT statements.
+                        String extraU = extra.toUpperCase(Locale.ROOT);
+                        if (extraU.contains("STORED GENERATED") || extraU.contains("VIRTUAL GENERATED")
+                                || extraU.contains("PERSISTENT GENERATED")) {
                             row.put("generated", Boolean.TRUE);
                         }
                     }
@@ -1341,7 +1348,16 @@ final class SqlExecutor {
         if (raw instanceof BigDecimal) {
             BigDecimal value = (BigDecimal) raw;
             if (value.scale() <= 0 && value.precision() <= 15) {
-                return Long.valueOf(value.longValue());
+                // precision counts significant digits, not magnitude: a
+                // negative scale such as 1E+20 has precision 1 but 21 integer
+                // digits, and longValue() would silently truncate it. Keep
+                // small integers as numbers, but fall back to the exact
+                // string whenever the value does not fit in a long.
+                try {
+                    return Long.valueOf(value.longValueExact());
+                } catch (ArithmeticException overflow) {
+                    return value.toPlainString();
+                }
             }
             return value.toPlainString();
         }

@@ -950,15 +950,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       id: 'copy-page',
       label: '复制当前页',
       leaves: [
-        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown')) },
-        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV')) },
-        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void copyText(toTsv(displayColumns, rows)).then(noteCopied('TSV')) },
-        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON')) },
+        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void copyText(toMarkdown(displayColumns, displayRows)).then(noteCopied('Markdown')) },
+        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void copyText(toCsv(displayColumns, displayRows)).then(noteCopied('CSV')) },
+        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void copyText(toTsv(displayColumns, displayRows)).then(noteCopied('TSV')) },
+        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void copyText(toJson(displayColumns, displayRows)).then(noteCopied('JSON')) },
         {
           id: 'copy-page-sql',
           label: '复制当前页 SQL',
           onSelect: () =>
-            void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows)).then(noteCopied('SQL')),
+            void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, displayRows)).then(noteCopied('SQL')),
         },
       ],
     },

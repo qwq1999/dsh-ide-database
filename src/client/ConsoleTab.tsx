@@ -1878,10 +1878,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         id: 'copy-page',
         label: '复制当前页',
         leaves: [
-          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown')) },
-          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV')) },
-          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV')) },
-          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON')) },
+          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void copyText(toMarkdown(displayColumns, displayRows)).then(noteCopied('Markdown')) },
+          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toCsv(displayColumns, displayRows)).then(noteCopied('CSV')) },
+          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toTsv(displayColumns, displayRows)).then(noteCopied('TSV')) },
+          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void copyText(toJson(displayColumns, displayRows)).then(noteCopied('JSON')) },
           {
             id: 'copy-page-sql',
             label: '复制当前页 SQL',
@@ -1890,7 +1890,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               const target = tableTarget()
               if (target === null) return
               void copyText(
-                insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows),
+                insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, displayRows),
               ).then(noteCopied('SQL'))
             },
           },
