@@ -212,13 +212,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const shownRowsRef = useRef<Row[]>([])
   /** Toggle one checkbox; shift-click extends from the last clicked row. */
   const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    // Capture the anchor before the state updater runs: setState updaters are
+    // deferred, so reading `selectionAnchor.current` inside it would see the
+    // value reassigned below (the clicked row) and the range would collapse to
+    // the clicked row alone.
+    const anchor = selectionAnchor.current
     setSelectedRows((current) => {
       const next = new Set(current)
-      if (extend && selectionAnchor.current !== null) {
+      if (extend && anchor !== null) {
         // Shift-click extends the selection; it never clears a selected range
         // based on the clicked row's current state.
-        const from = Math.min(selectionAnchor.current, rowIndex)
-        const to = Math.max(selectionAnchor.current, rowIndex)
+        const from = Math.min(anchor, rowIndex)
+        const to = Math.max(anchor, rowIndex)
         for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
