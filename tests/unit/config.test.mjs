@@ -198,6 +198,41 @@ describe('ConfigStore', () => {
     expect(reloaded.snapshot().settings.showTableComments).toBe(false)
   })
 
+  it('remembers dismissed update notices and rejects malformed ids', () => {
+    const { config, dir } = store()
+    expect(config.dismissedNotices()).toEqual([])
+
+    expect(config.dismissNotice('table-comments')).toEqual(['table-comments'])
+    // Closing the same notice twice must not grow the list.
+    expect(config.dismissNotice('table-comments')).toEqual(['table-comments'])
+    expect(() => config.dismissNotice('Table Comments!')).toThrow(/提示标识无效/)
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.dismissedNotices()).toEqual(['table-comments'])
+  })
+
+  it('drops dismissed notices that no longer look like ids', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-config-'))
+    dirs.push(dir)
+    const file = join(dir, 'connections.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        connections: [],
+        trash: [],
+        drivers: [],
+        settings: {},
+        dismissedNotices: ['table-comments', 'Bad Id', 7, 'table-comments', 'x'.repeat(200)],
+      }),
+    )
+
+    const config = new ConfigStore(file, new SecretStore(join(dir, 'secrets.json')))
+    config.load()
+    expect(config.dismissedNotices()).toEqual(['table-comments'])
+  })
+
   it('persists custom drivers and settings to disk', () => {
     const { config, dir } = store()
     config.upsertDriver({

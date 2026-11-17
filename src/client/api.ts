@@ -24,6 +24,7 @@ import type {
   SchemaObject,
   ServerInfo,
   StructureSnapshot,
+  UpdateNotice,
 } from '../shared/types.js'
 
 export class ApiError extends Error {
@@ -74,10 +75,14 @@ export interface StatusSnapshot {
   env: EnvStatus
   /** Background description walks currently running on the host. */
   prefetch: PrefetchProgress[]
+  /** Update notices the user has not closed yet. */
+  notices?: UpdateNotice[]
 }
 
 export const api = {
   status: () => post<StatusSnapshot>('/status'),
+  dismissNotice: async (id: string): Promise<UpdateNotice[]> =>
+    (await post<{ notices: UpdateNotice[] }>('/notices/dismiss', { id })).notices,
   env: () => post<EnvStatus>('/env'),
   health: () => post<Record<string, unknown>>('/health'),
 

@@ -137,6 +137,23 @@ export interface DbSettings {
   showTableComments?: boolean
 }
 
+/**
+ * Tone of an update notice shown above the data-source tree. These are the
+ * panel's four banner tones: success announces what landed, warn flags a
+ * behaviour change, error something that needs the user, info everything else.
+ */
+export type NoticeLevel = 'success' | 'warn' | 'error' | 'info'
+
+/** One entry of the update feed; `id` is what a dismissal is remembered by. */
+export interface UpdateNotice {
+  id: string
+  level: NoticeLevel
+  title: string
+  body: string
+  /** Offer the "去设置" button beside the text. */
+  settingsAction?: boolean
+}
+
 export interface ConnectionConfig {
   id: string
   name: string
@@ -210,6 +227,8 @@ export interface DbConfigFile {
   trash: TrashedConnection[]
   drivers: DriverConfig[]
   settings: DbSettings
+  /** Update notices the user closed; they stay hidden on every later launch. */
+  dismissedNotices?: string[]
 }
 
 export interface ClientConfig {

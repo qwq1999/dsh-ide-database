@@ -953,6 +953,8 @@ export const CSS = `
   white-space: nowrap;
 }
 
+.dshdb-notices { display: flex; flex-direction: column; gap: 6px; }
+
 .dshdb-banner {
   display: flex;
   align-items: flex-start;

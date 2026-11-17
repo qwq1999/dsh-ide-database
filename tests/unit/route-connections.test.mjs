@@ -53,6 +53,7 @@ function deps() {
       settings: () => ({}),
       snapshot: () => ({}),
       connection: (id) => ({ m1: mysql, r1: redis })[id],
+      dismissedNotices: () => [],
       reorderConnections: (ids) => {
         calls.reorder.push(ids)
         return { connections: ids.map((id) => ({ id })) }

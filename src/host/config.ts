@@ -141,8 +141,30 @@ function sanitizeJar(raw: unknown): JarRef {
   return { group, artifact, version }
 }
 
+const NOTICE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
+const DISMISSED_MAX = 100
+
+/** Closed update notices; a malformed entry is dropped instead of failing the load. */
+function readDismissedNotices(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !NOTICE_ID_PATTERN.test(entry) || out.includes(entry)) continue
+    out.push(entry)
+    if (out.length >= DISMISSED_MAX) break
+  }
+  return out
+}
+
 export class ConfigStore {
-  private data: DbConfigFile = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+  private data: DbConfigFile = {
+    version: 1,
+    connections: [],
+    trash: [],
+    drivers: [],
+    settings: { ...DEFAULT_SETTINGS },
+    dismissedNotices: [],
+  }
 
   constructor(
     readonly file: string,
@@ -152,7 +174,14 @@ export class ConfigStore {
 
   load(): void {
     if (!existsSync(this.file)) {
-      this.data = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+      this.data = {
+        version: 1,
+        connections: [],
+        trash: [],
+        drivers: [],
+        settings: { ...DEFAULT_SETTINGS },
+        dismissedNotices: [],
+      }
       return
     }
     try {
@@ -169,6 +198,7 @@ export class ConfigStore {
         trash: [],
         drivers: hydratedDrivers,
         settings: this.hydrateSettings(settings),
+        dismissedNotices: readDismissedNotices(parsed.dismissedNotices),
       }
       // Connections are resolved after their custom drivers exist on `this.data`.
       this.data.connections = connections.flatMap((entry) => this.hydrateConnection(entry))
@@ -184,7 +214,14 @@ export class ConfigStore {
         // keep the original if the backup cannot be written
       }
       this.log(`connections.json is corrupt (${errorMessage(error)}); moved to ${backup}`)
-      this.data = { version: 1, connections: [], trash: [], drivers: [], settings: { ...DEFAULT_SETTINGS } }
+      this.data = {
+        version: 1,
+        connections: [],
+        trash: [],
+        drivers: [],
+        settings: { ...DEFAULT_SETTINGS },
+        dismissedNotices: [],
+      }
     }
   }
 
@@ -498,6 +535,22 @@ export class ConfigStore {
       this.persist()
     }
     return this.snapshot()
+  }
+
+  /** Update notices the user closed; their ids stay out of the feed from now on. */
+  dismissedNotices(): string[] {
+    return [...(this.data.dismissedNotices ?? [])]
+  }
+
+  /** Closing a notice is permanent, so the same one never reappears. */
+  dismissNotice(id: string): string[] {
+    if (!NOTICE_ID_PATTERN.test(id)) throw new DbError('invalid', '提示标识无效')
+    const dismissed = this.data.dismissedNotices ?? []
+    if (!dismissed.includes(id)) {
+      this.data.dismissedNotices = [...dismissed, id]
+      this.persist()
+    }
+    return this.dismissedNotices()
   }
 
   touchConnection(id: string): void {

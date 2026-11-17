@@ -204,6 +204,7 @@ export function App(props: AppProps): ReactElement {
     applySettings,
     setupError,
     dismissSetupError,
+    dismissNotice,
   } = useDataSources(notify)
 
   // 快捷键处理函数在下面的各个组件里，绑定统一在这里发布一次，
@@ -675,6 +676,27 @@ export function App(props: AppProps): ReactElement {
 
         {snapshot ? (
           <div className="dshdb-view" style={{ padding: '8px 10px 12px', minHeight: 0 }}>
+            {(snapshot.notices ?? []).length === 0 ? null : (
+              <div className="dshdb-notices">
+                {(snapshot.notices ?? []).map((notice) => (
+                  <Banner
+                    key={notice.id}
+                    tone={notice.level}
+                    onClose={() => dismissNotice(notice.id)}
+                    actions={
+                      notice.settingsAction === true ? (
+                        <Button size="sm" onClick={() => setSettingsOpen(true)}>
+                          去设置
+                        </Button>
+                      ) : undefined
+                    }
+                  >
+                    <strong>{notice.title}</strong>
+                    {notice.body === '' ? null : `　${notice.body}`}
+                  </Banner>
+                ))}
+              </div>
+            )}
             {setupError ? (
               <Banner
                 tone="error"

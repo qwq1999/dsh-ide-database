@@ -40,7 +40,12 @@ function deps() {
   return {
     ctx: {},
     paths: { dataDir: '/tmp', configFile: '/tmp/config.json', bridgeJar: '/tmp/bridge.jar', version: '1.2.3' },
-    config: { settings: () => ({ javaPath: '/usr/bin/java' }), snapshot: () => ({ connections: [] }), connection: () => undefined },
+    config: {
+      settings: () => ({ javaPath: '/usr/bin/java' }),
+      snapshot: () => ({ connections: [] }),
+      connection: () => undefined,
+      dismissedNotices: () => [],
+    },
     secrets: {},
     drivers: {
       statuses: () => statuses,
@@ -107,6 +112,8 @@ describe('POST /status over HTTP', () => {
     expect(result.body.data.drivers).toHaveLength(1)
     expect(result.body.data.env.pluginVersion).toBe('1.2.3')
     expect(result.body.data.env.bridgeBuilt).toBe(true)
+    // The tree-comments notice is still unread on a fresh install.
+    expect(result.body.data.notices.map((notice) => notice.id)).toEqual(['table-comments'])
   })
 })
 

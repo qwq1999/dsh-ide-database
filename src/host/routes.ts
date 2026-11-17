@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 import { completionColumnKey } from '../shared/completionkey.js'
+import { visibleNotices } from '../shared/notices.js'
 import { PLUGIN_NAME, ROUTE_PREFIX } from '../shared/presets.js'
 import type {
   ApiResult,
@@ -232,9 +233,16 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
           drivers: deps.drivers.statuses(),
           env: envStatus(deps),
           prefetch: deps.prefetch?.progress() ?? [],
+          notices: visibleNotices(deps.config.dismissedNotices()),
         },
       }
       sendJson(response, 200, snapshot)
+      return
+    }
+    case '/notices/dismiss': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const dismissed = deps.config.dismissNotice(id)
+      sendJson(response, 200, { ok: true, data: { notices: visibleNotices(dismissed) } })
       return
     }
     case '/env': {

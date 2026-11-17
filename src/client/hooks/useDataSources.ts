@@ -26,6 +26,7 @@ import type {
   ServerInfo,
   StructureSnapshot,
   TableDescription,
+  UpdateNotice,
 } from '../../shared/types'
 import { api, ApiError } from '../api'
 import { treeFolderKey, treeFolderSelectedKey, treeObjectKey, treeSchemaKey, treeSchemaSelectedKey } from '../treekeys'
@@ -39,6 +40,8 @@ export interface Snapshot {
   env: EnvStatus
   /** Background description walks the host is running right now. */
   prefetch: PrefetchProgress[]
+  /** Update notices the host still shows; closing one hides it for good. */
+  notices: UpdateNotice[]
 }
 
 export type Notify = (text: string, tone?: 'info' | 'success' | 'error') => void
@@ -132,6 +135,8 @@ export interface DataSources {
   /** Last connect failure caused by missing Java / bridge / driver jars. */
   setupError: SetupError | null
   dismissSetupError: () => void
+  /** Close an update notice; the host remembers the dismissal. */
+  dismissNotice: (id: string) => void
 }
 
 const VISIBLE_SCHEMAS_KEY = 'dsh-ide-database:visible-schemas:'
@@ -234,6 +239,7 @@ export function useDataSources(notify: Notify): DataSources {
         settings: data.config.settings,
         env: data.env,
         prefetch: data.prefetch ?? [],
+        notices: data.notices ?? [],
       })
       setLoadError('')
     } catch (error) {
@@ -1010,6 +1016,24 @@ export function useDataSources(notify: Notify): DataSources {
     setSetupError(null)
   }, [])
 
+  /**
+   * Close an update notice. The host writes the id to the config file, so the
+   * notice never comes back; the response carries what is still visible.
+   */
+  const dismissNotice = useCallback(
+    (id: string): void => {
+      void (async () => {
+        try {
+          const notices = await api.dismissNotice(id)
+          setSnapshot((previous) => (previous === null ? previous : { ...previous, notices }))
+        } catch (error) {
+          notify(`关闭提示失败：${errorText(error)}`, 'error')
+        }
+      })()
+    },
+    [notify],
+  )
+
   return {
     snapshot,
     loadError,
@@ -1069,5 +1093,6 @@ export function useDataSources(notify: Notify): DataSources {
     applySettings,
     setupError,
     dismissSetupError,
+    dismissNotice,
   }
 }
