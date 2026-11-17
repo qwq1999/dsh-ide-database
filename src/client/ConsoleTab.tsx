@@ -832,7 +832,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   /** Ctrl/⌘ + Shift + Enter: run only the statement the caret is in. */
   /** Reindenting keeps the caret near where it was instead of throwing it to the end. */
   const applyFormat = useCallback((): void => {
-    const next = formatSql(statement)
+    const next = formatSql(statement, sqlDialectOf(connection?.dialect))
     if (next === statement) return
     const offset = Math.min(caretPos, next.length)
     setSelectedRun(false)
@@ -844,7 +844,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       area.focus()
       area.setSelectionRange(offset, offset)
     }, 0)
-  }, [caretPos, statement])
+  }, [caretPos, statement, connection?.dialect])
 
   const runCaret = async (): Promise<void> => {
     const area = inputRef.current

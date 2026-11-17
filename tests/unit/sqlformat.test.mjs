@@ -67,6 +67,21 @@ describe('formatSql', () => {
     expect(formatSql(once)).toBe(once)
   })
 
+  it('标准 SQL 中反斜杠是普通字符，不吞掉相邻字符串', () => {
+    // Standard SQL: 'a\' is a complete literal, the next quote starts another.
+    // Treating the backslash as an escape merged the two and changed meaning.
+    expect(formatSql("select 'a" + String.fromCharCode(92) + "', 'b' from t").split(String.fromCharCode(10))).toEqual(["SELECT 'a" + String.fromCharCode(92) + "', 'b'", "FROM t"])
+  })
+
+  it('MySQL 中反斜杠仍是转义', () => {
+    expect(formatSql("select 'it" + String.fromCharCode(92) + "'s', 'b' from t", 'mysql').split(String.fromCharCode(10))).toEqual(["SELECT 'it" + String.fromCharCode(92) + "'s', 'b'", "FROM t"])
+  })
+
+  it("PostgreSQL 只在 E'' 字符串里把反斜杠当转义", () => {
+    expect(formatSql("select 'a" + String.fromCharCode(92) + "', 'b' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT 'a" + String.fromCharCode(92) + "', 'b'", "FROM t"])
+    expect(formatSql("select E'a" + String.fromCharCode(92) + "'b', 'c' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT E 'a" + String.fromCharCode(92) + "'b', 'c'", "FROM t"])
+  })
+
   it('多条语句各占一行', () => {
     expect(formatSql('select 1; select 2')).toBe('SELECT 1;\nSELECT 2')
   })

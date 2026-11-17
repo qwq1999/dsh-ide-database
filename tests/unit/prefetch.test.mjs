@@ -200,8 +200,7 @@ describe('DescriptionPrefetcher', () => {
     })
 
     prefetch.schedule('c1')
-    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await vi.waitFor(() => expect(logs.some((m) => m.includes('boom'))).toBe(true))
 
     expect(calls.length).toBeLessThanOrEqual(3)
     expect(state.puts).not.toContain('app.closed')
@@ -234,6 +233,45 @@ describe('DescriptionPrefetcher', () => {
 
     await vi.waitFor(() => expect(completed).toBe(6))
     expect(peak).toBeLessThanOrEqual(DESCRIPTION_CONCURRENCY)
+  })
+
+  it('a refresh mid-pass cannot mutate the new session from a stale run', async () => {
+    const { structure, state } = fakeStructure({
+      objects: { app: [{ name: 'a', kind: 'table' }, { name: 'b', kind: 'table' }] },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(table)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push({ table, release })
+          return promise.then(() => ({ schema, table, kind: 'table', columns: [], indexes: [] }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+    await vi.waitFor(() => expect(calls).toEqual(['a', 'b']))
+
+    prefetch.schedule('c1', { refreshAll: true })
+    await vi.waitFor(() => expect(calls).toEqual(['a', 'b', 'a', 'b']))
+    expect(prefetch.progress()).toEqual([{ connectionId: 'c1', total: 2, done: 0 }])
+
+    gates[0].release()
+    gates[1].release()
+    await new Promise((resolve) => setTimeout(resolve, 15))
+    expect(state.puts).toEqual([])
+    expect(prefetch.progress()).toEqual([{ connectionId: 'c1', total: 2, done: 0 }])
+
+    gates[2].release()
+    gates[3].release()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    expect([...state.puts].sort()).toEqual(['app.a', 'app.b'])
   })
 
   it('reports live progress and clears it when the walk ends', async () => {

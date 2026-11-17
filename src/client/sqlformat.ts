@@ -5,6 +5,9 @@
  * 它不解析语法，因此对任何输入都不会失败：无法判断的地方原样保留。
  */
 
+import type { SqlDialect } from '../shared/types'
+import { backslashEscapes } from './sqllex'
+
 const KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'BETWEEN',
   'EXISTS', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'JOIN', 'LEFT', 'RIGHT',
@@ -26,7 +29,7 @@ const LINE_STARTERS = new Set([
 
 type Atom = { kind: 'word' | 'punct' | 'op' | 'literal' | 'comment'; text: string }
 
-function tokenize(sql: string): Atom[] {
+function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
   const atoms: Atom[] = []
   let i = 0
   const push = (kind: Atom['kind'], text: string) => atoms.push({ kind, text })
@@ -55,9 +58,14 @@ function tokenize(sql: string): Atom[] {
       continue
     }
     if (ch === "'" || ch === '"' || ch === '`') {
+      // Only MySQL (and PostgreSQL E'...') treat a backslash as an escape
+      // inside a string. The rest of the codebase agrees on this via
+      // backslashEscapes; assuming it everywhere merges two adjacent literals
+      // such as 'a\', 'b' in standard SQL and silently changes their meaning.
+      const escapes = dialect === undefined ? false : backslashEscapes(sql, i, ch, dialect)
       let j = i + 1
       while (j < sql.length) {
-        if (sql[j] === String.fromCharCode(92) && ch !== '`') {
+        if (escapes && sql[j] === String.fromCharCode(92)) {
           j += 2
           continue
         }
@@ -122,8 +130,8 @@ const SPACE_BEFORE_PAREN = new Set([
   'LIKE', 'WHEN', 'THEN', 'ELSE', 'VALUES', 'SET', 'SELECT', 'FROM', 'BY', 'JOIN',
 ])
 
-export function formatSql(input: string): string {
-  const atoms = tokenize(input)
+export function formatSql(input: string, dialect?: SqlDialect): string {
+  const atoms = tokenize(input, dialect)
   let out = ''
   let depth = 0
   let pendingNewline = false

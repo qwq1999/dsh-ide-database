@@ -61,14 +61,15 @@ export class DescriptionPrefetcher {
       if (!refreshAll || running.refreshAll) return
       this.active.delete(connectionId)
     }
-    this.active.set(connectionId, {
+    const session: PrefetchSession = {
       connectionId,
       total: 0,
       done: 0,
       refreshAll,
       schemas: options.schemas === undefined ? undefined : new Set(options.schemas),
-    })
-    void this.run(connectionId)
+    }
+    this.active.set(connectionId, session)
+    void this.run(connectionId, session)
   }
 
   /** Stop a pass, e.g. when the connection is closed, trashed or removed. */
@@ -122,27 +123,32 @@ export class DescriptionPrefetcher {
     }
   }
 
-  private async run(connectionId: string): Promise<void> {
+  private async run(connectionId: string, session: PrefetchSession): Promise<void> {
+    // A refresh replaces the session while an older pass may still be awaiting
+    // a read. Only the session that is still in `active` may mutate state; an
+    // obsolete pass must neither write stale descriptions, bump the new
+    // session's counters, nor delete it when it finishes.
+    const isCurrent = () => this.active.get(connectionId) === session
     try {
-      const session = this.active.get(connectionId)
-      if (session === undefined) return
       const targets = this.targets(connectionId, session)
       session.total = targets.length
       let next = 0
       const worker = async (): Promise<void> => {
-        while (this.active.has(connectionId) && next < targets.length) {
+        while (isCurrent() && next < targets.length) {
           const target = targets[next]
           next += 1
           if (target === undefined) return
           try {
             const description = await this.read(connectionId, target)
+            if (!isCurrent()) return
             if (description !== undefined) {
               this.deps.structure.putDescription(connectionId, target.schema, target.table, description)
             }
           } catch (error) {
             if (error instanceof DbError && error.code === 'not-connected') {
-              // Closing the connection ends the walk silently.
-              this.active.delete(connectionId)
+              // Closing the connection ends the walk silently. A stale run must
+              // not delete the session that replaced it.
+              if (isCurrent()) this.active.delete(connectionId)
               return
             }
             // Objects whose definition the server will not hand out stay
@@ -154,8 +160,7 @@ export class DescriptionPrefetcher {
               this.deps.log(`后台结构缓存失败（${target.schema}.${target.table}）：${message}`)
             }
           }
-          const current = this.active.get(connectionId)
-          if (current !== undefined) current.done += 1
+          if (isCurrent()) session.done += 1
         }
       }
       const workers = Math.min(DESCRIPTION_CONCURRENCY, targets.length)
@@ -164,7 +169,7 @@ export class DescriptionPrefetcher {
       const message = error instanceof Error ? error.message : String(error)
       this.deps.log(`后台结构缓存失败：${message}`)
     } finally {
-      this.active.delete(connectionId)
+      if (isCurrent()) this.active.delete(connectionId)
     }
   }
 }

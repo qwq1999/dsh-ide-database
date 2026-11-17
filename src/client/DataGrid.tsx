@@ -150,6 +150,17 @@ function useVirtualRange(rowCount: number, resetKey: unknown, containerRef: RefO
     })
   }, [containerRef])
 
+  // A scroll frame queued just before teardown would otherwise call setScrollTop
+  // on an unmounted grid and keep its closure (and the container) alive.
+  useEffect(
+    () => () => {
+      if (frame.current !== 0 && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(frame.current)
+      }
+    },
+    [],
+  )
+
   const range = useMemo<VirtualRange>(() => {
     if (!enabled || rowCount === 0) return { start: 0, end: rowCount, paddingTop: 0, paddingBottom: 0 }
     const bodyTop = Math.max(scrollTop - headerHeight, 0)
@@ -209,8 +220,20 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
   const dragged = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
+  /** The finish handler of an in-flight column resize, so unmount can release it. */
+  const resizeCleanup = useRef<(() => void) | null>(null)
   const { range, onScroll } = useVirtualRange(rows.length, resetKey, containerRef)
   const visible = rows.slice(range.start, range.end)
+
+  // Closing/replacing a tab mid-drag skips mouseup/blur/mouseleave. Without this,
+  // the four document listeners and the body col-resize/userSelect styles leak and
+  // the whole page keeps the resize cursor until another drag happens to end.
+  useEffect(
+    () => () => {
+      resizeCleanup.current?.()
+    },
+    [],
+  )
 
   const openMenu = useCallback((items: ColumnMenuItem[], clientX: number, clientY: number): void => {
     const width = 200
@@ -291,8 +314,12 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
         document.removeEventListener('mouseleave', up)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
+        if (resizeCleanup.current === up) resizeCleanup.current = null
         if (storageKey !== undefined && columns.length === widthColumnCount) writeWidths(storageKey, current)
       }
+      // Release any drag that somehow outlived its teardown before starting a new one.
+      resizeCleanup.current?.()
+      resizeCleanup.current = up
       document.addEventListener('mousemove', move)
       document.addEventListener('mouseup', up)
       // 鼠标在窗口外松开时既收不到 mouseup 也收不到 mousemove，光标会卡在 col-resize。
