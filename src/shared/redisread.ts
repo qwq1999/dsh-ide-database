@@ -105,6 +105,29 @@ export const REDIS_READ_COMMANDS: ReadonlySet<string> = new Set([
   'fcall_ro',
 ])
 
-export function isRedisReadCommand(command: string): boolean {
-  return REDIS_READ_COMMANDS.has(command.toLowerCase())
+/**
+ * A few "container" commands are in REDIS_READ_COMMANDS because most of their
+ * subcommands are pure reads, but a specific subcommand mutates server state.
+ * MEMORY PURGE asks the allocator to release pages back to the OS, so it must
+ * not bypass the read-only guard. Keeping this map lets every other subcommand
+ * stay classified by the main read list.
+ */
+const MUTATING_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  memory: new Set(['purge']),
+}
+
+/**
+ * Whether a command invocation only reads data. Pass the subcommand (second
+ * token) when available so a mutating subcommand of an otherwise-read command
+ * is not mistaken for a read. Omitting the subcommand keeps the historical,
+ * command-name-only behaviour.
+ */
+export function isRedisReadCommand(command: string, subcommand?: string): boolean {
+  const name = command.toLowerCase()
+  if (!REDIS_READ_COMMANDS.has(name)) return false
+  if (subcommand !== undefined) {
+    const mutating = MUTATING_SUBCOMMANDS[name]
+    if (mutating?.has(subcommand.toLowerCase())) return false
+  }
+  return true
 }

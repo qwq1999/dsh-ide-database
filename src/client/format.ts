@@ -394,14 +394,14 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
   })
 }
 
-function redisCommandName(command: string): string {
-  const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)/.exec(command)
-  return match?.[1]?.toLowerCase() ?? ''
+function redisCommandWords(command: string): [string, string | undefined] {
+  const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)(?:\s+([^\s]+))?/.exec(command)
+  return [match?.[1]?.toLowerCase() ?? '', match?.[2]]
 }
 
 export function looksLikeRedisWrite(command: string): boolean {
-  const name = redisCommandName(command)
-  return name !== '' && !isRedisReadCommand(name)
+  const [name, subcommand] = redisCommandWords(command)
+  return name !== '' && !isRedisReadCommand(name, subcommand)
 }
 
 export function objectKindLabel(kind: ObjectKind): string {

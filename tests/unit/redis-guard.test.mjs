@@ -95,4 +95,35 @@ describe('Redis command guard', () => {
     expect(isReadOnlyCommand('ZUNIONSTORE')).toBe(false)
     expect(isReadOnlyCommand('ZINTERSTORE')).toBe(false)
   })
+
+  it('treats MEMORY PURGE as a write while other MEMORY subcommands stay reads', () => {
+    // MEMORY is a read-only container command, but PURGE releases pages back
+    // to the allocator and mutates server state. Both layers must agree.
+    expect(isReadOnlyCommand('MEMORY', 'PURGE')).toBe(false)
+    expect(isReadOnlyCommand('MEMORY', 'purge')).toBe(false)
+    expect(isReadOnlyCommand('MEMORY', 'USAGE')).toBe(true)
+    expect(isReadOnlyCommand('MEMORY', 'STATS')).toBe(true)
+    // A bare MEMORY (no subcommand) keeps the historical command-only result.
+    expect(isReadOnlyCommand('MEMORY')).toBe(true)
+
+    expect(looksLikeRedisWrite('MEMORY PURGE')).toBe(true)
+    expect(looksLikeRedisWrite('memory purge')).toBe(true)
+    expect(looksLikeRedisWrite('MEMORY USAGE key')).toBe(false)
+    expect(looksLikeRedisWrite('MEMORY STATS')).toBe(false)
+
+    // The two layers stay consistent for every invocation, including the
+    // mutating subcommand that used to be misclassified as a read.
+    for (const command of ['MEMORY PURGE', 'MEMORY USAGE key', 'MEMORY STATS', 'GET foo', 'SET foo bar']) {
+      const parts = command.split(/\s+/)
+      expect(looksLikeRedisWrite(command)).toBe(!isReadOnlyCommand(parts[0], parts[1]))
+    }
+  })
+
+  it('rejects MEMORY PURGE on a read-only connection before execution', async () => {
+    const { config, redis } = manager()
+    const id = config.snapshot().connections[0].id
+    // allowWrite=false mirrors a read-only action; the guard must reject the
+    // mutating subcommand regardless of the connection's own readOnly flag.
+    await expect(redis.command(id, 0, 'MEMORY PURGE', false)).rejects.toThrow(/不允许写命令/)
+  })
 })

@@ -56,7 +56,7 @@ const PRAGMA_GAP_OPT = String.raw`(?:\s+|--[^\n]*(?:\n|$)|/\*[\s\S]*?\*/)*`
 const PRAGMA_HEAD = new RegExp(
   '^pragma' +
     PRAGMA_GAP +
-    '(?:(?:[^\\s.]+|"[^"]*"|`[^`]*`|\\[[^\\]]*\\])' +
+    '(?:(?:"[^"]*"|`[^`]*`|\\[[^\\]]*\\]|[^\\s."`\\[]+)' +
     PRAGMA_GAP_OPT +
     '\\.' +
     PRAGMA_GAP_OPT +

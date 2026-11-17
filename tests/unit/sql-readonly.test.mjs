@@ -39,6 +39,10 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA /* inspect */ table_info(users)', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA -- inspect\n table_info(users)', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA main /* schema */ . table_info(users)', 'sqlite')).toBe(true)
+    // A quoted schema name may itself contain a dot; it must be consumed whole.
+    expect(isReadOnlySql('PRAGMA "my.schema".table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA `my.schema`.table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA [my.schema].table_info(users)', 'sqlite')).toBe(true)
     // PRAGMA is not a read-only starter outside SQLite.
     expect(isReadOnlySql('PRAGMA table_info(users)')).toBe(false)
   })
@@ -54,6 +58,12 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA writable_schema = ON', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA table_info(users) = 1', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA table_info(users); DROP TABLE users', 'sqlite')).toBe(false)
+    // A quoted schema name that embeds a read-only pragma name must not fool
+    // the guard: the real pragma after the dot is a mutating one.
+    expect(isReadOnlySql('PRAGMA "x.table_info".journal_mode(WAL)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA "x.quick_check".wal_checkpoint(TRUNCATE)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA `x.integrity_check`.shrink_memory', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA [x.integrity_check].journal_mode = WAL', 'sqlite')).toBe(false)
   })
 
   it('accepts reads behind leading comments', () => {
