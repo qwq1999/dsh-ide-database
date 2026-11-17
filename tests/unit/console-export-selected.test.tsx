@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   redisKey: vi.fn(),
   redisCommand: vi.fn(),
   explain: vi.fn(),
+  cellText: vi.fn(),
 }))
 
 const downloads = vi.hoisted(() => vi.fn())
@@ -36,6 +37,7 @@ vi.mock('../../src/client/colmenu', async (importOriginal) => {
 })
 
 import { ConsoleTab } from '../../src/client/ConsoleTab'
+import { CELL_TEXT_LIMIT, TRUNCATED_SUFFIX } from '../../src/client/cellvalue'
 
 const mysql = {
   id: 'mysql-1',
@@ -209,6 +211,38 @@ describe('exporting selected console rows', () => {
     expect(text).toContain('alpha')
     expect(text).toContain('gamma')
     expect(text).not.toContain('beta')
+  })
+
+  it('exports the full text behind a bridge-capped cell', async () => {
+    const capped = `${'a'.repeat(CELL_TEXT_LIMIT)}${TRUNCATED_SUFFIX}`
+    const full = 'b'.repeat(20_000)
+    mocks.cellText.mockResolvedValue(full)
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT note FROM t',
+      columns: [{ name: 'note', typeName: 'TEXT' }],
+      rows: [[capped]],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    render(<ConsoleTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1' } } } })} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT note FROM t' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByLabelText('选择第 1 行')
+
+    fireEvent.click(screen.getByLabelText('导出结果'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^当前页 CSV/ }))
+
+    await waitFor(() => expect(downloads).toHaveBeenCalledTimes(1))
+    expect(mocks.cellText).toHaveBeenCalledWith('note', capped)
+    const [, , text] = downloads.mock.calls[0] as [string, string, string]
+    expect(text).toContain(full)
+    expect(text).not.toContain(TRUNCATED_SUFFIX)
   })
 
   it('groups the export formats into flyout submenus', async () => {

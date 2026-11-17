@@ -95,14 +95,7 @@ export const RedisValuePanel = memo(function RedisValuePanel({
         ) : null}
       </div>
       {table === null ? (
-        <>
-          <pre className="dshdb-console-value">{text}</pre>
-          {clipped ? (
-            <p className="dshdb-muted" style={{ margin: '6px 0 0' }}>
-              值太大，只显示了前 {DISPLAY_TEXT_LIMIT / 1024} KB；复制按钮拿到的是完整值。
-            </p>
-          ) : null}
-        </>
+        <pre className="dshdb-console-value">{text}</pre>
       ) : (
         <div className="dshdb-grid-wrap dshdb-redis-table">
           <table className="dshdb-grid">

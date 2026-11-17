@@ -70,4 +70,11 @@ describe('redis value panel', () => {
     await screen.findByLabelText('值已复制')
     expect(copy).toHaveBeenCalledWith(big)
   })
+
+  it('shows the clipped notice once for a huge JSON payload', () => {
+    const hugeJson = JSON.stringify({ items: Array.from({ length: 20_000 }, (_, index) => index) })
+    render(<RedisValuePanel value={stored(hugeJson)} />)
+    expect(document.querySelector('pre.dshdb-console-value')?.textContent?.length).toBe(65_536)
+    expect(screen.getAllByText(/值太大，只显示了前 64 KB/)).toHaveLength(1)
+  })
 })

@@ -471,7 +471,9 @@ export class RedisManager {
           break
         }
         case 'zset': {
-          const reply = (await client.zrange(key, '0', String(maxRows), 'WITHSCORES')) as unknown
+          // ZRANGE's stop is inclusive; ask for one fewer so the panel shows
+          // exactly maxRows members like every other container type.
+          const reply = (await client.zrange(key, '0', String(maxRows - 1), 'WITHSCORES')) as unknown
           value = zsetEntries(reply) as JsonValue[]
           if ((size ?? Number(await client.zcard(key))) > maxRows) truncated = true
           break

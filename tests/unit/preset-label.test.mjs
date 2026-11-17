@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { PRESET_LABEL, PRESET_ORDER } from '../../src/shared/presets.ts'
+import { isPresetId, PRESET_LABEL, PRESET_ORDER, presetOf } from '../../src/shared/presets.ts'
 
 describe('preset labels', () => {
   it('names each preset after itself instead of falling back to another engine', () => {
@@ -9,5 +9,23 @@ describe('preset labels', () => {
     expect(PRESET_LABEL.mariadb).toBe('MariaDB')
     expect(PRESET_LABEL.sqlite).toBe('SQLite')
     expect(PRESET_LABEL.mssql).toBe('SQL Server')
+  })
+})
+
+describe('preset lookup', () => {
+  it('recognises only own preset ids', () => {
+    expect(isPresetId('mysql')).toBe(true)
+    expect(isPresetId('sqlite')).toBe(true)
+    expect(isPresetId('custom')).toBe(false)
+    expect(isPresetId('nope')).toBe(false)
+    for (const inherited of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      expect(isPresetId(inherited)).toBe(false)
+      expect(presetOf(inherited)).toBeUndefined()
+    }
+  })
+
+  it('returns the matching preset spec for a real id', () => {
+    expect(presetOf('sqlite')).toMatchObject({ id: 'sqlite', hostOptional: true, defaultPort: 0 })
+    expect(presetOf('mysql')?.defaultPort).toBe(3306)
   })
 })

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { cellValueView, CELL_TEXT_LIMIT, isTruncatedCellText, TRUNCATED_SUFFIX } from '../../src/client/cellvalue'
+import { cellValueView, CELL_TEXT_LIMIT, expandTruncatedRows, isTruncatedCellText, TRUNCATED_SUFFIX } from '../../src/client/cellvalue'
 
 describe('grid cell full value', () => {
   it('shows NULL for missing values', () => {
@@ -47,5 +47,35 @@ describe('capped cell text', () => {
   it('leaves complete values alone', () => {
     expect(cellValueView('config', '{"a":1}').truncated).toBeNull()
     expect(cellValueView('config', 'a'.repeat(CELL_TEXT_LIMIT)).truncated).toBeNull()
+  })
+})
+
+describe('expanding capped cells for export', () => {
+  const columns = (...names) => names.map((name) => ({ name, typeName: 'TEXT' }))
+  const capped = `${'a'.repeat(CELL_TEXT_LIMIT)}${TRUNCATED_SUFFIX}`
+
+  it('leaves rows untouched when nothing was capped', async () => {
+    const cellText = vi.fn()
+    const rows = [[1, 'hello'], [2, 'world']]
+    expect(await expandTruncatedRows(columns('id', 'note'), rows, cellText)).toBe(rows)
+    expect(cellText).not.toHaveBeenCalled()
+  })
+
+  it('replaces capped cells with full text and shares one lookup per value', async () => {
+    const cellText = vi.fn(async (_column, text) => `full:${text.length}`)
+    const rows = [['first', 1], [capped, 2], [capped, 3]]
+    const expanded = await expandTruncatedRows(columns('note', 'id'), rows, cellText)
+
+    expect(expanded).toEqual([['first', 1], [`full:${capped.length}`, 2], [`full:${capped.length}`, 3]])
+    expect(cellText).toHaveBeenCalledTimes(1)
+    expect(cellText).toHaveBeenCalledWith('note', capped)
+  })
+
+  it('keeps the capped text when the full value is gone or the lookup fails', async () => {
+    const cellText = vi.fn(async (column) => (column === 'gone' ? null : Promise.reject(new Error('offline'))))
+    const rows = [[capped, capped]]
+    const expanded = await expandTruncatedRows(columns('gone', 'offline'), rows, cellText)
+
+    expect(expanded).toEqual([[capped, capped]])
   })
 })

@@ -29,6 +29,7 @@ import { filterRedisKeys } from './rediskeys'
 import { formatSql } from './sqlformat'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
+import { expandTruncatedRows } from './cellvalue'
 import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { moveWidthsForColumns } from './columnWidths'
@@ -1547,8 +1548,12 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportNote('当前语句没有目标表，无法导出 SQL')
     setTimeout(() => setExportNote(''), 5000)
   }
+  /** Expand any bridge-capped cells before they reach the export renderer. */
+  const expandRows = (cols: ColumnInfo[], rows: Row[]): Promise<Row[]> =>
+    expandTruncatedRows(cols, rows, (column, text) => api.cellText(column, text))
+
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
-  const exportPage = (format: ExportFormat): void => {
+  const exportPage = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     if (displayRows.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
@@ -1561,14 +1566,14 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
       columns: displayColumns,
-      rows: displayRows,
+      rows: await expandRows(displayColumns, displayRows),
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
   /** Save only the checked rows of the current page. */
-  const exportSelected = (format: ExportFormat): void => {
+  const exportSelected = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     // Hidden columns stay in exports; only the grid omits them. Rows keep
     // their positions, so the selection indexes map straight onto displayRows.
@@ -1584,7 +1589,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
       columns: displayColumns,
-      rows: picked,
+      rows: await expandRows(displayColumns, picked),
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
@@ -1634,7 +1639,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         schema: target?.schema ?? '',
         table: target?.table ?? 'console',
         columns: cols,
-        rows: data,
+        rows: await expandRows(cols, data),
       })
       downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
@@ -1809,10 +1814,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         id: 'page',
         label: '导出当前页',
         leaves: [
-          { id: 'page-csv', label: `当前页 CSV（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('csv') },
-          { id: 'page-json', label: `当前页 JSON（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('json') },
-          { id: 'page-sql', label: `当前页 SQL（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('sql') },
-          { id: 'page-md', label: `当前页 Markdown（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('md') },
+          { id: 'page-csv', label: `当前页 CSV（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('csv') },
+          { id: 'page-json', label: `当前页 JSON（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('json') },
+          { id: 'page-sql', label: `当前页 SQL（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('sql') },
+          { id: 'page-md', label: `当前页 Markdown（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('md') },
         ],
       },
       ...(selectedRows.size > 0
@@ -1821,10 +1826,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               id: 'selected',
               label: '导出已选',
               leaves: [
-                { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => exportSelected('csv') },
-                { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => exportSelected('json') },
-                { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => exportSelected('sql') },
-                { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => exportSelected('md') },
+                { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => void exportSelected('csv') },
+                { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => void exportSelected('json') },
+                { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => void exportSelected('sql') },
+                { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => void exportSelected('md') },
               ],
             },
           ]

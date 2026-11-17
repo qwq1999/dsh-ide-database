@@ -175,11 +175,11 @@ export function mavenBase(mirror: 'central' | 'aliyun'): string {
 }
 
 export function presetOf(id: string): PresetSpec | undefined {
-  return (PRESETS as Record<string, PresetSpec | undefined>)[id]
+  return Object.hasOwn(PRESETS, id) ? PRESETS[id as PresetId] : undefined
 }
 
 export function isPresetId(value: string): value is PresetId {
-  return value in PRESETS
+  return Object.hasOwn(PRESETS, value)
 }
 
 export function isSqlDialect(value: string): value is SqlDialect {
