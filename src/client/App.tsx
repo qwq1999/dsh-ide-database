@@ -233,6 +233,7 @@ export function App(props: AppProps): ReactElement {
   const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false)
   const toolbarActionsRef = useRef<HTMLSpanElement | null>(null)
   const toolbarOverflowRef = useRef<HTMLSpanElement | null>(null)
+  const ddlRequest = useRef(0)
 
   const closeToolbarOverflow = useCallback(() => setToolbarOverflowOpen(false), [])
   usePopoverDismiss(toolbarOverflowOpen, closeToolbarOverflow, toolbarOverflowRef)
@@ -281,12 +282,15 @@ export function App(props: AppProps): ReactElement {
 
   /** 双击表 / DDL 按钮：读取表或视图的建表语句。 */
   async function showDdl(connectionId: string, schema: string, table: string, kind: string): Promise<void> {
+    const request = ++ddlRequest.current
     const title = `${schema}.${table} · DDL`
     setDdlModal({ open: true, title, text: '', loading: true, source: '', warnings: [] })
     try {
       const result = await api.ddl(connectionId, schema, table, kind)
+      if (ddlRequest.current !== request) return
       setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source, warnings: result.warnings })
     } catch (error) {
+      if (ddlRequest.current !== request) return
       setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })
       notify(`读取 DDL 失败：${errorText(error)}`, 'error')
     }

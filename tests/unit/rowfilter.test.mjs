@@ -44,3 +44,18 @@ describe('prebuilt haystacks', () => {
     expect(filterRowIndexesByHaystacks(rowHaystacks([['ab', 'cd']]), 'cd')).toEqual([0])
   })
 })
+
+describe('NUL in haystack text', () => {
+  const NUL = String.fromCharCode(0)
+
+  it('keeps haystack filtering in sync with row matching', () => {
+    const rows = [['x' + NUL + 'y', 'z']]
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows), 'y' + NUL + 'z')).toEqual(filterRowIndexes(rows, 'y' + NUL + 'z'))
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows), 'y' + NUL + 'z')).toEqual([])
+  })
+
+  it('still matches a NUL that is genuinely inside one cell', () => {
+    const rows = [['x' + NUL + 'y', 'z']]
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows), 'x' + NUL + 'y')).toEqual([0])
+  })
+})

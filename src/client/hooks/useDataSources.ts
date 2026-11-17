@@ -224,7 +224,6 @@ export function useDataSources(notify: Notify): DataSources {
   const [redisDetail, setRedisDetail] = useState<RedisValue | null>(null)
   const [redisDetailDb, setRedisDetailDb] = useState(-1)
   const [redisDetailLoading, setRedisDetailLoading] = useState(false)
-  const redisRequest = useRef(0)
   const detailRequest = useRef(0)
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
@@ -338,9 +337,11 @@ export function useDataSources(notify: Notify): DataSources {
       const stored = readText(LAST_CONNECTION_KEY)
       const preferred = snapshot.connections.find((connection) => connection.id === stored)
       setSelectedId((preferred ?? snapshot.connections[0])?.id ?? '')
+      detailRequest.current += 1
       setServers({})
       setDetail(null)
       setRedisDetail(null)
+      setRedisDetailLoading(false)
       setSelectedKey('')
     }
   }, [snapshot, selectedId])
@@ -445,8 +446,10 @@ export function useDataSources(notify: Notify): DataSources {
    */
   const selectConnection = useCallback((id: string): void => {
     if (selectedRef.current !== id) {
+      detailRequest.current += 1
       setDetail(null)
       setRedisDetail(null)
+      setRedisDetailLoading(false)
       setSelectedKey('')
       setSelectedSchema('')
     }
@@ -751,6 +754,7 @@ export function useDataSources(notify: Notify): DataSources {
       detailRequest.current = request
       setSelectedId(connectionId)
       setRedisDetail(null)
+      setRedisDetailLoading(false)
       setRedisDetailDb(-1)
       setSelectedKey(key)
       setSelectedSchema(schema)
@@ -825,6 +829,7 @@ export function useDataSources(notify: Notify): DataSources {
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(treeSchemaSelectedKey(connectionId, schema))
     setSelectedSchema(schema)
@@ -835,6 +840,7 @@ export function useDataSources(notify: Notify): DataSources {
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(treeFolderSelectedKey(connectionId, schema, folder))
     setSelectedSchema(schema)
@@ -845,6 +851,7 @@ export function useDataSources(notify: Notify): DataSources {
     setSelectedId(connectionId)
     setDetail(null)
     setRedisDetail(null)
+    setRedisDetailLoading(false)
     setRedisDetailDb(-1)
     setSelectedKey(`${connectionId}|redisdb:${db}`)
     setSelectedSchema('')
@@ -866,7 +873,8 @@ export function useDataSources(notify: Notify): DataSources {
   /** Read one key's value for the tree's detail panel. */
   const selectRedisKey = useCallback(
     async (connectionId: string, db: number, key: string): Promise<void> => {
-      detailRequest.current += 1
+      const request = detailRequest.current + 1
+      detailRequest.current = request
       setSelectedId(connectionId)
       setDetail(null)
       setRedisDetail(null)
@@ -878,19 +886,17 @@ export function useDataSources(notify: Notify): DataSources {
         notify('数据源未连接，连接后可查看键值', 'info')
         return
       }
-      const request = redisRequest.current + 1
-      redisRequest.current = request
       setRedisDetailLoading(true)
       try {
         const value = await api.redisKey(connectionId, key, db)
-        if (redisRequest.current === request) setRedisDetail(value)
+        if (detailRequest.current === request) setRedisDetail(value)
       } catch (error) {
-        if (redisRequest.current === request) {
+        if (detailRequest.current === request) {
           setRedisDetail(null)
           notify(`读取键值失败：${errorText(error)}`, 'error')
         }
       } finally {
-        if (redisRequest.current === request) setRedisDetailLoading(false)
+        if (detailRequest.current === request) setRedisDetailLoading(false)
       }
     },
     [servers, notify],

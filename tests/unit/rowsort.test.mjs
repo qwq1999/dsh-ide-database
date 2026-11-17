@@ -90,3 +90,23 @@ describe('sortRows', () => {
     ])
   })
 })
+
+describe('NaN ordering', () => {
+  const cols = [{ name: 'v', typeName: 'DOUBLE' }]
+
+  it('sinks NaN to the bottom and keeps finite values ordered', () => {
+    const page = [[2], [NaN], [1]]
+    const out = sortRowsWithOrder(cols, page, { column: 'v', direction: 'asc' }).rows
+    expect(out[0][0]).toBe(1)
+    expect(out[1][0]).toBe(2)
+    expect(Number.isNaN(out[2][0])).toBe(true)
+  })
+
+  it('sinks NaN to the bottom in descending order too', () => {
+    const page = [[1], [NaN], [3]]
+    const out = sortRowsWithOrder(cols, page, { column: 'v', direction: 'desc' }).rows
+    expect(out[0][0]).toBe(3)
+    expect(out[1][0]).toBe(1)
+    expect(Number.isNaN(out[2][0])).toBe(true)
+  })
+})

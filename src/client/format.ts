@@ -84,6 +84,24 @@ function firstWord(text: string): { word: string; rest: string } {
   return { word: text.slice(0, end).toLowerCase(), rest: text.slice(cursor) }
 }
 
+const EXPLAIN_FORMAT_VALUES = new Set(['json', 'text', 'xml', 'yaml', 'binary', 'tree'])
+
+/**
+ * Drop a `FORMAT <value>` or `FORMAT=<value>` option so the EXPLAIN ANALYZE body
+ * that follows is what gets classified. `FORMAT=JSON` keeps the value in the
+ * same token; the spaced form has it in the next token, which must be skipped
+ * too or `JSON DELETE ...` would be classified as a read.
+ */
+function skipFormatOption(text: string): string {
+  const format = firstWord(text)
+  if (!format.word.startsWith('format')) return text
+  if (format.word === 'format') {
+    const value = firstWord(format.rest)
+    if (EXPLAIN_FORMAT_VALUES.has(value.word)) return value.rest
+  }
+  return format.rest
+}
+
 /**
  * `EXPLAIN ANALYZE <statement>` executes the statement it plans, so the
  * confirmation prompt has to look at that statement instead of at EXPLAIN.
@@ -102,8 +120,7 @@ function unwrapExplainAnalyze(statement: string): string {
   }
   const analyze = firstWord(rest)
   if (analyze.word !== 'analyze') return statement
-  const next = firstWord(analyze.rest)
-  return next.word.startsWith('format') ? next.rest : analyze.rest
+  return skipFormatOption(analyze.rest)
 }
 
 /** Index just past a CTE name starting at `index`, or null when it is empty. */
@@ -242,9 +259,7 @@ function explainAnalyzeBody(code: string): string | null {
   if (!analyze) return null
   const verbose = firstWord(rest)
   if (verbose.word === 'verbose') rest = verbose.rest
-  const format = firstWord(rest)
-  if (format.word.startsWith('format')) rest = format.rest
-  return rest
+  return skipFormatOption(rest)
 }
 
 /**

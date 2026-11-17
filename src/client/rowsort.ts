@@ -66,8 +66,10 @@ export function sortRowsWithOrder(
   const positions: number[] = [...identity].sort((left, right) => {
     const a = rows[left]?.[index]
     const b = rows[right]?.[index]
-    const aEmpty = a === null || a === undefined
-    const bEmpty = b === null || b === undefined
+    // NaN minus anything is NaN, which breaks comparator transitivity and
+    // leaves the finite values unordered. Group it with the empty cells.
+    const aEmpty = a === null || a === undefined || (typeof a === 'number' && Number.isNaN(a))
+    const bEmpty = b === null || b === undefined || (typeof b === 'number' && Number.isNaN(b))
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
     return factor * order(a, b)
   })

@@ -340,3 +340,16 @@ describe('format helpers', () => {
     expect(formatTtl(Number.NaN)).toBe('—')
   })
 })
+
+describe('EXPLAIN ANALYZE FORMAT <value> writes', () => {
+  it('classifies the body after a spaced FORMAT option', () => {
+    expect(looksLikeWrite('EXPLAIN ANALYZE FORMAT JSON DELETE FROM t', 'postgres')).toBe(true)
+    expect(looksLikeWrite('explain analyze format json update t set a = 1', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE FORMAT JSON CREATE TABLE t(x int)', 'postgres')).toBe(true)
+  })
+
+  it('still treats a non-executing EXPLAIN as a read', () => {
+    expect(looksLikeWrite('EXPLAIN FORMAT JSON DELETE FROM t', 'postgres')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN ANALYZE FORMAT JSON SELECT 1', 'postgres')).toBe(false)
+  })
+})
