@@ -462,9 +462,14 @@ export function DataView(props: DataViewProps): ReactElement {
         props.onToggleConnection(id)
       }
       for (const key of targets.schemas) {
-        if (keptClosed.has(key)) continue
         const separator = key.indexOf(':')
-        void props.onToggleSchema(key.slice(0, separator), key.slice(separator + 1))
+        const connectionId = key.slice(0, separator)
+        const schema = key.slice(separator + 1)
+        // filterTargets pushes the raw schema name, but toggleRow remembers the
+        // encoded treeSchemaKey. Normalize before the keptClosed check or a
+        // user-folded branch with '#'/unicode gets auto-expanded again.
+        if (keptClosed.has(treeSchemaKey(connectionId, schema))) continue
+        void props.onToggleSchema(connectionId, schema)
       }
       // Folders inside a matching schema open too, so the hit is one click away.
       for (const [key, list] of Object.entries(objects)) {
@@ -697,7 +702,9 @@ export function DataView(props: DataViewProps): ReactElement {
         return
       case 'redis-action':
         if (row.connectionId !== undefined && row.db !== undefined) {
-          current.onLoadRedisKeys(row.connectionId, row.db, true)
+          // 'scan' is a fresh retry (no cursor yet, must start at '0');
+          // 'load-more' continues from the existing cursor.
+          current.onLoadRedisKeys(row.connectionId, row.db, row.action === 'load-more')
         }
         return
       default:

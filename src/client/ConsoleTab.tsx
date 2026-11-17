@@ -193,7 +193,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const [failure, setFailure] = useState<Failure | null>(null)
   const [running, setRunning] = useState(false)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(() => readPageSize(CONSOLE_PAGE_KEY, PAGE_SIZES, 500))
+  // "全部" stores the ALL_PAGE_SIZE pseudo value (0); include it in the
+  // read whitelist or a reload silently falls back to 500.
+  const [pageSize, setPageSize] = useState(() => readPageSize(CONSOLE_PAGE_KEY, [...PAGE_SIZES, ALL_PAGE_SIZE], 500))
   const [pageDraft, setPageDraft] = useState('1')
   const [pageFallback, setPageFallback] = useState(false)
   /** True while the page we are loading is the recovery run for an empty page. */

@@ -33,4 +33,14 @@ describe('page size memory', () => {
     writePageSize(CONSOLE_PAGE_KEY, 2000)
     expect(readPageSize(TABLE_PAGE_KEY, [100, 200, 500], 500)).toBe(500)
   })
+
+  it('persists "all rows" (0) once it is in the allowed sizes', () => {
+    // The console offers an "all" page size of 0; it only round-trips when the
+    // caller includes 0 in the whitelist (see ConsoleTab's [...PAGE_SIZES, 0]).
+    const sizesWithAll = [...CONSOLE_SIZES, 0]
+    writePageSize(CONSOLE_PAGE_KEY, 0)
+    expect(readPageSize(CONSOLE_PAGE_KEY, sizesWithAll, 500)).toBe(0)
+    // Without 0 in the whitelist it would silently fall back to the default.
+    expect(readPageSize(CONSOLE_PAGE_KEY, CONSOLE_SIZES, 500)).toBe(500)
+  })
 })

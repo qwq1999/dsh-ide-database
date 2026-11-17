@@ -791,6 +791,10 @@ export class SqlService {
   }
 
   private validateDatabase(connection: ConnectionConfig, template: string): void {
+    // SQLite's "database" is a local file path (jdbc:sqlite:{{database}}).
+    // Spaces, ? and # are legal filename characters there; the generic
+    // URL-component check below must not reject them for file-backed dialects.
+    if (template.startsWith('jdbc:sqlite:')) return
     const database = connection.database.trim()
     if (/[?#\s]/.test(database)) throw new DbError('invalid', '数据库/服务名不能包含空白或 ? # 字符')
     if (template.includes('{{database}}') && database === '') {
