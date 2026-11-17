@@ -172,6 +172,21 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN /* no statement */')).toBe(false)
   })
 
+  it('does not let MySQL executable comments hide ANALYZE', () => {
+    // `/*! ... */` bodies are executed by the server; a versioned comment can
+    // smuggle ANALYZE past the EXPLAIN guard and actually run the DML.
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE */ DELETE FROM users', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!80019 ANALYZE */ UPDATE t SET a = 1', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYSE */ INSERT INTO t VALUES (1)', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE FORMAT=TREE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 */ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*M! ANALYZE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (/*!50000 ANALYZE */) DELETE FROM t', 'mysql')).toBe(false)
+    // Harmless hints remain read-only.
+    expect(isReadOnlySql('EXPLAIN /*!40101 SQL_NO_CACHE */ SELECT 1', 'mysql')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN /*!50000 SQL_NO_CACHE */ DELETE FROM t', 'mysql')).toBe(true)
+  })
+
   it('judges the statement a CTE list runs', () => {
     expect(isReadOnlySql('WITH c AS (SELECT 1) SELECT * FROM c')).toBe(true)
     expect(isReadOnlySql('with recursive c as (select 1) select 1 from c')).toBe(true)

@@ -94,3 +94,46 @@ describe('clearing every column filter', () => {
     await waitFor(() => expect(screen.queryByLabelText('清除列筛选')).toBeNull())
   })
 })
+
+describe('EmptyState clear-conditions with the filter row closed', () => {
+  it('re-queries without column filters after the filter row is closed', async () => {
+    // The previous test persisted `filtersOpen=true` to localStorage; start
+    // from a closed filter row so the toggle below opens it.
+    localStorage.removeItem('dsh-ide-database.table.filters-open.v1')
+    // Mock: a filtered query returns no rows, an unfiltered one returns data.
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: columns.map((column) => ({ ...column })),
+      rows: request.sql.includes('LIKE') ? [] : [[1, '手机数码']],
+      rowCount: request.sql.includes('LIKE') ? 0 : 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    }))
+    render(
+      <TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(0))
+
+    // Open the filter row and enter a value that matches nothing. Re-query the
+    // button each time: React replaces the DOM node on re-render.
+    await waitFor(() => expect((screen.getByLabelText('列筛选') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByLabelText('列筛选'))
+    await waitFor(() => expect(screen.getByLabelText('列筛选').getAttribute('aria-pressed')).toBe('true'))
+    fireEvent.change(await screen.findByLabelText('筛选 name'), { target: { value: 'zzz' } })
+    await waitFor(() => expect(lastSelect()).toContain('zzz'))
+    await waitFor(() => expect(screen.queryByText('没有匹配的行')).not.toBeNull())
+
+    // Close the filter row. The filter is still in effect (EmptyState remains).
+    fireEvent.click(screen.getByLabelText('列筛选'))
+    await waitFor(() => expect(screen.queryByLabelText('筛选 name')).toBeNull())
+    expect(screen.queryByText('没有匹配的行')).not.toBeNull()
+
+    // Clear conditions from the EmptyState. The re-query must drop the column
+    // filter, otherwise the empty result is a dead end with no obvious recovery.
+    const clear = screen.getByTitle('清掉过滤条件、列筛选与排序再查一次')
+    fireEvent.click(clear)
+    await waitFor(() => expect(lastSelect()).not.toContain('zzz'))
+    await waitFor(() => expect(screen.queryByText('手机数码')).not.toBeNull())
+  })
+})

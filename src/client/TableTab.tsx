@@ -1237,7 +1237,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                     setWhereText('')
                     setFilters({})
                     setOrderText('')
-                    apply({ where: '', orderBy: '', page: 0 })
+                    // Pass the cleared filters explicitly: `apply` closes over the
+                    // pre-clear `filters`, so without the override the re-query
+                    // would still carry the column filter just removed (and with
+                    // the filter row closed no debounce effect re-runs to fix it).
+                    apply({ where: '', orderBy: '', page: 0 }, {})
                   }}
                   title="清掉过滤条件、列筛选与排序再查一次"
                 >

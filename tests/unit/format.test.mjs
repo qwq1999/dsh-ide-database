@@ -363,3 +363,17 @@ describe('EXPLAIN ANALYZE FORMAT <value> writes', () => {
     expect(looksLikeWrite('EXPLAIN ANALYZE FORMAT JSON SELECT 1', 'postgres')).toBe(false)
   })
 })
+
+
+describe('executable comment keyword matching', () => {
+  it('does not treat keywords after a closed executable comment as hidden writes', () => {
+    // A benign versioned hint must not make a later REPLACE()/identifier look
+    // like a write hidden inside the executable comment (the regex must not
+    // match across the closing `*/`).
+    expect(looksLikeWrite("/*!40101 SQL_NO_CACHE */ SELECT REPLACE(name, 'a', 'b') FROM users", 'mysql')).toBe(false)
+    expect(looksLikeDdl('/*!40101 SET NAMES utf8 */ SELECT `create` FROM t', 'mysql')).toBe(false)
+    // A real write inside the executable comment is still detected.
+    expect(looksLikeWrite('/*!40101 DELETE FROM users */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*!50000 CREATE TABLE t (a int) */ SELECT 1', 'mysql')).toBe(true)
+  })
+})
