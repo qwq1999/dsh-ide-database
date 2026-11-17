@@ -444,11 +444,20 @@ export const DataGrid = memo(function DataGrid(props: DataGridProps): ReactEleme
                   const from = dragIndex.current
                   dragIndex.current = null
                   setDropIndex(null)
+                  // Reset the suppress-click flag on the next task. A browser
+                  // that emits a trailing click still has it suppressed, but a
+                  // later genuine sort click is no longer swallowed.
+                  window.setTimeout(() => { dragged.current = false }, 0)
                   if (from !== null && from !== index) onReorderColumns(from, index)
                 }}
                 onDragEnd={() => {
                   dragIndex.current = null
                   setDropIndex(null)
+                  // A cancelled drag (Esc, drop outside a valid target) ends
+                  // with no trailing click; clear the flag here too so the next
+                  // sort click works. Deferred so a trailing click, if any, is
+                  // still consumed first.
+                  window.setTimeout(() => { dragged.current = false }, 0)
                 }}
                 onClick={
                   onSort === undefined

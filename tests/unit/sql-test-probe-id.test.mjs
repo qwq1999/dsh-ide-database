@@ -85,4 +85,37 @@ describe('db_test_connection probe id', () => {
     await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop' })
     expect(resolve).toHaveBeenCalledWith('secret-1')
   })
+
+  it('does not reuse the stored secret when the draft clears the password', async () => {
+    const { service, live } = harness()
+    const connectPayloads = []
+    service.ensureBridge = async () => ({
+      request: vi.fn(async (method, payload) => {
+        if (method === 'connect') connectPayloads.push(payload)
+        return method === 'connect' ? { version: '8.0' } : undefined
+      }),
+    })
+
+    await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop', clearPassword: true })
+
+    expect(connectPayloads.length).toBe(1)
+    // The stored secret 's3cr3t' must not be used when the draft clears it.
+    expect(connectPayloads[0].password).toBe('')
+  })
+
+  it('uses the stored secret for the probe when the password is left blank', async () => {
+    const { service, live } = harness()
+    const connectPayloads = []
+    service.ensureBridge = async () => ({
+      request: vi.fn(async (method, payload) => {
+        if (method === 'connect') connectPayloads.push(payload)
+        return method === 'connect' ? { version: '8.0' } : undefined
+      }),
+    })
+
+    await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop' })
+
+    expect(connectPayloads.length).toBe(1)
+    expect(connectPayloads[0].password).toBe('s3cr3t')
+  })
 })

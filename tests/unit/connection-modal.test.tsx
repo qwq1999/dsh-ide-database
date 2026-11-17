@@ -106,6 +106,18 @@ describe('connection modal editing', () => {
     expect(draft.clearPassword).toBe(true)
     expect(draft.password).toBeUndefined()
   })
+
+  it('passes the edited connection id to the test probe so stored credentials resolve', async () => {
+    mocks.testConnection.mockResolvedValue({ ok: true, message: 'ok' })
+    renderModal()
+
+    // The password field is left blank deliberately: the host must resolve the
+    // stored secret using the id we send, rather than testing with a blank one.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+
+    await waitFor(() => expect(mocks.testConnection).toHaveBeenCalledTimes(1))
+    expect(mocks.testConnection.mock.calls[0][0]).toMatchObject({ id: existing.id })
+  })
 })
 
 describe('read-only flag', () => {

@@ -179,7 +179,10 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
     setTesting(true)
     setError('')
     try {
-      const result = await api.testConnection({ ...draft, id: undefined })
+      // Pass the draft as-is, including its id: the host uses the id only to
+      // resolve a stored password when the field is left blank (probeId is a
+      // separate random id, so this cannot evict a live session).
+      const result = await api.testConnection(draft)
       if (requestRef.current === request) setTestResult(result)
     } catch (cause) {
       if (requestRef.current === request) {
