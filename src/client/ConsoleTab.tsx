@@ -594,6 +594,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         picked.insert ?? picked.name,
         connection?.dialect ?? 'mysql',
         picked.kind,
+        picked.insert !== undefined,
       )
       setSelectedRun(false)
       setStatement(next.statement)

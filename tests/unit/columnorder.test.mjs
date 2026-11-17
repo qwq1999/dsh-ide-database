@@ -32,6 +32,14 @@ describe('orderColumns / orderRows', () => {
     expect(orderRows(rows, null)).toBe(rows)
   })
 
+  it('a stale order never pads or drops row cells', () => {
+    // A shorter order used to silently drop trailing cells; a longer one used
+    // to pad rows with nulls. Both must fall back to the untouched rows,
+    // matching orderColumns' stale-order guard.
+    expect(orderRows(rows, [0, 1])).toBe(rows)
+    expect(orderRows(rows, [2, 0, 1, 4])).toBe(rows)
+  })
+
   it('builds an identity order and a signature for resets', () => {
     expect(identityOrder(3)).toEqual([0, 1, 2])
     expect(columnSignature(columns)).toBe('id\u0000name\u0000total')

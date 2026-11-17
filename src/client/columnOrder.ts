@@ -27,7 +27,9 @@ export function orderColumns(columns: ColumnInfo[], order: number[] | null): Col
 }
 
 export function orderRows(rows: Row[], order: number[] | null): Row[] {
-  if (order === null || rows.length === 0) return rows
+  // Mirror orderColumns' stale-order guard: an order built for a different
+  // result width would otherwise pad rows with nulls or silently drop cells.
+  if (order === null || rows.length === 0 || order.length !== rows[0].length) return rows
   return rows.map((row) => {
     const next: CellValue[] = order.map((index) => row[index] ?? null)
     return next
