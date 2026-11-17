@@ -350,7 +350,13 @@ export function useDataSources(notify: Notify): DataSources {
       const preferred = snapshot.connections.find((connection) => connection.id === stored)
       setSelectedId((preferred ?? snapshot.connections[0])?.id ?? '')
       invalidateDetail()
-      setServers({})
+      // Only drop connections that are really gone from the snapshot; clearing
+      // the whole table would hide the online state of every other connected
+      // source (the host disconnects only the deleted id).
+      setServers((previous) => {
+        const alive = new Set(snapshot.connections.map((connection) => connection.id))
+        return Object.fromEntries(Object.entries(previous).filter(([id]) => alive.has(id)))
+      })
       setDetail(null)
       setRedisDetail(null)
       setSelectedKey('')
@@ -637,6 +643,9 @@ export function useDataSources(notify: Notify): DataSources {
       setConnectingId(connectionId)
       try {
         const connected = await api.connect(connectionId)
+        // The connection may have been deleted while the request was in
+        // flight; a late response must not resurrect its online state.
+        if (!connectionsRef.current.some((item) => item.id === connectionId)) return false
         setServers((previous) => ({ ...previous, [connectionId]: connected }))
         setSetupError(null)
         notify('连接成功', 'success')
