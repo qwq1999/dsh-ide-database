@@ -184,3 +184,25 @@ describe('DescriptionCache', () => {
     expect(typeof stored?.describedAt).toBe('string')
   })
 })
+
+
+describe('DescriptionCache.import durability', () => {
+  it('reports failure and keeps pending data when the rewrite cannot reach disk', () => {
+    const { dir, messages, instance } = cache()
+    // Make the target file path a directory so writeFileSync fails.
+    mkdirSync(logFile(dir, 'c1'), { recursive: true })
+
+    const ok = instance.import('c1', { 'app|orders': description('app', 'orders') })
+    expect(ok).toBe(false)
+    expect(messages.some((m) => m.includes('描述缓存整理失败'))).toBe(true)
+
+    // The in-memory map still holds the migrated description.
+    expect(instance.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
+
+    // Once the obstruction is gone, a retry persists it to disk.
+    rmSync(logFile(dir, 'c1'), { recursive: true, force: true })
+    expect(instance.import('c1', { 'app|orders': description('app', 'orders') })).toBe(true)
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
+  })
+})

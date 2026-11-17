@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -192,5 +192,25 @@ describe('StructureStore accessors', () => {
 
     const reloaded = new StructureStore(file, () => {})
     expect(reloaded.getDescription('c1', 'app', 'orders')?.columns).toHaveLength(1)
+  })
+})
+
+
+describe('StructureStore.flush durability', () => {
+  it('retries the tree write after a failure instead of dropping the change', () => {
+    const { file, messages, instance } = store()
+    instance.putSchemas('c1', [{ name: 'shop' }])
+    // Make the temp path a directory so writeFileSync fails.
+    mkdirSync(`${file}.tmp-${process.pid}`, { recursive: true })
+
+    instance.flush()
+    expect(messages.some((m) => m.includes('结构缓存写入失败'))).toBe(true)
+    expect(existsSync(file)).toBe(false)
+
+    // Remove the obstruction; the next flush must still write the tree.
+    rmSync(`${file}.tmp-${process.pid}`, { recursive: true, force: true })
+    instance.flush()
+    expect(existsSync(file)).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).c1.schemas.map((s) => s.name)).toEqual(['shop'])
   })
 })

@@ -40,10 +40,33 @@ export function nextRowSort(current: RowSort | null, column: string, index?: num
  */
 const COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 
+type SortKey = { domain: 0; num: number } | { domain: 1; str: string }
+
+/**
+ * Reduce every cell to one total-order key before comparing. Choosing the
+ * comparison domain from each value's runtime type is not transitive: the
+ * numeric collator ignores a leading minus, so order(-2, -1) uses subtraction
+ * (-2 < -1) while order(-2, "-1") uses the collator ("-2" > "-1"), even though
+ * -1 and "-1" compare equal. A column mixing numbers and numeric strings
+ * (BIGINT / JSON / VARIANT where a driver returns inconsistent types) then
+ * sorts differently depending on the original row order. Numeric strings are
+ * folded into the numeric domain here so every pair shares one total order.
+ */
+function sortKey(value: CellValue): SortKey {
+  if (typeof value === 'number') return { domain: 0, num: value }
+  if (typeof value === 'boolean') return { domain: 0, num: Number(value) }
+  const text = String(value)
+  const trimmed = text.trim()
+  if (trimmed !== '' && Number.isFinite(Number(text))) return { domain: 0, num: Number(text) }
+  return { domain: 1, str: text }
+}
+
 function order(left: CellValue, right: CellValue): number {
-  if (typeof left === 'number' && typeof right === 'number') return left - right
-  if (typeof left === 'boolean' && typeof right === 'boolean') return Number(left) - Number(right)
-  return COLLATOR.compare(String(left), String(right))
+  const a = sortKey(left)
+  const b = sortKey(right)
+  if (a.domain === 0 && b.domain === 0) return a.num - b.num
+  if (a.domain === 1 && b.domain === 1) return COLLATOR.compare(a.str, b.str)
+  return a.domain - b.domain
 }
 
 /**

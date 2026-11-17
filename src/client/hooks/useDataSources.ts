@@ -446,10 +446,16 @@ export function useDataSources(notify: Notify): DataSources {
     const missing: Record<string, string[] | null> = {}
     for (const connection of snapshot.connections) {
       if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
+      // The hydration effect above runs in the same commit but still sees this
+      // render's (empty) visibleSchemas, so checking only that map here would
+      // write a default over a choice the user already saved. Re-read storage:
+      // if a choice exists, leave persistence alone and let hydration apply it.
+      const key = `${VISIBLE_SCHEMAS_KEY}${connection.id}`
+      if (readStoredList(key) !== null) continue
       const cached = schemas[connection.id]
       if (cached === undefined || cached.length === 0) continue
       const chosen = defaultVisibleSchemas(connection, cached)
-      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`, chosen)
+      writeStoredList(key, chosen)
       missing[connection.id] = chosen
     }
     if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))

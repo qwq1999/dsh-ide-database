@@ -239,7 +239,9 @@ export class StructureStore {
     for (const [connectionId, entry] of Object.entries(data)) {
       const descriptions = entry.descriptions
       if (descriptions === undefined || Object.keys(descriptions).length === 0) continue
-      this.descriptions.import(connectionId, descriptions)
+      // Keep the legacy descriptions if the rewrite did not reach disk: the
+      // tree flush must not overwrite them, so a later start can retry migration.
+      if (!this.descriptions.import(connectionId, descriptions)) continue
       entry.descriptions = {}
       migrated = true
     }
@@ -430,12 +432,15 @@ export class StructureStore {
   flush(): void {
     this.descriptions.flush()
     if (!this.dirty) return
-    this.dirty = false
     try {
       const temp = `${this.file}.tmp-${process.pid}`
       // Compact JSON: the tree is small, and indentation only inflates I/O.
       writeFileSync(temp, `${JSON.stringify(this.treeSnapshot())}\n`, { encoding: 'utf8', mode: 0o600 })
       renameSync(temp, this.file)
+      // Only clear the flag once the bytes are on disk. If the write fails the
+      // tree still needs rewriting: leaving dirty set lets the next flush (or
+      // timer) retry instead of silently dropping the change forever.
+      this.dirty = false
     } catch (error) {
       this.log(`结构缓存写入失败：${error instanceof Error ? error.message : String(error)}`)
     }

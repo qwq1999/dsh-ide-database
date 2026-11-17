@@ -165,7 +165,11 @@ export function jarRelativePath(jar: JarRef): string {
 }
 
 export function jarCacheName(jar: JarRef): string {
-  return `${jar.group.replaceAll('.', '_')}__${jar.artifact}__${jar.version}.jar`
+  // Two classifiers of the same group:artifact:version are different jars;
+  // without this suffix they share one cache file and a downloaded jre8 is
+  // mistaken for a requested jre11 (or vice versa).
+  const classifier = jar.classifier === undefined ? '' : `-${jar.classifier}`
+  return `${jar.group.replaceAll('.', '_')}__${jar.artifact}__${jar.version}${classifier}.jar`
 }
 
 export function mavenBase(mirror: 'central' | 'aliyun'): string {
@@ -183,5 +187,8 @@ export function isPresetId(value: string): value is PresetId {
 }
 
 export function isSqlDialect(value: string): value is SqlDialect {
-  return value !== 'redis' && value !== ''
+  // A type guard must actually validate the value. Checking only that it is
+  // not 'redis'/'': let any garbage string through, which would be loaded as a
+  // dialect by hydrateDriver/upsertDriver and break SQL generation downstream.
+  return Object.hasOwn(SQL_DIALECT_LABEL, value)
 }

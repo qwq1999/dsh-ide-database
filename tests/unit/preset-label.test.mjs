@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isPresetId, PRESET_LABEL, PRESET_ORDER, presetOf } from '../../src/shared/presets.ts'
+import { isPresetId, isSqlDialect, jarCacheName, PRESET_LABEL, PRESET_ORDER, presetOf } from '../../src/shared/presets.ts'
 
 describe('preset labels', () => {
   it('names each preset after itself instead of falling back to another engine', () => {
@@ -27,5 +27,31 @@ describe('preset lookup', () => {
   it('returns the matching preset spec for a real id', () => {
     expect(presetOf('sqlite')).toMatchObject({ id: 'sqlite', hostOptional: true, defaultPort: 0 })
     expect(presetOf('mysql')?.defaultPort).toBe(3306)
+  })
+})
+
+describe('isSqlDialect', () => {
+  it('accepts only real SQL dialects, not arbitrary strings', () => {
+    for (const dialect of ['mysql', 'oracle', 'dameng', 'postgres', 'sqlite', 'mssql', 'oceanbase-oracle', 'generic']) {
+      expect(isSqlDialect(dialect)).toBe(true)
+    }
+    for (const bogus of ['redis', '', 'bogus', 'postgress', '__proto__', 'toString', 'constructor']) {
+      expect(isSqlDialect(bogus)).toBe(false)
+    }
+  })
+})
+
+
+describe('jarCacheName', () => {
+  it('gives each classifier of the same coordinates its own cache file', () => {
+    const base = { group: 'com.microsoft.sqlserver', artifact: 'mssql-jdbc', version: '9.4.1' }
+    const plain = jarCacheName(base)
+    const jre8 = jarCacheName({ ...base, classifier: 'jre8' })
+    const jre11 = jarCacheName({ ...base, classifier: 'jre11' })
+    expect(jre8).not.toBe(jre11)
+    expect(jre8).not.toBe(plain)
+    expect(jre11).not.toBe(plain)
+    expect(jre8).toContain('jre8')
+    expect(jre11).toContain('jre11')
   })
 })

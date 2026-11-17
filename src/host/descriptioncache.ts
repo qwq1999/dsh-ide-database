@@ -101,13 +101,13 @@ export class DescriptionCache {
    *
    * TODO(0.5.0): 只服务于旧版缓存迁移，发布 0.5.0 时随 StructureStore.migrateDescriptions 一起删除。
    */
-  import(connectionId: string, descriptions: Record<string, TableDescription>): void {
+  import(connectionId: string, descriptions: Record<string, TableDescription>): boolean {
     const map = this.ensure(connectionId)
     for (const description of Object.values(descriptions)) {
       if (description.table === '') continue
       map.set(cacheKey(description.schema, description.table), description)
     }
-    this.rewrite(connectionId)
+    return this.rewrite(connectionId)
   }
 
   /** Drop descriptions of schemas the server no longer reports. */
@@ -185,13 +185,9 @@ export class DescriptionCache {
     this.rewrite(connectionId)
   }
 
-  /** Rewrite the log with one line per live entry, dropping duplicates/tombstones. */
-  private rewrite(connectionId: string): void {
+  /** Rewrite the log with one line per live entry. Returns true once on disk. */
+  private rewrite(connectionId: string): boolean {
     const map = this.entries.get(connectionId) ?? new Map<string, TableDescription>()
-    // The live map already reflects buffered lines, so drop them rather than
-    // replaying stale puts over the compacted file.
-    this.pending.delete(connectionId)
-    this.appended.set(connectionId, 0)
     const lines: string[] = []
     // Write the description's own fields; the in-memory key is opaque and may
     // contain dots in either name.
@@ -203,8 +199,15 @@ export class DescriptionCache {
       const temp = `${this.file(connectionId)}.tmp-${process.pid}`
       writeFileSync(temp, lines.length === 0 ? '' : `${lines.join('\n')}\n`, { encoding: 'utf8', mode: 0o600 })
       renameSync(temp, this.file(connectionId))
+      // The live map already reflects buffered lines. Only drop them once the
+      // compacted file is on disk; on failure the old log is still authoritative
+      // and its pending lines must be kept so a later flush can replay them.
+      this.pending.delete(connectionId)
+      this.appended.set(connectionId, 0)
+      return true
     } catch (error) {
       this.log(`描述缓存整理失败：${errorText(error)}`)
+      return false
     }
   }
 }
