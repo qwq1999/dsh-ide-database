@@ -182,10 +182,17 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     setDraft((previous) => ({ ...previous, [key]: value }))
   }
 
-  const updateNumber = (key: 'maxRows' | 'queryTimeoutSec' | 'connectTimeoutSec' | 'redisScanCount', value: string) => {
+  const updateNumber = (
+    key: 'maxRows' | 'queryTimeoutSec' | 'connectTimeoutSec' | 'redisScanCount',
+    value: string,
+    min: number,
+    max: number,
+  ) => {
     const parsed = Number.parseInt(value, 10)
-    if (Number.isFinite(parsed) && parsed > 0) update(key, parsed)
-    else update(key, 1)
+    // Clamp into the same range the host validates on save; on empty/invalid
+    // input fall back to the field's own minimum so the draft stays submittable.
+    const next = Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : min
+    update(key, next)
   }
 
   const javaCandidates = props.env.java.candidates ?? []
@@ -315,9 +322,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
               <TextInput
                 type="number"
                 min={1}
-                max={10000}
+                max={5000}
                 value={String(draft.maxRows)}
-                onChange={(event) => updateNumber('maxRows', event.target.value)}
+                onChange={(event) => updateNumber('maxRows', event.target.value, 1, 5000)}
               />
             </Field>
             <Field label="查询超时（秒）">
@@ -326,7 +333,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={1}
                 max={600}
                 value={String(draft.queryTimeoutSec)}
-                onChange={(event) => updateNumber('queryTimeoutSec', event.target.value)}
+                onChange={(event) => updateNumber('queryTimeoutSec', event.target.value, 1, 600)}
               />
             </Field>
             <Field label="连接超时（秒）">
@@ -335,7 +342,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={1}
                 max={120}
                 value={String(draft.connectTimeoutSec)}
-                onChange={(event) => updateNumber('connectTimeoutSec', event.target.value)}
+                onChange={(event) => updateNumber('connectTimeoutSec', event.target.value, 1, 120)}
               />
             </Field>
             <Field label="Redis 单次扫描数量">
@@ -344,7 +351,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={10}
                 max={2000}
                 value={String(draft.redisScanCount)}
-                onChange={(event) => updateNumber('redisScanCount', event.target.value)}
+                onChange={(event) => updateNumber('redisScanCount', event.target.value, 10, 2000)}
               />
             </Field>
             <Field label="Maven 镜像" hint="驱动 jar 下载源">

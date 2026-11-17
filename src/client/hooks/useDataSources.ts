@@ -829,9 +829,14 @@ export function useDataSources(notify: Notify): DataSources {
         setDescriptions((previous) => ({ ...previous, [key]: description }))
         if (detailRequest.current === request) setDetail(description)
       } catch (error) {
-        if (detailRequest.current === request) setDetail(null)
-        if (!serversRef.current[connectionId]) notify('数据源未连接，连接后可查看表结构', 'info')
-        else notify(`读取表结构失败：${errorText(error)}`, 'error')
+        // Only report failures for the still-current request: after a switch,
+        // a stale describe rejection must neither clear the new detail nor
+        // surface a toast naming a table the user is no longer viewing.
+        if (detailRequest.current === request) {
+          setDetail(null)
+          if (!serversRef.current[connectionId]) notify('数据源未连接，连接后可查看表结构', 'info')
+          else notify(`读取表结构失败：${errorText(error)}`, 'error')
+        }
       } finally {
         if (detailRequest.current === request) setDetailLoading(false)
         setLoadingDescriptions((previous) => ({ ...previous, [key]: false }))

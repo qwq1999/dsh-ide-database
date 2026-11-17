@@ -231,7 +231,16 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
       if (lower.startsWith('timestamp')) return oracleTimestampText(name, lower)
       return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     }
-    if (dialect === 'dameng') return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    if (dialect === 'dameng') {
+      // The grid shows the bridge text, which keeps fractional seconds for
+      // TIMESTAMP columns (e.g. "...02.509"). A seconds-only TO_CHAR makes a
+      // like-filter on the displayed value match nothing. Trim the fixed-width
+      // fraction the same way the bridge does.
+      if (typeName.toLowerCase().startsWith('timestamp')) {
+        return `RTRIM(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.')`
+      }
+      return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    }
     if (dialect === 'mssql') {
       const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
       // datetime2 keeps up to 7 fractional digits and datetimeoffset adds a

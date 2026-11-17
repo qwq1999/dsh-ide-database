@@ -184,6 +184,16 @@ describe('filterExpression', () => {
     )
   })
 
+  it('keeps fractional seconds in a Dameng TIMESTAMP like-filter', () => {
+    expect(filterExpression('dameng', column('installed_on', 'TIMESTAMP(6)'), { op: 'like', text: '2026-09-10 14:42:02.509' })).toBe(
+      `RTRIM(RTRIM(TO_CHAR("installed_on", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.') LIKE '%2026-09-10 14:42:02.509%' ESCAPE '!'`,
+    )
+    // A plain DATE column has no fraction and must still format to the second.
+    expect(filterExpression('dameng', column('d', 'DATE'), { op: 'like', text: '2026-09-10' })).toBe(
+      `TO_CHAR("d", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2026-09-10%' ESCAPE '!'`,
+    )
+  })
+
   it('keeps an Oracle local time zone region when writing or filtering', () => {
     const ltz = 'TIMESTAMP(6) WITH LOCAL TIME ZONE'
     const at = column('AT', ltz)
