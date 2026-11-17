@@ -14,7 +14,7 @@ import type {
 import type { ConfigStore } from './config.js'
 import { DbError } from './errors.js'
 import type { SecretStore } from './secrets.js'
-import { isRedisReadCommand } from '../shared/redisread.js'
+import { isRedisReadCommand, tokenizeRedisCommand } from '../shared/redisread.js'
 
 interface Session {
   client: RedisClient
@@ -84,7 +84,7 @@ function truncateText(text: string, limit: number): { text: string; truncated: b
  * ioredis normally returns a flat `[member, score, member, score, ...]` list,
  * but RESP3 connections (and raw `CALL`) return `[[member, score], ...]`.
  */
-export function zsetEntries(reply: unknown): Array<{ member: string; score: number }> {
+export function zsetEntries(reply: unknown): Array<{ member: string; score: number | string }> {
   const flat: string[] = []
   if (Array.isArray(reply)) {
     for (const entry of reply) {
@@ -92,9 +92,18 @@ export function zsetEntries(reply: unknown): Array<{ member: string; score: numb
       else flat.push(String(entry))
     }
   }
-  const items: Array<{ member: string; score: number }> = []
+  const items: Array<{ member: string; score: number | string }> = []
   for (let index = 0; index + 1 < flat.length; index += 2) {
-    const score = Number(flat[index + 1])
+    const raw = flat[index + 1]
+    // Redis accepts inf / -inf / nan as scores and returns them back as
+    // those literal strings. Keep them verbatim instead of collapsing
+    // them to 0 (Number('inf') is NaN), so the panel shows the real score.
+    const literal = raw.toLowerCase()
+    if (literal === 'inf' || literal === '-inf' || literal === 'nan') {
+      items.push({ member: flat[index], score: raw })
+      continue
+    }
+    const score = Number(raw)
     items.push({ member: flat[index], score: Number.isFinite(score) ? score : 0 })
   }
   return items
@@ -193,43 +202,6 @@ export function isReadOnlyCommand(command: string, subcommand?: string): boolean
 // FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.
 const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf', 'flushdb', 'flushall'])
 
-/** Splits a Redis command line into argv, honouring single and double quotes. */
-function tokenizeCommand(input: string): string[] {
-  const tokens: string[] = []
-  let current = ''
-  let quote: '"' | "'" | null = null
-  let escaped = false
-  for (const char of input) {
-    if (escaped) {
-      current += char
-      escaped = false
-      continue
-    }
-    if (char === '\\' && quote !== "'") {
-      escaped = true
-      continue
-    }
-    if (quote !== null) {
-      if (char === quote) quote = null
-      else current += char
-      continue
-    }
-    if (char === '"' || char === "'") {
-      quote = char
-      continue
-    }
-    if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-      if (current !== '') {
-        tokens.push(current)
-        current = ''
-      }
-      continue
-    }
-    current += char
-  }
-  if (current !== '') tokens.push(current)
-  return tokens
-}
 
 export class RedisManager {
   private readonly sessions = new Map<string, Session>()
@@ -583,7 +555,7 @@ export class RedisManager {
   }
 
   async command(connId: string, db: number, input: string, allowWrite: boolean): Promise<RedisCommandResult> {
-    const tokens = tokenizeCommand(input)
+    const tokens = tokenizeRedisCommand(input)
     if (tokens.length === 0) throw new DbError('invalid', '命令不能为空')
     const command = tokens[0].toUpperCase()
     // Deny before connecting: a forbidden command must not open a session either.

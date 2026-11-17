@@ -68,6 +68,15 @@ describe('zsetEntries', () => {
     ])
   })
 
+  it('preserves the special inf / -inf / nan scores verbatim', () => {
+    expect(zsetEntries(['hi', 'inf', 'lo', '-inf', 'mid', 'nan', 'garbage', 'abc'])).toEqual([
+      { member: 'hi', score: 'inf' },
+      { member: 'lo', score: '-inf' },
+      { member: 'mid', score: 'nan' },
+      { member: 'garbage', score: 0 },
+    ])
+  })
+
   it('keeps members with non-numeric scores at zero and ignores lonely entries', () => {
     expect(zsetEntries(['SKU-1', 'abc', 'SKU-2'])).toEqual([{ member: 'SKU-1', score: 0 }])
     expect(zsetEntries(null)).toEqual([])

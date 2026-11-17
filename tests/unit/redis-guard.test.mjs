@@ -119,6 +119,19 @@ describe('Redis command guard', () => {
     }
   })
 
+  it('classifies quoted commands identically on client and host', () => {
+    // The client used a regex that required a leading letter and ignored
+    // quotes, so `MEMORY "PURGE"` / `"DEL" k` were seen as reads there but as
+    // writes on the host. Both sides now use the same tokenizer.
+    for (const command of ['MEMORY "PURGE"', 'memory "purge"', '"DEL" key', '"SET" key value', 'MEMORY \'PURGE\'']) {
+      const parts = command.split(/\s+/).map((token) => token.replace(/^["\x27]|["\x27]$/g, ''))
+      expect(looksLikeRedisWrite(command)).toBe(!isReadOnlyCommand(parts[0], parts[1]))
+    }
+    expect(looksLikeRedisWrite('MEMORY "PURGE"')).toBe(true)
+    expect(looksLikeRedisWrite('"DEL" key')).toBe(true)
+    expect(looksLikeRedisWrite('MEMORY "USAGE" key')).toBe(false)
+  })
+
   it('rejects MEMORY PURGE on a read-only connection before execution', async () => {
     const { config, redis } = manager()
     const id = config.snapshot().connections[0].id

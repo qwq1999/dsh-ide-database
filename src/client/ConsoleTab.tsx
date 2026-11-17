@@ -710,6 +710,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportOpen(false)
     const collected: QueryResult[] = []
     let last: QueryResult | null = null
+    // Record the script on submission so a partial run still appears in
+    // history; a later statement failing must not erase the whole script.
+    setHistory(pushHistory('sql', parts.join(';\n')))
     try {
       for (const [index, part] of parts.entries()) {
         if (token !== runToken.current) return
@@ -749,7 +752,6 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setBase('')
       setSourceSql(parts[parts.length - 1] ?? '')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
-      setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
       if (parts.some((part) => looksLikeDdl(part, sqlDialectOf(connection?.dialect)))) {
         completionCatalog.current?.clear()
@@ -868,12 +870,16 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }
 
   /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
+  // Connection id whose transaction is still open and needs a rollback on unmount/switch.
+  const txOpenRef = useRef('')
   useEffect(
     () => () => {
-      if (tx !== 'open' || selectedId === '') return
-      void api.tx(selectedId, 'rollback').catch(() => undefined)
+      const id = txOpenRef.current
+      if (id === '') return
+      txOpenRef.current = ''
+      void api.tx(id, 'rollback').catch(() => undefined)
     },
-    [tx, selectedId],
+    [selectedId],
   )
 
   const runTx = async (action: TxAction): Promise<void> => {
@@ -882,12 +888,36 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setTxBusy(true)
     setFailure(null)
     try {
-      await withConnection(selectedId, () => api.tx(selectedId, action))
-      setTx(action === 'start' ? 'open' : 'idle')
+      if (action === 'start') {
+        // Starting a transaction is idempotent and, like a query, may need
+        // to open a cold connection first.
+        await withConnection(selectedId, () => api.tx(selectedId, action))
+        txOpenRef.current = selectedId
+        setTx('open')
+        setTxNote('事务已开始，提交前可回滚')
+      } else {
+        // commit/rollback finalize an EXISTING transaction. Retrying them
+        // after a reconnect would act on a fresh session with no active
+        // transaction — reporting success while uncommitted work was lost
+        // with the old session. Never reconnect-retry these actions.
+        try {
+          await api.tx(selectedId, action)
+        } catch (error) {
+          if (error instanceof ApiError && error.code === 'not-connected') {
+            txOpenRef.current = ''
+            setTx('idle')
+            setFailure({ message: '连接已断开，事务可能已丢失', detail: '未提交更改可能已丢失，请检查数据后重试。' })
+            return
+          }
+          throw error
+        }
+        txOpenRef.current = ''
+        setTx('idle')
+        setTxNote(action === 'commit' ? '事务已提交' : '事务已回滚')
+      }
       setPlan(null)
       setResult(null)
       setBase('')
-      setTxNote(action === 'start' ? '事务已开始，提交前可回滚' : action === 'commit' ? '事务已提交' : '事务已回滚')
     } catch (error) {
       setFailure(failureText(error))
     } finally {

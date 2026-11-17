@@ -1,7 +1,7 @@
 import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
-import { isRedisReadCommand } from '../shared/redisread'
+import { isRedisReadCommand, tokenizeRedisCommand } from '../shared/redisread'
 import { SQLITE_ARGUMENT_PRAGMAS, parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
@@ -395,8 +395,10 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
 }
 
 function redisCommandWords(command: string): [string, string | undefined] {
-  const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)(?:\s+([^\s]+))?/.exec(command)
-  return [match?.[1]?.toLowerCase() ?? '', match?.[2]]
+  // Use the same tokenizer as the host, so a quoted command (e.g. `MEMORY
+  // "PURGE"` or `"DEL" k`) is classified identically on both sides.
+  const tokens = tokenizeRedisCommand(command)
+  return [tokens[0]?.toLowerCase() ?? '', tokens[1]]
 }
 
 export function looksLikeRedisWrite(command: string): boolean {
