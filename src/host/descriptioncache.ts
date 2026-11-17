@@ -145,11 +145,17 @@ export class DescriptionCache {
   /** Append buffered lines. Called by the debounce timer and by StructureStore.flush(). */
   flush(): void {
     for (const [connectionId, lines] of [...this.pending]) {
-      this.pending.delete(connectionId)
-      if (lines.length === 0) continue
+      if (lines.length === 0) {
+        this.pending.delete(connectionId)
+        continue
+      }
       try {
         mkdirSync(this.dir, { recursive: true })
         appendFileSync(this.file(connectionId), `${lines.join('\n')}\n`, { encoding: 'utf8', mode: 0o600 })
+        // Only drop the buffer once the bytes are on disk. On a write failure
+        // (disk full, permissions) keep the lines so the next flush can retry
+        // instead of silently losing the descriptions for this connection.
+        this.pending.delete(connectionId)
       } catch (error) {
         this.log(`描述缓存写入失败：${errorText(error)}`)
       }

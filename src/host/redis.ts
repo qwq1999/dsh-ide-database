@@ -233,6 +233,10 @@ function tokenizeCommand(input: string): string[] {
 
 export class RedisManager {
   private readonly sessions = new Map<string, Session>()
+  /** Session opens in progress, keyed like `sessions`, so concurrent callers share one client. */
+  private readonly opening = new Map<string, Promise<Session>>()
+  /** Incremented on every disconnect; an open that started before it must not resurrect a session. */
+  private readonly epochs = new Map<string, number>()
 
   constructor(
     private readonly config: ConfigStore,
@@ -275,12 +279,23 @@ export class RedisManager {
     }
   }
 
-  async connect(connId: string): Promise<ServerInfo> {
-    const conn = this.connection(connId)
-    const db = conn.redisDb
-    const key = sessionKey(connId, db)
-    const existing = this.sessions.get(key)
-    if (existing !== undefined) return this.serverInfo(conn, existing.client)
+  private epochOf(connId: string): number {
+    return this.epochs.get(connId) ?? 0
+  }
+
+  /**
+   * Open one client and register it, revalidating after the await so a concurrent
+   * disconnect (epoch bump) or a winning opener never leaves an orphaned client
+   * or resurrects a session the user already closed.
+   */
+  private async openSession(
+    connId: string,
+    conn: ConnectionConfig,
+    db: number,
+    epoch: number,
+    failure: (error: unknown) => DbError,
+    touch: boolean,
+  ): Promise<Session> {
     const Redis = await redisDriver()
     const client = new Redis(this.options(conn, db) as never)
     try {
@@ -288,11 +303,66 @@ export class RedisManager {
       await client.ping()
     } catch (error) {
       client.disconnect()
-      throw new DbError('connect-failed', `无法连接 Redis ${conn.host}:${conn.port}：${messageOf(error)}`)
+      throw failure(error)
     }
-    this.sessions.set(key, { client, readOnly: conn.readOnly, db })
-    this.config.touchConnection(connId)
-    return this.serverInfo(conn, client)
+    const key = sessionKey(connId, db)
+    if (this.epochOf(connId) !== epoch) {
+      client.disconnect()
+      throw new DbError('not-connected', '连接尚未打开')
+    }
+    const raced = this.sessions.get(key)
+    if (raced !== undefined && raced.client.status === 'ready') {
+      client.disconnect()
+      return raced
+    }
+    if (raced !== undefined) {
+      try {
+        raced.client.disconnect()
+      } catch {
+        // Best effort: replace the stale, non-ready session.
+      }
+    }
+    const session: Session = { client, readOnly: conn.readOnly, db }
+    this.sessions.set(key, session)
+    if (touch) this.config.touchConnection(connId)
+    return session
+  }
+
+  /** De-duplicate concurrent opens of the same connId+db into a single client. */
+  private openingSession(
+    connId: string,
+    conn: ConnectionConfig,
+    db: number,
+    failure: (error: unknown) => DbError,
+    touch: boolean,
+  ): Promise<Session> {
+    const key = sessionKey(connId, db)
+    let task = this.opening.get(key)
+    if (task === undefined) {
+      task = this.openSession(connId, conn, db, this.epochOf(connId), failure, touch)
+      this.opening.set(key, task)
+      const done = (): void => {
+        if (this.opening.get(key) === task) this.opening.delete(key)
+      }
+      void task.then(done, done)
+    }
+    return task
+  }
+
+  async connect(connId: string): Promise<ServerInfo> {
+    const conn = this.connection(connId)
+    const db = conn.redisDb
+    const key = sessionKey(connId, db)
+    const existing = this.sessions.get(key)
+    if (existing !== undefined && existing.client.status === 'ready') return this.serverInfo(conn, existing.client)
+    const session = await this.openingSession(
+      connId,
+      conn,
+      db,
+      (error) => new DbError('connect-failed', `无法连接 Redis ${conn.host}:${conn.port}：${messageOf(error)}`),
+      true,
+    )
+    return this.serverInfo(conn, session.client)
   }
 
   /**
@@ -307,18 +377,13 @@ export class RedisManager {
     if (existing !== undefined && existing.client.status === 'ready') return existing
     const live = [...this.sessions.keys()].some((entry) => entry.startsWith(`${connId}\u0000`))
     if (!live) throw new DbError('not-connected', '连接尚未打开')
-    const Redis = await redisDriver()
-    const client = new Redis(this.options(conn, db) as never)
-    try {
-      await client.connect()
-      await client.ping()
-    } catch (error) {
-      client.disconnect()
-      throw new DbError('connect-failed', `无法打开 Redis db${db}：${messageOf(error)}`)
-    }
-    const session: Session = { client, readOnly: conn.readOnly, db }
-    this.sessions.set(key, session)
-    return session
+    return this.openingSession(
+      connId,
+      conn,
+      db,
+      (error) => new DbError('connect-failed', `无法打开 Redis db${db}：${messageOf(error)}`),
+      false,
+    )
   }
 
   private async serverInfo(conn: ConnectionConfig, client: RedisClient): Promise<ServerInfo> {
@@ -340,6 +405,7 @@ export class RedisManager {
   }
 
   async disconnect(connId: string): Promise<void> {
+    this.epochs.set(connId, this.epochOf(connId) + 1)
     const prefix = `${connId}\u0000`
     const closing = [...this.sessions.entries()].filter(([key]) => key.startsWith(prefix))
     for (const [key] of closing) this.sessions.delete(key)
@@ -542,6 +608,7 @@ export class RedisManager {
   async dispose(): Promise<void> {
     const sessions = [...this.sessions.values()]
     this.sessions.clear()
+    this.opening.clear()
     await Promise.all(
       sessions.map(async (session) => {
         try {

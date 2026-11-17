@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -28,6 +28,23 @@ afterEach(() => {
 })
 
 describe('DescriptionCache', () => {
+  it('retries buffered lines after a failed flush instead of dropping them', () => {
+    const { dir, messages, instance } = cache()
+    // Make the target path a directory so appendFileSync fails.
+    mkdirSync(logFile(dir, 'c1'))
+    instance.put('c1', 'app', 'orders', description('app', 'orders'))
+
+    instance.flush()
+    expect(messages.some((m) => m.includes('描述缓存写入失败'))).toBe(true)
+    expect(existsSync(logFile(dir, 'c1'))).toBe(true) // still the directory, no file written
+
+    // Remove the obstruction and flush again: the buffered line must survive.
+    rmSync(logFile(dir, 'c1'), { recursive: true, force: true })
+    instance.flush()
+
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
+  })
   it('appends entries and reloads them in a fresh instance', () => {
     const { dir, instance } = cache()
     instance.put('c1', 'app', 'orders', description('app', 'orders'))
