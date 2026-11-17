@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { SQL_DIALECT_LABEL } from '../../shared/presets'
 import { sqlDialectOf } from '../../shared/dialect'
 import type { DriverStatus, JarRef, SqlDialect } from '../../shared/types'
@@ -49,8 +49,11 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
   const [jarsText, setJarsText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // A save in flight must not close a different driver modal opened later.
+  const requestRef = useRef(0)
 
   useEffect(() => {
+    requestRef.current += 1
     setError('')
     setSaving(false)
     if (!props.open) return
@@ -94,6 +97,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
       setError('请至少填写一行 Maven 坐标：group:artifact:version')
       return
     }
+    const request = requestRef.current
     setSaving(true)
     setError('')
     try {
@@ -105,13 +109,14 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
         urlTemplate: urlTemplate.trim(),
         jars,
       })
+      if (requestRef.current !== request) return
       props.notify(props.editing ? '自定义驱动已更新' : '自定义驱动已创建', 'success')
       props.onSaved(response.drivers)
       props.onClose()
     } catch (cause) {
-      setError(errorText(cause))
+      if (requestRef.current === request) setError(errorText(cause))
     } finally {
-      setSaving(false)
+      if (requestRef.current === request) setSaving(false)
     }
   }
 

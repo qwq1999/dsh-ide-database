@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { PRESET_LABEL, PRESET_ORDER, PRESETS, presetOf } from '../../shared/presets'
 import type {
   ClientConnection,
@@ -63,11 +63,15 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
   const [error, setError] = useState('')
+  // A save/test in flight must not act on a different modal instance after the
+  // user closes this one and opens another while the request is pending.
+  const requestRef = useRef(0)
 
   const customDrivers = useMemo(() => props.drivers.filter((driver) => driver.preset === null), [props.drivers])
   const editing = props.editing
 
   useEffect(() => {
+    requestRef.current += 1
     setError('')
     setTestResult(null)
     setSaving(false)
@@ -171,15 +175,19 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
       setError('Redis 连接请在保存后通过面板连接验证')
       return
     }
+    const request = requestRef.current
     setTesting(true)
     setError('')
     try {
-      setTestResult(await api.testConnection({ ...draft, id: undefined }))
+      const result = await api.testConnection({ ...draft, id: undefined })
+      if (requestRef.current === request) setTestResult(result)
     } catch (cause) {
-      setTestResult(null)
-      setError(errorText(cause))
+      if (requestRef.current === request) {
+        setTestResult(null)
+        setError(errorText(cause))
+      }
     } finally {
-      setTesting(false)
+      if (requestRef.current === request) setTesting(false)
     }
   }
 
@@ -190,17 +198,19 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
       setError(problem)
       return
     }
+    const request = requestRef.current
     setSaving(true)
     setError('')
     try {
       await api.saveConnection(draft)
+      if (requestRef.current !== request) return
       props.notify(editing ? '连接已更新' : '连接已创建', 'success')
       props.onSaved()
       props.onClose()
     } catch (cause) {
-      setError(errorText(cause))
+      if (requestRef.current === request) setError(errorText(cause))
     } finally {
-      setSaving(false)
+      if (requestRef.current === request) setSaving(false)
     }
   }
 

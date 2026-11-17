@@ -153,3 +153,57 @@ describe('read-only flag', () => {
     expect(draft.id).toBeUndefined()
   })
 })
+
+describe('connection modal stale save', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not close a different modal when an earlier save resolves late', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined
+    mocks.saveConnection.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve }))
+    const onClose = vi.fn()
+    const onSaved = vi.fn()
+    const notify = vi.fn()
+    const other = { ...existing, id: 'conn-pg', name: '演示 PostgreSQL' }
+
+    const view = render(
+      <ConnectionModal
+        open
+        editing={existing}
+        drivers={[]}
+        onClose={onClose}
+        onSaved={onSaved}
+        onDelete={() => undefined}
+        notify={notify}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(mocks.saveConnection).toHaveBeenCalledTimes(1))
+
+    // The user closes this modal and opens another while the first save is still in flight.
+    view.rerender(
+      <ConnectionModal
+        open
+        editing={other}
+        drivers={[]}
+        onClose={onClose}
+        onSaved={onSaved}
+        onDelete={() => undefined}
+        notify={notify}
+      />,
+    )
+
+    resolveSave({ connection: existing })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // The stale request must not fire its side effects on the new modal.
+    expect(notify).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
