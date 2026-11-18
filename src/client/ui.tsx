@@ -547,10 +547,15 @@ export function Modal({
       const first = items[0]!
       const last = items[items.length - 1]!
       const active = document.activeElement
-      if (event.shiftKey && (active === first || !box?.contains(active))) {
+      // Focus can legitimately land on the dialog container itself (it has
+      // tabIndex=-1, so clicking the title/blank area focuses it), or it can
+      // fall back there on open when every control is disabled. Treat that as
+      // a boundary too, otherwise Tab walks out into the background page.
+      const atBox = active === box
+      if (event.shiftKey && (active === first || atBox || !box?.contains(active))) {
         event.preventDefault()
         last.focus()
-      } else if (!event.shiftKey && (active === last || !box?.contains(active))) {
+      } else if (!event.shiftKey && (active === last || atBox || !box?.contains(active))) {
         event.preventDefault()
         first.focus()
       }

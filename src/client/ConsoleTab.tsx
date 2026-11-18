@@ -1315,7 +1315,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, seeded)
     }
     setSchemas([])
-    setRedisDb(null)
+    // Do NOT reset redisDb here. The restore effect above (keyed on
+    // selectedId/isRedis) already resets it to the remembered db for the new
+    // source; clearing it in this same commit would win the batch and discard
+    // the restored value (remembered db silently lost on source adoption).
     setRedisDatabases(null)
     redisDatabasesLoaded.current = false
     scanCursorRef.current = '0'

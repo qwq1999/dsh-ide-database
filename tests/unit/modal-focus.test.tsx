@@ -51,6 +51,30 @@ describe('Modal focus', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '确定' }))
   })
 
+  it('keeps Tab trapped when focus lands on the dialog container itself', () => {
+    render(<Harness />)
+    const trigger = screen.getByRole('button', { name: '打开' })
+    trigger.focus()
+    fireEvent.click(trigger)
+
+    // A real browser focuses the tabindex=-1 dialog when its title/blank area
+    // is clicked. jsdom won't do that automatically, so simulate it.
+    const dialog = screen.getByRole('dialog')
+    dialog.focus()
+    expect(document.activeElement).toBe(dialog)
+
+    const tabForward = fireEvent.keyDown(dialog, { key: 'Tab' })
+    // With the trap working, the handler calls preventDefault and moves focus
+    // back into the dialog's first focusable control.
+    expect(tabForward).toBe(false) // preventDefault() was called
+    expect(document.activeElement).not.toBe(dialog)
+
+    dialog.focus()
+    const tabBack = fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })
+    expect(tabBack).toBe(false)
+    expect(document.activeElement).not.toBe(dialog)
+  })
+
   it('locks the page scroll while the dialog is open', () => {
     render(<Harness />)
     const trigger = screen.getByRole('button', { name: '打开' })
