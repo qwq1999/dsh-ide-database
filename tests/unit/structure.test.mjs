@@ -138,6 +138,38 @@ describe('StructureStore accessors', () => {
     expect(instance.getDescription('c1', 'crm', 'b')).toBeUndefined()
   })
 
+  it('keeps legacy descriptions in the snapshot when their migration failed', () => {
+    const { file } = store()
+    const dir = join(file, '..', 'descriptions')
+    // A legacy structure.json carrying descriptions.
+    writeFileSync(
+      file,
+      JSON.stringify({
+        c1: {
+          fetchedAt: '2026-11-18T00:00:00.000Z',
+          schemas: [{ name: 'shop' }],
+          objects: { shop: [{ name: 'orders', kind: 'table' }] },
+          descriptions: {
+            'shop.orders': { schema: 'shop', table: 'orders', kind: 'table', columns: [], indexes: [] },
+          },
+        },
+      }),
+    )
+    // Force the migration write to fail: the target .ndjson path is a directory.
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(join(dir, 'c1.ndjson'))
+    const messages = []
+    const instance = new StructureStore(file, (message) => messages.push(message))
+    // The failed migration keeps the payload in the snapshot so a later flush
+    // cannot destroy the only remaining copy.
+    expect(instance.snapshot().c1.descriptions['shop.orders']).toMatchObject({ table: 'orders' })
+
+    // Remove the obstacle; a fresh start migrates successfully and drops it.
+    rmSync(join(dir, 'c1.ndjson'), { recursive: true, force: true })
+    const retry = new StructureStore(file, (message) => messages.push(message))
+    expect(retry.snapshot().c1.descriptions).toBeUndefined()
+  })
+
   it('keeps descriptions out of the tree snapshot payload', () => {
     const { instance } = store()
     instance.putSchemas('c1', [{ name: 'app' }])

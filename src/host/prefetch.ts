@@ -12,6 +12,14 @@ export const DESCRIPTION_CONCURRENCY = 2
  */
 const PREFETCH_KINDS: ReadonlySet<ObjectKind> = new Set(['table', 'view', 'procedure', 'function', 'sequence', 'trigger'])
 
+/** Order-independent comparison of two optional schema sets. */
+function sameSchemaSet(left: Set<string> | undefined, right: Set<string> | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right
+  if (left.size !== right.size) return false
+  for (const value of left) if (!right.has(value)) return false
+  return true
+}
+
 interface PrefetchTarget {
   schema: string
   table: string
@@ -33,7 +41,7 @@ interface PrefetchSession extends PrefetchProgress {
 
 interface PrefetchDeps {
   sql: Pick<SqlService, 'describe' | 'ddl'>
-  structure: Pick<StructureStore, 'get' | 'hasDescription' | 'putDescription'>
+  structure: Pick<StructureStore, 'get' | 'hasDescription' | 'hasObject' | 'putDescription'>
   /** Dialect of a connection; needed to ask the server for an object's definition. */
   dialect?: (connectionId: string) => SqlDialect | undefined
   log: (message: string) => void
@@ -54,11 +62,15 @@ export class DescriptionPrefetcher {
   /** Start (or upgrade) a background pass for one connection. */
   schedule(connectionId: string, options: PrefetchOptions = {}): void {
     const refreshAll = options.refreshAll === true
+    const schemas = options.schemas === undefined ? undefined : new Set(options.schemas)
     const running = this.active.get(connectionId)
     if (running !== undefined) {
       // A refresh upgrades a "fill the gaps" pass so an explicit refresh really
-      // re-reads everything; any other repeat request is already covered.
-      if (!refreshAll || running.refreshAll) return
+      // re-reads everything. A changed visible-schema set must also restart —
+      // otherwise the newly requested schemas are silently dropped while the
+      // old pass keeps walking only the previous set. The old run retires
+      // safely through isCurrent() when the session is replaced.
+      if (sameSchemaSet(running.schemas, schemas) && (!refreshAll || running.refreshAll)) return
       this.active.delete(connectionId)
     }
     const session: PrefetchSession = {
@@ -66,7 +78,7 @@ export class DescriptionPrefetcher {
       total: 0,
       done: 0,
       refreshAll,
-      schemas: options.schemas === undefined ? undefined : new Set(options.schemas),
+      schemas,
     }
     this.active.set(connectionId, session)
     void this.run(connectionId, session)
@@ -141,7 +153,10 @@ export class DescriptionPrefetcher {
           try {
             const description = await this.read(connectionId, target)
             if (!isCurrent()) return
-            if (description !== undefined) {
+            // The object may have been pruned while the read was in flight
+            // (putSchemas/putObjects). Writing its description back would
+            // resurrect an orphan entry in the tree and on disk.
+            if (description !== undefined && this.deps.structure.hasObject(connectionId, target.schema, target.table)) {
               this.deps.structure.putDescription(connectionId, target.schema, target.table, description)
             }
           } catch (error) {

@@ -399,6 +399,17 @@ describe('complete JOIN suggestions', () => {
     expect(req.catalog.calls.columns).toContain('shop.users')
   })
 
+  it('still suggests a JOIN when a semicolon appears inside a string literal', async () => {
+    // The statement boundary must ignore a `;` inside a quoted literal — a naive
+    // lastIndexOf(';') would start the token walk inside the string and lose the
+    // JOIN verb, dropping all JOIN suggestions.
+    const result = await complete(
+      request("SELECT ';' AS x FROM orders o JOIN ", { catalog: createJoinCatalog() }),
+    )
+    expect(result.items[0]).toMatchObject({ name: 'users', detail: '关联 orders.user_id' })
+    expect(result.items[0].insert).toMatch(/^users u\d* ON u\d*\.id = o\.user_id$/)
+  })
+
   it('uses the table name as the owner reference when there is no alias', async () => {
     const result = await complete(
       request('SELECT * FROM orders JOIN ', { catalog: createJoinCatalog() }),

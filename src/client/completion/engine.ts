@@ -30,6 +30,7 @@ import {
 import { prioritiesFor, rank } from './rank'
 import { tokenize } from './tokenizer'
 import { quotedIdentifier } from './edit'
+import { maskNonCode } from '../sqllex'
 import type {
   Analysis,
   Completion,
@@ -154,7 +155,12 @@ function atStatementStart(request: CompletionRequest, analysis: Analysis): boole
 /** The last relation keyword (`from`, `join`, ...) before the caret, if any. */
 function relationVerbAt(request: CompletionRequest, before: number): string | undefined {
   const text = request.statement.slice(0, before)
-  const start = text.lastIndexOf(';') + 1
+  // A semicolon inside a string, comment or quoted identifier is not a
+  // statement separator. Use the same non-code mask as analyze() so the walk
+  // starts at the real statement boundary; otherwise a `;` in a literal leaves
+  // a dangling quote in the slice and tokenize() sees no relation verb at all.
+  const masked = maskNonCode(text, sqlDialectOf(request.dialect), true)
+  const start = masked.lastIndexOf(';') + 1
   let verb: string | undefined
   for (const token of tokenize(text.slice(start))) {
     if (token.kind === 'keyword' && RELATION_VERBS.has(token.lower)) verb = token.lower

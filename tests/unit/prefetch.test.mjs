@@ -24,6 +24,7 @@ function fakeStructure({ objects = {}, descriptions = {} } = {}) {
         state.descriptions[`${schema}.${table}`] = { ...value, describedAt: new Date().toISOString() }
       },
       hasDescription: (id, schema, table) => state.descriptions[`${schema}.${table}`] !== undefined,
+      hasObject: (id, schema, table) => (objects[schema] ?? []).some((object) => object.name === table),
     },
   }
 }
@@ -272,6 +273,69 @@ describe('DescriptionPrefetcher', () => {
     gates[3].release()
     await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
     expect([...state.puts].sort()).toEqual(['app.a', 'app.b'])
+  })
+
+  it('does not resurrect a description for an object pruned while its read was in flight', async () => {
+    const objects = { app: [{ name: 'orders', kind: 'table' }] }
+    const { structure, state } = fakeStructure({ objects })
+    let release
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          // Prune the object while the read is still in flight.
+          objects[schema] = []
+          const promise = new Promise((resolve) => { release = resolve })
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    expect(state.puts).toEqual([])
+    expect(state.descriptions['app.orders']).toBeUndefined()
+  })
+
+  it('re-walks when the visible schema set changes mid-pass', async () => {
+    const { structure, state } = fakeStructure({
+      objects: {
+        app: [{ name: 'a', kind: 'table' }],
+        audit: [{ name: 'b', kind: 'table' }],
+      },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(`${schema}.${table}`)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push(release)
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    // First pass restricted to schema `app`; hold its read in flight.
+    prefetch.schedule('c1', { schemas: ['app'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a']))
+
+    // A different schema set must start a fresh pass (the old one is retired).
+    prefetch.schedule('c1', { schemas: ['audit'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a', 'audit.b']))
+
+    gates[0]()
+    gates[1]()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    // The stale `app.a` read must not be written (its session was replaced).
+    expect([...state.puts].sort()).toEqual(['audit.b'])
   })
 
   it('reports live progress and clears it when the walk ends', async () => {
