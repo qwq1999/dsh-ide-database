@@ -139,4 +139,36 @@ describe('Redis command guard', () => {
     // mutating subcommand regardless of the connection's own readOnly flag.
     await expect(redis.command(id, 0, 'MEMORY PURGE', false)).rejects.toThrow(/不允许写命令/)
   })
+
+  it('treats STORE / STOREDIST options on read commands as writes', () => {
+    // ZUNION/ZINTER/ZDIFF/GEOSEARCH are reads only until a STORE option turns
+    // them into writes. The option sits after the key-count / key name, so
+    // checking only tokens[1] used to miss it on both sides.
+    const writes = [
+      'ZUNION 2 a b STORE dest',
+      'ZINTER 2 a b STOREDIST dest',
+      'ZDIFF 2 a b STORE dest',
+      'GEOSEARCH geo FROMMEMBER m BYRADIUS 10 km STORE dest',
+      'GEOSEARCH geo FROMLONLAT 1 2 BYBOX 10 10 km STOREDIST dest',
+      'GEORADIUS_RO geo 1 2 10 km STORE dest',
+      'GEORADIUSBYMEMBER_RO geo m 10 km STOREDIST dest',
+    ]
+    for (const command of writes) {
+      const parts = command.split(/\s+/)
+      expect(isReadOnlyCommand(parts[0], parts[1], parts)).toBe(false)
+      expect(looksLikeRedisWrite(command)).toBe(true)
+    }
+    // Without a STORE option the same commands stay pure reads.
+    for (const command of ['ZUNION 2 a b', 'ZINTER 2 a b', 'ZDIFF 2 a b', 'GEOSEARCH geo FROMMEMBER m BYRADIUS 10 km']) {
+      const parts = command.split(/\s+/)
+      expect(isReadOnlyCommand(parts[0], parts[1], parts)).toBe(true)
+      expect(looksLikeRedisWrite(command)).toBe(false)
+    }
+  })
+
+  it('rejects ZUNION ... STORE on a read-only connection before execution', async () => {
+    const { config, redis } = manager()
+    const id = config.snapshot().connections[0].id
+    await expect(redis.command(id, 0, 'ZUNION 2 a b STORE dest', false)).rejects.toThrow(/不允许写命令/)
+  })
 })

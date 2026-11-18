@@ -117,17 +117,42 @@ const MUTATING_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
 }
 
 /**
+ * Read commands that can turn into writes through a trailing STORE / STOREDIST
+ * option, e.g. `ZUNION 2 a b STORE dest` or `GEOSEARCH key ... STOREDIST dest`.
+ * The option is NOT the second token (that is a key count or a key name), so a
+ * subcommand-only check cannot see it. Only these commands accept STORE, so a
+ * full-token scan stays conservative for every other read command.
+ */
+const STORE_OPTION_COMMANDS: ReadonlySet<string> = new Set([
+  'zunion',
+  'zinter',
+  'zdiff',
+  'geosearch',
+  'georadius_ro',
+  'georadiusbymember_ro',
+])
+const STORE_OPTIONS: ReadonlySet<string> = new Set(['store', 'storedist'])
+
+/**
  * Whether a command invocation only reads data. Pass the subcommand (second
  * token) when available so a mutating subcommand of an otherwise-read command
  * is not mistaken for a read. Omitting the subcommand keeps the historical,
  * command-name-only behaviour.
  */
-export function isRedisReadCommand(command: string, subcommand?: string): boolean {
+export function isRedisReadCommand(command: string, subcommand?: string, tokens?: readonly string[]): boolean {
   const name = command.toLowerCase()
   if (!REDIS_READ_COMMANDS.has(name)) return false
   if (subcommand !== undefined) {
     const mutating = MUTATING_SUBCOMMANDS[name]
     if (mutating?.has(subcommand.toLowerCase())) return false
+  }
+  // STORE/STOREDIST appears after the keys/options, never as the second token.
+  // Scan all tokens for the commands that support it so a read-only connection
+  // cannot be tricked into writing the result into another key.
+  if (tokens !== undefined && STORE_OPTION_COMMANDS.has(name)) {
+    for (let index = 1; index < tokens.length; index += 1) {
+      if (STORE_OPTIONS.has(tokens[index]?.toLowerCase() ?? '')) return false
+    }
   }
   return true
 }

@@ -242,10 +242,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const storedOrderApplied = useRef(false)
   const filterRowRef = useRef<HTMLTableRowElement | null>(null)
 
-  // Column drag order is display-only; reset it when the result set changes shape.
+  // Column drag order is display-only; reset it only when the result set changes
+  // shape. Re-running the same query stores a fresh columns array but the names
+  // (the signature) are unchanged, so the user's order must survive a refresh,
+  // page change, filter or auto-refresh — same split as ConsoleTab.
   const signature = columnSignature(columns)
   useEffect(() => {
     setOrder(null)
+  }, [signature])
+  useEffect(() => {
     // Keep the remembered hidden set while the first page is still loading;
     // pruning against an empty column list would forget it before it is useful.
     if (columns.length > 0) setHiddenColumns((current) => pruneHidden(current, columns))
@@ -669,16 +674,34 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const columnsRef = useRef<ColumnInfo[]>([])
   columnsRef.current = columns
   const previousActive = useRef(0)
+  // A typed filter whose debounce has not fired yet. Closing the filter row
+  // cancels the timer, so flush it on close instead of silently dropping the
+  // filter while activeFilterCount still advertises it as active.
+  const pendingFilter = useRef(false)
   useEffect(() => {
-    if (!filtersOpen || connection === null) return
+    if (connection === null) return
     const active = columnsRef.current.filter((column) => columnFilter(filters, column.name) !== undefined).length
     const hadFilters = previousActive.current > 0
     previousActive.current = active
     if (active === 0) {
       if (hadFilters) applyRef.current({ page: 0 }, {})
+      pendingFilter.current = false
       return
     }
-    const timer = setTimeout(() => applyRef.current({ page: 0 }), 400)
+    if (!filtersOpen) {
+      // The row was closed while a debounce was pending: apply now so the data
+      // matches the badge. Already-applied filters (pending=false) need no work.
+      if (pendingFilter.current) {
+        applyRef.current({ page: 0 })
+        pendingFilter.current = false
+      }
+      return
+    }
+    pendingFilter.current = true
+    const timer = setTimeout(() => {
+      applyRef.current({ page: 0 })
+      pendingFilter.current = false
+    }, 400)
     return () => clearTimeout(timer)
   }, [filters, filtersOpen, connection])
 

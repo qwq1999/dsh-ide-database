@@ -195,8 +195,8 @@ export async function keyInfos(client: RedisClient, keys: string[]): Promise<Red
 }
 
 /** Whether a command only reads data and may run on a read-only connection. */
-export function isReadOnlyCommand(command: string, subcommand?: string): boolean {
-  return isRedisReadCommand(command, subcommand)
+export function isReadOnlyCommand(command: string, subcommand?: string, tokens?: readonly string[]): boolean {
+  return isRedisReadCommand(command, subcommand, tokens)
 }
 
 // FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.
@@ -568,7 +568,7 @@ export class RedisManager {
     if (DENIED_COMMANDS.has(command.toLowerCase())) {
       throw new DbError('read-only', `该命令被插件禁止执行：${command}`)
     }
-    const readOnlyCommand = isReadOnlyCommand(command, tokens[1])
+    const readOnlyCommand = isReadOnlyCommand(command, tokens[1], tokens)
     // A write rejected by this request must not open a session either. The
     // connection's own readOnly flag is checked once the session is available.
     if (!readOnlyCommand && !allowWrite) {

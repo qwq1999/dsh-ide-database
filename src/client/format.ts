@@ -399,16 +399,12 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
   })
 }
 
-function redisCommandWords(command: string): [string, string | undefined] {
-  // Use the same tokenizer as the host, so a quoted command (e.g. `MEMORY
-  // "PURGE"` or `"DEL" k`) is classified identically on both sides.
-  const tokens = tokenizeRedisCommand(command)
-  return [tokens[0]?.toLowerCase() ?? '', tokens[1]]
-}
-
 export function looksLikeRedisWrite(command: string): boolean {
-  const [name, subcommand] = redisCommandWords(command)
-  return name !== '' && !isRedisReadCommand(name, subcommand)
+  // Use the same tokenizer as the host, so quoted commands and trailing STORE
+  // options are classified identically on both sides.
+  const tokens = tokenizeRedisCommand(command)
+  const name = tokens[0]?.toLowerCase() ?? ''
+  return name !== '' && !isRedisReadCommand(name, tokens[1], tokens)
 }
 
 export function objectKindLabel(kind: ObjectKind): string {

@@ -73,6 +73,14 @@ final class SqlExecutor {
     private final Map<String, String> cellTexts =
             new LinkedHashMap<String, String>(16, 0.75f, true);
     private long cellTextChars;
+    /**
+     * (column, prefix) keys that mapped to more than one full text during this
+     * bridge's lifetime. Such a key cannot identify a single cell, so it is never
+     * served — the dialog/export reports the value as unavailable instead of
+     * silently showing another row's text. Only long cells sharing a 16K prefix
+     * can land here, so the set stays tiny.
+     */
+    private final Set<String> ambiguousCellKeys = new HashSet<String>();
 
     private static final Set<String> MYSQL_SYSTEM =
             new HashSet<String>(Arrays.asList("information_schema", "mysql", "performance_schema", "sys"));
@@ -1543,8 +1551,12 @@ final class SqlExecutor {
         if (prefix.length() > MAX_TEXT) {
             prefix = prefix.substring(0, MAX_TEXT);
         }
+        String key = cellKey(column, prefix);
         synchronized (cellTexts) {
-            return cellTexts.get(cellKey(column, prefix));
+            if (ambiguousCellKeys.contains(key)) {
+                return null;
+            }
+            return cellTexts.get(key);
         }
     }
 
@@ -1554,7 +1566,21 @@ final class SqlExecutor {
         }
         String key = cellKey(column, text.substring(0, prefixEnd));
         synchronized (cellTexts) {
-            String previous = cellTexts.put(key, text);
+            if (ambiguousCellKeys.contains(key)) {
+                return;
+            }
+            String previous = cellTexts.get(key);
+            if (previous != null && !previous.equals(text)) {
+                // The UI identifies a truncated cell only by (column, prefix). Two
+                // different cells sharing a long prefix map to one key; serving one
+                // row's full text to another is a silent data error in the dialog and
+                // in CSV/SQL export. Poison the key so neither is ever served.
+                ambiguousCellKeys.add(key);
+                cellTexts.remove(key);
+                cellTextChars -= previous.length();
+                return;
+            }
+            cellTexts.put(key, text);
             if (previous != null) {
                 cellTextChars -= previous.length();
             }
