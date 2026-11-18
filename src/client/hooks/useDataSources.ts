@@ -704,6 +704,9 @@ export function useDataSources(notify: Notify): DataSources {
         // Invalidate any in-flight connect for this connection too: its late
         // success must not mark a now-disconnected source online again.
         connectingRequest.current += 1
+        // The in-flight connect for this id can no longer reach its finally
+        // guard (its request is now stale), so clear its spinner here.
+        setConnectingId((previous) => (previous === connectionId ? '' : previous))
         // A detail/key read may still be in flight for this connection; drop
         // its token so a late response cannot repopulate a disconnected source.
         invalidateDetail()
@@ -728,9 +731,14 @@ export function useDataSources(notify: Notify): DataSources {
     // Apply the dropped order at once so the row never snaps back while the
     // host writes the config; a rejected write reloads the saved order.
     setSnapshot((previous) => (previous ? { ...previous, connections: orderById(previous.connections, ids) } : previous))
+    // A delete/save/refresh can land while the reorder write is in flight. Its
+    // fresh status snapshot must win over this late reorder response, which
+    // still carries the old connection list (and would resurrect deleted ones).
+    const request = refreshRequest.current
     void api
       .reorderConnections(ids)
       .then((result) => {
+        if (request !== refreshRequest.current) return
         setSnapshot((previous) => (previous ? { ...previous, connections: result.config.connections } : previous))
       })
       .catch((error) => {

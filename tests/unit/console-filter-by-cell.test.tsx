@@ -105,6 +105,37 @@ describe('filter by a cell value', () => {
     mocks.objects.mockResolvedValue({ objects: [] })
   })
 
+  it('filters on the raw value for formula-leading text (no injected apostrophe)', async () => {
+    mocks.query.mockResolvedValueOnce({
+      sql: 'SELECT * FROM t',
+      columns: [{ name: 'name', typeName: 'VARCHAR' }],
+      rows: [['=SUM(A1)'], ['normal']],
+      rowCount: 2,
+      truncated: false,
+      elapsedMs: 1,
+      warnings: [],
+    })
+    render(<ConsoleTab useTabInfo={tab} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = document.querySelector('textarea')
+    if (editor === null) throw new Error('missing SQL editor')
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM t' } })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+    await screen.findByText('=SUM(A1)')
+
+    const cell = screen.getByText('=SUM(A1)').closest('td')
+    if (cell === null) throw new Error('missing cell')
+    fireEvent.contextMenu(cell)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '用该值筛选当前页' }))
+
+    const filter = (await screen.findByLabelText('筛选结果')) as HTMLInputElement
+    // Must be the raw displayed text, not spreadsheetSafe's "'=SUM(A1)".
+    await waitFor(() => expect(filter.value).toBe('=SUM(A1)'))
+    await waitFor(() => expect(screen.queryByText('normal')).toBeNull())
+    expect(screen.getByText('=SUM(A1)')).toBeTruthy()
+  })
+
   it('fills the row filter with the clicked value', async () => {
     await runQuery()
     const cell = screen.getByText('beta').closest('td')

@@ -1525,7 +1525,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
       return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
-      { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
+      // Filter matches the raw displayed text (rowfilter.ts uses formatCell),
+      // NOT the clipboard text, which prefixes =+-@ values with an anti-injection
+      // apostrophe — filtering on that would match zero rows and look like data loss.
+      { label: '用该值筛选当前页', run: () => setRowFilter(formatCell(cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')) },
       {
         label: '复制 INSERT 语句',
