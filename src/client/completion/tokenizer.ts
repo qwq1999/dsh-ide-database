@@ -7,7 +7,8 @@
  * offsets so the callers can map tokens back to the editor.
  */
 import type { SqlDialect } from '../../shared/types'
-import { backslashEscapes } from '../sqllex'
+import { backslashEscapes, dashStartsComment } from '../sqllex'
+import { blockCommentEnd } from '../../shared/sqlcomment'
 import { isKeyword } from './keywords'
 
 /**
@@ -97,18 +98,19 @@ export function tokenize(text: string, dialect: SqlDialect = 'generic'): Token[]
       continue
     }
 
-    // -- line comment
-    if (char === '-' && text[index + 1] === '-') {
+    // -- line comment. MySQL only treats `--` as a comment when followed by
+    // whitespace; `5--3` is subtraction and must stay as two punct tokens.
+    if (char === '-' && text[index + 1] === '-' && dashStartsComment(text, index + 2, dialect)) {
       index += 2
       while (index < length && text[index] !== '\n') index += 1
       continue
     }
 
-    // /* block comment */, unclosed runs to the end
+    // /* block comment */, unclosed runs to the end. PostgreSQL and SQL
+    // Server nest block comments, so use the dialect-aware scanner.
     if (char === '/' && text[index + 1] === '*') {
-      index += 2
-      while (index < length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
-      index = Math.min(length, index + 2)
+      const close = blockCommentEnd(text, index, dialect)
+      index = close === -1 ? length : close
       continue
     }
 
@@ -228,7 +230,7 @@ export function maskedRanges(text: string, dialect: SqlDialect = 'generic'): Mas
 
   while (index < length) {
     const char = text[index] as string
-    if (char === '-' && text[index + 1] === '-') {
+    if (char === '-' && text[index + 1] === '-' && dashStartsComment(text, index + 2, dialect)) {
       const start = index
       index += 2
       while (index < length && text[index] !== '\n') index += 1
@@ -238,13 +240,9 @@ export function maskedRanges(text: string, dialect: SqlDialect = 'generic'): Mas
     }
     if (char === '/' && text[index + 1] === '*') {
       const start = index
-      index += 2
-      let closed = false
-      while (index < length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
-      if (index < length) {
-        index += 2
-        closed = true
-      }
+      const close = blockCommentEnd(text, index, dialect)
+      const closed = close !== -1
+      index = closed ? close : length
       spans.push({ start, end: index, terminated: closed })
       continue
     }

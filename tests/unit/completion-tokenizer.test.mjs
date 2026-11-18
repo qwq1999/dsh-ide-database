@@ -213,3 +213,32 @@ describe('backslash-escaped quotes by dialect', () => {
     expect(isInsideCommentOrString(text, text.length, 'generic')).toBe(true)
   })
 })
+
+
+describe('dialect-aware comment boundaries in the completion lexer', () => {
+  it('treats MySQL 5--3 as subtraction, not a comment', () => {
+    const text = 'SELECT 5--3 AS diff, na'
+    expect(tokenize(text, 'mysql').map((t) => t.text)).toEqual([
+      'SELECT', '5', '-', '-', '3', 'AS', 'diff', ',', 'na',
+    ])
+    expect(isInsideCommentOrString(text, text.length, 'mysql')).toBe(false)
+    // Standard SQL still treats `--` as a line comment.
+    expect(isInsideCommentOrString(text, text.length, 'generic')).toBe(true)
+  })
+
+  it('nests block comments in PostgreSQL and SQL Server', () => {
+    const text = 'SELECT /* outer /* inner */ c */ FROM orders'
+    const caret = text.indexOf('c */')
+    expect(isInsideCommentOrString(text, caret, 'postgres')).toBe(true)
+    expect(isInsideCommentOrString(text, caret, 'mssql')).toBe(true)
+    // MySQL does not nest: the first */ closes, so the caret is outside.
+    expect(isInsideCommentOrString(text, caret, 'mysql')).toBe(false)
+  })
+
+  it('does not tokenize code hidden inside a nested block comment', () => {
+    const text = 'SELECT /* hi /* inner */ FROM secret_table */ name FROM orders'
+    const words = tokenize(text, 'postgres').map((t) => t.text)
+    expect(words).toEqual(['SELECT', 'name', 'FROM', 'orders'])
+    expect(words).not.toContain('secret_table')
+  })
+})

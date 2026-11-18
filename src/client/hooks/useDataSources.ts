@@ -203,6 +203,8 @@ export function useDataSources(notify: Notify): DataSources {
   const [connectingId, setConnectingId] = useState('')
   /** Concurrent connects: only the still-latest request owns the spinner. */
   const connectingRequest = useRef(0)
+  /** Anticheck stale status polls so a late refresh cannot restore deleted data. */
+  const refreshRequest = useRef(0)
 
   const [schemas, setSchemas] = useState<Record<string, SchemaInfo[]>>({})
   const [objects, setObjects] = useState<Record<string, SchemaObject[]>>({})
@@ -243,8 +245,12 @@ export function useDataSources(notify: Notify): DataSources {
   }, [])
 
   const refresh = useCallback(async () => {
+    const request = ++refreshRequest.current
     try {
       const data = await api.status()
+      // A newer refresh (delete/save, or the 1.5s poll) may have started while
+      // this one was in flight; only the latest status snapshot may be applied.
+      if (request !== refreshRequest.current) return
       setSnapshot({
         connections: data.config.connections,
         trash: data.config.trash,
@@ -256,7 +262,7 @@ export function useDataSources(notify: Notify): DataSources {
       })
       setLoadError('')
     } catch (error) {
-      setLoadError(errorText(error))
+      if (request === refreshRequest.current) setLoadError(errorText(error))
     }
   }, [])
 
@@ -652,6 +658,9 @@ export function useDataSources(notify: Notify): DataSources {
       setConnectingId(connectionId)
       try {
         const connected = await api.connect(connectionId)
+        // A newer connect/disconnect may have superseded this request; only the
+        // latest one owns the connection result, error and follow-up loads.
+        if (request !== connectingRequest.current) return false
         // The connection may have been deleted while the request was in
         // flight; a late response must not resurrect its online state.
         if (!connectionsRef.current.some((item) => item.id === connectionId)) return false
@@ -671,6 +680,8 @@ export function useDataSources(notify: Notify): DataSources {
         }
         return true
       } catch (error) {
+        // A superseded connect must not surface a stale failure toast/error.
+        if (request !== connectingRequest.current) return false
         setSetupError(setupErrorOf(error))
         notify(`连接失败：${errorText(error)}`, 'error')
         return false
@@ -690,6 +701,9 @@ export function useDataSources(notify: Notify): DataSources {
           delete next[connectionId]
           return next
         })
+        // Invalidate any in-flight connect for this connection too: its late
+        // success must not mark a now-disconnected source online again.
+        connectingRequest.current += 1
         // A detail/key read may still be in flight for this connection; drop
         // its token so a late response cannot repopulate a disconnected source.
         invalidateDetail()
