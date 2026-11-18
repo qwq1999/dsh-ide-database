@@ -66,7 +66,8 @@ describe('splitStatements', () => {
   it('ignores semicolons in line and block comments', () => {
     expect(splitStatements('select 1 -- one; two\n; select 2')).toEqual(['select 1 -- one; two', 'select 2'])
     expect(splitStatements('select 1 # hash; comment\n; select 2', 'mysql')).toEqual(['select 1 # hash; comment', 'select 2'])
-    expect(splitStatements('/* a; b */ select 1; /* c; d */')).toEqual(['/* a; b */ select 1', '/* c; d */'])
+    // A trailing comment-only fragment is a ghost statement and is dropped.
+    expect(splitStatements('/* a; b */ select 1; /* c; d */')).toEqual(['/* a; b */ select 1'])
   })
 
   it('applies MySQL comment rules only to MySQL', () => {
@@ -465,5 +466,14 @@ describe('splitStatements', () => {
   it('returns an empty list for blank scripts and keeps single statements intact', () => {
     expect(splitStatements('   \n\t ')).toEqual([])
     expect(splitStatements('select 1')).toEqual(['select 1'])
+  })
+
+  it('drops a trailing comment instead of emitting a ghost statement', () => {
+    expect(splitStatements('SELECT 1; -- done', 'generic')).toEqual(['SELECT 1'])
+    expect(splitStatements('SELECT 1; /* note */')).toEqual(['SELECT 1'])
+    expect(splitStatements('SELECT 1;\n-- a\n-- b\n', 'mysql')).toEqual(['SELECT 1'])
+    expect(splitStatements('-- only a comment')).toEqual([])
+    // A leading comment attached to real SQL is still part of the statement.
+    expect(splitStatements('/* lead */ SELECT 1; -- done')).toEqual(['/* lead */ SELECT 1'])
   })
 })

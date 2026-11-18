@@ -1016,9 +1016,14 @@ final class SqlExecutor {
         String catalog = mysql ? schema : null;
         String schemaPattern = mysql || sqlite ? null : schema;
         Set<String> primary = new HashSet<String>();
+        Set<String> pkNames = new HashSet<String>();
         try (ResultSet rs = metadata.getPrimaryKeys(catalog, schemaPattern, table)) {
             while (rs.next()) {
                 primary.add(rs.getString("COLUMN_NAME"));
+                String pkName = rs.getString("PK_NAME");
+                if (pkName != null && !pkName.isEmpty()) {
+                    pkNames.add(pkName);
+                }
             }
         } catch (SQLException ignored) {
             // Optional.
@@ -1062,9 +1067,13 @@ final class SqlExecutor {
                 }
             }
             // getIndexInfo() reports the index NAME, not a column name, so comparing it
-            // to the primary-key COLUMN_NAME set always yields false. Identify the
-            // primary index by comparing its actual column set to the primary columns.
+            // to the primary-key COLUMN_NAME set always yields false. Prefer PK_NAME
+            // from getPrimaryKeys (reported by most drivers); only fall back to the
+            // column set when that name is unavailable. Column-set equality alone is
+            // not enough: an ordinary UNIQUE INDEX over the same columns would also
+            // match and be mislabeled as a primary key.
             for (Map<String, Object> index : grouped.values()) {
+                String name = (String) index.get("name");
                 @SuppressWarnings("unchecked")
                 List<Object> indexColumns = (List<Object>) index.get("columns");
                 Set<String> columnSet = new HashSet<String>();
@@ -1073,8 +1082,26 @@ final class SqlExecutor {
                         columnSet.add((String) column);
                     }
                 }
-                index.put("primary", Boolean.valueOf(
-                        !primary.isEmpty() && columnSet.equals(primary)));
+                boolean namedPrimary = false;
+                for (String pkName : pkNames) {
+                    if (pkName.equalsIgnoreCase(name)) {
+                        namedPrimary = true;
+                        break;
+                    }
+                }
+                boolean columnPrimary = !primary.isEmpty() && columnSet.equals(primary);
+                boolean isPrimary;
+                if (!pkNames.isEmpty()) {
+                    // PK_NAME is authoritative; ignore a same-column ordinary index.
+                    isPrimary = namedPrimary;
+                } else {
+                    // PK_NAME unavailable (e.g. SQLite): fall back to columns, but
+                    // require the auto-generated PK index so a user UNIQUE INDEX over
+                    // the same columns is not mislabeled as the primary key.
+                    isPrimary = columnPrimary
+                            && (!sqlite || name.toLowerCase(Locale.ROOT).contains("autoindex"));
+                }
+                index.put("primary", Boolean.valueOf(isPrimary));
             }
             indexes.addAll(grouped.values());
         }

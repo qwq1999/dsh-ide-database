@@ -104,4 +104,24 @@ describe('DataView tree filter focus restore', () => {
     expect(document.querySelector('[role="search"] input')).toBeNull()
     expect(document.activeElement).toBe(tree)
   })
+
+  it('keeps focus in the filter input when the clear button is activated', () => {
+    const calls: Calls = { loadObjects: [] }
+    render(<FilterHarness calls={calls} schemas={{ c1: [{ name: 'crm' }] }} />)
+    fireEvent.click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'open-filter')!)
+    const input = document.querySelector('[role="search"] input') as HTMLInputElement
+
+    fireEvent.change(input, { target: { value: 'crm' } })
+    const clear = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === '\u6e05\u7a7a\u7b5b\u9009')!
+    expect(clear).toBeTruthy()
+    clear.focus()
+    expect(document.activeElement).toBe(clear)
+    fireEvent.click(clear)
+
+    // The clear button unmounts; focus must return to the still-mounted input,
+    // not fall through to <body>.
+    expect(document.querySelector('[role="search"] input')).not.toBeNull()
+    expect(document.activeElement).toBe(document.querySelector('[role="search"] input'))
+  })
 })

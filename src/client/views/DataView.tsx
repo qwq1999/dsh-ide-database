@@ -941,6 +941,10 @@ export function DataView(props: DataViewProps): ReactElement {
                   onClick={() => {
                     setFilter('')
                     setSettledFilter('')
+                    // The × button unmounts once the filter is empty; without
+                    // restoring focus, keyboard users land on <body>. Keep the
+                    // caret in the (still-mounted) filter input.
+                    filterRef.current?.focus()
                   }}
                 >
                   ×
