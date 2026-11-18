@@ -733,7 +733,7 @@ export const CSS = `
   background: transparent;
 }
 .dshdb-grip:hover::after {
-  background: var(--dsw-alias-business-primary);
+  background: var(--dsw-alias-state-business-primary);
 }
 .dshdb-vpad td { padding: 0 !important; border: 0 !important; }
 .dshdb-empty-row td {
@@ -1558,7 +1558,7 @@ export const CSS = `
   flex-direction: column;
   min-height: 120px;
   overflow: hidden;
-  border-top: 1px solid var(--dshdb-border);
+  border-top: 1px solid var(--dsw-alias-border-l1);
   padding-top: 4px;
 }
 
@@ -1576,8 +1576,8 @@ export const CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dshdb-muted);
-  font-family: var(--dshdb-mono);
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
 }
 
 .dshdb-redis-keys {

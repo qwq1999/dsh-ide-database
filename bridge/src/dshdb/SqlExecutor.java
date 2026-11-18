@@ -1142,7 +1142,10 @@ final class SqlExecutor {
             if (timeoutSec > 0) {
                 statement.setQueryTimeout(timeoutSec);
             }
-            statement.setMaxRows(maxRows + 1);
+            // maxRows == Integer.MAX_VALUE would overflow on +1 and be
+            // rejected by the driver; cap at MAX instead of wrapping negative.
+            statement.setMaxRows(maxRows == Integer.MAX_VALUE
+                    ? Integer.MAX_VALUE : maxRows + 1);
             if (!"mysql".equals(entry.dialect)) {
                 try {
                     statement.setFetchSize(200);
@@ -1341,6 +1344,9 @@ final class SqlExecutor {
             statement.cancel();
             return true;
         } catch (Throwable error) {
+            // A failed cancel must not leave the flag behind: the next query
+            // with this stmtKey would misreport any SQLException as cancelled.
+            cancelled.remove(stmtKey);
             return false;
         }
     }
@@ -1438,7 +1444,12 @@ final class SqlExecutor {
         }
         if (raw instanceof Clob) {
             Clob clob = (Clob) raw;
-            long length = clob.length();
+            long length;
+            try {
+                length = clob.length();
+            } catch (Exception error) {
+                return "<clob>";
+            }
             int read = (int) Math.min(length, MAX_CELL_TEXT);
             try (Reader reader = clob.getCharacterStream()) {
                 char[] buffer = new char[read];
@@ -1460,7 +1471,11 @@ final class SqlExecutor {
             return "<nclob>";
         }
         if (raw instanceof Blob) {
-            return "<blob " + ((Blob) raw).length() + " bytes>";
+            try {
+                return "<blob " + ((Blob) raw).length() + " bytes>";
+            } catch (Exception error) {
+                return "<blob>";
+            }
         }
         if (raw instanceof SQLXML) {
             try {
