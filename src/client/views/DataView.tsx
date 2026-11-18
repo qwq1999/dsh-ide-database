@@ -498,11 +498,19 @@ export function DataView(props: DataViewProps): ReactElement {
         const keysByDb = props.redisKeys[connection.id]
         if (keysByDb === undefined) continue
         if (keptClosed.has(connection.id)) continue
+        // Open the data source at most once per pass. The toggle is a functional
+        // flip on the real hook, so firing it once per matching DB (all reading
+        // the same stale `expanded` snapshot here) toggles an even number of
+        // times and leaves a collapsed connection collapsed forever.
+        let connectionOpened = expanded[connection.id] === true
         for (const [db, keys] of Object.entries(keysByDb)) {
           if (!keys.some((key) => matches(key.key))) continue
           const dbKey = `${connection.id}:redis:db${db}`
           if (keptClosed.has(dbKey)) continue
-          if (expanded[connection.id] !== true) props.onToggleConnection(connection.id)
+          if (!connectionOpened) {
+            props.onToggleConnection(connection.id)
+            connectionOpened = true
+          }
           if (expanded[dbKey] === false) props.onToggleRedisDb(connection.id, Number(db))
         }
       }
