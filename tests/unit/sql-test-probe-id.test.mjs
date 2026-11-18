@@ -49,6 +49,7 @@ function harness() {
   service.config = {
     connection: (reference) => (reference === live.id ? live : undefined),
     settings: () => settings,
+    touchConnection: () => undefined,
   }
   service.drivers = {
     resolveDriver: () => driver,
@@ -142,6 +143,32 @@ describe('connect/disconnect race', () => {
     const connecting = service.connect(live.id)
     // Let connect reach the gated bridge.request.
     await Promise.resolve()
+    await Promise.resolve()
+    await service.disconnect(live.id)
+    release()
+
+    await expect(connecting).rejects.toThrow(/连接已断开/)
+    expect(service.isConnected(live.id)).toBe(false)
+  })
+})
+
+describe('connect/disconnect race during bridge startup', () => {
+  it('does not resurrect a connection when disconnect lands while ensureBridge is pending', async () => {
+    const { service, live } = harness()
+    service.connected.clear()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const bridge = {
+      request: vi.fn(async (method) => (method === 'connect' ? { version: '8.0' } : undefined)),
+    }
+    // Simulate the JVM spawn + ping await inside ensureBridge.
+    service.ensureBridge = async () => {
+      await gate
+      return bridge
+    }
+
+    const connecting = service.connect(live.id)
+    // Let connect reach the gated ensureBridge await.
     await Promise.resolve()
     await service.disconnect(live.id)
     release()
