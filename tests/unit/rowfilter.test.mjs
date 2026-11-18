@@ -58,4 +58,21 @@ describe('NUL in haystack text', () => {
     const rows = [['x' + NUL + 'y', 'z']]
     expect(filterRowIndexesByHaystacks(rowHaystacks(rows), 'x' + NUL + 'y')).toEqual([0])
   })
+
+  it('never matches a needle across a cell boundary (doubled-NUL ambiguity)', () => {
+    // A needle ending in NUL must not span cell1's end + the boundary + cell2's
+    // start. Previously the single-NUL separator plus doubled content NULs let
+    // 'a' + NUL wrongly match the haystack of ['a', NUL + 'b'].
+    const rows = [['a', NUL + 'b']]
+    const needle = 'a' + NUL
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows), needle)).toEqual(filterRowIndexes(rows, needle))
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows), needle)).toEqual([])
+
+    // A NUL-ending value genuinely in cell 0 must not also hit cell 1 where the
+    // NUL sits at the start.
+    const rows2 = [['x' + NUL, 'q'], ['x', NUL + 'z']]
+    const needle2 = 'x' + NUL
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows2), needle2)).toEqual(filterRowIndexes(rows2, needle2))
+    expect(filterRowIndexesByHaystacks(rowHaystacks(rows2), needle2)).toEqual([0])
+  })
 })
