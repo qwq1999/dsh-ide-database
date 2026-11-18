@@ -56,6 +56,26 @@ describe('tablesql quoting', () => {
     expect(quoteLiteral('手机', 'mssql')).toBe("'手机'")
   })
 
+  it('represents NUL so an exported INSERT round-trips without raw NUL bytes', () => {
+    const nul = String.fromCharCode(0)
+    // Standard dialects use the character function; no raw NUL in the output.
+    expect(quoteLiteral('a' + nul + 'b', 'sqlite')).toBe("'a' || CHAR(0) || 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'oracle')).toBe("'a' || CHR(0) || 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'mssql')).toBe("'a' + CHAR(0) + 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'mssql', true)).toBe("N'a' + NCHAR(0) + N'b'")
+    // MySQL keeps one literal and uses its backslash escape.
+    expect(quoteLiteral('a' + nul + 'b', 'mysql')).toBe("'a\\0b'")
+    // Edge placements.
+    expect(quoteLiteral(nul + 'ab', 'sqlite')).toBe("CHAR(0) || 'ab'")
+    expect(quoteLiteral('ab' + nul, 'sqlite')).toBe("'ab' || CHAR(0)")
+    expect(quoteLiteral(nul, 'sqlite')).toBe('CHAR(0)')
+    expect(quoteLiteral("a'" + nul + 'b', 'sqlite')).toBe("'a''' || CHAR(0) || 'b'")
+    // No raw NUL byte leaks into any generated statement.
+    const stmt = insertStatement('sqlite', '', 't', [{ name: 'c', typeName: 'text' }], ['a' + nul + 'b'])
+    expect(stmt.indexOf(nul)).toBe(-1)
+    expect(stmt).toBe('INSERT INTO "t" ("c") VALUES (\'a\' || CHAR(0) || \'b\');')
+  })
+
   it('builds the page clause per dialect', () => {
     expect(pageClause('mysql', 500, 1000)).toBe('LIMIT 500 OFFSET 1000')
     expect(pageClause('oracle', 200, 0)).toBe('OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY')

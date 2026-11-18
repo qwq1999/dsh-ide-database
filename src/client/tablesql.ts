@@ -321,6 +321,33 @@ export function quoteLiteral(
   dialect: ClientConnection['dialect'] = 'generic',
   unicode = false,
 ): string {
+  // A literal NUL cannot appear inside a quoted SQL string: several drivers and
+  // the MySQL wire protocol terminate or reject it, and a script containing a
+  // raw NUL fails to re-import. Handle it up front so the common path below
+  // stays byte-for-byte unchanged. Represent NUL with the dialect's character
+  // function concatenated around the (NUL-free) fragments.
+  if (text.indexOf('\0') >= 0) {
+    // MySQL already uses backslash escapes; `\0` is its canonical NUL and
+    // `||` is logical OR there, so keep everything inside one literal.
+    if (dialect === 'mysql') {
+      const escaped = text.replace(/\\/gu, '\\\\').replace(/\0/gu, '\\0').replace(/'/gu, "''")
+      return `'${escaped}'`
+    }
+    const nulExpr = dialect === 'mssql'
+      ? (unicode ? 'NCHAR(0)' : 'CHAR(0)')
+      : (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng' || dialect === 'postgres' ? 'CHR(0)' : 'CHAR(0)')
+    const joiner = dialect === 'mssql' ? ' + ' : ' || '
+    const parts = text.split('\0').map((piece) => {
+      const literal = `'${piece.replace(/'/gu, "''")}'`
+      return dialect === 'mssql' && unicode ? `N${literal}` : literal
+    })
+    const out: string[] = []
+    parts.forEach((piece, index) => {
+      if (index > 0) out.push(nulExpr)
+      if (piece !== "''") out.push(piece)
+    })
+    return out.join(joiner)
+  }
   const escaped = dialect === 'mysql' ? text.replace(/\\/gu, '\\\\') : text
   const literal = `'${escaped.replace(/'/gu, "''")}'`
   // SQL Server's plain string literal is varchar; non-Latin text stored in an

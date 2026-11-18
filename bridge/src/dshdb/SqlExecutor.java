@@ -1402,8 +1402,16 @@ final class SqlExecutor {
             }
             return value.toPlainString();
         }
-        if (raw instanceof Double || raw instanceof Float) {
-            double value = ((Number) raw).doubleValue();
+        if (raw instanceof Float) {
+            // Widening a Float to double exposes its binary approximation
+            // (0.1f -> 0.10000000149011612). Keep the Float itself so the JSON
+            // writer uses Float.toString() and emits the short decimal.
+            float value = (Float) raw;
+            return Float.isNaN(value) || Float.isInfinite(value)
+                    ? (Object) String.valueOf(value) : (Object) raw;
+        }
+        if (raw instanceof Double) {
+            double value = (Double) raw;
             return Double.isNaN(value) || Double.isInfinite(value)
                     ? (Object) String.valueOf(value) : (Object) Double.valueOf(value);
         }
