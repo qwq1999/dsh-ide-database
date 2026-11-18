@@ -442,13 +442,16 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       // harmless hints such as `/*!50000 SQL_NO_CACHE */`.
       const opener = isMysqlDialect(dialect) ? executableCommentOpener(text, index) : 0
       if (opener > 0) {
-        // MySQL/MariaDB treat the digits after the opener as a version, not SQL.
-        // Replace them with spaces so `/*!50000INTO OUTFILE` still has a word
-        // boundary before `INTO`; the comment body itself must stay visible.
-        out += text.slice(index, index + opener)
+        // MySQL/MariaDB execute the comment body, so it must stay visible to the
+        // guards below. Replace the opener marker, version digits and body with
+        // spaces EXCEPT keep body letters: we blank the marker and digits but let
+        // the loop below copy the body verbatim. Blanking the marker is what lets
+        // `FOR /*!50000 UPDATE */` match LOCKING_READ (`for ... update`) — keeping
+        // `/*!` there hid the locking hint from the regex. INTO OUTFILE and other
+        // write bodies remain visible, so FILE_WRITE still rejects them.
+        out += ' '.repeat(opener)
         index += opener - 1
-        // Stop on the last digit: the outer for-loop advances to the first body
-        // character, so moving straight to it here would skip that character.
+        // Stop on the last digit; the outer loop advances to the first body char.
         while (index + 1 < text.length && /\d/u.test(text[index + 1] ?? '')) {
           out += ' '
           index += 1
@@ -459,6 +462,17 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       if (close < 0) return out
       index = close - 1
       out += ' '
+      continue
+    }
+    // A MySQL executable comment's closer `*/` reaches here verbatim after we
+    // blanked its opener/digits above (an empty-body `/*!50000*/` leaves a bare
+    // `*/`). Blank it too so it cannot break word boundaries between the hint
+    // and the keyword it guards (`FOR /*!50000*/ UPDATE`). Normal comments are
+    // removed wholesale by the blockCommentEnd branch, so no other `*/` lands
+    // here.
+    if (isMysqlDialect(dialect) && char === '*' && text[index + 1] === '/') {
+      out += '  '
+      index += 1
       continue
     }
     out += char.toLowerCase()
@@ -604,11 +618,25 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
     // really runs the DELETE. Unwrap a leading executable comment and keep the
     // remaining statement, so the option checks below see the whole thing.
     if (isMysqlDialect(dialect)) {
-      const versioned = /^\/\*(?:!|M!)\d*\s*([\s\S]*?)\*\//u.exec(rest)
-      if (versioned !== null) {
-        const body = (versioned[1] ?? '').trim()
-        const tail = rest.slice(versioned[0].length).trim()
-        rest = (tail === '' ? body : `${body} ${tail}`).trim()
+      // Unwrap executable comments repeatedly until the leading token is stable.
+      // An empty-body `/*!...*/` may be followed by a normal comment and another
+      // executable comment before the real ANALYZE, e.g.
+      // `EXPLAIN /*!50000 */ /*h*/ ANALYZE DELETE`. Stopping after one unwrap
+      // leaves a leading `/*` for readWord, which reads an empty word and
+      // misclassifies the statement as a plain (read-only) EXPLAIN even though
+      // the server runs it.
+      for (;;) {
+        const versioned = /^\/\*(?:!|M!)\d*\s*([\s\S]*?)\*\//u.exec(rest)
+        if (versioned !== null) {
+          const body = (versioned[1] ?? '').trim()
+          const tail = rest.slice(versioned[0].length).trim()
+          rest = (tail === '' ? body : `${body} ${tail}`).trim()
+          continue
+        }
+        const stripped = stripLeadingComments(rest, dialect)
+        if (stripped === null) { rest = ''; break }
+        if (stripped === rest) break
+        rest = stripped
       }
     }
     if (rest.startsWith('(')) {

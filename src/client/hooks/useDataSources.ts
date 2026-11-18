@@ -201,8 +201,20 @@ export function useDataSources(notify: Notify): DataSources {
   const [selectedId, setSelectedId] = useState('')
   const [servers, setServers] = useState<Record<string, ServerInfo>>({})
   const [connectingId, setConnectingId] = useState('')
-  /** Concurrent connects: only the still-latest request owns the spinner. */
-  const connectingRequest = useRef(0)
+  /**
+   * Per-connection connect tokens. A single global counter let a disconnect of
+   * connection B invalidate an in-flight connect of A: A's finally guard failed
+   * and its spinner stayed forever, while two concurrent connects made the
+   * first result get silently dropped. Keying by connection id keeps unrelated
+   * connections independent while still superseding a repeat connect to the
+   * same id.
+   */
+  const connectingRequest = useRef(new Map<string, number>())
+  // Tracks which connection id currently owns the global spinner. The spinner
+  // is a single string (consumed by App/tree), so a finishing connect must only
+  // clear it when it still belongs to that id — otherwise an older connect's
+  // finally wipes a newer connect's spinner.
+  const connectingIdRef = useRef('')
   /** Anticheck stale status polls so a late refresh cannot restore deleted data. */
   const refreshRequest = useRef(0)
 
@@ -654,13 +666,15 @@ export function useDataSources(notify: Notify): DataSources {
     async (connectionId: string): Promise<boolean> => {
       const connection = connections.find((item) => item.id === connectionId)
       if (!connection) return false
-      const request = ++connectingRequest.current
+      const request = (connectingRequest.current.get(connectionId) ?? 0) + 1
+      connectingRequest.current.set(connectionId, request)
+      connectingIdRef.current = connectionId
       setConnectingId(connectionId)
       try {
         const connected = await api.connect(connectionId)
-        // A newer connect/disconnect may have superseded this request; only the
-        // latest one owns the connection result, error and follow-up loads.
-        if (request !== connectingRequest.current) return false
+        // A newer connect/disconnect of THIS connection may have superseded
+        // this request; only the latest one owns the result, error and loads.
+        if (request !== (connectingRequest.current.get(connectionId) ?? 0)) return false
         // The connection may have been deleted while the request was in
         // flight; a late response must not resurrect its online state.
         if (!connectionsRef.current.some((item) => item.id === connectionId)) return false
@@ -681,12 +695,18 @@ export function useDataSources(notify: Notify): DataSources {
         return true
       } catch (error) {
         // A superseded connect must not surface a stale failure toast/error.
-        if (request !== connectingRequest.current) return false
+        if (request !== (connectingRequest.current.get(connectionId) ?? 0)) return false
         setSetupError(setupErrorOf(error))
         notify(`连接失败：${errorText(error)}`, 'error')
         return false
       } finally {
-        if (request === connectingRequest.current) setConnectingId('')
+        // Only the latest connect for this id, AND only if the spinner still
+        // belongs to it, may clear the spinner. An older connect finishing
+        // after a newer one started must not wipe the newer one's spinner.
+        if (request === (connectingRequest.current.get(connectionId) ?? 0) && connectingIdRef.current === connectionId) {
+          connectingIdRef.current = ''
+          setConnectingId('')
+        }
       }
     },
     [connections, loadSchemas, loadRedisDatabases, loadRedisKeys, redisDbs, notify],
@@ -701,12 +721,16 @@ export function useDataSources(notify: Notify): DataSources {
           delete next[connectionId]
           return next
         })
-        // Invalidate any in-flight connect for this connection too: its late
-        // success must not mark a now-disconnected source online again.
-        connectingRequest.current += 1
+        // Invalidate an in-flight connect for THIS connection only: its late
+        // success must not mark a now-disconnected source online again. Bumping
+        // only this id (via the per-id map) leaves unrelated connects intact.
+        connectingRequest.current.set(connectionId, (connectingRequest.current.get(connectionId) ?? 0) + 1)
         // The in-flight connect for this id can no longer reach its finally
         // guard (its request is now stale), so clear its spinner here.
-        setConnectingId((previous) => (previous === connectionId ? '' : previous))
+        if (connectingIdRef.current === connectionId) {
+          connectingIdRef.current = ''
+          setConnectingId('')
+        }
         // A detail/key read may still be in flight for this connection; drop
         // its token so a late response cannot repopulate a disconnected source.
         invalidateDetail()

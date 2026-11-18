@@ -1853,7 +1853,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   )
 
   /** Copy the checked rows in the same formats the page copies offer. */
-  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+  const copySelected = async (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): Promise<void> => {
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
@@ -1861,21 +1861,24 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       noTableNote()
       return
     }
+    // Bridge-capped cells must be expanded before they reach the clipboard,
+    // otherwise the copied text carries the `…<truncated>` marker.
+    const expanded = await expandRows(displayColumns, picked)
     const text =
       format === 'csv'
-        ? toCsv(displayColumns, picked)
+        ? toCsv(displayColumns, expanded)
         : format === 'tsv'
-          ? toTsv(displayColumns, picked)
+          ? toTsv(displayColumns, expanded)
           : format === 'json'
-            ? toJson(displayColumns, picked)
+            ? toJson(displayColumns, expanded)
             : format === 'md'
-              ? toMarkdown(displayColumns, picked)
+              ? toMarkdown(displayColumns, expanded)
               : insertStatements(
                   connection?.dialect ?? 'mysql',
                   target!.schema,
                   target!.table,
                   displayColumns,
-                  picked,
+                  expanded,
                 )
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
@@ -1911,10 +1914,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         id: 'copy-page',
         label: '复制当前页',
         leaves: [
-          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void copyText(toMarkdown(displayColumns, displayRows)).then(noteCopied('Markdown')) },
-          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toCsv(displayColumns, displayRows)).then(noteCopied('CSV')) },
-          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toTsv(displayColumns, displayRows)).then(noteCopied('TSV')) },
-          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void copyText(toJson(displayColumns, displayRows)).then(noteCopied('JSON')) },
+          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toMarkdown(displayColumns, expanded))).then(noteCopied('Markdown')) },
+          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toCsv(displayColumns, expanded))).then(noteCopied('CSV')) },
+          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toTsv(displayColumns, expanded))).then(noteCopied('TSV')) },
+          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toJson(displayColumns, expanded))).then(noteCopied('JSON')) },
           {
             id: 'copy-page-sql',
             label: '复制当前页 SQL',
@@ -1922,9 +1925,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             onSelect: () => {
               const target = tableTarget()
               if (target === null) return
-              void copyText(
-                insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, displayRows),
-              ).then(noteCopied('SQL'))
+              void expandRows(displayColumns, displayRows)
+                .then((expanded) => copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, expanded)))
+                .then(noteCopied('SQL'))
             },
           },
         ],

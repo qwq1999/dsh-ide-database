@@ -161,9 +161,17 @@ function relationVerbAt(request: CompletionRequest, before: number): string | un
   // a dangling quote in the slice and tokenize() sees no relation verb at all.
   const masked = maskNonCode(text, sqlDialectOf(request.dialect), true)
   const start = masked.lastIndexOf(';') + 1
+  // A relation verb only marks a relation slot until a clause boundary closes
+  // it. After WHERE/ON/GROUP/... the qualifier is a column expression, not a
+  // table reference: `... JOIN t ON alias.` must not be treated as a relation.
+  // Tracking the last token and clearing the verb at boundaries prevents a
+  // stale FROM/JOIN from mislabeling later WHERE/ON qualifiers.
+  const CLAUSE_BOUNDARIES = new Set(['where', 'on', 'group', 'having', 'order', 'set', 'limit', 'offset', 'window', 'union', 'returning'])
   let verb: string | undefined
   for (const token of tokenize(text.slice(start))) {
-    if (token.kind === 'keyword' && RELATION_VERBS.has(token.lower)) verb = token.lower
+    if (token.kind !== 'keyword') continue
+    if (RELATION_VERBS.has(token.lower)) verb = token.lower
+    else if (CLAUSE_BOUNDARIES.has(token.lower)) verb = undefined
   }
   return verb
 }
@@ -445,12 +453,14 @@ async function qualifiedCandidates(
   // schema means "list that schema's tables". Check this before resolving the
   // qualifier as a relation: a trailing-dot `shop.` resolves to a same-named
   // table in the current schema, which would otherwise win with its columns.
-  if (inRelation && name !== request.schema) {
+  // A CTE is in scope before the main statement's FROM clause mentions it.
+  // Resolve aliases FIRST: a `WHERE alias.` qualifier that happens to equal a
+  // schema name must expand the alias's columns, not list the schema's tables.
+  const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
+  if (inRelation && name !== request.schema && relation === undefined) {
     const schemas = await load(() => request.catalog.schemas(), request.signal, [])
     if (schemas.includes(name)) return tableCandidatesOf(request, name)
   }
-  // A CTE is in scope before the main statement's FROM clause mentions it.
-  const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
   if (relation !== undefined && relation.columns !== undefined) {
     return columnCandidates(relation.columns.map((column) => ({ name: column })))
   }

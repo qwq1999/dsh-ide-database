@@ -87,4 +87,46 @@ describe('concurrent connect spinner lifetime (regression r21 BUG3)', () => {
     await act(async () => { connB.resolve(); await pendingB })
     expect(hook.result.current.connectingId).toBe('')
   })
+
+  it('disconnecting B while connecting A keeps A\'s spinner valid and result intact (PR7 P1-3)', async () => {
+    const online = { online: true }
+    const connA = deferred<typeof online>()
+    mocks.connect.mockImplementation((id: string) => (id === 'a' ? connA.promise : Promise.resolve(online)))
+
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+
+    let pendingA!: Promise<boolean>
+    act(() => { pendingA = hook.result.current.connect('a') })
+    await waitFor(() => expect(hook.result.current.connectingId).toBe('a'))
+
+    // Disconnect a DIFFERENT connection while A's connect is in flight.
+    await act(async () => { await hook.result.current.disconnect('b') })
+    expect(hook.result.current.connectingId).toBe('a')
+
+    await act(async () => { connA.resolve(online); await pendingA })
+    expect(hook.result.current.connectingId).toBe('')
+    expect(hook.result.current.servers['a']).toBeDefined()
+  })
+
+  it('two concurrent connects to different ids both land in servers (PR7 P2-1)', async () => {
+    const online = { online: true }
+    const connA = deferred<typeof online>()
+    const connB = deferred<typeof online>()
+    mocks.connect.mockImplementation((id: string) => (id === 'a' ? connA.promise : connB.promise))
+
+    const hook = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(hook.result.current.selectedId).toBe('a'))
+
+    let pendingA!: Promise<boolean>
+    let pendingB!: Promise<boolean>
+    act(() => { pendingA = hook.result.current.connect('a') })
+    act(() => { pendingB = hook.result.current.connect('b') })
+
+    await act(async () => { connA.resolve(online); await pendingA })
+    await act(async () => { connB.resolve(online); await pendingB })
+    expect(hook.result.current.servers['a']).toBeDefined()
+    expect(hook.result.current.servers['b']).toBeDefined()
+  })
+
 })

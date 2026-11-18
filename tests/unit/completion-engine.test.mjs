@@ -2933,6 +2933,32 @@ describe('regression r23: comment, relation qualifier and case-sensitive columns
     }
   })
 
+  it('expands an alias that equals a schema name to the aliased table columns (PR7 P2-1)', async () => {
+    // A WHERE/ON qualifier that happens to equal a schema name must resolve as
+    // a table alias (returning that table's columns), not list the schema's tables.
+    const catalog = {
+      schemas: async () => ['shop', 'crm', 'public'],
+      tables: async (schema) => {
+        if (schema === 'public') return [{ name: 'customers' }]
+        if (schema === 'crm') return [{ name: 'leads' }]
+        return []
+      },
+      columns: async (schema, table) => {
+        if (schema === 'public' && table === 'customers') return [{ name: 'id' }, { name: 'email' }]
+        return []
+      },
+    }
+    for (const stmt of [
+      'SELECT * FROM public.customers crm WHERE crm.',
+      'SELECT * FROM public.customers crm JOIN shop.orders o ON crm.',
+    ]) {
+      const result = await complete(request(stmt, { dialect: 'postgres', catalog }))
+      expect(names(result)).toContain('id')
+      expect(names(result)).toContain('email')
+      expect(names(result)).not.toContain('leads')
+    }
+  })
+
   it('keeps a table alias/name qualifier as columns outside a relation position', async () => {
     const catalog = {
       schemas: async () => ['shop', 'crm'],

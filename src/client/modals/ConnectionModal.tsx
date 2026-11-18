@@ -127,6 +127,9 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
   // it. Editing any field invalidates both, otherwise a stale 'connected'
   // banner sits next to a new validation error.
   const clearFeedback = (): void => {
+    // Editing the draft invalidates any in-flight test/save: bump the request
+    // token so a late success cannot restore a banner for the old draft.
+    requestRef.current += 1
     setTestResult(null)
     setError('')
   }

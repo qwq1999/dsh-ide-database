@@ -1394,7 +1394,14 @@ final class SqlExecutor {
         }
         if (raw instanceof BigDecimal) {
             BigDecimal value = (BigDecimal) raw;
-            if (value.scale() <= 0 && value.precision() <= 15) {
+            // precision is significant digits, not magnitude. With a negative
+            // scale the integer magnitude is precision + |scale| (e.g.
+            // 1.23456789012345E+18 has precision 15, scale -4 => 19 integer
+            // digits), which fits a long but is far beyond 2^53. Returning it
+            // as a JSON number loses precision on the JS side, so also require
+            // |value| <= 2^53 before emitting a number.
+            if (value.scale() <= 0 && value.precision() <= 15
+                    && value.abs().compareTo(new BigDecimal("9007199254740992")) <= 0) {
                 // precision counts significant digits, not magnitude: a
                 // negative scale such as 1E+20 has precision 1 but 21 integer
                 // digits, and longValue() would silently truncate it. Keep

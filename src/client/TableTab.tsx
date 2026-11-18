@@ -29,7 +29,7 @@ import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { DdlModal } from './DdlModal'
-import { cellValueView, type CellValueView } from './cellvalue'
+import { cellValueView, expandTruncatedRows, type CellValueView } from './cellvalue'
 import { tableDumpText } from './tabledump'
 
 /** What the tab body receives: the framework's tab reader. */
@@ -772,6 +772,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     return { columns: collectedColumns, rows: collected }
   }
 
+  /** Expand any bridge-capped cells before they reach the export/clipboard renderer. */
+  const expandRows = (cols: ColumnInfo[], rows: Row[]): Promise<Row[]> =>
+    expandTruncatedRows(cols, rows, (column, text) => api.cellText(column, text))
+
   const exportRows = async (format: ExportFormat, scope: 'page' | 'all'): Promise<void> => {
     if (connection === null) return
     setExporting(true)
@@ -797,7 +801,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         schema: params.schema,
         table: params.table,
         columns: exportColumns,
-        rows: exportData,
+        rows: await expandRows(exportColumns, exportData),
       })
       downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
@@ -839,7 +843,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     )
   }, [shownRows])
   /** Save only the checked rows of the current page. */
-  const exportSelected = (format: ExportFormat): void => {
+  const exportSelected = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     // Hidden columns are a view setting; exports keep them.
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
@@ -849,7 +853,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       schema: params.schema,
       table: params.table,
       columns: displayColumns,
-      rows: picked,
+      rows: await expandRows(displayColumns, picked),
     })
     downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
@@ -881,7 +885,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         table: params.table,
         ddl,
         columns: orderColumns(collected.columns, order),
-        rows: orderRows(collected.rows, order),
+        rows: await expandRows(collected.columns, orderRows(collected.rows, order)),
       })
       downloadText(exportFilename(params.schema, params.table, 'sql'), 'application/sql', text)
       setExportNote(`SQL 已导出 ${formatCount(collected.rows.length)} 行`)
@@ -929,20 +933,21 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }
 
   /** Copy the checked rows in the same formats the page copies offer. */
-  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+  const copySelected = async (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): Promise<void> => {
     // Hidden columns are a view setting; exports and row copies keep them.
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
+    const expanded = await expandRows(displayColumns, picked)
     const text =
       format === 'csv'
-        ? toCsv(displayColumns, picked)
+        ? toCsv(displayColumns, expanded)
         : format === 'tsv'
-          ? toTsv(displayColumns, picked)
+          ? toTsv(displayColumns, expanded)
           : format === 'json'
-            ? toJson(displayColumns, picked)
+            ? toJson(displayColumns, expanded)
             : format === 'md'
-              ? toMarkdown(displayColumns, picked)
-              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, picked)
+              ? toMarkdown(displayColumns, expanded)
+              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, expanded)
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
 
@@ -975,15 +980,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       id: 'copy-page',
       label: '复制当前页',
       leaves: [
-        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void copyText(toMarkdown(displayColumns, displayRows)).then(noteCopied('Markdown')) },
-        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void copyText(toCsv(displayColumns, displayRows)).then(noteCopied('CSV')) },
-        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void copyText(toTsv(displayColumns, displayRows)).then(noteCopied('TSV')) },
-        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void copyText(toJson(displayColumns, displayRows)).then(noteCopied('JSON')) },
+        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toMarkdown(displayColumns, expanded))).then(noteCopied('Markdown')) },
+        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toCsv(displayColumns, expanded))).then(noteCopied('CSV')) },
+        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toTsv(displayColumns, expanded))).then(noteCopied('TSV')) },
+        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toJson(displayColumns, expanded))).then(noteCopied('JSON')) },
         {
           id: 'copy-page-sql',
           label: '复制当前页 SQL',
           onSelect: () =>
-            void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, displayRows)).then(noteCopied('SQL')),
+            void expandRows(displayColumns, displayRows).then((expanded) => copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, expanded))).then(noteCopied('SQL')),
         },
       ],
     },

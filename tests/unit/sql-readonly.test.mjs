@@ -402,4 +402,26 @@ describe('isReadOnlySql', () => {
     // Locking reads inside a CTE body are checked too.
     expect(isReadOnlySql('WITH c AS (SELECT * FROM t FOR UPDATE) SELECT * FROM c', 'postgres')).toBe(false)
   })
+
+  it('rejects EXPLAIN hiding ANALYZE behind mixed leading comments (PR7 P1-2)', () => {
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE */ DELETE FROM users', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 */ /*h*/ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000*/ /*a*/ /*b*/ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*M! ANALYSE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /* normal */ /*!50000 ANALYZE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE FORMAT=TREE */ DELETE FROM t', 'mysql')).toBe(false)
+    // benign cases stay read-only
+    expect(isReadOnlySql('EXPLAIN SELECT * FROM t', 'mysql')).toBe(true)
+    expect(isReadOnlySql('SELECT REPLACE(name,"a","b") FROM t', 'mysql')).toBe(true)
+  })
+
+  it('rejects locking reads hidden in executable comments (PR7 P1-2 lock)', () => {
+    expect(isReadOnlySql('SELECT * FROM t FOR /*!50000 UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR /*M!50000 UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR /*!50000*/ /*x*/ UPDATE', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t /*!50000 FOR UPDATE */', 'mysql')).toBe(false)
+    // plain read stays read-only
+    expect(isReadOnlySql('SELECT * FROM t', 'mysql')).toBe(true)
+  })
+
 })

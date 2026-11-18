@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -45,6 +45,12 @@ function renderModal(editing: typeof existing | null = existing): void {
 
 function passwordInput(): HTMLInputElement {
   return screen.getByLabelText(/^密码/) as HTMLInputElement
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => { resolve = r })
+  return { promise, resolve }
 }
 
 describe('connection modal editing', () => {
@@ -275,5 +281,18 @@ describe('connection modal feedback invalidation', () => {
     // Correcting the name clears the error immediately.
     fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '有效名称' } })
     expect(screen.queryByText(/请填写连接名称/u)).toBeNull()
+  })
+
+  it('does not restore a success banner when an in-flight test resolves after an edit (PR7 P2-2)', async () => {
+    const gate = deferred<{ ok: boolean; latencyMs: number; server: { product: string; version: string } }>()
+    mocks.testConnection.mockReturnValue(gate.promise)
+    renderModal()
+    // Start a test that will not settle yet.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    // Edit the draft while the test is in flight (invalidates via clearFeedback).
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    // The stale test resolves now; its success must NOT reappear.
+    await act(async () => { gate.resolve({ ok: true, latencyMs: 12, server: { product: 'MySQL', version: '8.0' } }); await gate.promise })
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
   })
 })

@@ -234,6 +234,12 @@ export function App(props: AppProps): ReactElement {
   const toolbarActionsRef = useRef<HTMLSpanElement | null>(null)
   const toolbarOverflowRef = useRef<HTMLSpanElement | null>(null)
   const ddlRequest = useRef(0)
+  // Closing must invalidate an in-flight ddl() request: otherwise a late
+  // success reopens the dialog the user just dismissed.
+  const closeDdl = useCallback(() => {
+    ddlRequest.current += 1
+    setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })
+  }, [])
 
   const closeToolbarOverflow = useCallback(() => setToolbarOverflowOpen(false), [])
   usePopoverDismiss(toolbarOverflowOpen, closeToolbarOverflow, toolbarOverflowRef)
@@ -921,7 +927,7 @@ export function App(props: AppProps): ReactElement {
         open={ddlModal.open}
         title={ddlModal.title}
         width={760}
-        onClose={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
+        onClose={closeDdl}
         footer={
           <>
             <span className="dshdb-muted">
@@ -934,7 +940,7 @@ export function App(props: AppProps): ReactElement {
             <Button
               size="sm"
               variant="primary"
-              onClick={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
+              onClick={closeDdl}
             >
               关闭
             </Button>
