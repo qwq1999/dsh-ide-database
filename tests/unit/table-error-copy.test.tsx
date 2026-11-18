@@ -110,3 +110,23 @@ describe('table error banner', () => {
     await waitFor(() => expect(screen.queryByText(/refresh failed/)).toBeNull())
   })
 })
+
+
+describe('table mount error banner', () => {
+  beforeEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    mocks.copyText.mockResolvedValue(true)
+  })
+
+  it('hides retry when the failure happened before any load (missing connection)', async () => {
+    // status resolves but the target connection is absent -> mount throws before load().
+    mocks.status.mockResolvedValue({ config: { ...config, connections: [] }, drivers: [], env: {} })
+    render(<TableTab useTabInfo={() => ({ tab: { navigation: { params: { connectionId: 'mysql-1', schema: 'shop', table: 'orders' } } } })} />)
+
+    await screen.findByText(/该数据源已不存在/)
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
+    // Copy stays available so the user can report the error.
+    expect(screen.getByRole('button', { name: '复制' })).toBeTruthy()
+  })
+})

@@ -143,4 +143,20 @@ describe('console failure banner', () => {
     await waitFor(() => expect(screen.queryByText(/boom/)).toBeNull())
     expect(await screen.findByText('beta')).not.toBeNull()
   })
+
+
+  it('does not offer replay for a non-query failure (explain)', async () => {
+    mocks.explain.mockRejectedValueOnce(new ApiError('sql', 'explain failed'))
+    render(<ConsoleTab useTabInfo={tab} />)
+    await screen.findByLabelText('数据源')
+    await waitForConsoleSource(mocks)
+    const editor = await screen.findByPlaceholderText(/输入 SQL/)
+    fireEvent.change(editor, { target: { value: 'SELECT * FROM orders' } })
+    fireEvent.keyDown(editor, { key: 'e', ctrlKey: true })
+
+    await screen.findByText(/explain failed/)
+    // The failure came from explain, not a replayable SQL run: no retry button.
+    expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
+  })
+
 })

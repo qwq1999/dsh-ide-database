@@ -178,7 +178,15 @@ export function jarCacheName(jar: JarRef): string {
   const group = jar.group.includes('_')
     ? jar.group.replaceAll('_', '%5F').replaceAll('.', '%2E')
     : jar.group.replaceAll('.', '_')
-  return `${group}__${jar.artifact}__${jar.version}${classifier}.jar`
+  // artifact and version may also contain a literal `_` (JAR_PART_PATTERN
+  // allows it). Without escaping, `a__b`/`c` and `a`/`b__c` both map to
+  // `g__a__b__c.jar`, so one coordinate is mistaken for the other and the
+  // wrong jar's bytecode is loaded. Percent-encode literal `_` so the `__`
+  // separator stays unambiguous; `%` is not legal in a coordinate, and values
+  // without `_` keep their familiar cache name for compatibility.
+  const artifact = jar.artifact.replaceAll('_', '%5F')
+  const version = jar.version.replaceAll('_', '%5F')
+  return `${group}__${artifact}__${version}${classifier}.jar`
 }
 
 export function mavenBase(mirror: 'central' | 'aliyun'): string {

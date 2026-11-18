@@ -879,17 +879,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onClose={() => setError(null)}
           actions={
             <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const last = lastLoad.current
-                  if (last === null) return
-                  void load(last.found, last.target)
-                }}
-              >
-                重试
-              </Button>
+              {lastLoad.current !== null ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const last = lastLoad.current
+                    if (last === null) return
+                    void load(last.found, last.target)
+                  }}
+                >
+                  重试
+                </Button>
+              ) : null}
               <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
                 复制
               </Button>

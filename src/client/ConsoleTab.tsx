@@ -88,6 +88,8 @@ export interface ConsoleTabProps {
 interface Failure {
   message: string
   detail?: string
+  /** Present only when the failure came from a replayable SQL run. */
+  retry?: () => void
 }
 
 /** One button of the SQL console toolbar; rendered inline or inside the "…" menu. */
@@ -696,7 +698,13 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       } catch (error) {
         if (token !== runToken.current) return
         setResult(null)
-        setFailure(failureText(error))
+        setFailure({
+          ...failureText(error),
+          retry: () => {
+            const text = lastAttempt.current
+            if (text !== null) void runText(text)
+          },
+        })
       } finally {
         runningRef.current = Math.max(0, runningRef.current - 1)
         if (token === runToken.current) setRunning(false)
@@ -874,10 +882,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }
 
   const retryLast = (): void => {
-    const text = lastAttempt.current
-    if (text === null) return
+    const retry = failure?.retry
+    if (retry === undefined) return
     setFailure(null)
-    void runText(text)
+    retry()
   }
 
   /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
@@ -2657,13 +2665,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               onClose={() => setFailure(null)}
               actions={
                 <>
-                  <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => retryLast()}
-                >
-                  重试
-                </Button>
+                  {failure.retry !== undefined ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => retryLast()}
+                    >
+                      重试
+                    </Button>
+                  ) : null}
                 <Button
                   size="sm"
                   variant="ghost"

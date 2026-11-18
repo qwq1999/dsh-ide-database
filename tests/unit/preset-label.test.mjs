@@ -71,3 +71,15 @@ describe('jarCacheName', () => {
     expect(jarCacheName(mysql)).toBe('com_mysql__mysql-connector-j__8.4.0.jar')
   })
 })
+
+
+describe('jarCacheName component collisions', () => {
+  it('does not let literal underscores in artifact/version forge the separator', () => {
+    const a = { group: 'g', artifact: 'a__b', version: 'c' }
+    const b = { group: 'g', artifact: 'a', version: 'b__c' }
+    expect(jarCacheName(a)).not.toBe(jarCacheName(b))
+    // Dots in a version are legal and stay readable.
+    expect(jarCacheName({ group: 'com.mysql', artifact: 'mysql-connector-j', version: '8.4.0' }))
+      .toBe('com_mysql__mysql-connector-j__8.4.0.jar')
+  })
+})
