@@ -98,4 +98,44 @@ describe('Redis session lifecycle under concurrency', () => {
     expect(redis.sessions.has(`${id}\u00007`)).toBe(false)
     expect(() => redis.session(id, 7)).toThrow(/连接尚未打开/)
   })
+
+  it('reconnects after a disconnect that races an in-flight open', async () => {
+    const { id, redis } = manager()
+
+    // First connect is gated so it stays in flight.
+    let releaseFirst
+    state.gate = new Promise((resolve) => { releaseFirst = resolve })
+    const first = redis.connect(id)
+    await Promise.resolve()
+    await Promise.resolve()
+    await redis.disconnect(id)
+    // A reconnect must start a fresh open, not reuse the doomed old-epoch one.
+    const reconnect = redis.connect(id)
+    releaseFirst()
+
+    await expect(first).rejects.toThrow(/连接尚未打开/)
+    const info = await reconnect
+    expect(info.product).toBe('Redis')
+    expect(redis.isConnected(id)).toBe(true)
+    // Two clients were opened (the first was thrown away), both ended.
+    expect(state.created).toHaveLength(2)
+  })
+
+  it('does not resurrect a session after dispose during an in-flight open', async () => {
+    const { id, redis } = manager()
+
+    let release
+    state.gate = new Promise((resolve) => { release = resolve })
+    const opening = redis.connect(id)
+    await Promise.resolve()
+    await Promise.resolve()
+    await redis.dispose()
+    release()
+
+    await expect(opening).rejects.toThrow(/连接尚未打开/)
+    expect(redis.isConnected(id)).toBe(false)
+    expect(state.created).toHaveLength(1)
+    expect(state.created[0].disconnectCalls).toBeGreaterThan(0)
+  })
+
 })

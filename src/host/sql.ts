@@ -747,6 +747,9 @@ export class SqlService {
   private bridgeJavaPath = ''
   private bridgeStarting: Promise<BridgeClient> | undefined
   private readonly connected = new Map<string, Connected>()
+  // Bumped on every connect start and disconnect so a connect that resolves
+  // after a concurrent disconnect cannot resurrect a closed session.
+  private readonly connectEpoch = new Map<string, number>()
 
   constructor(
     private readonly paths: PluginPaths,
@@ -943,6 +946,8 @@ export class SqlService {
     const bridge = await this.ensureBridge()
     const settings = this.config.settings()
     const password = await this.passwordFor(connection)
+    const epoch = (this.connectEpoch.get(connId) ?? 0) + 1
+    this.connectEpoch.set(connId, epoch)
     try {
       const server = await bridge.request<ServerInfo>(
         'connect',
@@ -959,6 +964,12 @@ export class SqlService {
         },
         (settings.connectTimeoutSec + 15) * 1000,
       )
+      // A disconnect may have run while the bridge request was in flight; it
+      // already closed the server-side session, so do not report the connection
+      // as online or cache a stale ServerInfo for it.
+      if (this.connectEpoch.get(connId) !== epoch) {
+        throw new DbError('not-connected', '连接已断开')
+      }
       this.connected.set(connId, { driver, server })
       this.config.touchConnection(connId)
       return server
@@ -975,6 +986,7 @@ export class SqlService {
   }
 
   async disconnect(connId: string): Promise<void> {
+    this.connectEpoch.set(connId, (this.connectEpoch.get(connId) ?? 0) + 1)
     this.connected.delete(connId)
     if (this.bridge === undefined) return
     await this.bridge.request('disconnect', { connId }, 15_000).catch(() => undefined)

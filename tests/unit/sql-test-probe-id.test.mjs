@@ -119,3 +119,34 @@ describe('db_test_connection probe id', () => {
     expect(connectPayloads[0].password).toBe('s3cr3t')
   })
 })
+
+
+describe('connect/disconnect race', () => {
+  it('does not resurrect connected state when a disconnect races an in-flight connect', async () => {
+    const { service, live } = harness()
+    // Start with no live session so connect genuinely establishes one.
+    service.connected.clear()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const bridge = {
+      request: vi.fn(async (method) => {
+        if (method === 'connect') {
+          await gate
+          return { version: '8.0' }
+        }
+        return undefined
+      }),
+    }
+    service.ensureBridge = async () => bridge
+
+    const connecting = service.connect(live.id)
+    // Let connect reach the gated bridge.request.
+    await Promise.resolve()
+    await Promise.resolve()
+    await service.disconnect(live.id)
+    release()
+
+    await expect(connecting).rejects.toThrow(/连接已断开/)
+    expect(service.isConnected(live.id)).toBe(false)
+  })
+})
