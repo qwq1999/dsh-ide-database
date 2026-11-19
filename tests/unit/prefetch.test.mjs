@@ -338,6 +338,46 @@ describe('DescriptionPrefetcher', () => {
     expect([...state.puts].sort()).toEqual(['audit.b'])
   })
 
+  it('a partial request cannot retire an in-flight full refresh (PR8 P1-2)', async () => {
+    const { structure, state } = fakeStructure({
+      objects: {
+        app: [{ name: 'a1', kind: 'table' }],
+        audit: [{ name: 'b1', kind: 'table' }],
+      },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(`${schema}.${table}`)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push(release)
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    // A full refresh across both schemas starts first and holds both reads.
+    prefetch.schedule('c1', { refreshAll: true, schemas: ['app', 'audit'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a1', 'audit.b1']))
+    expect(gates.length).toBe(2)
+
+    // A narrower non-refresh request arrives while the refresh is in flight.
+    // It must NOT retire the refresh: doing so would drop audit's in-flight
+    // read via isCurrent() and leave only the app subset re-read.
+    prefetch.schedule('c1', { refreshAll: false, schemas: ['app'] })
+    expect(calls).toEqual(['app.a1', 'audit.b1'])
+
+    gates.forEach((release) => release())
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    // Both tables were refreshed and persisted (audit was not dropped).
+    expect([...state.puts].sort()).toEqual(['app.a1', 'audit.b1'])
+  })
+
   it('reports live progress and clears it when the walk ends', async () => {
     const { structure } = fakeStructure({
       objects: { app: [{ name: 'orders', kind: 'table' }, { name: 'items', kind: 'table' }] },

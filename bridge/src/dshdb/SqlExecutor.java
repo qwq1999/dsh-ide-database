@@ -1591,12 +1591,22 @@ final class SqlExecutor {
     }
 
     private void keepCellText(String column, String text, int prefixEnd) {
-        if (text.length() > MAX_CELL_TEXT) {
-            return;
-        }
         String key = cellKey(column, text.substring(0, prefixEnd));
         synchronized (cellTexts) {
             if (ambiguousCellKeys.contains(key)) {
+                return;
+            }
+            if (text.length() > MAX_CELL_TEXT) {
+                // This value is too large to cache, but it still shares the
+                // (column, prefix) key with any smaller cell kept earlier. If we
+                // just return, a later cellText() for this cell would be served
+                // that stale smaller value. Poison the key and drop any retained
+                // copy so the caller sees an honest "unavailable" instead.
+                String earlier = cellTexts.remove(key);
+                if (earlier != null) {
+                    cellTextChars -= earlier.length();
+                }
+                ambiguousCellKeys.add(key);
                 return;
             }
             String previous = cellTexts.get(key);
@@ -1625,6 +1635,14 @@ final class SqlExecutor {
                 }
                 stale.remove();
                 cellTextChars -= eldest.getValue().length();
+                // An evicted entry leaves no trace in cellTexts. Without a marker,
+                // a later cell with the same (column, prefix) but different full
+                // text would look like a fresh insert (previous == null) and be
+                // cached — then queries for the evicted cell would get that wrong
+                // text. Poison the evicted key: the evicted full text is no longer
+                // servable anyway, so this trades an unavailable value for never
+                // serving another row's value.
+                ambiguousCellKeys.add(eldest.getKey());
             }
         }
     }

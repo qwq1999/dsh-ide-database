@@ -2026,6 +2026,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               invalidateRun()
               setSchema(next)
               writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, next)
+              // invalidateRun() clears schemas (and bumps schemaRequest) to avoid
+              // stale results across a data-source switch, but a DB/Schema change
+              // keeps selectedId, so nothing would reload the list. Re-fetch it
+              // explicitly or the dropdown collapses to just the current entry.
+              void loadSchemaList(selectedId)
             }}
             options={[
               { value: defaultSchema, label: `默认${defaultSchema === '' ? '' : `（${defaultSchema}）`}` },

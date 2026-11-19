@@ -66,6 +66,11 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
   // A save/test in flight must not act on a different modal instance after the
   // user closes this one and opens another while the request is pending.
   const requestRef = useRef(0)
+  // Editing invalidates a displayed banner, but it must NOT invalidate an
+  // in-flight test/save: those use requestRef (bumped only when the modal
+  // instance changes). Keeping the two tokens separate lets a late test
+  // result reset its own loading state while still hiding a stale banner.
+  const bannerVersion = useRef(0)
 
   const customDrivers = useMemo(() => props.drivers.filter((driver) => driver.preset === null), [props.drivers])
   const editing = props.editing
@@ -127,9 +132,10 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
   // it. Editing any field invalidates both, otherwise a stale 'connected'
   // banner sits next to a new validation error.
   const clearFeedback = (): void => {
-    // Editing the draft invalidates any in-flight test/save: bump the request
-    // token so a late success cannot restore a banner for the old draft.
-    requestRef.current += 1
+    // Only invalidate the banner, not the operation token: a test/save already
+    // in flight must still be able to reset its loading state and fire its
+    // callbacks when it resolves.
+    bannerVersion.current += 1
     setTestResult(null)
     setError('')
   }
@@ -188,6 +194,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
       return
     }
     const request = requestRef.current
+    const banner = bannerVersion.current
     setTesting(true)
     setError('')
     try {
@@ -195,7 +202,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
       // resolve a stored password when the field is left blank (probeId is a
       // separate random id, so this cannot evict a live session).
       const result = await api.testConnection(draft)
-      if (requestRef.current === request) setTestResult(result)
+      if (requestRef.current === request && bannerVersion.current === banner) setTestResult(result)
     } catch (cause) {
       if (requestRef.current === request) {
         setTestResult(null)

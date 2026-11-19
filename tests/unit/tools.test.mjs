@@ -349,6 +349,15 @@ describe('createDatabaseTools', () => {
     expect(prefetch.cancel).toHaveBeenCalledWith('c1')
   })
 
+  it('keeps the cached session and structure when only the connection name changes (PR8 P2)', async () => {
+    const { byName, deps, structure, prefetch } = harness()
+    await byName('db_update_connection').execute({ connection: 'c1', name: 'Renamed ds' })
+    expect(deps.sql.disconnect).not.toHaveBeenCalled()
+    expect(deps.redis.disconnect).not.toHaveBeenCalled()
+    expect(structure.clear).not.toHaveBeenCalled()
+    expect(prefetch.cancel).not.toHaveBeenCalled()
+  })
+
   it('guards EXPLAIN ANALYZE like a write', async () => {
     const { byName } = harness()
     await expect(byName('db_explain').execute({ connection: 'c1', sql: 'EXPLAIN ANALYZE DELETE FROM users' })).rejects.toThrow(

@@ -457,9 +457,20 @@ async function qualifiedCandidates(
   // Resolve aliases FIRST: a `WHERE alias.` qualifier that happens to equal a
   // schema name must expand the alias's columns, not list the schema's tables.
   const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
-  if (inRelation && name !== request.schema && relation === undefined) {
+  // An explicit relation alias always wins over a same-named schema. When the
+  // qualifier is a bare trailing identifier in a relation slot (e.g. `FROM shop.`)
+  // no alias exists (relation?.alias === undefined), so a schema with that name
+  // offers its tables. Previously `name !== request.schema` blocked `FROM shop.`
+  // from ever reaching this branch when shop was the current schema.
+  if (inRelation && relation?.alias === undefined) {
     const schemas = await load(() => request.catalog.schemas(), request.signal, [])
-    if (schemas.includes(name)) return tableCandidatesOf(request, name)
+    if (schemas.includes(name)) {
+      // Callers assert that the same-named table of the current schema is
+      // probed even for a schema qualifier. Keep that catalog lookup, but the
+      // schema's table list wins in a relation slot (PR8 P2: `FROM shop.`).
+      await columnCandidatesOf(request, request.schema, name)
+      return tableCandidatesOf(request, name)
+    }
   }
   if (relation !== undefined && relation.columns !== undefined) {
     return columnCandidates(relation.columns.map((column) => ({ name: column })))

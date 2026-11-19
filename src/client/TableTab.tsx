@@ -879,13 +879,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         .ddl(params.connectionId, params.schema, params.table, objectKind)
         .then((result) => result.ddl)
         .catch(() => null)
+      // The dumped columns and the columns driving cell expansion must be the
+      // same ordered set: expandTruncatedRows resolves each cell's column by
+      // position, so passing unordered columns here fetches the wrong full text
+      // after a drag and leaves the truncation marker in the SQL.
+      const dumpColumns = orderColumns(collected.columns, order)
       const text = tableDumpText({
         dialect: connection.dialect,
         schema: params.schema,
         table: params.table,
         ddl,
-        columns: orderColumns(collected.columns, order),
-        rows: await expandRows(collected.columns, orderRows(collected.rows, order)),
+        columns: dumpColumns,
+        rows: await expandRows(dumpColumns, orderRows(collected.rows, order)),
       })
       downloadText(exportFilename(params.schema, params.table, 'sql'), 'application/sql', text)
       setExportNote(`SQL 已导出 ${formatCount(collected.rows.length)} 行`)

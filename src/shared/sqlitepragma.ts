@@ -51,8 +51,8 @@ export const SQLITE_ARGUMENT_PRAGMAS: ReadonlySet<string> = new Set([
 // SQLite accepts comments between PRAGMA and the name (and around the schema
 // dot). They cannot be stripped blindly because quoted schema identifiers may
 // contain comment-like text, so consume them as grammar whitespace.
-const PRAGMA_GAP = String.raw`(?:\s|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)+`
-const PRAGMA_GAP_OPT = String.raw`(?:\s|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*`
+const PRAGMA_GAP = String.raw`(?:\s|--[^\n]*(?:\n|$)|\/\*(?:[^*]|\*(?!\/))*\*\/)+`
+const PRAGMA_GAP_OPT = String.raw`(?:\s|--[^\n]*(?:\n|$)|\/\*(?:[^*]|\*(?!\/))*\*\/)*`
 const PRAGMA_HEAD = new RegExp(
   '^pragma' +
     PRAGMA_GAP +

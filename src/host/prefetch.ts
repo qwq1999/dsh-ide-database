@@ -71,6 +71,10 @@ export class DescriptionPrefetcher {
       // old pass keeps walking only the previous set. The old run retires
       // safely through isCurrent() when the session is replaced.
       if (sameSchemaSet(running.schemas, schemas) && (!refreshAll || running.refreshAll)) return
+      // A full refresh already covers every schema. A partial (non-refresh)
+      // request arriving while it runs must not retire it: doing so discards
+      // its in-flight reads via isCurrent() and leaves only the subset re-read.
+      if (running.refreshAll && !refreshAll) return
       this.active.delete(connectionId)
     }
     const session: PrefetchSession = {

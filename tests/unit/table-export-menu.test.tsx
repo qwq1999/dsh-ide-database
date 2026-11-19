@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   connect: vi.fn(),
   ddl: vi.fn(),
+  cellText: vi.fn(),
 }))
 
 vi.mock('../../src/client/api', () => {
@@ -19,7 +20,7 @@ vi.mock('../../src/client/api', () => {
   }
   return {
     ApiError,
-    api: { status: mocks.status, query: mocks.query, connect: mocks.connect, ddl: mocks.ddl },
+    api: { status: mocks.status, query: mocks.query, connect: mocks.connect, ddl: mocks.ddl, cellText: mocks.cellText },
   }
 })
 
@@ -350,6 +351,54 @@ describe('table export menu', () => {
     expect(String(call[2])).toContain('CREATE TABLE `orders`')
     expect(String(call[2])).toContain('INSERT INTO `shop`.`orders`')
     expect(mocks.ddl).toHaveBeenCalledWith('mysql-1', 'shop', 'orders', 'table')
+  })
+
+  it('expands a reordered truncated column with the right name in the dump (PR8 P2)', async () => {
+    const { CELL_TEXT_LIMIT, TRUNCATED_SUFFIX } = await import('../../src/client/cellvalue')
+    const capped = 'x'.repeat(CELL_TEXT_LIMIT) + TRUNCATED_SUFFIX
+    mocks.cellText.mockResolvedValue('FULL-NOTE')
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: [
+        { name: 'id', typeName: 'INT' },
+        { name: 'note', typeName: 'TEXT' },
+      ],
+      rows: [[1, capped]],
+      rowCount: 1, truncated: false, elapsedMs: 2, warnings: [],
+    }))
+
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThanOrEqual(1))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1))
+
+    // Drag "id" onto "note": display order becomes [note, id].
+    const headers = screen.getAllByRole('columnheader')
+    const idHeader = headers.find((c) => (c.textContent ?? '').trim() === 'id')!
+    const noteHeader = headers.find((c) => (c.textContent ?? '').trim() === 'note')!
+    const dragEvent = createEvent.dragStart(idHeader)
+    Object.assign(dragEvent, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent(idHeader, dragEvent)
+    fireEvent.dragOver(noteHeader)
+    fireEvent.drop(noteHeader)
+
+    const trigger = (await screen.findByLabelText('导出结果')) as HTMLButtonElement
+    await waitFor(() => expect(trigger.disabled).toBe(false))
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: '整表脚本' }))
+
+    await waitFor(() => expect(downloads).toHaveBeenCalled())
+    // The truncated cell belongs to `note`; expansion must look it up by the
+    // ordered column name, never by the pre-reorder position.
+    expect(mocks.cellText).toHaveBeenCalledWith('note', capped)
+    const text = String(downloads.mock.calls.at(-1)?.[2] ?? '')
+    expect(text).toContain('FULL-NOTE')
+    expect(text).not.toContain(TRUNCATED_SUFFIX)
   })
   it('does not double the ORDER BY prefix when the box already has one', async () => {
     render(

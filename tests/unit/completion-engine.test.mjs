@@ -2931,6 +2931,17 @@ describe('regression r23: comment, relation qualifier and case-sensitive columns
       expect(names(result)).toContain('prices')
       expect(names(result)).not.toContain('shop_id')
     }
+    // PR8 P2: a trailing qualifier equal to the CURRENT schema ('shop') must
+    // also list that schema's tables, not the same-named table's columns.
+    const shopDot = await complete(request('SELECT * FROM shop.', { dialect: 'postgres', catalog }))
+    expect(names(shopDot)).toContain('orders')
+    expect(names(shopDot)).toContain('shop')
+    expect(names(shopDot)).not.toContain('shop_id')
+    // A typed prefix filters the schema's tables but must still not leak the
+    // same-named table's columns (shop_id/shop_name).
+    const shopP = await complete(request('SELECT * FROM shop.p', { dialect: 'postgres', catalog }))
+    expect(names(shopP)).not.toContain('shop_id')
+    expect(names(shopP)).not.toContain('shop_name')
   })
 
   it('expands an alias that equals a schema name to the aliased table columns (PR7 P2-1)', async () => {

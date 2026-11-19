@@ -189,9 +189,12 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     max: number,
   ) => {
     const parsed = Number.parseInt(value, 10)
-    // Clamp into the same range the host validates on save; on empty/invalid
-    // input fall back to the field's own minimum so the draft stays submittable.
-    const next = Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : min
+    // Only clamp the upper bound while typing. Clamping the lower bound on
+    // every keystroke makes small values in a field with a high minimum
+    // (e.g. redisScanCount min=10) impossible to type: clearing gives 10 and
+    // typing '2' clamps straight back to 10. The host re-validates the lower
+    // bound on save (config.ts asInt), so intermediate drafts may be below min.
+    const next = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), max) : min
     update(key, next)
   }
 
