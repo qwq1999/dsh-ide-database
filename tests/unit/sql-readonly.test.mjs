@@ -424,4 +424,20 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('SELECT * FROM t', 'mysql')).toBe(true)
   })
 
+  it('parses a chain of closed block comments in linear time (PR8 ReDoS)', () => {
+    // The PRAGMA header regex used to backtrack quadratically when a /*...*/
+    // sequence could be read as either a gap comment or a bare schema name.
+    // Both the spaced and the unspaced variants must now stay linear. A generous
+    // 400ms ceiling keeps this stable on slow CI while the old regex took
+    // seconds at these sizes.
+    for (const body of ['/*x*/ ', '/*x*/']) {
+      const sql = 'pragma ' + body.repeat(2000)
+      const t0 = performance.now()
+      const result = isReadOnlySql(sql, 'sqlite')
+      const elapsed = performance.now() - t0
+      expect(typeof result).toBe('boolean')
+      expect(elapsed).toBeLessThan(400)
+    }
+  })
+
 })
