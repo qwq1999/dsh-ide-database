@@ -295,4 +295,19 @@ describe('connection modal feedback invalidation', () => {
     await act(async () => { gate.resolve({ ok: true, latencyMs: 12, server: { product: 'MySQL', version: '8.0' } }); await gate.promise })
     expect(screen.queryByText(/连接成功/u)).toBeNull()
   })
+
+  it('does not show a stale test error after the draft is edited (PR8 round2)', async () => {
+    let reject!: (reason?: unknown) => void
+    const promise = new Promise((_, rej) => { reject = rej })
+    mocks.testConnection.mockReturnValue(promise)
+    renderModal()
+    // Start a test that will fail later.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    // Edit the host while the test is in flight. clearFeedback bumps only
+    // bannerVersion, so the stale error must be suppressed by the catch guard.
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    await act(async () => { reject(new Error('old host unreachable')); await promise.catch(() => undefined) })
+    expect(screen.queryByText(/old host unreachable/u)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })

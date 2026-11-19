@@ -204,7 +204,7 @@ export function ConnectionModal(props: ConnectionModalProps): ReactElement | nul
       const result = await api.testConnection(draft)
       if (requestRef.current === request && bannerVersion.current === banner) setTestResult(result)
     } catch (cause) {
-      if (requestRef.current === request) {
+      if (requestRef.current === request && bannerVersion.current === banner) {
         setTestResult(null)
         setError(errorText(cause))
       }

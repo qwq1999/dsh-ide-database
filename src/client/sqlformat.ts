@@ -73,9 +73,11 @@ function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
       // backslashEscapes; assuming it everywhere merges two adjacent literals
       // such as 'a\', 'b' in standard SQL and silently changes their meaning.
       // Typed string literals carry a prefix glued to the quote: PostgreSQL
-      // E'..'/B'..'/X'..'/U&'..' and SQL Server N'..'. Keep the prefix in the
+      // E'..'/B'..'/X'..' and SQL Server N'..'. Keep the prefix in the
       // same literal atom; splitting it into a separate word inserts a space
       // (E '..') which turns a valid literal into a `type 'const'` cast.
+      // PostgreSQL U&'..' (Unicode escapes) is NOT handled here; its prefix
+      // may still be split, which is a cosmetic formatting limitation only.
       let literalStart = i
       if (ch === "'" && i > 0) {
         const prev = sql[i - 1]!
