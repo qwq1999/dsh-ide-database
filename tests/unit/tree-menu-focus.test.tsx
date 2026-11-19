@@ -65,4 +65,28 @@ describe('tree menu keyboard support', () => {
     fireEvent.keyDown(window, { key: 'End' })
     expect(document.activeElement).toBe(last)
   })
+
+  it('keeps the focused row when a parent re-render passes a new onClose', async () => {
+    const stableMenu = {
+      x: 10,
+      y: 10,
+      items: [
+        { label: '打开数据', run: vi.fn() },
+        { label: '复制名称', disabled: true, run: vi.fn() },
+        { label: '复制限定名', run: vi.fn() },
+      ],
+    }
+    const view = render(<TreeMenu menu={stableMenu} onClose={() => {}} />)
+    const first = screen.getByRole('menuitem', { name: '打开数据' })
+    const last = screen.getByRole('menuitem', { name: '复制限定名' })
+    await waitFor(() => expect(document.activeElement).toBe(first))
+
+    fireEvent.keyDown(window, { key: 'End' })
+    expect(document.activeElement).toBe(last)
+
+    // A background refresh re-renders the parent with a fresh inline onClose.
+    // The menu's focus effect must not re-run and jump back to the first row.
+    view.rerender(<TreeMenu menu={stableMenu} onClose={() => {}} />)
+    expect(document.activeElement).toBe(last)
+  })
 })

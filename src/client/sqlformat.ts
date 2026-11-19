@@ -5,6 +5,10 @@
  * 它不解析语法，因此对任何输入都不会失败：无法判断的地方原样保留。
  */
 
+import { blockCommentEnd } from '../shared/sqlcomment'
+import type { SqlDialect } from '../shared/types'
+import { backslashEscapes, bracketIdentifierEnd, dollarDelimiterAt, oracleQuotedLiteralEnd } from './sqllex'
+
 const KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'BETWEEN',
   'EXISTS', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'JOIN', 'LEFT', 'RIGHT',
@@ -26,7 +30,7 @@ const LINE_STARTERS = new Set([
 
 type Atom = { kind: 'word' | 'punct' | 'op' | 'literal' | 'comment'; text: string }
 
-function tokenize(sql: string): Atom[] {
+function tokenize(sql: string, dialect: SqlDialect | undefined): Atom[] {
   const atoms: Atom[] = []
   let i = 0
   const push = (kind: Atom['kind'], text: string) => atoms.push({ kind, text })
@@ -48,16 +52,52 @@ function tokenize(sql: string): Atom[] {
       continue
     }
     if (ch === '/' && next === '*') {
-      const end = sql.indexOf('*/', i + 2)
-      const stop = end === -1 ? sql.length : end + 2
+      // PostgreSQL / SQL Server nest block comments; a naive indexOf('*/')
+      // would end at the inner closer and leave the rest as code (turning a
+      // valid comment into an unterminated one after formatting).
+      let stop: number
+      if (dialect === undefined) {
+        const end = sql.indexOf('*/', i + 2)
+        stop = end === -1 ? sql.length : end + 2
+      } else {
+        const end = blockCommentEnd(sql, i, dialect)
+        stop = end === -1 ? sql.length : end
+      }
       push('comment', sql.slice(i, stop))
       i = stop
       continue
     }
     if (ch === "'" || ch === '"' || ch === '`') {
+      // Only MySQL (and PostgreSQL E'...') treat a backslash as an escape
+      // inside a string. The rest of the codebase agrees on this via
+      // backslashEscapes; assuming it everywhere merges two adjacent literals
+      // such as 'a\', 'b' in standard SQL and silently changes their meaning.
+      // Typed string literals carry a prefix glued to the quote: PostgreSQL
+      // E'..'/B'..'/X'..' and SQL Server N'..'. Keep the prefix in the
+      // same literal atom; splitting it into a separate word inserts a space
+      // (E '..') which turns a valid literal into a `type 'const'` cast.
+      // PostgreSQL U&'..' (Unicode escapes) is NOT handled here; its prefix
+      // may still be split, which is a cosmetic formatting limitation only.
+      let literalStart = i
+      if (ch === "'" && i > 0) {
+        const prev = sql[i - 1]!
+        const before = i > 1 ? sql[i - 2]! : ''
+        const boundary = before === '' || !/[A-Za-z0-9_$]/u.test(before)
+        if (boundary) {
+          const pgPrefix = dialect === 'postgres' && /[EeBbXx]/.test(prev)
+          const msPrefix = dialect === 'mssql' && /[Nn]/.test(prev)
+          if (pgPrefix || msPrefix) {
+            literalStart = i - 1
+            // The word scanner already emitted the prefix letter as a separate
+            // atom; drop it so the prefix is not duplicated.
+            if (atoms[atoms.length - 1]?.kind === 'word') atoms.pop()
+          }
+        }
+      }
+      const escapes = dialect === undefined ? false : backslashEscapes(sql, i, ch, dialect)
       let j = i + 1
       while (j < sql.length) {
-        if (sql[j] === String.fromCharCode(92) && ch !== '`') {
+        if (escapes && sql[j] === String.fromCharCode(92)) {
           j += 2
           continue
         }
@@ -71,9 +111,45 @@ function tokenize(sql: string): Atom[] {
         }
         j += 1
       }
-      push('literal', sql.slice(i, j))
+      push('literal', sql.slice(literalStart, j))
       i = j
       continue
+    }
+    // PostgreSQL dollar-quoted literals ($$...$$, $tag$...$tag$) may contain
+    // semicolons and newlines. Consume the whole body as one literal so its
+    // contents are never reformatted or split into statements.
+    if (ch === '$' && dialect === 'postgres') {
+      const tag = dollarDelimiterAt(sql, i)
+      if (tag !== null) {
+        const close = sql.indexOf(tag, i + tag.length)
+        if (close !== -1) {
+          push('literal', sql.slice(i, close + tag.length))
+          i = close + tag.length
+          continue
+        }
+      }
+    }
+    // Oracle alternative quoting (q'[it's; fine]', nq'{...}') is one literal
+    // even with quotes and semicolons inside. Consume it whole before the word
+    // scanner splits the leading q/n or the generic string scanner sees the
+    // inner quote — same handling as splitStatements/maskNonCode.
+    if ((ch === 'q' || ch === 'Q' || ch === 'n' || ch === 'N') && (dialect === 'oracle' || dialect === 'oceanbase-oracle')) {
+      const end = oracleQuotedLiteralEnd(sql, ch === 'n' || ch === 'N' ? i + 1 : i)
+      if (end !== null) {
+        push('literal', sql.slice(i, end))
+        i = end
+        continue
+      }
+    }
+    // SQL Server / SQLite bracket identifiers ([odd name], [a;b]) keep spaces
+    // and semicolons as part of the name; treat the whole thing as one literal.
+    if (ch === '[' && (dialect === 'mssql' || dialect === 'sqlite')) {
+      const end = bracketIdentifierEnd(sql, i)
+      if (end !== null) {
+        push('literal', sql.slice(i, end))
+        i = end
+        continue
+      }
     }
     if (/\s/.test(ch)) {
       i += 1
@@ -122,8 +198,8 @@ const SPACE_BEFORE_PAREN = new Set([
   'LIKE', 'WHEN', 'THEN', 'ELSE', 'VALUES', 'SET', 'SELECT', 'FROM', 'BY', 'JOIN',
 ])
 
-export function formatSql(input: string): string {
-  const atoms = tokenize(input)
+export function formatSql(input: string, dialect?: SqlDialect): string {
+  const atoms = tokenize(input, dialect)
   let out = ''
   let depth = 0
   let pendingNewline = false

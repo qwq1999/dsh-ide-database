@@ -43,6 +43,8 @@ describe('shortcut registry', () => {
     expect(bindingFromEvent(press({ metaKey: true }))).toBe('mod+enter')
     expect(bindingFromEvent(press({ key: ' ', ctrlKey: true }))).toBe('mod+space')
     expect(bindingFromEvent(press({ key: '?', ctrlKey: true, shiftKey: true }))).toBe('mod+shift+/')
+    // `_` is Shift+- on a US layout: a word char that still folds to `-`.
+    expect(bindingFromEvent(press({ key: '_', ctrlKey: true, shiftKey: true }))).toBe('mod+shift+-')
     expect(bindingFromEvent(press({ key: 'F5', ctrlKey: false }))).toBe('f5')
     expect(bindingFromEvent(press({ key: 'Shift', shiftKey: true }))).toBeNull()
     expect(bindingFromEvent(press({ key: 'k', ctrlKey: false }))).toBeNull()

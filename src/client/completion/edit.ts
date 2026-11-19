@@ -37,7 +37,9 @@ export function wordAtCaret(statement: string, caret: number): WordAtCaret {
   // before the closing one is typed, while the quote that *closed* a previous
   // word must not make the next word look quoted.
   const begins = start < 2 || !isWord(statement[start - 2])
-  const quote = (opened === '`' || opened === '"') && begins ? opened : ''
+  // A `[` opens a bracket-quoted identifier in MSSQL, quotedIdentifier's
+  // counterpart. QUALIFIER already accepts it, so the word scanner must too.
+  const quote = (opened === '`' || opened === '"' || opened === '[') && begins ? opened : ''
   return { start, end, prefix: statement.slice(start, at), quote }
 }
 
@@ -79,7 +81,9 @@ export function qualifierBefore(statement: string, start: number): string[] {
  * Replace the word under the caret with `name`, returning the caret position so
  * the caller can move it after the inserted text. Snippets are templates such
  * as `SELECT * FROM ` and go in verbatim; every other candidate is an
- * identifier (or a call / `*`) and may need quoting.
+ * identifier (or a call / `*`) and may need quoting. Set `verbatim` when `name`
+ * comes from `Completion.insert`: such text is a ready-to-use SQL fragment and
+ * must be inserted as-is instead of being quoted as one identifier.
  */
 export function applyCompletion(
   statement: string,
@@ -87,15 +91,19 @@ export function applyCompletion(
   name: string,
   dialect: ClientConnection['dialect'],
   kind?: CompletionKind,
+  verbatim = false,
 ): { statement: string; caret: number } {
   const word = wordAtCaret(statement, caret)
   const start = word.quote === '' ? word.start : word.start - 1
-  const tail = word.quote === '' ? word.end : statement[word.end] === word.quote ? word.end + 1 : word.end
+  const closing = word.quote === '[' ? ']' : word.quote
+  const tail = word.quote === '' ? word.end : statement[word.end] === closing ? word.end + 1 : word.end
   // A function candidate inserts its call syntax (`COUNT(`) verbatim: quoting it
   // would turn the parenthesis into part of an identifier. `*` is an expression
-  // too, not an identifier to quote.
+  // too, not an identifier to quote. `verbatim` carries the `Completion.insert`
+  // contract: an explicit insert (column expansion, join expression, ...) is a
+  // ready-to-use SQL fragment and must never be quoted as an identifier.
   const call = name.endsWith('(') && PLAIN.test(name.slice(0, -1))
-  const literal = kind === 'snippet'
+  const literal = kind === 'snippet' || verbatim
   // Keep the quote the user opened. Dropping it changes the meaning in
   // case-sensitive dialects (`"Orders"` in PostgreSQL folds to `orders`).
   const quoted = word.quote !== ''

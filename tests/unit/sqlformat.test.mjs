@@ -67,7 +67,83 @@ describe('formatSql', () => {
     expect(formatSql(once)).toBe(once)
   })
 
+  it('标准 SQL 中反斜杠是普通字符，不吞掉相邻字符串', () => {
+    // Standard SQL: 'a\' is a complete literal, the next quote starts another.
+    // Treating the backslash as an escape merged the two and changed meaning.
+    expect(formatSql("select 'a" + String.fromCharCode(92) + "', 'b' from t").split(String.fromCharCode(10))).toEqual(["SELECT 'a" + String.fromCharCode(92) + "', 'b'", "FROM t"])
+  })
+
+  it('MySQL 中反斜杠仍是转义', () => {
+    expect(formatSql("select 'it" + String.fromCharCode(92) + "'s', 'b' from t", 'mysql').split(String.fromCharCode(10))).toEqual(["SELECT 'it" + String.fromCharCode(92) + "'s', 'b'", "FROM t"])
+  })
+
+  it("PostgreSQL 只在 E'' 字符串里把反斜杠当转义", () => {
+    expect(formatSql("select 'a" + String.fromCharCode(92) + "', 'b' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT 'a" + String.fromCharCode(92) + "', 'b'", "FROM t"])
+    expect(formatSql("select E'a" + String.fromCharCode(92) + "'b', 'c' from t", 'postgres').split(String.fromCharCode(10))).toEqual(["SELECT E'a" + String.fromCharCode(92) + "'b', 'c'", "FROM t"])
+  })
+
   it('多条语句各占一行', () => {
     expect(formatSql('select 1; select 2')).toBe('SELECT 1;\nSELECT 2')
+  })
+
+  it('PostgreSQL dollar-quoted 字面量内的分号不被拆行', () => {
+    expect(formatSql('select $$a;b$$ as x from t', 'postgres').split(String.fromCharCode(10))).toEqual([
+      'SELECT $$a;b$$ AS x',
+      'FROM t',
+    ])
+    expect(formatSql('select $tag$a;b$tag$ as x from t', 'postgres').split(String.fromCharCode(10))).toEqual([
+      'SELECT $tag$a;b$tag$ AS x',
+      'FROM t',
+    ])
+  })
+
+  it('MSSQL/SQLite 方括号标识符内的空格与分号原样保留', () => {
+    expect(formatSql('select [odd name] from t', 'mssql').split(String.fromCharCode(10))).toEqual([
+      'SELECT [odd name]',
+      'FROM t',
+    ])
+    expect(formatSql('select [a;b] from t', 'sqlite').split(String.fromCharCode(10))).toEqual([
+      'SELECT [a;b]',
+      'FROM t',
+    ])
+  })
+
+  it('PostgreSQL/MSSQL 嵌套块注释完整闭合', () => {
+    for (const dialect of ['postgres', 'mssql']) {
+      const out = formatSql('select /* outer /* inner */ still */ a from t', dialect)
+      expect(out).toContain('/* outer /* inner */ still */')
+      expect(out).not.toContain('* /')
+      expect(formatSql(out, dialect)).toBe(out)
+    }
+  })
+
+
+  it('Oracle 替代引号 q 字面量内的引号与分号原样保留', () => {
+    for (const dialect of ['oracle', 'oceanbase-oracle']) {
+      expect(formatSql("select q'[hello world]' from dual", dialect)).toBe(
+        ["SELECT q'[hello world]'", 'FROM dual'].join('\n'),
+      )
+      const inner = formatSql("select q'[it's; fine]' from dual", dialect)
+      expect(inner).toContain("q'[it's; fine]'")
+      expect(inner).not.toContain('\n\n')
+      expect(formatSql(inner, dialect)).toBe(inner)
+    }
+  })
+})
+
+
+describe('typed string literal prefixes stay glued', () => {
+  it('keeps PostgreSQL E/B/X prefixes attached to the quote', () => {
+    const E = formatSql("select E'a" + String.fromCharCode(92) + "'b' as x from t", 'postgres')
+    expect(E.split(String.fromCharCode(10))).toEqual(["SELECT E'a" + String.fromCharCode(92) + "'b' AS x", 'FROM t'])
+    // Idempotent: formatting twice gives the same result.
+    expect(formatSql(E, 'postgres')).toBe(E)
+    expect(formatSql("select B'101' from t", 'postgres')).toContain("B'101'")
+    expect(formatSql("select X'ff' from t", 'postgres')).toContain("X'ff'")
+  })
+
+  it('keeps SQL Server N prefix attached to the quote', () => {
+    expect(formatSql("select N'你好' as x from t", 'mssql')).toContain("N'你好'")
+    expect(formatSql("select N'abc' from t", 'mssql')).not.toContain('N ')
   })
 })

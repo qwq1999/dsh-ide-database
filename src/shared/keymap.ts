@@ -219,12 +219,17 @@ export function strokeText(stroke: KeyStroke): string {
 export function bindingFromEvent(event: KeyLike): string | null {
   const key = keyOf(event.key)
   if (key === 'control' || key === 'meta' || key === 'alt' || key === 'shift') return null
-  if (!isTypableKey(key)) return null
+  // Fold shifted symbols before validating: `_` (Shift+- on a US layout) is a
+  // word character, so isTypableKey rejects it even though baseKeyOf maps it to
+  // `-` and parseBinding/matchesBinding both accept the folded form. Validate
+  // the folded key so recording stays symmetric with matching.
+  const base = baseKeyOf(key)
+  if (!isTypableKey(base)) return null
   const stroke: KeyStroke = {
     mod: event.ctrlKey || event.metaKey,
     alt: event.altKey,
     shift: event.shiftKey,
-    key: baseKeyOf(key),
+    key: base,
   }
   return isSafeStroke(stroke) ? strokeText(stroke) : null
 }

@@ -127,3 +127,12 @@ describe('comment matching', () => {
     ).toEqual({ connections: [], schemas: [] })
   })
 })
+
+
+describe('parseFilter dotted halves', () => {
+  it('trims whitespace around the dot', () => {
+    expect(parseFilter('shop . orders')).toEqual({ schema: 'shop', name: 'orders' })
+    expect(parseFilter('  SHOP . ORDERS  ')).toEqual({ schema: 'shop', name: 'orders' })
+    expect(parseFilter('shop.')).toEqual({ schema: 'shop', name: '' })
+  })
+})

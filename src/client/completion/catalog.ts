@@ -67,6 +67,8 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
   private readonly tableCache = new LruMap<string, readonly CatalogTable[]>(CATALOG_TABLE_LIMIT)
   private readonly columnCache = new LruMap<string, readonly CatalogColumn[]>(CATALOG_COLUMN_LIMIT)
   private readonly pending = new Map<string, Promise<unknown>>()
+  /** Bumped by clear() so in-flight loads cannot write stale data into a fresh cache. */
+  private epoch = 0
 
   /**
    * @param connectionId data source the console runs on
@@ -85,16 +87,16 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
       this.schemaNames = known
       return known
     }
-    return this.shared('schemas', async () => {
+    return this.shared('schemas', async (isCurrent) => {
       const cached = await this.cachedSchemas()
       if (cached !== undefined) {
-        this.schemaNames = cached
+        if (isCurrent()) this.schemaNames = cached
         return cached
       }
       try {
         const listed = await api.schemas(this.connectionId)
         const names = listed.schemas.map((schema) => schema.name)
-        this.schemaNames = names
+        if (isCurrent()) this.schemaNames = names
         return names
       } catch {
         // The catalog is only used for suggestions; a failed read just means
@@ -108,10 +110,10 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
     if (schema === '') return []
     const cached = this.tableCache.get(schema)
     if (cached !== undefined) return cached
-    return this.shared(`tables:${schema}`, async () => {
+    return this.shared(`tables:${schema}`, async (isCurrent) => {
       const hostCached = await this.cachedTables(schema)
       if (hostCached !== undefined) {
-        this.tableCache.set(schema, hostCached)
+        if (isCurrent()) this.tableCache.set(schema, hostCached)
         return hostCached
       }
       try {
@@ -119,13 +121,13 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
         const items: CatalogTable[] = listed.objects
           .filter((item) => item.kind === 'table' || item.kind === 'view')
           .map((item) => ({ name: item.name, kind: item.kind as 'table' | 'view' }))
-        this.tableCache.set(schema, items)
+        if (isCurrent()) this.tableCache.set(schema, items)
         return items
       } catch {
         // Negative cache: a relation list that failed once (for example a schema
         // that does not exist on this server) should not be retried for every
         // popup of the same console. DDL and the refresh button clear the cache.
-        this.tableCache.set(schema, [])
+        if (isCurrent()) this.tableCache.set(schema, [])
         return []
       }
     })
@@ -136,10 +138,10 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
     const key = completionColumnKey(schema, table)
     const cached = this.columnCache.get(key)
     if (cached !== undefined) return cached
-    return this.shared(`columns:${key}`, async () => {
+    return this.shared(`columns:${key}`, async (isCurrent) => {
       const hostCached = await this.cachedColumns(schema, table)
       if (hostCached !== undefined) {
-        this.columnCache.set(key, hostCached)
+        if (isCurrent()) this.columnCache.set(key, hostCached)
         return hostCached
       }
       try {
@@ -148,12 +150,12 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
           name: column.name,
           typeName: column.typeName,
         }))
-        this.columnCache.set(key, items)
+        if (isCurrent()) this.columnCache.set(key, items)
         return items
       } catch {
         // See tables(): remember the miss so qualifier fallbacks do not repeat a
         // metadata read that cannot succeed on this connection.
-        this.columnCache.set(key, [])
+        if (isCurrent()) this.columnCache.set(key, [])
         return []
       }
     })
@@ -161,6 +163,7 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
 
   /** Drop every cached entry, for example after an explicit data-source refresh. */
   clear(): void {
+    this.epoch += 1
     this.schemaNames = undefined
     this.tableCache.clear()
     this.columnCache.clear()
@@ -209,11 +212,13 @@ export class ConsoleCompletionCatalog implements CompletionCatalog {
     }
   }
 
-  private shared<T>(key: string, load: () => Promise<T>): Promise<T> {
+  private shared<T>(key: string, load: (isCurrent: () => boolean) => Promise<T>): Promise<T> {
     const running = this.pending.get(key)
     if (running !== undefined) return running as Promise<T>
-    const promise = load().finally(() => {
-      this.pending.delete(key)
+    const epoch = this.epoch
+    const isCurrent = () => epoch === this.epoch
+    const promise = load(isCurrent).finally(() => {
+      if (isCurrent()) this.pending.delete(key)
     })
     this.pending.set(key, promise)
     return promise

@@ -187,6 +187,31 @@ describe('ConsoleCompletionCatalog', () => {
     expect(mocks.objects).toHaveBeenCalledTimes(2)
   })
 
+  it('a load in flight before clear() cannot overwrite the fresh cache', async () => {
+    // P1 starts, then DDL calls clear(), then P2 loads fresh data. When P1
+    // finally resolves it must not replace what P2 wrote into the cache.
+    const gates = []
+    mocks.objects.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          gates.push(resolve)
+        }),
+    )
+    const subject = catalog(['shop'])
+    const stale = subject.tables('shop')
+    await vi.waitFor(() => expect(gates.length).toBe(1))
+    subject.clear()
+    const fresh = subject.tables('shop')
+    await vi.waitFor(() => expect(gates.length).toBe(2))
+    gates[1]({ objects: [{ name: 'fresh_table', kind: 'table' }] })
+    await expect(fresh).resolves.toEqual([{ name: 'fresh_table', kind: 'table' }])
+    gates[0]({ objects: [{ name: 'stale_table', kind: 'table' }] })
+    await expect(stale).resolves.toEqual([{ name: 'stale_table', kind: 'table' }])
+    // The cache still holds P2's data, not P1's stale result.
+    await expect(subject.tables('shop')).resolves.toEqual([{ name: 'fresh_table', kind: 'table' }])
+    expect(mocks.objects).toHaveBeenCalledTimes(2)
+  })
+
   it('evicts the least recently used schema from the relation cache', async () => {
     mocks.objects.mockResolvedValue({ objects: [{ name: 'orders', kind: 'table' }] })
     const subject = catalog(['shop'])

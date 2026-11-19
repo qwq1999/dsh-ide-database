@@ -233,6 +233,13 @@ export function App(props: AppProps): ReactElement {
   const [toolbarOverflowOpen, setToolbarOverflowOpen] = useState(false)
   const toolbarActionsRef = useRef<HTMLSpanElement | null>(null)
   const toolbarOverflowRef = useRef<HTMLSpanElement | null>(null)
+  const ddlRequest = useRef(0)
+  // Closing must invalidate an in-flight ddl() request: otherwise a late
+  // success reopens the dialog the user just dismissed.
+  const closeDdl = useCallback(() => {
+    ddlRequest.current += 1
+    setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })
+  }, [])
 
   const closeToolbarOverflow = useCallback(() => setToolbarOverflowOpen(false), [])
   usePopoverDismiss(toolbarOverflowOpen, closeToolbarOverflow, toolbarOverflowRef)
@@ -281,12 +288,15 @@ export function App(props: AppProps): ReactElement {
 
   /** 双击表 / DDL 按钮：读取表或视图的建表语句。 */
   async function showDdl(connectionId: string, schema: string, table: string, kind: string): Promise<void> {
+    const request = ++ddlRequest.current
     const title = `${schema}.${table} · DDL`
     setDdlModal({ open: true, title, text: '', loading: true, source: '', warnings: [] })
     try {
       const result = await api.ddl(connectionId, schema, table, kind)
+      if (ddlRequest.current !== request) return
       setDdlModal({ open: true, title, text: result.ddl, loading: false, source: result.source, warnings: result.warnings })
     } catch (error) {
+      if (ddlRequest.current !== request) return
       setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })
       notify(`读取 DDL 失败：${errorText(error)}`, 'error')
     }
@@ -917,7 +927,7 @@ export function App(props: AppProps): ReactElement {
         open={ddlModal.open}
         title={ddlModal.title}
         width={760}
-        onClose={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
+        onClose={closeDdl}
         footer={
           <>
             <span className="dshdb-muted">
@@ -930,7 +940,7 @@ export function App(props: AppProps): ReactElement {
             <Button
               size="sm"
               variant="primary"
-              onClick={() => setDdlModal({ open: false, title: '', text: '', loading: false, source: '', warnings: [] })}
+              onClick={closeDdl}
             >
               关闭
             </Button>

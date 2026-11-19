@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import type { CustomDriverStatus, DbSettings, DriverStatus, EnvStatus } from '../../shared/types'
 import {
   SHORTCUTS,
@@ -74,6 +74,7 @@ function ShortcutRow(props: {
       </div>
       <TextInput
         readOnly
+        data-owns-escape
         style={{ width: 168, textAlign: 'center' }}
         aria-label={`${def.label} 的快捷键`}
         title="点一下再按新的组合键（Esc 取消，Delete 恢复默认）"
@@ -165,8 +166,15 @@ function JavaBadge({ env }: { env: EnvStatus }): ReactElement {
 
 export function SettingsView(props: SettingsViewProps): ReactElement {
   const [draft, setDraft] = useState<DbSettings>(props.settings)
+  // Background refresh rebuilds the settings snapshot with the same content but
+  // a fresh identity every 1.5s. Only re-seed the draft when the content actually
+  // changes, otherwise every poll silently wipes the user's unsaved edits.
+  const syncedSettings = useRef(JSON.stringify(props.settings))
 
   useEffect(() => {
+    const next = JSON.stringify(props.settings)
+    if (next === syncedSettings.current) return
+    syncedSettings.current = next
     setDraft(props.settings)
   }, [props.settings])
 
@@ -174,10 +182,20 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
     setDraft((previous) => ({ ...previous, [key]: value }))
   }
 
-  const updateNumber = (key: 'maxRows' | 'queryTimeoutSec' | 'connectTimeoutSec' | 'redisScanCount', value: string) => {
+  const updateNumber = (
+    key: 'maxRows' | 'queryTimeoutSec' | 'connectTimeoutSec' | 'redisScanCount',
+    value: string,
+    min: number,
+    max: number,
+  ) => {
     const parsed = Number.parseInt(value, 10)
-    if (Number.isFinite(parsed) && parsed > 0) update(key, parsed)
-    else update(key, 1)
+    // Only clamp the upper bound while typing. Clamping the lower bound on
+    // every keystroke makes small values in a field with a high minimum
+    // (e.g. redisScanCount min=10) impossible to type: clearing gives 10 and
+    // typing '2' clamps straight back to 10. The host re-validates the lower
+    // bound on save (config.ts asInt), so intermediate drafts may be below min.
+    const next = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), max) : min
+    update(key, next)
   }
 
   const javaCandidates = props.env.java.candidates ?? []
@@ -307,9 +325,9 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
               <TextInput
                 type="number"
                 min={1}
-                max={10000}
+                max={5000}
                 value={String(draft.maxRows)}
-                onChange={(event) => updateNumber('maxRows', event.target.value)}
+                onChange={(event) => updateNumber('maxRows', event.target.value, 1, 5000)}
               />
             </Field>
             <Field label="查询超时（秒）">
@@ -318,7 +336,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={1}
                 max={600}
                 value={String(draft.queryTimeoutSec)}
-                onChange={(event) => updateNumber('queryTimeoutSec', event.target.value)}
+                onChange={(event) => updateNumber('queryTimeoutSec', event.target.value, 1, 600)}
               />
             </Field>
             <Field label="连接超时（秒）">
@@ -327,7 +345,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={1}
                 max={120}
                 value={String(draft.connectTimeoutSec)}
-                onChange={(event) => updateNumber('connectTimeoutSec', event.target.value)}
+                onChange={(event) => updateNumber('connectTimeoutSec', event.target.value, 1, 120)}
               />
             </Field>
             <Field label="Redis 单次扫描数量">
@@ -336,7 +354,7 @@ export function SettingsView(props: SettingsViewProps): ReactElement {
                 min={10}
                 max={2000}
                 value={String(draft.redisScanCount)}
-                onChange={(event) => updateNumber('redisScanCount', event.target.value)}
+                onChange={(event) => updateNumber('redisScanCount', event.target.value, 10, 2000)}
               />
             </Field>
             <Field label="Maven 镜像" hint="驱动 jar 下载源">

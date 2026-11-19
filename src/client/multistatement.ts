@@ -342,7 +342,16 @@ export function splitStatements(input: string, dialect: SqlDialect = 'generic'):
 
   const flush = (): void => {
     const trimmed = current.trim()
-    if (trimmed !== '') statements.push(trimmed)
+    // A trailing line/block comment (very common at the end of .sql files)
+    // must not become its own "ghost statement": the host rejects a bare
+    // comment as non-readable, which would fail an otherwise valid script.
+    // Mask comments/strings first so only genuinely empty code is skipped;
+    // a leading comment attached to real SQL still produces a statement.
+    // Keep executable comments (MySQL /*!...*/, MariaDB /*M!...*/) as code:
+    // they really run on the server, unlike an ordinary trailing comment.
+    if (trimmed !== '' && maskNonCode(trimmed, dialect, true, true).trim() !== '') {
+      statements.push(trimmed)
+    }
     current = ''
     mssqlProgram = undefined
   }

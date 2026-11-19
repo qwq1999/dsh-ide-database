@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -28,6 +28,23 @@ afterEach(() => {
 })
 
 describe('DescriptionCache', () => {
+  it('retries buffered lines after a failed flush instead of dropping them', () => {
+    const { dir, messages, instance } = cache()
+    // Make the target path a directory so appendFileSync fails.
+    mkdirSync(logFile(dir, 'c1'))
+    instance.put('c1', 'app', 'orders', description('app', 'orders'))
+
+    instance.flush()
+    expect(messages.some((m) => m.includes('描述缓存写入失败'))).toBe(true)
+    expect(existsSync(logFile(dir, 'c1'))).toBe(true) // still the directory, no file written
+
+    // Remove the obstruction and flush again: the buffered line must survive.
+    rmSync(logFile(dir, 'c1'), { recursive: true, force: true })
+    instance.flush()
+
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
+  })
   it('appends entries and reloads them in a fresh instance', () => {
     const { dir, instance } = cache()
     instance.put('c1', 'app', 'orders', description('app', 'orders'))
@@ -165,5 +182,27 @@ describe('DescriptionCache', () => {
     instance.put('c1', 'app', 'orders', description('app', 'orders'))
     const stored = instance.get('c1', 'app', 'orders')
     expect(typeof stored?.describedAt).toBe('string')
+  })
+})
+
+
+describe('DescriptionCache.import durability', () => {
+  it('reports failure and keeps pending data when the rewrite cannot reach disk', () => {
+    const { dir, messages, instance } = cache()
+    // Make the target file path a directory so writeFileSync fails.
+    mkdirSync(logFile(dir, 'c1'), { recursive: true })
+
+    const ok = instance.import('c1', { 'app|orders': description('app', 'orders') })
+    expect(ok).toBe(false)
+    expect(messages.some((m) => m.includes('描述缓存整理失败'))).toBe(true)
+
+    // The in-memory map still holds the migrated description.
+    expect(instance.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
+
+    // Once the obstruction is gone, a retry persists it to disk.
+    rmSync(logFile(dir, 'c1'), { recursive: true, force: true })
+    expect(instance.import('c1', { 'app|orders': description('app', 'orders') })).toBe(true)
+    const reloaded = new DescriptionCache(dir, () => {})
+    expect(reloaded.get('c1', 'app', 'orders')?.columns).toHaveLength(1)
   })
 })

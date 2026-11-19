@@ -1,0 +1,179 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { SqlService } from '../../lib/host/sql.js'
+
+/** Build a SqlService whose bridge records the connId of every request. */
+function harness() {
+  const settings = {
+    maxRows: 200,
+    queryTimeoutSec: 30,
+    connectTimeoutSec: 10,
+    javaPath: '',
+    mavenMirror: 'central',
+    allowAgentWrites: false,
+    redisScanCount: 200,
+    confirmDestructive: true,
+  }
+  const live = {
+    id: 'live-1',
+    name: 'MySQL',
+    driver: 'mysql',
+    dialect: 'mysql',
+    host: '127.0.0.1',
+    port: 3306,
+    user: 'root',
+    database: 'shop',
+    redisDb: 0,
+    params: {},
+    readOnly: false,
+    secretName: 'secret-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }
+  const calls = []
+  const request = vi.fn(async (method, payload) => {
+    calls.push({ method, connId: payload.connId })
+    if (method === 'connect') return { version: '8.0' }
+    return undefined
+  })
+  const driver = {
+    id: 'mysql',
+    name: 'MySQL',
+    preset: 'mysql',
+    dialect: 'mysql',
+    driverClass: 'com.mysql.cj.jdbc.Driver',
+    urlTemplate: 'jdbc:mysql://{{host}}:{{port}}/{{database}}',
+    jars: [],
+    needsJava: false,
+  }
+  const service = new SqlService({}, {}, {}, {}, {}, () => {})
+  service.config = {
+    connection: (reference) => (reference === live.id ? live : undefined),
+    settings: () => settings,
+    touchConnection: () => undefined,
+  }
+  service.drivers = {
+    resolveDriver: () => driver,
+    assertJarsPresent: () => undefined,
+  }
+  service.java = { locate: () => ({ available: true, path: '/java' }) }
+  service.secrets = { resolve: () => ({ value: 's3cr3t' }) }
+  service.ensureBridge = async () => ({ request })
+  service.connected.set(live.id, { driver: { dialect: 'mysql' }, server: { connected: true } })
+  return { service, calls, live }
+}
+
+describe('db_test_connection probe id', () => {
+  it('never reuses the live connection id for a bridge probe', async () => {
+    const { service, calls, live } = harness()
+    const result = await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop' })
+
+    expect(result.ok).toBe(true)
+    expect(calls.length).toBe(2) // connect + disconnect
+    expect(calls[0].method).toBe('connect')
+    expect(calls[1].method).toBe('disconnect')
+    // A probe must not evict or disturb the live session keyed by the real id.
+    expect(calls[0].connId).not.toBe(live.id)
+    expect(calls[1].connId).toBe(calls[0].connId)
+    expect(calls[0].connId).toMatch(/^probe-/)
+    // The live session is untouched.
+    expect(service.connected.has(live.id)).toBe(true)
+  })
+
+  it('still resolves the stored secret via the draft id', async () => {
+    const { service, live } = harness()
+    const resolve = vi.fn(() => ({ value: 's3cr3t' }))
+    service.secrets = { resolve }
+    await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop' })
+    expect(resolve).toHaveBeenCalledWith('secret-1')
+  })
+
+  it('does not reuse the stored secret when the draft clears the password', async () => {
+    const { service, live } = harness()
+    const connectPayloads = []
+    service.ensureBridge = async () => ({
+      request: vi.fn(async (method, payload) => {
+        if (method === 'connect') connectPayloads.push(payload)
+        return method === 'connect' ? { version: '8.0' } : undefined
+      }),
+    })
+
+    await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop', clearPassword: true })
+
+    expect(connectPayloads.length).toBe(1)
+    // The stored secret 's3cr3t' must not be used when the draft clears it.
+    expect(connectPayloads[0].password).toBe('')
+  })
+
+  it('uses the stored secret for the probe when the password is left blank', async () => {
+    const { service, live } = harness()
+    const connectPayloads = []
+    service.ensureBridge = async () => ({
+      request: vi.fn(async (method, payload) => {
+        if (method === 'connect') connectPayloads.push(payload)
+        return method === 'connect' ? { version: '8.0' } : undefined
+      }),
+    })
+
+    await service.test({ id: live.id, name: 'MySQL', driver: 'mysql', host: 'db', port: 3306, database: 'shop' })
+
+    expect(connectPayloads.length).toBe(1)
+    expect(connectPayloads[0].password).toBe('s3cr3t')
+  })
+})
+
+
+describe('connect/disconnect race', () => {
+  it('does not resurrect connected state when a disconnect races an in-flight connect', async () => {
+    const { service, live } = harness()
+    // Start with no live session so connect genuinely establishes one.
+    service.connected.clear()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const bridge = {
+      request: vi.fn(async (method) => {
+        if (method === 'connect') {
+          await gate
+          return { version: '8.0' }
+        }
+        return undefined
+      }),
+    }
+    service.ensureBridge = async () => bridge
+
+    const connecting = service.connect(live.id)
+    // Let connect reach the gated bridge.request.
+    await Promise.resolve()
+    await Promise.resolve()
+    await service.disconnect(live.id)
+    release()
+
+    await expect(connecting).rejects.toThrow(/连接已断开/)
+    expect(service.isConnected(live.id)).toBe(false)
+  })
+})
+
+describe('connect/disconnect race during bridge startup', () => {
+  it('does not resurrect a connection when disconnect lands while ensureBridge is pending', async () => {
+    const { service, live } = harness()
+    service.connected.clear()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const bridge = {
+      request: vi.fn(async (method) => (method === 'connect' ? { version: '8.0' } : undefined)),
+    }
+    // Simulate the JVM spawn + ping await inside ensureBridge.
+    service.ensureBridge = async () => {
+      await gate
+      return bridge
+    }
+
+    const connecting = service.connect(live.id)
+    // Let connect reach the gated ensureBridge await.
+    await Promise.resolve()
+    await service.disconnect(live.id)
+    release()
+
+    await expect(connecting).rejects.toThrow(/连接已断开/)
+    expect(service.isConnected(live.id)).toBe(false)
+  })
+})

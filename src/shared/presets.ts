@@ -165,7 +165,28 @@ export function jarRelativePath(jar: JarRef): string {
 }
 
 export function jarCacheName(jar: JarRef): string {
-  return `${jar.group.replaceAll('.', '_')}__${jar.artifact}__${jar.version}.jar`
+  // Two classifiers of the same group:artifact:version are different jars;
+  // without this suffix they share one cache file and a downloaded jre8 is
+  // mistaken for a requested jre11 (or vice versa).
+  const classifier = jar.classifier === undefined ? '' : `-${jar.classifier}`
+  // A group may contain a literal `_` (JAR_PART_PATTERN allows it), so folding
+  // `.` to `_` alone is not injective: `com.acme.team` and `com_acme_team`
+  // would collapse to one cache file and load each other's bytecode. For
+  // groups containing `_`, encode both `.` and `_` unambiguously; `%` is not a
+  // legal group character so the encoded form can never collide with the plain
+  // form. Groups without `_` keep their familiar name for cache compatibility.
+  const group = jar.group.includes('_')
+    ? jar.group.replaceAll('_', '%5F').replaceAll('.', '%2E')
+    : jar.group.replaceAll('.', '_')
+  // artifact and version may also contain a literal `_` (JAR_PART_PATTERN
+  // allows it). Without escaping, `a__b`/`c` and `a`/`b__c` both map to
+  // `g__a__b__c.jar`, so one coordinate is mistaken for the other and the
+  // wrong jar's bytecode is loaded. Percent-encode literal `_` so the `__`
+  // separator stays unambiguous; `%` is not legal in a coordinate, and values
+  // without `_` keep their familiar cache name for compatibility.
+  const artifact = jar.artifact.replaceAll('_', '%5F')
+  const version = jar.version.replaceAll('_', '%5F')
+  return `${group}__${artifact}__${version}${classifier}.jar`
 }
 
 export function mavenBase(mirror: 'central' | 'aliyun'): string {
@@ -175,13 +196,16 @@ export function mavenBase(mirror: 'central' | 'aliyun'): string {
 }
 
 export function presetOf(id: string): PresetSpec | undefined {
-  return (PRESETS as Record<string, PresetSpec | undefined>)[id]
+  return Object.hasOwn(PRESETS, id) ? PRESETS[id as PresetId] : undefined
 }
 
 export function isPresetId(value: string): value is PresetId {
-  return value in PRESETS
+  return Object.hasOwn(PRESETS, value)
 }
 
 export function isSqlDialect(value: string): value is SqlDialect {
-  return value !== 'redis' && value !== ''
+  // A type guard must actually validate the value. Checking only that it is
+  // not 'redis'/'': let any garbage string through, which would be loaded as a
+  // dialect by hydrateDriver/upsertDriver and break SQL generation downstream.
+  return Object.hasOwn(SQL_DIALECT_LABEL, value)
 }

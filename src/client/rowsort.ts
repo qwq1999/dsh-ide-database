@@ -40,10 +40,72 @@ export function nextRowSort(current: RowSort | null, column: string, index?: num
  */
 const COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
 
+/**
+ * An exact decimal value: `n / 10^scale`, plus signed infinities. Integers
+ * beyond 2^53 arrive as strings from the JDBC bridge (SqlExecutor.normalize
+ * deliberately keeps them as text to avoid JS rounding), so folding them
+ * through Number() collapses distinct BIGINTs onto one double and makes a
+ * sort silently depend on row order. Scaled BigInts keep precision at any
+ * magnitude while giving numbers and numeric strings one shared total order.
+ */
+type DecimalKey = { n: bigint; scale: number } | { inf: -1 | 1 }
+type SortKey = { domain: 0; dec: DecimalKey } | { domain: 1; str: string }
+
+const DECIMAL_RE = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/
+
+function decimalKey(text: string): DecimalKey | null {
+  const m = DECIMAL_RE.exec(text.trim())
+  if (!m) return null
+  // A huge exponent would materialise 10n ** huge and either throw RangeError
+  // or stall the comparator; treat it as text instead. The exponent is the
+  // last capture group (m[5]).
+  const exponent = Number(m[5] ?? 0)
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 1000) return null
+  const fraction = m[3] ?? m[4] ?? ''
+  const digits = (m[2] ?? '') + fraction
+  if (digits === '') return null
+  const scale = fraction.length - exponent
+  let n = BigInt(digits) * (m[1] === '-' ? -1n : 1n)
+  if (scale < 0) {
+    n *= 10n ** BigInt(-scale)
+    return { n, scale: 0 }
+  }
+  return { n, scale }
+}
+
+function sortKey(value: CellValue): SortKey {
+  if (typeof value === 'number') {
+    if (value === Infinity) return { domain: 0, dec: { inf: 1 } }
+    if (value === -Infinity) return { domain: 0, dec: { inf: -1 } }
+  }
+  if (typeof value === 'boolean') return { domain: 0, dec: { n: value ? 1n : 0n, scale: 0 } }
+  const text = String(value)
+  // The JDBC bridge sends Double infinities as the strings produced by Java's
+  // Double.toString(); fold them into the same numeric order as JS Infinity.
+  if (text === 'Infinity' || text === '+Infinity') return { domain: 0, dec: { inf: 1 } }
+  if (text === '-Infinity') return { domain: 0, dec: { inf: -1 } }
+  const dec = decimalKey(text)
+  return dec === null ? { domain: 1, str: text } : { domain: 0, dec }
+}
+
+function compareDecimal(a: DecimalKey, b: DecimalKey): number {
+  const aFinite = 'n' in a
+  const bFinite = 'n' in b
+  if (!aFinite && !bFinite) return a.inf - b.inf
+  if (!aFinite) return a.inf
+  if (!bFinite) return -b.inf
+  const scale = Math.max(a.scale, b.scale)
+  const left = scale === a.scale ? a.n : a.n * 10n ** BigInt(scale - a.scale)
+  const right = scale === b.scale ? b.n : b.n * 10n ** BigInt(scale - b.scale)
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
 function order(left: CellValue, right: CellValue): number {
-  if (typeof left === 'number' && typeof right === 'number') return left - right
-  if (typeof left === 'boolean' && typeof right === 'boolean') return Number(left) - Number(right)
-  return COLLATOR.compare(String(left), String(right))
+  const a = sortKey(left)
+  const b = sortKey(right)
+  if (a.domain === 0 && b.domain === 0) return compareDecimal(a.dec, b.dec)
+  if (a.domain === 1 && b.domain === 1) return COLLATOR.compare(a.str, b.str)
+  return a.domain - b.domain
 }
 
 /**
@@ -66,8 +128,10 @@ export function sortRowsWithOrder(
   const positions: number[] = [...identity].sort((left, right) => {
     const a = rows[left]?.[index]
     const b = rows[right]?.[index]
-    const aEmpty = a === null || a === undefined
-    const bEmpty = b === null || b === undefined
+    // NaN minus anything is NaN, which breaks comparator transitivity and
+    // leaves the finite values unordered. Group it with the empty cells.
+    const aEmpty = a === null || a === undefined || a === '' || (typeof a === 'number' && Number.isNaN(a)) || a === 'NaN'
+    const bEmpty = b === null || b === undefined || b === '' || (typeof b === 'number' && Number.isNaN(b)) || b === 'NaN'
     if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1
     return factor * order(a, b)
   })

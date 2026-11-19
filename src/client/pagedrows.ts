@@ -37,7 +37,9 @@ export async function collectRows(walk: PagedWalk): Promise<Row[]> {
     if (walk.cancelled?.() === true) break
     const chunk = await walk.fetch({ page, offset: page * batch })
     rows.push(...chunk)
-    walk.onProgress?.(rows.length)
+    // Report the capped count: rows may overshoot `limit` for one batch before
+    // the final slice, and callers show this number to the user.
+    walk.onProgress?.(Math.min(rows.length, limit))
     // A short (or empty) batch is the server saying there is nothing more.
     if (chunk.length < batch) break
   }

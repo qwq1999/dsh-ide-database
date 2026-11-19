@@ -27,6 +27,16 @@ describe('grouped menu flyouts', () => {
     expect(flyout.getAttribute('data-flip')).toBeNull()
   })
 
+  it('keeps a hover-opened flyout open when its trigger is clicked', () => {
+    render(<MenuGroupList groups={groups} onClose={() => undefined} />)
+    const trigger = screen.getByRole('menuitem', { name: '导出当前页' })
+    fireEvent.pointerEnter(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('group', { name: '导出当前页' }).getAttribute('data-open')).toBe('true')
+  })
+
   it('flips a flyout that would leave the window', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.classList.contains('dshdb-submenu')) {

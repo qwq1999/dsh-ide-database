@@ -57,3 +57,18 @@ describe('toggleSqlComment', () => {
     expect(edited.text).toBe('-- SELECT 1;')
   })
 })
+
+describe('CRLF comments', () => {
+  const crlf = ['aaa', 'bbb'].join('\r\n')
+
+  it('comments every line of a CRLF block', () => {
+    const once = toggleSqlComment(crlf, 0, crlf.length)
+    expect(once.text).toBe(['-- aaa', '-- bbb'].join('\r\n'))
+  })
+
+  it('round-trips a second toggle without stacking markers', () => {
+    const once = toggleSqlComment(crlf, 0, crlf.length)
+    const twice = toggleSqlComment(once.text, once.selectionStart, once.selectionEnd)
+    expect(twice.text).toBe(crlf)
+  })
+})

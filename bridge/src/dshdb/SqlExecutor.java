@@ -73,6 +73,14 @@ final class SqlExecutor {
     private final Map<String, String> cellTexts =
             new LinkedHashMap<String, String>(16, 0.75f, true);
     private long cellTextChars;
+    /**
+     * (column, prefix) keys that mapped to more than one full text during this
+     * bridge's lifetime. Such a key cannot identify a single cell, so it is never
+     * served — the dialog/export reports the value as unavailable instead of
+     * silently showing another row's text. Only long cells sharing a 16K prefix
+     * can land here, so the set stays tiny.
+     */
+    private final Set<String> ambiguousCellKeys = new HashSet<String>();
 
     private static final Set<String> MYSQL_SYSTEM =
             new HashSet<String>(Arrays.asList("information_schema", "mysql", "performance_schema", "sys"));
@@ -788,7 +796,14 @@ final class SqlExecutor {
                     String extra = rs.getString(8);
                     if (extra != null && !extra.isEmpty()) {
                         row.put("extra", extra);
-                        if (extra.toUpperCase(Locale.ROOT).contains("GENERATED")) {
+                        // DEFAULT_GENERATED marks an expression default (a
+                        // normal column since MySQL 8.0.13), not a generated
+                        // column. Only the real generators must be flagged:
+                        // a false positive makes the client drop the column
+                        // from exported INSERT statements.
+                        String extraU = extra.toUpperCase(Locale.ROOT);
+                        if (extraU.contains("STORED GENERATED") || extraU.contains("VIRTUAL GENERATED")
+                                || extraU.contains("PERSISTENT GENERATED")) {
                             row.put("generated", Boolean.TRUE);
                         }
                     }
@@ -1009,9 +1024,14 @@ final class SqlExecutor {
         String catalog = mysql ? schema : null;
         String schemaPattern = mysql || sqlite ? null : schema;
         Set<String> primary = new HashSet<String>();
+        Set<String> pkNames = new HashSet<String>();
         try (ResultSet rs = metadata.getPrimaryKeys(catalog, schemaPattern, table)) {
             while (rs.next()) {
                 primary.add(rs.getString("COLUMN_NAME"));
+                String pkName = rs.getString("PK_NAME");
+                if (pkName != null && !pkName.isEmpty()) {
+                    pkNames.add(pkName);
+                }
             }
         } catch (SQLException ignored) {
             // Optional.
@@ -1045,7 +1065,6 @@ final class SqlExecutor {
                     index.put("name", name);
                     index.put("columns", new ArrayList<Object>());
                     index.put("unique", Boolean.valueOf(!rs.getBoolean("NON_UNIQUE")));
-                    index.put("primary", Boolean.valueOf(primary.contains(name)));
                     grouped.put(name, index);
                 }
                 String column = rs.getString("COLUMN_NAME");
@@ -1054,6 +1073,43 @@ final class SqlExecutor {
                     List<Object> list = (List<Object>) index.get("columns");
                     list.add(column);
                 }
+            }
+            // getIndexInfo() reports the index NAME, not a column name, so comparing it
+            // to the primary-key COLUMN_NAME set always yields false. Prefer PK_NAME
+            // from getPrimaryKeys (reported by most drivers); only fall back to the
+            // column set when that name is unavailable. Column-set equality alone is
+            // not enough: an ordinary UNIQUE INDEX over the same columns would also
+            // match and be mislabeled as a primary key.
+            for (Map<String, Object> index : grouped.values()) {
+                String name = (String) index.get("name");
+                @SuppressWarnings("unchecked")
+                List<Object> indexColumns = (List<Object>) index.get("columns");
+                Set<String> columnSet = new HashSet<String>();
+                for (Object column : indexColumns) {
+                    if (column != null) {
+                        columnSet.add((String) column);
+                    }
+                }
+                boolean namedPrimary = false;
+                for (String pkName : pkNames) {
+                    if (pkName.equalsIgnoreCase(name)) {
+                        namedPrimary = true;
+                        break;
+                    }
+                }
+                boolean columnPrimary = !primary.isEmpty() && columnSet.equals(primary);
+                boolean isPrimary;
+                if (!pkNames.isEmpty()) {
+                    // PK_NAME is authoritative; ignore a same-column ordinary index.
+                    isPrimary = namedPrimary;
+                } else {
+                    // PK_NAME unavailable (e.g. SQLite): fall back to columns, but
+                    // require the auto-generated PK index so a user UNIQUE INDEX over
+                    // the same columns is not mislabeled as the primary key.
+                    isPrimary = columnPrimary
+                            && (!sqlite || name.toLowerCase(Locale.ROOT).contains("autoindex"));
+                }
+                index.put("primary", Boolean.valueOf(isPrimary));
             }
             indexes.addAll(grouped.values());
         }
@@ -1086,7 +1142,10 @@ final class SqlExecutor {
             if (timeoutSec > 0) {
                 statement.setQueryTimeout(timeoutSec);
             }
-            statement.setMaxRows(maxRows + 1);
+            // maxRows == Integer.MAX_VALUE would overflow on +1 and be
+            // rejected by the driver; cap at MAX instead of wrapping negative.
+            statement.setMaxRows(maxRows == Integer.MAX_VALUE
+                    ? Integer.MAX_VALUE : maxRows + 1);
             if (!"mysql".equals(entry.dialect)) {
                 try {
                     statement.setFetchSize(200);
@@ -1285,6 +1344,9 @@ final class SqlExecutor {
             statement.cancel();
             return true;
         } catch (Throwable error) {
+            // A failed cancel must not leave the flag behind: the next query
+            // with this stmtKey would misreport any SQLException as cancelled.
+            cancelled.remove(stmtKey);
             return false;
         }
     }
@@ -1318,7 +1380,13 @@ final class SqlExecutor {
             return Long.valueOf(((Number) raw).longValue());
         }
         if (raw instanceof Long) {
-            return raw;
+            long value = ((Long) raw).longValue();
+            // A bare JSON number is only exact to 2^53 in JavaScript. BIGINT
+            // columns and large counters routinely exceed that, and the host
+            // parses bridge frames with JSON.parse, silently rounding them.
+            // Keep large LONGs as strings, matching BigInteger/BigDecimal.
+            return value > 9007199254740992L || value < -9007199254740992L
+                    ? (Object) Long.toString(value) : raw;
         }
         if (raw instanceof BigInteger) {
             BigInteger value = (BigInteger) raw;
@@ -1326,13 +1394,37 @@ final class SqlExecutor {
         }
         if (raw instanceof BigDecimal) {
             BigDecimal value = (BigDecimal) raw;
-            if (value.scale() <= 0 && value.precision() <= 15) {
-                return Long.valueOf(value.longValue());
+            // precision is significant digits, not magnitude. With a negative
+            // scale the integer magnitude is precision + |scale| (e.g.
+            // 1.23456789012345E+18 has precision 15, scale -4 => 19 integer
+            // digits), which fits a long but is far beyond 2^53. Returning it
+            // as a JSON number loses precision on the JS side, so also require
+            // |value| <= 2^53 before emitting a number.
+            if (value.scale() <= 0 && value.precision() <= 15
+                    && value.abs().compareTo(new BigDecimal("9007199254740992")) <= 0) {
+                // precision counts significant digits, not magnitude: a
+                // negative scale such as 1E+20 has precision 1 but 21 integer
+                // digits, and longValue() would silently truncate it. Keep
+                // small integers as numbers, but fall back to the exact
+                // string whenever the value does not fit in a long.
+                try {
+                    return Long.valueOf(value.longValueExact());
+                } catch (ArithmeticException overflow) {
+                    return value.toPlainString();
+                }
             }
             return value.toPlainString();
         }
-        if (raw instanceof Double || raw instanceof Float) {
-            double value = ((Number) raw).doubleValue();
+        if (raw instanceof Float) {
+            // Widening a Float to double exposes its binary approximation
+            // (0.1f -> 0.10000000149011612). Keep the Float itself so the JSON
+            // writer uses Float.toString() and emits the short decimal.
+            float value = (Float) raw;
+            return Float.isNaN(value) || Float.isInfinite(value)
+                    ? (Object) String.valueOf(value) : (Object) raw;
+        }
+        if (raw instanceof Double) {
+            double value = (Double) raw;
             return Double.isNaN(value) || Double.isInfinite(value)
                     ? (Object) String.valueOf(value) : (Object) Double.valueOf(value);
         }
@@ -1359,7 +1451,12 @@ final class SqlExecutor {
         }
         if (raw instanceof Clob) {
             Clob clob = (Clob) raw;
-            long length = clob.length();
+            long length;
+            try {
+                length = clob.length();
+            } catch (Exception error) {
+                return "<clob>";
+            }
             int read = (int) Math.min(length, MAX_CELL_TEXT);
             try (Reader reader = clob.getCharacterStream()) {
                 char[] buffer = new char[read];
@@ -1381,7 +1478,11 @@ final class SqlExecutor {
             return "<nclob>";
         }
         if (raw instanceof Blob) {
-            return "<blob " + ((Blob) raw).length() + " bytes>";
+            try {
+                return "<blob " + ((Blob) raw).length() + " bytes>";
+            } catch (Exception error) {
+                return "<blob>";
+            }
         }
         if (raw instanceof SQLXML) {
             try {
@@ -1480,18 +1581,46 @@ final class SqlExecutor {
         if (prefix.length() > MAX_TEXT) {
             prefix = prefix.substring(0, MAX_TEXT);
         }
+        String key = cellKey(column, prefix);
         synchronized (cellTexts) {
-            return cellTexts.get(cellKey(column, prefix));
+            if (ambiguousCellKeys.contains(key)) {
+                return null;
+            }
+            return cellTexts.get(key);
         }
     }
 
     private void keepCellText(String column, String text, int prefixEnd) {
-        if (text.length() > MAX_CELL_TEXT) {
-            return;
-        }
         String key = cellKey(column, text.substring(0, prefixEnd));
         synchronized (cellTexts) {
-            String previous = cellTexts.put(key, text);
+            if (ambiguousCellKeys.contains(key)) {
+                return;
+            }
+            if (text.length() > MAX_CELL_TEXT) {
+                // This value is too large to cache, but it still shares the
+                // (column, prefix) key with any smaller cell kept earlier. If we
+                // just return, a later cellText() for this cell would be served
+                // that stale smaller value. Poison the key and drop any retained
+                // copy so the caller sees an honest "unavailable" instead.
+                String earlier = cellTexts.remove(key);
+                if (earlier != null) {
+                    cellTextChars -= earlier.length();
+                }
+                ambiguousCellKeys.add(key);
+                return;
+            }
+            String previous = cellTexts.get(key);
+            if (previous != null && !previous.equals(text)) {
+                // The UI identifies a truncated cell only by (column, prefix). Two
+                // different cells sharing a long prefix map to one key; serving one
+                // row's full text to another is a silent data error in the dialog and
+                // in CSV/SQL export. Poison the key so neither is ever served.
+                ambiguousCellKeys.add(key);
+                cellTexts.remove(key);
+                cellTextChars -= previous.length();
+                return;
+            }
+            cellTexts.put(key, text);
             if (previous != null) {
                 cellTextChars -= previous.length();
             }
@@ -1506,6 +1635,14 @@ final class SqlExecutor {
                 }
                 stale.remove();
                 cellTextChars -= eldest.getValue().length();
+                // An evicted entry leaves no trace in cellTexts. Without a marker,
+                // a later cell with the same (column, prefix) but different full
+                // text would look like a fresh insert (previous == null) and be
+                // cached — then queries for the evicted cell would get that wrong
+                // text. Poison the evicted key: the evicted full text is no longer
+                // servable anyway, so this trades an unavailable value for never
+                // serving another row's value.
+                ambiguousCellKeys.add(eldest.getKey());
             }
         }
     }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -269,5 +269,116 @@ describe('table column filter', () => {
     const flags = await screen.findByLabelText('筛选 flags') as HTMLInputElement
     expect(flags.disabled).toBe(true)
     expect(flags.title).toContain('二进制列')
+  })
+})
+
+
+describe('table column drag order survives a refresh', () => {
+  afterEach(() => {
+    cleanup()
+    window.localStorage.clear()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
+    // A fresh columns array on every call, like the real bridge.
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: columns.map((column) => ({ ...column })),
+      rows: [[1, 'Alice', 'alice', 'payload']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    }))
+  })
+
+  it('keeps the dragged column order after a refresh', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThanOrEqual(1))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1))
+
+    const headerBy = (label: string): HTMLElement => {
+      const found = screen.getAllByRole('columnheader').find((cell) => (cell.textContent ?? '').trim() === label)
+      if (found === undefined) throw new Error('missing ' + label)
+      return found
+    }
+    // Drag "id" (position 0) onto "slug" (position 2): display order [name, slug, id, payload].
+    const idHeader = headerBy('id')
+    const slugHeader = headerBy('slug')
+    const dragEvent = createEvent.dragStart(idHeader)
+    Object.assign(dragEvent, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent(idHeader, dragEvent)
+    fireEvent.dragOver(slugHeader)
+    fireEvent.drop(slugHeader)
+    await waitFor(() =>
+      expect(headerBy('name').compareDocumentPosition(headerBy('id')) & 4).toBeTruthy(),
+    )
+
+    // Refresh re-runs the query with a fresh columns array. The order must survive.
+    const before = mocks.query.mock.calls.length
+    fireEvent.click(screen.getByLabelText('刷新'))
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.getAllByRole('columnheader').length).toBeGreaterThan(1))
+    expect(headerBy('name').compareDocumentPosition(headerBy('id')) & 4).toBeTruthy()
+  })
+})
+
+describe('table filter debounce flushes when the filter row closes', () => {
+  afterEach(() => {
+    cleanup()
+    window.localStorage.clear()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    mocks.status.mockResolvedValue({ config: { connections: [mysql], settings, drivers: [] }, drivers: [], env: {} })
+    mocks.query.mockImplementation(async (request: { sql: string }) => ({
+      sql: request.sql,
+      columns: columns.map((column) => ({ ...column })),
+      rows: [[1, '手机数码', 'digital', '<binary 3 bytes>']],
+      rowCount: 1,
+      truncated: false,
+      elapsedMs: 2,
+      warnings: [],
+    }))
+  })
+
+  it('applies a typed filter immediately when the row is closed before the debounce', async () => {
+    render(
+      <TableTab
+        useTabInfo={() => ({
+          tab: { navigation: { params: { connectionId: mysql.id, schema: 'shop', table: 'orders' } } },
+        })}
+      />,
+    )
+    await waitFor(() => expect(mocks.query.mock.calls.length).toBeGreaterThanOrEqual(1))
+    const filterButton = (await screen.findByLabelText('列筛选')) as HTMLButtonElement
+    await waitFor(() => expect(filterButton.disabled).toBe(false))
+
+    fireEvent.click(filterButton)
+    fireEvent.change(await screen.findByLabelText('筛选 name'), { target: { value: '手机' } })
+
+    // Close the filter row well inside the 400ms debounce window.
+    fireEvent.click(screen.getByLabelText('列筛选'))
+
+    // The filter must still be applied to the query (SQL contains LIKE), even
+    // though the debounce timer was cancelled by the close.
+    await waitFor(
+      () => {
+        const sqls = mocks.query.mock.calls.map((call: unknown[]) => String((call[0] as { sql: string }).sql))
+        expect(sqls.some((sql: string) => sql.includes('LIKE'))).toBe(true)
+      },
+      { timeout: 2000 },
+    )
   })
 })

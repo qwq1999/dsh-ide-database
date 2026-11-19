@@ -231,7 +231,16 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
       if (lower.startsWith('timestamp')) return oracleTimestampText(name, lower)
       return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
     }
-    if (dialect === 'dameng') return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    if (dialect === 'dameng') {
+      // The grid shows the bridge text, which keeps fractional seconds for
+      // TIMESTAMP columns (e.g. "...02.509"). A seconds-only TO_CHAR makes a
+      // like-filter on the displayed value match nothing. Trim the fixed-width
+      // fraction the same way the bridge does.
+      if (typeName.toLowerCase().startsWith('timestamp')) {
+        return `RTRIM(RTRIM(TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.')`
+      }
+      return `TO_CHAR(${name}, 'YYYY-MM-DD HH24:MI:SS')`
+    }
     if (dialect === 'mssql') {
       const base = typeName.replace(/\([^)]*\)/gu, '').trim().toLowerCase()
       // datetime2 keeps up to 7 fractional digits and datetimeoffset adds a
@@ -259,18 +268,24 @@ function textExpression(dialect: ClientConnection['dialect'], name: string, type
  * dialects parse ISO literals on their own and keep the plain quoted form.
  */
 export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: string, text: string): string {
+  // java.time values (OffsetDateTime/ZonedDateTime) reach the grid with ISO `T`
+  // and an optional `[Region]` suffix via ZonedDateTime.toString(); user-typed
+  // ISO uses `T` too. Oracle's TO_* format models require the literal separator
+  // to match, and a trailing `[Region]` hides a valid offset from our zone regex.
+  // Normalize both to the space-separated form the format models below expect.
+  const normalized = text.replace(/\[[^\]]+\]$/u, '').replace(/^(\d{4}-\d{2}-\d{2})T/u, '$1 ')
   const literal = quoteLiteral(text, dialect)
   if (!isTemporalType(typeName, dialect)) return literal
   if (dialect !== 'oracle' && dialect !== 'oceanbase-oracle' && dialect !== 'dameng') return literal
-  if (!/^\d{4}-\d{2}-\d{2}/u.test(text)) return literal
+  if (!/^\d{4}-\d{2}-\d{2}/u.test(normalized)) return literal
   const type = typeName.toLowerCase()
   const base = typeName.replace(/[\s(].*$/u, '').toLowerCase()
-  const escaped = text.replace(/'/gu, "''")
+  const escaped = normalized.replace(/'/gu, "''")
   // Oracle prints a one-digit hour offset ("+8:00"), so accept both forms.
-  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(text)
+  const zone = /(?:[+-]\d{1,2}:\d{2}|Z)$/u.exec(normalized)
   const hasZone = zone !== null
   // Do not mistake a `+08:00` zone for a time; inspect only the local part.
-  const local = hasZone ? text.slice(0, zone.index) : text
+  const local = hasZone ? normalized.slice(0, zone.index) : normalized
   const hasSeconds = /\d{2}:\d{2}:\d{2}/u.test(local)
   // A filter typed as `2024-11-11 09:54` must keep its minutes; a format
   // without them rejects the text with ORA-01830 instead of comparing at 00:00.
@@ -281,7 +296,7 @@ export function temporalLiteral(dialect: ClientConnection['dialect'], typeName: 
     // A `TIMESTAMP WITH LOCAL TIME ZONE` is shown with its region name, which
     // `TO_TIMESTAMP` cannot parse. `TZR` accepts the displayed name and keeps
     // the instant when the value goes back into the column.
-    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(text)) {
+    if (type.includes('local time zone') && !hasZone && /[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u.test(normalized)) {
       const format = `YYYY-MM-DD${timeFormat}${hasFraction ? '.FF' : ''} TZR`
       return `TO_TIMESTAMP_TZ('${escaped}', '${format}')`
     }
@@ -306,6 +321,33 @@ export function quoteLiteral(
   dialect: ClientConnection['dialect'] = 'generic',
   unicode = false,
 ): string {
+  // A literal NUL cannot appear inside a quoted SQL string: several drivers and
+  // the MySQL wire protocol terminate or reject it, and a script containing a
+  // raw NUL fails to re-import. Handle it up front so the common path below
+  // stays byte-for-byte unchanged. Represent NUL with the dialect's character
+  // function concatenated around the (NUL-free) fragments.
+  if (text.indexOf('\0') >= 0) {
+    // MySQL already uses backslash escapes; `\0` is its canonical NUL and
+    // `||` is logical OR there, so keep everything inside one literal.
+    if (dialect === 'mysql') {
+      const escaped = text.replace(/\\/gu, '\\\\').replace(/\0/gu, '\\0').replace(/'/gu, "''")
+      return `'${escaped}'`
+    }
+    const nulExpr = dialect === 'mssql'
+      ? (unicode ? 'NCHAR(0)' : 'CHAR(0)')
+      : (dialect === 'oracle' || dialect === 'oceanbase-oracle' || dialect === 'dameng' || dialect === 'postgres' ? 'CHR(0)' : 'CHAR(0)')
+    const joiner = dialect === 'mssql' ? ' + ' : ' || '
+    const parts = text.split('\0').map((piece) => {
+      const literal = `'${piece.replace(/'/gu, "''")}'`
+      return dialect === 'mssql' && unicode ? `N${literal}` : literal
+    })
+    const out: string[] = []
+    parts.forEach((piece, index) => {
+      if (index > 0) out.push(nulExpr)
+      if (piece !== "''") out.push(piece)
+    })
+    return out.join(joiner)
+  }
   const escaped = dialect === 'mysql' ? text.replace(/\\/gu, '\\\\') : text
   const literal = `'${escaped.replace(/'/gu, "''")}'`
   // SQL Server's plain string literal is varchar; non-Latin text stored in an
@@ -523,8 +565,12 @@ export function tableFromStatement(statement: string, dialect: SqlDialect = 'gen
 }
 
 /** Escape LIKE metacharacters so a contains filter matches the typed text literally. */
-function escapeLikeText(text: string): string {
-  return text.replace(/[!%_]/gu, (char) => `!${char}`)
+function escapeLikeText(text: string, dialect: ClientConnection['dialect']): string {
+  // In T-SQL `[` opens a character set/range wildcard (`[abc]`, `[a-z]`), so
+  // a literal-match filter must escape it too. Other dialects treat `[` as
+  // an ordinary character, so keep their behaviour unchanged.
+  const metachars = dialect === 'mssql' ? /[!%_[]/gu : /[!%_]/gu
+  return text.replace(metachars, (char) => `!${char}`)
 }
 
 export function filterExpression(
@@ -548,7 +594,7 @@ export function filterExpression(
     return `${name} = ${quoteLiteral(text, dialect, isUnicodeText(column.typeName))}`
   }
   const target = isTextType(column.typeName) ? name : textExpression(dialect, name, column.typeName)
-  const pattern = quoteLiteral(`%${escapeLikeText(text)}%`, dialect, isUnicodeText(column.typeName))
+  const pattern = quoteLiteral(`%${escapeLikeText(text, dialect)}%`, dialect, isUnicodeText(column.typeName))
   // Oracle prints a region as ASIA/SHANGHAI while the bridge shows
   // Asia/Shanghai; compare case-insensitively so both spellings match.
   if (

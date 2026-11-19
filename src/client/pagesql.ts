@@ -35,8 +35,10 @@ function stripTerminators(text: string, dialect: SqlDialect): string {
 export function pageable(statement: string, dialect: SqlDialect = 'generic'): boolean {
   const text = stripTerminators(statement.trim(), dialect).trim()
   // Judge the code, not the text: a literal `'limit'`, a comment, or a leading
-  // comment must not decide whether the console can page the query.
-  const code = maskNonCode(text, dialect, true).trim().toLowerCase()
+  // comment must not decide whether the console can page the query. Keep MySQL
+  // executable comments (`/*! ... */`) visible, like looksLikeWrite/Ddl do: they
+  // run as SQL, so an INTO OUTFILE hidden there must veto paging too.
+  const code = maskNonCode(text, dialect, true, true).trim().toLowerCase()
   if (!/^select\b/u.test(code)) return false
   if (code.includes(';')) return false
   // An existing OFFSET already pages the statement; appending another one

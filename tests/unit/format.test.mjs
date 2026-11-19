@@ -75,6 +75,9 @@ describe('format helpers', () => {
     expect(looksLikeWrite('EXPLAIN SELECT 1')).toBe(false)
     expect(looksLikeWrite('EXPLAIN ANALYZE SELECT 1')).toBe(false)
     expect(looksLikeWrite('EXPLAIN ANALYZE DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN ANALYSE DELETE FROM t')).toBe(true)
+    expect(looksLikeWrite('EXPLAIN ANALYSE SELECT 1')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN (ANALYSE) DELETE FROM t')).toBe(true)
     expect(looksLikeWrite('explain analyze format=tree update t set a = 1')).toBe(true)
     expect(looksLikeWrite('EXPLAIN DELETE FROM t')).toBe(false)
     expect(looksLikeWrite('EXPLAIN PLAN FOR SELECT 1', 'oracle')).toBe(true)
@@ -313,6 +316,13 @@ describe('format helpers', () => {
     expect(looksLikeDdl('WITH c AS (SELECT * FROM users) SELECT * INTO staged FROM c', 'postgres')).toBe(true)
     expect(looksLikeDdl('EXPLAIN (ANALYZE true) SELECT * INTO staged FROM users', 'postgres')).toBe(true)
     expect(looksLikeDdl('EXPLAIN (ANALYZE false) SELECT * INTO staged FROM users', 'postgres')).toBe(false)
+    // DDL side must unwrap ANALYSE and VERBOSE just like the write side does;
+    // otherwise an executed CREATE/SELECT INTO won't refresh the schema tree.
+    expect(looksLikeDdl('EXPLAIN ANALYSE SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE VERBOSE SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYSE VERBOSE CREATE TABLE staged (a int)', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYSE FORMAT JSON SELECT * INTO staged FROM users', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE VERBOSE SELECT * FROM users', 'postgres')).toBe(false)
   })
 
   it('groups counts with thousands separators', () => {
@@ -338,5 +348,40 @@ describe('format helpers', () => {
     expect(formatTtl(3599.6)).toBe('1h')
     expect(formatTtl(86_399.5)).toBe('1d')
     expect(formatTtl(Number.NaN)).toBe('—')
+  })
+})
+
+describe('EXPLAIN ANALYZE FORMAT <value> writes', () => {
+  it('classifies the body after a spaced FORMAT option', () => {
+    expect(looksLikeWrite('EXPLAIN ANALYZE FORMAT JSON DELETE FROM t', 'postgres')).toBe(true)
+    expect(looksLikeWrite('explain analyze format json update t set a = 1', 'postgres')).toBe(true)
+    expect(looksLikeDdl('EXPLAIN ANALYZE FORMAT JSON CREATE TABLE t(x int)', 'postgres')).toBe(true)
+  })
+
+  it('still treats a non-executing EXPLAIN as a read', () => {
+    expect(looksLikeWrite('EXPLAIN FORMAT JSON DELETE FROM t', 'postgres')).toBe(false)
+    expect(looksLikeWrite('EXPLAIN ANALYZE FORMAT JSON SELECT 1', 'postgres')).toBe(false)
+  })
+})
+
+
+describe('executable comment keyword matching', () => {
+  it('does not treat keywords after a closed executable comment as hidden writes', () => {
+    // A benign versioned hint must not make a later REPLACE()/identifier look
+    // like a write hidden inside the executable comment (the regex must not
+    // match across the closing `*/`).
+    expect(looksLikeWrite("/*!40101 SQL_NO_CACHE */ SELECT REPLACE(name, 'a', 'b') FROM users", 'mysql')).toBe(false)
+    expect(looksLikeDdl('/*!40101 SET NAMES utf8 */ SELECT `create` FROM t', 'mysql')).toBe(false)
+    // A real write inside the executable comment is still detected.
+    expect(looksLikeWrite('/*!40101 DELETE FROM users */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*!50000 CREATE TABLE t (a int) */ SELECT 1', 'mysql')).toBe(true)
+  })
+
+  it('recognizes MariaDB /*M! executable comments as code too', () => {
+    expect(looksLikeWrite('/*M!50000 DELETE FROM t */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeWrite('/*M!50000 DROP TABLE t */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeDdl('/*M!50000 CREATE TABLE t(a int) */ SELECT 1', 'mysql')).toBe(true)
+    expect(looksLikeWrite("/*M!50000 SELECT 1 INTO OUTFILE '/x' */", 'mysql')).toBe(true)
+    expect(looksLikeWrite("/*M!50000 SQL_NO_CACHE */ SELECT REPLACE(a, 'x', 'y') FROM t", 'mysql')).toBe(false)
   })
 })

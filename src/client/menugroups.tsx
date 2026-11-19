@@ -82,10 +82,13 @@ export function MenuGroupList({ groups, extra, onClose }: MenuGroupListProps): R
             onPointerEnter={(event) => openGroup(group.id, event.currentTarget)}
             onFocus={(event) => openGroup(group.id, event.currentTarget)}
             onClick={(event) => {
-              // A click on a group must not close the whole menu.
+              // A click on a group must not close the whole menu. Hover/focus
+              // have already opened the flyout, so toggling here would close
+              // it again; keep it open. Dismissal belongs to onClose (outside
+              // click / Escape), matching the documented hover/focus/click
+              // "open" behaviour.
               event.stopPropagation()
-              if (open?.id === group.id) setOpen(null)
-              else openGroup(group.id, event.currentTarget)
+              openGroup(group.id, event.currentTarget)
             }}
           >
             {group.label}

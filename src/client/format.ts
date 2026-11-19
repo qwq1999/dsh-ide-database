@@ -1,7 +1,7 @@
 import { DIALECT_LABEL } from '../shared/presets'
 import type { CellValue, Dialect, ObjectKind, SqlDialect } from '../shared/types'
 import { splitStatements } from './multistatement'
-import { isRedisReadCommand } from '../shared/redisread'
+import { isRedisReadCommand, tokenizeRedisCommand } from '../shared/redisread'
 import { SQLITE_ARGUMENT_PRAGMAS, parseSqlitePragma, SQLITE_READ_PRAGMAS } from '../shared/sqlitepragma'
 import { bracketIdentifierEnd, maskNonCode } from './sqllex'
 
@@ -84,6 +84,24 @@ function firstWord(text: string): { word: string; rest: string } {
   return { word: text.slice(0, end).toLowerCase(), rest: text.slice(cursor) }
 }
 
+const EXPLAIN_FORMAT_VALUES = new Set(['json', 'text', 'xml', 'yaml', 'binary', 'tree'])
+
+/**
+ * Drop a `FORMAT <value>` or `FORMAT=<value>` option so the EXPLAIN ANALYZE body
+ * that follows is what gets classified. `FORMAT=JSON` keeps the value in the
+ * same token; the spaced form has it in the next token, which must be skipped
+ * too or `JSON DELETE ...` would be classified as a read.
+ */
+function skipFormatOption(text: string): string {
+  const format = firstWord(text)
+  if (!format.word.startsWith('format')) return text
+  if (format.word === 'format') {
+    const value = firstWord(format.rest)
+    if (EXPLAIN_FORMAT_VALUES.has(value.word)) return value.rest
+  }
+  return format.rest
+}
+
 /**
  * `EXPLAIN ANALYZE <statement>` executes the statement it plans, so the
  * confirmation prompt has to look at that statement instead of at EXPLAIN.
@@ -101,9 +119,13 @@ function unwrapExplainAnalyze(statement: string): string {
     return rest.slice(close).trimStart()
   }
   const analyze = firstWord(rest)
-  if (analyze.word !== 'analyze') return statement
-  const next = firstWord(analyze.rest)
-  return next.word.startsWith('format') ? next.rest : analyze.rest
+  if (analyze.word !== 'analyze' && analyze.word !== 'analyse') return statement
+  // Keep this in step with explainAnalyzeBody (the looksLikeWrite path): both
+  // spellings of ANALYZE are accepted and an optional VERBOSE is skipped before
+  // FORMAT, or a DDL body such as `EXPLAIN ANALYSE VERBOSE CREATE TABLE ...`
+  // would look like a plain read and never refresh the schema tree.
+  const verbose = firstWord(analyze.rest)
+  return skipFormatOption(verbose.word === 'verbose' ? verbose.rest : analyze.rest)
 }
 
 /** Index just past a CTE name starting at `index`, or null when it is empty. */
@@ -207,19 +229,19 @@ const SELECT_INTO_FILE = /\binto\s+(?:outfile|dumpfile)\b/iu
 const MSSQL_WRITE_WORD =
   /\b(?:insert|update|delete|merge|truncate|create|alter|drop|exec(?:ute)?|backup|restore|bulk)\b/iu
 const MYSQL_EXECUTABLE_WRITE =
-  /\/\*![\s\S]*?(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
-const MYSQL_EXECUTABLE_DDL = /\/\*![\s\S]*?(?:create|alter|drop|rename|truncate)\b/iu
+  /\/\*(?:!|M!)(?:(?!\*\/)[\s\S])*?(?:insert|update|delete|merge|replace|create|alter|drop|truncate|grant|revoke|call|exec(?:ute)?|rename|lock|unlock|analyze|optimize|vacuum)\b/iu
+const MYSQL_EXECUTABLE_DDL = /\/\*(?:!|M!)(?:(?!\*\/)[\s\S])*?(?:create|alter|drop|rename|truncate)\b/iu
 const SELECT_INTO_TABLE =
   /\binto\s+(?!@|(?:outfile|dumpfile)\b)(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*)/iu
 // MySQL runs the body of `/*! ... */`; INTO OUTFILE/new_table there is still a
 // write even though the statement begins with a comment marker.
 const MYSQL_EXECUTABLE_INTO =
-  /\/\*![\s\S]*?\binto\s+(?:(?:outfile|dumpfile)\b|(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*))/iu
+  /\/\*(?:!|M!)(?:(?!\*\/)[\s\S])*?\binto\s+(?:(?:outfile|dumpfile)\b|(?:temp(?:orary)?\s+)?(?:table\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_$#][\w$#]*))/iu
 
 /** The statement after `EXPLAIN ANALYZE`, or null when EXPLAIN does not execute. */
 /** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
 function analyzeOptionEnabled(options: string): boolean {
-  const match = /\banalyze\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
+  const match = /\banaly[sz]e\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
   if (match === null) return false
   const value = match[1]?.toLowerCase()
   return value !== 'false' && value !== 'off' && value !== '0'
@@ -235,16 +257,14 @@ function explainAnalyzeBody(code: string): string | null {
     rest = rest.slice(close).trimStart()
   }
   const next = firstWord(rest)
-  if (next.word === 'analyze') {
+  if (next.word === 'analyze' || next.word === 'analyse') {
     analyze = true
     rest = next.rest
   }
   if (!analyze) return null
   const verbose = firstWord(rest)
   if (verbose.word === 'verbose') rest = verbose.rest
-  const format = firstWord(rest)
-  if (format.word.startsWith('format')) rest = format.rest
-  return rest
+  return skipFormatOption(rest)
 }
 
 /**
@@ -379,14 +399,12 @@ export function looksLikeDdl(sql: string, dialect: SqlDialect = 'generic'): bool
   })
 }
 
-function redisCommandName(command: string): string {
-  const match = /^\s*([a-zA-Z][a-zA-Z0-9_]*)/.exec(command)
-  return match?.[1]?.toLowerCase() ?? ''
-}
-
 export function looksLikeRedisWrite(command: string): boolean {
-  const name = redisCommandName(command)
-  return name !== '' && !isRedisReadCommand(name)
+  // Use the same tokenizer as the host, so quoted commands and trailing STORE
+  // options are classified identically on both sides.
+  const tokens = tokenizeRedisCommand(command)
+  const name = tokens[0]?.toLowerCase() ?? ''
+  return name !== '' && !isRedisReadCommand(name, tokens[1], tokens)
 }
 
 export function objectKindLabel(kind: ObjectKind): string {

@@ -32,6 +32,8 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA schema_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA user_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA user_version /* keep */', 'sqlite')).toBe(true)
+    // A long gap must not trigger exponential backtracking in PRAGMA_HEAD.
+    expect(isReadOnlySql('PRAGMA ' + ' '.repeat(200) + 'user_version', 'sqlite')).toBe(true)
     expect(isReadOnlySql("PRAGMA table_info('a=b')", 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info("a=b")', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA table_info([a=b])', 'sqlite')).toBe(true)
@@ -39,6 +41,10 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA /* inspect */ table_info(users)', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA -- inspect\n table_info(users)', 'sqlite')).toBe(true)
     expect(isReadOnlySql('PRAGMA main /* schema */ . table_info(users)', 'sqlite')).toBe(true)
+    // A quoted schema name may itself contain a dot; it must be consumed whole.
+    expect(isReadOnlySql('PRAGMA "my.schema".table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA `my.schema`.table_info(users)', 'sqlite')).toBe(true)
+    expect(isReadOnlySql('PRAGMA [my.schema].table_info(users)', 'sqlite')).toBe(true)
     // PRAGMA is not a read-only starter outside SQLite.
     expect(isReadOnlySql('PRAGMA table_info(users)')).toBe(false)
   })
@@ -54,6 +60,12 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('PRAGMA writable_schema = ON', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA table_info(users) = 1', 'sqlite')).toBe(false)
     expect(isReadOnlySql('PRAGMA table_info(users); DROP TABLE users', 'sqlite')).toBe(false)
+    // A quoted schema name that embeds a read-only pragma name must not fool
+    // the guard: the real pragma after the dot is a mutating one.
+    expect(isReadOnlySql('PRAGMA "x.table_info".journal_mode(WAL)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA "x.quick_check".wal_checkpoint(TRUNCATE)', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA `x.integrity_check`.shrink_memory', 'sqlite')).toBe(false)
+    expect(isReadOnlySql('PRAGMA [x.integrity_check].journal_mode = WAL', 'sqlite')).toBe(false)
   })
 
   it('accepts reads behind leading comments', () => {
@@ -118,6 +130,15 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN DELETE FROM t')).toBe(true)
   })
 
+  it('treats PostgreSQL ANALYSE as the ANALYZE synonym (no read-only bypass)', () => {
+    expect(isReadOnlySql('EXPLAIN ANALYSE SELECT 1', 'postgres')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN ANALYSE DELETE FROM t', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYSE UPDATE t SET a = 1', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN ANALYSE INSERT INTO t VALUES (1)', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYSE) DELETE FROM t', 'postgres')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (ANALYSE false) DELETE FROM t', 'postgres')).toBe(true)
+  })
+
   it('rejects Oracle EXPLAIN PLAN because it writes the plan table', () => {
     expect(isReadOnlySql('EXPLAIN PLAN FOR SELECT * FROM t', 'oracle')).toBe(false)
     expect(isReadOnlySql("EXPLAIN PLAN SET STATEMENT_ID = 'x' FOR SELECT 1", 'oracle')).toBe(false)
@@ -151,6 +172,33 @@ describe('isReadOnlySql', () => {
     expect(isReadOnlySql('EXPLAIN /* only plan */ SELECT 1')).toBe(true)
     expect(isReadOnlySql('EXPLAIN /* only plan */ DELETE FROM t')).toBe(true)
     expect(isReadOnlySql('EXPLAIN /* no statement */')).toBe(false)
+  })
+
+  it('does not let MySQL executable comments hide ANALYZE', () => {
+    // `/*! ... */` bodies are executed by the server; a versioned comment can
+    // smuggle ANALYZE past the EXPLAIN guard and actually run the DML.
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE */ DELETE FROM users', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!80019 ANALYZE */ UPDATE t SET a = 1', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYSE */ INSERT INTO t VALUES (1)', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE FORMAT=TREE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 */ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*M! ANALYZE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN (/*!50000 ANALYZE */) DELETE FROM t', 'mysql')).toBe(false)
+    // Harmless hints remain read-only.
+    expect(isReadOnlySql('EXPLAIN /*!40101 SQL_NO_CACHE */ SELECT 1', 'mysql')).toBe(true)
+    expect(isReadOnlySql('EXPLAIN /*!50000 SQL_NO_CACHE */ DELETE FROM t', 'mysql')).toBe(true)
+  })
+
+  it('does not let MariaDB /*M! executable comments hide writes or locks', () => {
+    // MariaDB executes the body of `/*M! ... */` just like MySQL's `/*! ... */`.
+    expect(isReadOnlySql("SELECT 1 /*M!50000 INTO OUTFILE '/tmp/pwn.txt' */", 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 /*M!50000 FROM t FOR UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT 1 /*M!50000 LOCK IN SHARE MODE */', 'mysql')).toBe(false)
+    // A leading executable comment's SELECT body is judged too (BUG C).
+    expect(isReadOnlySql('/*M!50000 SELECT 1 */ SELECT 2', 'mysql')).toBe(true)
+    expect(isReadOnlySql('/*M!50000 SELECT 1 */ DELETE FROM t', 'mysql')).toBe(false)
+    // Harmless MariaDB hints stay read-only.
+    expect(isReadOnlySql('SELECT 1 /*M!50000 SQL_NO_CACHE */', 'mysql')).toBe(true)
   })
 
   it('judges the statement a CTE list runs', () => {
@@ -354,4 +402,42 @@ describe('isReadOnlySql', () => {
     // Locking reads inside a CTE body are checked too.
     expect(isReadOnlySql('WITH c AS (SELECT * FROM t FOR UPDATE) SELECT * FROM c', 'postgres')).toBe(false)
   })
+
+  it('rejects EXPLAIN hiding ANALYZE behind mixed leading comments (PR7 P1-2)', () => {
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE */ DELETE FROM users', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 */ /*h*/ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000*/ /*a*/ /*b*/ ANALYZE DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*M! ANALYSE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /* normal */ /*!50000 ANALYZE */ DELETE FROM t', 'mysql')).toBe(false)
+    expect(isReadOnlySql('EXPLAIN /*!50000 ANALYZE FORMAT=TREE */ DELETE FROM t', 'mysql')).toBe(false)
+    // benign cases stay read-only
+    expect(isReadOnlySql('EXPLAIN SELECT * FROM t', 'mysql')).toBe(true)
+    expect(isReadOnlySql('SELECT REPLACE(name,"a","b") FROM t', 'mysql')).toBe(true)
+  })
+
+  it('rejects locking reads hidden in executable comments (PR7 P1-2 lock)', () => {
+    expect(isReadOnlySql('SELECT * FROM t FOR /*!50000 UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR /*M!50000 UPDATE */', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t FOR /*!50000*/ /*x*/ UPDATE', 'mysql')).toBe(false)
+    expect(isReadOnlySql('SELECT * FROM t /*!50000 FOR UPDATE */', 'mysql')).toBe(false)
+    // plain read stays read-only
+    expect(isReadOnlySql('SELECT * FROM t', 'mysql')).toBe(true)
+  })
+
+  it('parses a chain of closed block comments in linear time (PR8 ReDoS)', () => {
+    // The PRAGMA header regex used to backtrack quadratically when a /*...*/
+    // sequence could be read as either a gap comment or a bare schema name.
+    // Both the spaced and the unspaced variants must now stay linear. A generous
+    // 400ms ceiling keeps this stable on slow CI while the old regex took
+    // seconds at these sizes.
+    for (const body of ['/*x*/ ', '/*x*/']) {
+      const sql = 'pragma ' + body.repeat(2000)
+      const t0 = performance.now()
+      const result = isReadOnlySql(sql, 'sqlite')
+      const elapsed = performance.now() - t0
+      expect(typeof result).toBe('boolean')
+      expect(elapsed).toBeLessThan(400)
+    }
+  })
+
 })

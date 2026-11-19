@@ -59,6 +59,7 @@ function harness(initial = {}) {
     purgeConnection,
   }
   const structure = { clear: vi.fn(), putSchemas: vi.fn(), get: vi.fn(() => undefined) }
+  const prefetch = { cancel: vi.fn() }
   const deps = {
     config,
     drivers: { statuses: () => [{ id: 'mysql', allJarsPresent: true, jars: [] }] },
@@ -76,6 +77,7 @@ function harness(initial = {}) {
     },
     redis: { scan: vi.fn(), inspect: vi.fn(), command: vi.fn(), connect: vi.fn(), disconnect: vi.fn(async () => undefined) },
     structure,
+    prefetch,
   }
   const tools = createDatabaseTools(deps)
   const byName = (name) => {
@@ -96,6 +98,7 @@ function harness(initial = {}) {
     trashConnection,
     purgeConnection,
     structure,
+    prefetch,
   }
 }
 
@@ -337,10 +340,22 @@ describe('createDatabaseTools', () => {
     await expect(byName('db_explain').execute({ connection: 'c1', sql: '' })).rejects.toThrow(/SQL 不能为空/)
   })
 
-  it('drops the cached session after an update', async () => {
-    const { byName, deps } = harness()
+  it('drops the cached session and stale structure after an update', async () => {
+    const { byName, deps, structure, prefetch } = harness()
     await byName('db_update_connection').execute({ connection: 'c1', port: 3307 })
     expect(deps.sql.disconnect).toHaveBeenCalledWith('c1')
+    expect(deps.redis.disconnect).toHaveBeenCalledWith('c1')
+    expect(structure.clear).toHaveBeenCalledWith('c1')
+    expect(prefetch.cancel).toHaveBeenCalledWith('c1')
+  })
+
+  it('keeps the cached session and structure when only the connection name changes (PR8 P2)', async () => {
+    const { byName, deps, structure, prefetch } = harness()
+    await byName('db_update_connection').execute({ connection: 'c1', name: 'Renamed ds' })
+    expect(deps.sql.disconnect).not.toHaveBeenCalled()
+    expect(deps.redis.disconnect).not.toHaveBeenCalled()
+    expect(structure.clear).not.toHaveBeenCalled()
+    expect(prefetch.cancel).not.toHaveBeenCalled()
   })
 
   it('guards EXPLAIN ANALYZE like a write', async () => {
@@ -348,5 +363,49 @@ describe('createDatabaseTools', () => {
     await expect(byName('db_explain').execute({ connection: 'c1', sql: 'EXPLAIN ANALYZE DELETE FROM users' })).rejects.toThrow(
       /不允许代理执行/,
     )
+  })
+
+  it('never echoes credentials from params in create/update responses', async () => {
+    const created = harness()
+    const made = await created.byName('db_create_connection').execute({
+      name: 'With secret', driver: 'mysql', host: '127.0.0.1', port: 3306,
+      params: { password: 'P4SSw0rd', apiToken: 'tok', sslMode: 'require' },
+    })
+    expect(JSON.stringify(made)).not.toContain('P4SSw0rd')
+    expect(JSON.stringify(made)).not.toContain('tok')
+    expect(made.created.params).toMatchObject({ password: '***', apiToken: '***', sslMode: 'require' })
+
+    const updated = harness({ connection: { params: { password: 's3cret', accessKey: 'k' } } })
+    const changed = await updated.byName('db_update_connection').execute({ connection: 'c1', port: 3307 })
+    expect(JSON.stringify(changed)).not.toContain('s3cret')
+    expect(changed.updated.params).toMatchObject({ password: '***', accessKey: '***' })
+  })
+
+  it('keeps port 0 when updating a SQLite connection', async () => {
+    const { byName, saveConnection } = harness({ connection: { driver: 'sqlite', dialect: 'sqlite', port: 0 } })
+    await byName('db_update_connection').execute({ connection: 'c1', port: 0 })
+    expect(saveConnection.mock.calls[0][0].port).toBe(0)
+  })
+
+  it('explains that a custom driver needs an explicit port', async () => {
+    const { byName, saveConnection } = harness()
+    await expect(byName('db_create_connection').execute({ name: 'Odd', driver: 'custom', customDriverId: 'x', host: 'h' })).rejects.toThrow(
+      /必须显式指定 port/,
+    )
+    expect(saveConnection).not.toHaveBeenCalled()
+  })
+
+  it('validates the Redis db index in every tool', async () => {
+    const { byName, deps } = harness()
+    for (const name of ['db_redis_scan', 'db_redis_inspect', 'db_redis_command']) {
+      const args = { connection: 'r1', db: 'not-a-number' }
+      if (name === 'db_redis_command') args.command = 'PING'
+      await expect(byName(name).execute(args)).rejects.toThrow(/db 必须是数字/)
+    }
+    // Out-of-range numbers are clamped into 0-255, consistent with config.ts.
+    await byName('db_redis_scan').execute({ connection: 'r1', db: 300 })
+    expect(deps.redis.scan.mock.calls[0][1]).toBe(255)
+    await byName('db_redis_scan').execute({ connection: 'r1', db: -5 })
+    expect(deps.redis.scan.mock.calls[1][1]).toBe(0)
   })
 })

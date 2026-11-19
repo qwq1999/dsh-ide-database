@@ -47,6 +47,26 @@ function search(value: string): void {
   fireEvent.change(screen.getByRole('searchbox'), { target: { value } })
 }
 
+describe('RowPicker focus restoration', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('returns focus to the trigger when Escape closes the search box', () => {
+    renderPicker()
+    const trigger = document.querySelector<HTMLElement>('.dshdb-row-action')!
+    trigger.focus()
+    fireEvent.click(trigger)
+    const searchBox = screen.getByRole('searchbox')
+    searchBox.focus()
+    expect(document.activeElement).toBe(searchBox)
+
+    fireEvent.keyDown(searchBox, { key: 'Escape' })
+
+    expect(document.activeElement).toBe(trigger)
+  })
+})
+
 describe('RowPicker search', () => {
   afterEach(() => {
     cleanup()

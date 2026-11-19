@@ -43,6 +43,26 @@ describe('applyCompletion', () => {
     const result = applyCompletion('SELECT * FROM "Ord', 18, 'Orders', 'postgres')
     expect(result.statement).toBe('SELECT * FROM "Orders"')
   })
+
+  it('inserts an explicit Completion.insert verbatim instead of quoting it as one identifier', () => {
+    // A column expansion (name '*', insert 'id, total, created_at') and a join
+    // expression are ready-to-use SQL fragments, not identifiers to backtick.
+    const expanded = applyCompletion('SELECT ', 7, 'id, total, created_at', 'mysql', 'column', true)
+    expect(expanded.statement).toBe('SELECT id, total, created_at')
+    expect(expanded.caret).toBe(expanded.statement.length)
+
+    const join = applyCompletion('SELECT * FROM o ', 16, 'customers c ON c.id = o.customer_id', 'mysql', 'table', true)
+    expect(join.statement).toBe('SELECT * FROM o customers c ON c.id = o.customer_id')
+    expect(join.statement).not.toContain('`')
+  })
+
+  it('closes an MSSQL bracket-quoted identifier the user started typing', () => {
+    const word = wordAtCaret('SELECT * FROM [ord', 18)
+    expect(word.quote).toBe('[')
+    const result = applyCompletion('SELECT * FROM [ord', 18, 'orders', 'mssql', 'table')
+    expect(result.statement).toBe('SELECT * FROM [orders]')
+    expect(result.caret).toBe(result.statement.length)
+  })
 })
 
 describe('wordAtCaret / qualifierBefore', () => {

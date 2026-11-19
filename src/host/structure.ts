@@ -239,7 +239,9 @@ export class StructureStore {
     for (const [connectionId, entry] of Object.entries(data)) {
       const descriptions = entry.descriptions
       if (descriptions === undefined || Object.keys(descriptions).length === 0) continue
-      this.descriptions.import(connectionId, descriptions)
+      // Keep the legacy descriptions if the rewrite did not reach disk: the
+      // tree flush must not overwrite them, so a later start can retry migration.
+      if (!this.descriptions.import(connectionId, descriptions)) continue
       entry.descriptions = {}
       migrated = true
     }
@@ -268,6 +270,13 @@ export class StructureStore {
         fetchedAt: entry.fetchedAt,
         schemas: entry.schemas,
         objects: entry.objects,
+        // A failed legacy-description migration leaves the old payload in
+        // memory so a later start can retry it. Keep writing it back to disk
+        // until that retry succeeds (migrateDescriptions empties it then);
+        // otherwise the next flush silently destroys the only remaining copy.
+        ...(entry.descriptions === undefined || Object.keys(entry.descriptions).length === 0
+          ? {}
+          : { descriptions: entry.descriptions }),
         ...(entry.redis === undefined ? {} : { redis: entry.redis }),
       }
     }
@@ -352,6 +361,16 @@ export class StructureStore {
     return this.descriptions.has(connectionId, schema, table)
   }
 
+  /**
+   * Whether an object is still present in the cached tree. A background prefetch
+   * read can resolve after the schema/object was pruned (putSchemas/putObjects);
+   * the writer must not resurrect a description for an object that no longer
+   * exists in the tree.
+   */
+  hasObject(connectionId: string, schema: string, table: string): boolean {
+    return (this.data[connectionId]?.objects[schema] ?? []).some((object) => object.name === table)
+  }
+
   private redisEntry(connectionId: string): CachedStructure {
     const entry =
       this.data[connectionId] ?? {
@@ -430,12 +449,15 @@ export class StructureStore {
   flush(): void {
     this.descriptions.flush()
     if (!this.dirty) return
-    this.dirty = false
     try {
       const temp = `${this.file}.tmp-${process.pid}`
       // Compact JSON: the tree is small, and indentation only inflates I/O.
       writeFileSync(temp, `${JSON.stringify(this.treeSnapshot())}\n`, { encoding: 'utf8', mode: 0o600 })
       renameSync(temp, this.file)
+      // Only clear the flag once the bytes are on disk. If the write fails the
+      // tree still needs rewriting: leaving dirty set lets the next flush (or
+      // timer) retry instead of silently dropping the change forever.
+      this.dirty = false
     } catch (error) {
       this.log(`结构缓存写入失败：${error instanceof Error ? error.message : String(error)}`)
     }

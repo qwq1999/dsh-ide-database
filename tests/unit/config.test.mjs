@@ -138,6 +138,32 @@ describe('ConfigStore', () => {
     expect(() => config.saveConnection({ name: 'no file', driver: 'sqlite' })).toThrow(/database/)
   })
 
+  it('keeps a SQLite connection across a config reload', () => {
+    const { config, dir } = store()
+    const saved = config.saveConnection({ name: 'Local SQLite', driver: 'sqlite', database: 'D:/data/app.db' })
+    expect(saved.port).toBe(0)
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().connections).toHaveLength(1)
+    expect(reloaded.snapshot().connections[0]).toMatchObject({
+      id: saved.id,
+      driver: 'sqlite',
+      dialect: 'sqlite',
+      host: '',
+      port: 0,
+      database: 'D:/data/app.db',
+    })
+  })
+
+  it('refuses prototype-chain names as a connection driver', () => {
+    const { config } = store()
+    for (const driver of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(() => config.saveConnection({ name: 'bad', driver, host: 'x', port: 3306 })).toThrow(/未知的驱动/)
+    }
+    expect(config.snapshot().connections).toEqual([])
+  })
+
   it('fills the preset default port when the agent omits it', () => {
     const { config } = store()
     const saved = config.saveConnection({ name: 'Local PG', driver: 'postgres', host: '127.0.0.1', database: 'app' })

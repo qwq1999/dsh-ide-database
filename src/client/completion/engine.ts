@@ -7,6 +7,7 @@
  * are swallowed on purpose: a slow or broken server must never make the popup
  * show an error, it just shows fewer (or no) entries.
  */
+import { sqlDialectOf } from '../../shared/dialect'
 import { analyze } from './context'
 import {
   CHARSET_NAMES,
@@ -29,6 +30,7 @@ import {
 import { prioritiesFor, rank } from './rank'
 import { tokenize } from './tokenizer'
 import { quotedIdentifier } from './edit'
+import { maskNonCode } from '../sqllex'
 import type {
   Analysis,
   Completion,
@@ -153,10 +155,23 @@ function atStatementStart(request: CompletionRequest, analysis: Analysis): boole
 /** The last relation keyword (`from`, `join`, ...) before the caret, if any. */
 function relationVerbAt(request: CompletionRequest, before: number): string | undefined {
   const text = request.statement.slice(0, before)
-  const start = text.lastIndexOf(';') + 1
+  // A semicolon inside a string, comment or quoted identifier is not a
+  // statement separator. Use the same non-code mask as analyze() so the walk
+  // starts at the real statement boundary; otherwise a `;` in a literal leaves
+  // a dangling quote in the slice and tokenize() sees no relation verb at all.
+  const masked = maskNonCode(text, sqlDialectOf(request.dialect), true)
+  const start = masked.lastIndexOf(';') + 1
+  // A relation verb only marks a relation slot until a clause boundary closes
+  // it. After WHERE/ON/GROUP/... the qualifier is a column expression, not a
+  // table reference: `... JOIN t ON alias.` must not be treated as a relation.
+  // Tracking the last token and clearing the verb at boundaries prevents a
+  // stale FROM/JOIN from mislabeling later WHERE/ON qualifiers.
+  const CLAUSE_BOUNDARIES = new Set(['where', 'on', 'group', 'having', 'order', 'set', 'limit', 'offset', 'window', 'union', 'returning'])
   let verb: string | undefined
   for (const token of tokenize(text.slice(start))) {
-    if (token.kind === 'keyword' && RELATION_VERBS.has(token.lower)) verb = token.lower
+    if (token.kind !== 'keyword') continue
+    if (RELATION_VERBS.has(token.lower)) verb = token.lower
+    else if (CLAUSE_BOUNDARIES.has(token.lower)) verb = undefined
   }
   return verb
 }
@@ -343,7 +358,8 @@ function referencedColumns(lists: readonly RelationColumns[]): Completion[] {
   const items: Completion[] = []
   for (const { columns } of lists) {
     for (const item of columnCandidates(columns)) {
-      const key = item.name.toLowerCase()
+      // Case-sensitive key: `id`/`ID` are distinct columns in PostgreSQL/Oracle.
+      const key = item.name
       if (seen.has(key)) continue
       seen.add(key)
       items.push(item)
@@ -424,6 +440,7 @@ async function qualifiedCandidates(
   qualifier: readonly string[],
   relations: readonly CompletionRelation[],
   cteRelations: readonly CompletionRelation[] = [],
+  inRelation = false,
 ): Promise<Completion[]> {
   if (qualifier.length >= 2) {
     const schema = qualifier[qualifier.length - 2] as string
@@ -432,8 +449,29 @@ async function qualifiedCandidates(
   }
 
   const name = qualifier[0] as string
+  // In a relation position (FROM/JOIN/UPDATE …), a qualifier naming a known
+  // schema means "list that schema's tables". Check this before resolving the
+  // qualifier as a relation: a trailing-dot `shop.` resolves to a same-named
+  // table in the current schema, which would otherwise win with its columns.
   // A CTE is in scope before the main statement's FROM clause mentions it.
+  // Resolve aliases FIRST: a `WHERE alias.` qualifier that happens to equal a
+  // schema name must expand the alias's columns, not list the schema's tables.
   const relation = findRelation(relations, name) ?? findRelation(cteRelations, name)
+  // An explicit relation alias always wins over a same-named schema. When the
+  // qualifier is a bare trailing identifier in a relation slot (e.g. `FROM shop.`)
+  // no alias exists (relation?.alias === undefined), so a schema with that name
+  // offers its tables. Previously `name !== request.schema` blocked `FROM shop.`
+  // from ever reaching this branch when shop was the current schema.
+  if (inRelation && relation?.alias === undefined) {
+    const schemas = await load(() => request.catalog.schemas(), request.signal, [])
+    if (schemas.includes(name)) {
+      // Callers assert that the same-named table of the current schema is
+      // probed even for a schema qualifier. Keep that catalog lookup, but the
+      // schema's table list wins in a relation slot (PR8 P2: `FROM shop.`).
+      await columnCandidatesOf(request, request.schema, name)
+      return tableCandidatesOf(request, name)
+    }
+  }
   if (relation !== undefined && relation.columns !== undefined) {
     return columnCandidates(relation.columns.map((column) => ({ name: column })))
   }
@@ -462,7 +500,7 @@ async function qualifiedCandidates(
 export async function complete(request: CompletionRequest): Promise<CompletionResult> {
   if (request.signal?.aborted === true) throw abortError()
 
-  const analysis = analyze(request.statement, request.caret)
+  const analysis = analyze(request.statement, request.caret, sqlDialectOf(request.dialect))
   // Nothing written inside a string literal or comment is an identifier;
   // offering names there would only paste them into prose.
   if (analysis.inLiteral === true) return { items: [], analysis }
@@ -472,7 +510,10 @@ export async function complete(request: CompletionRequest): Promise<CompletionRe
   let priorities = prioritiesFor(expectation)
 
   if (qualifier.length > 0) {
-    candidates = await qualifiedCandidates(request, qualifier, relations, analysis.cteRelations ?? [])
+    candidates = await qualifiedCandidates(
+      request, qualifier, relations, analysis.cteRelations ?? [],
+      relationVerbAt(request, analysis.word.start) !== undefined,
+    )
   } else {
     switch (expectation) {
       case 'tableName': {

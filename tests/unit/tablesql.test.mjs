@@ -56,6 +56,26 @@ describe('tablesql quoting', () => {
     expect(quoteLiteral('手机', 'mssql')).toBe("'手机'")
   })
 
+  it('represents NUL so an exported INSERT round-trips without raw NUL bytes', () => {
+    const nul = String.fromCharCode(0)
+    // Standard dialects use the character function; no raw NUL in the output.
+    expect(quoteLiteral('a' + nul + 'b', 'sqlite')).toBe("'a' || CHAR(0) || 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'oracle')).toBe("'a' || CHR(0) || 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'mssql')).toBe("'a' + CHAR(0) + 'b'")
+    expect(quoteLiteral('a' + nul + 'b', 'mssql', true)).toBe("N'a' + NCHAR(0) + N'b'")
+    // MySQL keeps one literal and uses its backslash escape.
+    expect(quoteLiteral('a' + nul + 'b', 'mysql')).toBe("'a\\0b'")
+    // Edge placements.
+    expect(quoteLiteral(nul + 'ab', 'sqlite')).toBe("CHAR(0) || 'ab'")
+    expect(quoteLiteral('ab' + nul, 'sqlite')).toBe("'ab' || CHAR(0)")
+    expect(quoteLiteral(nul, 'sqlite')).toBe('CHAR(0)')
+    expect(quoteLiteral("a'" + nul + 'b', 'sqlite')).toBe("'a''' || CHAR(0) || 'b'")
+    // No raw NUL byte leaks into any generated statement.
+    const stmt = insertStatement('sqlite', '', 't', [{ name: 'c', typeName: 'text' }], ['a' + nul + 'b'])
+    expect(stmt.indexOf(nul)).toBe(-1)
+    expect(stmt).toBe('INSERT INTO "t" ("c") VALUES (\'a\' || CHAR(0) || \'b\');')
+  })
+
   it('builds the page clause per dialect', () => {
     expect(pageClause('mysql', 500, 1000)).toBe('LIMIT 500 OFFSET 1000')
     expect(pageClause('oracle', 200, 0)).toBe('OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY')
@@ -181,6 +201,16 @@ describe('filterExpression', () => {
       }),
     ).toBe(
       `UPPER(INITCAP(REGEXP_REPLACE(REGEXP_REPLACE(TO_CHAR("created", 'YYYY-MM-DD HH24:MI:SS.FF TZR'), '0+ ([^ ]+)$', ' \\1'), '\\. ([^ ]+)$', '.0 \\1'))) LIKE UPPER('%17:54:33.123 Asia/Shanghai%') ESCAPE '!'`,
+    )
+  })
+
+  it('keeps fractional seconds in a Dameng TIMESTAMP like-filter', () => {
+    expect(filterExpression('dameng', column('installed_on', 'TIMESTAMP(6)'), { op: 'like', text: '2026-09-10 14:42:02.509' })).toBe(
+      `RTRIM(RTRIM(TO_CHAR("installed_on", 'YYYY-MM-DD HH24:MI:SS.FF'), '0'), '.') LIKE '%2026-09-10 14:42:02.509%' ESCAPE '!'`,
+    )
+    // A plain DATE column has no fraction and must still format to the second.
+    expect(filterExpression('dameng', column('d', 'DATE'), { op: 'like', text: '2026-09-10' })).toBe(
+      `TO_CHAR("d", 'YYYY-MM-DD HH24:MI:SS') LIKE '%2026-09-10%' ESCAPE '!'`,
     )
   })
 
@@ -679,6 +709,29 @@ describe('temporal literals', () => {
     )
   })
 
+  it('normalizes ISO T separators and bracketed zones for Oracle TO_* formats', () => {
+    expect(temporalLiteral('oracle', 'date', '2024-01-02T03:04:05')).toBe(
+      `TO_DATE('2024-01-02 03:04:05', 'YYYY-MM-DD HH24:MI:SS')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp', '2024-01-02T03:04:05.509')).toBe(
+      `TO_TIMESTAMP('2024-01-02 03:04:05.509', 'YYYY-MM-DD HH24:MI:SS.FF')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp with time zone', '2024-01-02T03:04:05.509+08:00')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05.509+08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('dameng', 'timestamp', '2024-01-02T03:04:05.509')).toBe(
+      `TO_TIMESTAMP('2024-01-02 03:04:05.509', 'YYYY-MM-DD HH24:MI:SS.FF')`,
+    )
+    // ZonedDateTime.toString() keeps `T` and a trailing [Region]; the offset
+    // must still be recognized as a zone rather than dropped into TO_TIMESTAMP.
+    expect(temporalLiteral('oracle', 'timestamp with local time zone', '2024-01-02T03:04:05.509+08:00[Asia/Shanghai]')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05.509+08:00', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')`,
+    )
+    expect(temporalLiteral('oracle', 'timestamp with local time zone', '2024-01-02T03:04:05Z[UTC]')).toBe(
+      `TO_TIMESTAMP_TZ('2024-01-02 03:04:05Z', 'YYYY-MM-DD HH24:MI:SS TZH:TZM')`,
+    )
+  })
+
   it('leaves other dialects and non-temporal text alone', () => {
     const column = { name: 'city', typeName: 'VARCHAR(20)' }
     expect(filterExpression('oracle', column, { op: 'eq', text: '2024-11-11' })).toBe(`"city" = '2024-11-11'`)
@@ -700,5 +753,16 @@ describe('columnNames', () => {
     expect(columnNames('mysql', columns)).toBe('`id`, `name`')
     expect(columnNames('oracle', columns)).toBe('"id", "name"')
     expect(columnNames('mysql', [])).toBe('')
+  })
+})
+
+
+describe('MSSQL LIKE filters escape the [ wildcard', () => {
+  const col = { name: 'v', typeName: 'varchar(50)' }
+  it('escapes [ so a contains filter matches text literally', () => {
+    expect(filterExpression('mssql', col, { op: 'like', text: '[abc]' })).toBe("[v] LIKE '%![abc]%' ESCAPE '!'")
+    expect(filterExpression('mssql', col, { op: 'like', text: '[a-z]' })).toBe("[v] LIKE '%![a-z]%' ESCAPE '!'")
+    // Other dialects treat [ as an ordinary character.
+    expect(filterExpression('mysql', col, { op: 'like', text: '[abc]' })).toBe("`v` LIKE '%[abc]%' ESCAPE '!'")
   })
 })

@@ -14,6 +14,24 @@ import { IconWarningOutlineRegular, Toast as PrimitiveToast } from '@deepseek-ai
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, InfoIcon, WarningIcon } from './icons'
 import { usePopoverDismiss } from './popover'
 
+// Nested dialogs share one page-scroll lock. Saving/restoring body.overflow per
+// instance breaks when two dialogs unmount in the same commit: React runs
+// cleanups in tree order, so the later one restores the `'hidden'` the earlier
+// one just saved, leaving the page permanently unscrollable. Refcount instead.
+let scrollLocks = 0
+let savedOverflow = ''
+function lockPageScroll(): void {
+  if (scrollLocks === 0) {
+    savedOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  scrollLocks += 1
+}
+function unlockPageScroll(): void {
+  scrollLocks = Math.max(0, scrollLocks - 1)
+  if (scrollLocks === 0) document.body.style.overflow = savedOverflow
+}
+
 export type ButtonVariant = 'default' | 'primary' | 'ghost' | 'danger'
 export type BannerTone = 'info' | 'success' | 'warn' | 'error'
 
@@ -136,9 +154,13 @@ export function SearchSelect({
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const anchor = useRef<HTMLSpanElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const close = useCallback(() => {
     setOpen(false)
     setQuery('')
+    // The search input unmounts with the popover; without this, focus falls
+    // back to <body> and keyboard users lose their place (WCAG 2.4.3).
+    triggerRef.current?.focus()
   }, [])
   usePopoverDismiss(open, close, anchor)
   const current = options.find((option) => option.value === value)
@@ -157,6 +179,7 @@ export function SearchSelect({
   return (
     <span className="dshdb-search-select" ref={anchor}>
       <button
+        ref={triggerRef}
         type="button"
         className={`dshdb-select dshdb-select-inline dshdb-search-trigger ${className}`.trim()}
         aria-label={label}
@@ -497,6 +520,12 @@ export function Modal({
         box.querySelectorAll<HTMLElement>(
           'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
         ),
+      ).filter(
+        // Collapsed Panels keep their controls in the DOM behind a `hidden`
+        // attribute. Counting them as trap boundaries would let Tab escape the
+        // dialog from the last visible control. jsdom has no layout, so filter
+        // by the attribute rather than getClientRects().
+        (element) => !element.closest('[hidden]') && element.getAttribute('aria-hidden') !== 'true',
       )
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -504,6 +533,10 @@ export function Modal({
       // underneath must stay open while a nested one is up.
       if (!isTopmost()) return
       if (event.key === 'Escape') {
+        // A focused control that owns Escape (a shortcut-recording field) handles
+        // it itself. This runs in the capture phase, ahead of React's bubble
+        // handlers, so closing here would swallow that control's cancel action.
+        if (event.target instanceof Element && event.target.closest('[data-owns-escape]')) return
         event.stopPropagation()
         latestClose.current()
         return
@@ -514,26 +547,30 @@ export function Modal({
       const first = items[0]!
       const last = items[items.length - 1]!
       const active = document.activeElement
-      if (event.shiftKey && (active === first || !box?.contains(active))) {
+      // Focus can legitimately land on the dialog container itself (it has
+      // tabIndex=-1, so clicking the title/blank area focuses it), or it can
+      // fall back there on open when every control is disabled. Treat that as
+      // a boundary too, otherwise Tab walks out into the background page.
+      const atBox = active === box
+      if (event.shiftKey && (active === first || atBox || !box?.contains(active))) {
         event.preventDefault()
         last.focus()
-      } else if (!event.shiftKey && (active === last || !box?.contains(active))) {
+      } else if (!event.shiftKey && (active === last || atBox || !box?.contains(active))) {
         event.preventDefault()
         first.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown, true)
     // The page behind the overlay must not scroll while the dialog is up.
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockPageScroll()
     const start = box?.querySelector<HTMLElement>(
-      'input, textarea, select, button:not([aria-label="关闭"])',
+      'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]):not([aria-label="关闭"])',
     )
     if (start) start.focus()
     else box?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
-      document.body.style.overflow = previousOverflow
+      unlockPageScroll()
       if (previous !== null && previous.isConnected) previous.focus()
     }
   }, [open])

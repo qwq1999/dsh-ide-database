@@ -63,7 +63,7 @@ export function apply(ctx: HostContext): void {
   })
 
   ctx.effect(() => {
-    const disposers = createDatabaseTools({ config, drivers, sql, redis, paths, structure }).map((tool) => ctx.tools.register(tool))
+    const disposers = createDatabaseTools({ config, drivers, sql, redis, paths, structure, prefetch }).map((tool) => ctx.tools.register(tool))
     return () => {
       for (const dispose of disposers) {
         try {

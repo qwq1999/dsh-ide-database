@@ -31,7 +31,7 @@ export function parseFilter(filter: string): FilterQuery {
   const needle = filter.trim().toLowerCase()
   const dot = needle.indexOf('.')
   if (dot < 0) return { schema: '', name: needle }
-  return { schema: needle.slice(0, dot), name: needle.slice(dot + 1) }
+  return { schema: needle.slice(0, dot).trim(), name: needle.slice(dot + 1).trim() }
 }
 
 /**

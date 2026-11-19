@@ -30,6 +30,15 @@ describe('pageable', () => {
     expect(pageable('SELECT * FROM shop.orders LOCK IN SHARE MODE')).toBe(false)
   })
 
+  it('rejects MySQL executable comments that mutate the query', () => {
+    // /*! ... */ is executed by MySQL, so INTO hidden there must veto paging,
+    // matching looksLikeWrite/looksLikeDdl. Plain /* ... */ stays ignorable.
+    expect(pageable("SELECT a FROM t /*! INTO OUTFILE '/tmp/pwned' */", 'mysql')).toBe(false)
+    expect(pageable("SELECT a FROM t /*!50000 INTO OUTFILE '/tmp/pwned' */", 'mysql')).toBe(false)
+    expect(pageable('SELECT /*!50000 INTO @x */ 1', 'mysql')).toBe(false)
+    expect(pageable('SELECT 1 /* INTO OUTFILE /tmp/pwned */ FROM t', 'mysql')).toBe(true)
+  })
+
   it('ignores those words inside literals and comments', () => {
     expect(pageable("SELECT 'into @x' AS note FROM shop.orders")).toBe(true)
     expect(pageable('SELECT 1 -- for update\nFROM shop.orders')).toBe(true)

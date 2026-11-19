@@ -84,11 +84,16 @@ export class BridgeClient {
       this.stderrTail = `${this.stderrTail}${chunk}`.slice(-8_192)
       this.log(`bridge stderr: ${chunk.trim()}`)
     })
+    // A spawn failure emits 'error', but 'exit' is not guaranteed to follow.
+    // Drop the dead child here too, otherwise start() sees a stale `child` and
+    // reports success for a JVM that never ran. The identity guards keep a
+    // late event from an old process from clearing a newer one.
     child.on('error', (error) => {
+      if (this.child === child) this.child = undefined
       this.failAll(new DbError('bridge', `无法启动 Java 进程：${messageOf(error)}`, this.stderrTail || undefined))
     })
     child.on('exit', (code, signal) => {
-      this.child = undefined
+      if (this.child === child) this.child = undefined
       this.failAll(new DbError('bridge', `Java 数据库桥已退出（code=${String(code)}, signal=${String(signal)}）`, this.stderrTail || undefined))
     })
     const ping = await this.request<{ java?: string; vm?: string }>('ping', {}, 15_000)

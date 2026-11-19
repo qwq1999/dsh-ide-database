@@ -30,9 +30,14 @@ export function placeMenu(clientX: number, clientY: number, items: TreeMenuItem[
 
 export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClose: () => void }): ReactElement | null {
   const listRef = useRef<HTMLDivElement | null>(null)
+  // Keep the latest callback without making the focus effect depend on it:
+  // DataView passes a fresh inline onClose every render, and a background
+  // refresh re-running this effect would reset the keyboard user's row focus.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (menu === null) return undefined
-    const close = (): void => onClose()
+    const close = (): void => closeRef.current()
     // Keyboard users land on the first actionable row straight away.
     const enabled = (): HTMLButtonElement[] =>
       Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? [])
@@ -70,7 +75,7 @@ export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClos
       // Hand focus back so keyboard users do not end up on the page body.
       if (previous !== null && previous.isConnected) previous.focus()
     }
-  }, [menu, onClose])
+  }, [menu])
 
   if (menu === null) return null
   return (
@@ -89,7 +94,7 @@ export function TreeMenu({ menu, onClose }: { menu: TreeMenuState | null; onClos
           role="menuitem"
           disabled={item.disabled === true}
           onClick={() => {
-            onClose()
+            closeRef.current()
             item.run()
           }}
         >

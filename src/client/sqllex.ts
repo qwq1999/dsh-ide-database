@@ -114,12 +114,22 @@ export function maskNonCode(text: string, dialect: SqlDialect, maskQuotedIdentif
       index = stop
       continue
     }
-    if (char === '/' && text[index + 1] === '*' && keepExecutableComments && dialect === 'mysql' && text[index + 2] === '!') {
-      // MySQL runs the body of `/*! ... */`; keep it visible to write detection.
+    // MySQL runs `/*! ... */`; MariaDB also runs `/*M! ... */`. Keep either body.
+    const exeOpen =
+      keepExecutableComments && dialect === 'mysql'
+        ? text[index] === '/' && text[index + 1] === '*'
+          ? text[index + 2] === '!'
+            ? 3
+            : text[index + 2] === 'M' && text[index + 3] === '!'
+              ? 4
+              : 0
+          : 0
+        : 0
+    if (exeOpen > 0) {
       // Mask the version digits (one space per digit keeps offsets stable), or
       // `/*!50000INTO OUTFILE ... */` has no word boundary before `INTO`.
-      out += '/*!'
-      index += 3
+      out += text.slice(index, index + exeOpen)
+      index += exeOpen
       while (index < text.length && /\d/u.test(text[index] ?? '')) {
         out += ' '
         index += 1

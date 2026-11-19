@@ -54,7 +54,10 @@ export function columnCandidates(columns: readonly CatalogColumn[]): Completion[
   const items: Completion[] = []
   for (const column of columns) {
     if (column.name === '') continue
-    const key = column.name.toLowerCase()
+    // Keep case: PostgreSQL/Oracle allow `id` and `ID` as two distinct columns,
+    // and a case-insensitive key drops all but the first, so picking `ID` would
+    // silently insert `id` and change which column is referenced.
+    const key = column.name
     if (seen.has(key)) continue
     seen.add(key)
     const item: Completion = { name: column.name, kind: 'column' }

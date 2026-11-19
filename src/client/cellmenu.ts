@@ -7,7 +7,9 @@ import { spreadsheetSafe } from './export'
 import { formatCell } from './format'
 
 export function cellCopyText(value: CellValue): string {
-  return formatCell(value)
+  // A copied single value lands in the same spreadsheet as rowToTsv's output,
+  // so guard formula-leading text (=+-@) the same way to prevent injection.
+  return spreadsheetSafe(formatCell(value))
 }
 
 /** One row as a spreadsheet-friendly TSV line; NULL copies as an empty cell. */

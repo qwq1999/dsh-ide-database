@@ -236,6 +236,27 @@ describe('analyze statement bounds', () => {
     expect(analysis.relations).toEqual([])
     expect(analysis.expectation).toBe('any')
   })
+
+  it('does not split on a semicolon inside a quoted identifier', () => {
+    for (const quote of ['"', '`']) {
+      const text = `SELECT * FROM ${quote}odd;table${quote} WHERE `
+      const analysis = caretAtEnd(text)
+      expect(analysis.statement).toBe(text)
+      expect(analysis.relations).toHaveLength(1)
+    }
+    // Bracket identifiers are only identifiers in mssql/sqlite, matching the splitter.
+    const bracketed = 'SELECT * FROM [odd;table] WHERE '
+    expect(analyze(bracketed, bracketed.length, 'mssql').relations).toHaveLength(1)
+  })
+
+  it('does not split on a semicolon inside a MySQL # comment', () => {
+    const text = 'SELECT 1 # fake ; boundary\nSELECT * FROM orders WHERE '
+    const analysis = analyze(text, text.length, 'mysql')
+    // The `;` in the # comment is not a separator, so the caret's statement
+    // starts at the top of the text (not after that comment).
+    expect(analysis.statement).toBe(text)
+    expect(analysis.relations).toEqual([{ table: 'orders' }])
+  })
 })
 
 describe('analyze word and qualifier', () => {
@@ -406,6 +427,17 @@ describe('analyze literal positions', () => {
     expect(analyze("SELECT 'hi' ", 12).inLiteral).toBeUndefined()
     const comment = 'SELECT 1 -- note\n'
     expect(analyze(comment, comment.length).inLiteral).toBeUndefined()
+  })
+
+  it('respects dialect backslash escapes when locating the caret literal', () => {
+    const BS = String.fromCharCode(92)
+    const text = `SELECT * FROM users WHERE name = 'O${BS}'Reilly' AND ac`
+    const mysql = analyze(text, text.length, 'mysql')
+    expect(mysql.inLiteral).toBeUndefined()
+    expect(mysql.relations).toEqual([{ table: 'users' }])
+    // Standard SQL does not treat the backslash as an escape: the quote after
+    // it closes the first literal, leaving a second, unterminated one at the caret.
+    expect(analyze(text, text.length, 'generic').inLiteral).toBe(true)
   })
 })
 

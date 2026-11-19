@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -47,6 +47,12 @@ function passwordInput(): HTMLInputElement {
   return screen.getByLabelText(/^密码/) as HTMLInputElement
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => { resolve = r })
+  return { promise, resolve }
+}
+
 describe('connection modal editing', () => {
   afterEach(() => {
     cleanup()
@@ -55,6 +61,11 @@ describe('connection modal editing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.saveConnection.mockResolvedValue({ connection: existing })
+    mocks.testConnection.mockResolvedValue({
+      ok: true,
+      latencyMs: 12,
+      server: { product: 'MySQL', version: '8.0' },
+    })
   })
 
   it('never pre-fills the saved password and keeps it when left empty', async () => {
@@ -106,6 +117,18 @@ describe('connection modal editing', () => {
     expect(draft.clearPassword).toBe(true)
     expect(draft.password).toBeUndefined()
   })
+
+  it('passes the edited connection id to the test probe so stored credentials resolve', async () => {
+    mocks.testConnection.mockResolvedValue({ ok: true, message: 'ok' })
+    renderModal()
+
+    // The password field is left blank deliberately: the host must resolve the
+    // stored secret using the id we send, rather than testing with a blank one.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+
+    await waitFor(() => expect(mocks.testConnection).toHaveBeenCalledTimes(1))
+    expect(mocks.testConnection.mock.calls[0][0]).toMatchObject({ id: existing.id })
+  })
 })
 
 describe('read-only flag', () => {
@@ -151,5 +174,140 @@ describe('read-only flag', () => {
     const draft = mocks.saveConnection.mock.calls[0][0]
     expect(draft.readOnly).toBe(true)
     expect(draft.id).toBeUndefined()
+  })
+})
+
+describe('connection modal stale save', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not close a different modal when an earlier save resolves late', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined
+    mocks.saveConnection.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve }))
+    const onClose = vi.fn()
+    const onSaved = vi.fn()
+    const notify = vi.fn()
+    const other = { ...existing, id: 'conn-pg', name: '演示 PostgreSQL' }
+
+    const view = render(
+      <ConnectionModal
+        open
+        editing={existing}
+        drivers={[]}
+        onClose={onClose}
+        onSaved={onSaved}
+        onDelete={() => undefined}
+        notify={notify}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(mocks.saveConnection).toHaveBeenCalledTimes(1))
+
+    // The user closes this modal and opens another while the first save is still in flight.
+    view.rerender(
+      <ConnectionModal
+        open
+        editing={other}
+        drivers={[]}
+        onClose={onClose}
+        onSaved={onSaved}
+        onDelete={() => undefined}
+        notify={notify}
+      />,
+    )
+
+    resolveSave({ connection: existing })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // The stale request must not fire its side effects on the new modal.
+    expect(notify).not.toHaveBeenCalled()
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('connection modal feedback invalidation', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.saveConnection.mockResolvedValue({ connection: existing })
+    mocks.testConnection.mockResolvedValue({
+      ok: true,
+      latencyMs: 12,
+      server: { product: 'MySQL', version: '8.0' },
+    })
+  })
+
+  it('clears a stale success banner when a field is edited after testing', async () => {
+    renderModal()
+    // Produce a success banner.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    await waitFor(() => expect(screen.getByText(/连接成功/u)).toBeTruthy())
+
+    // Editing the host must drop the now-stale success banner.
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
+  })
+
+  it('does not show an old success banner alongside a new validation error', async () => {
+    renderModal()
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    await waitFor(() => expect(screen.getByText(/连接成功/u)).toBeTruthy())
+
+    // Make the port invalid and test again: validation fails.
+    fireEvent.change(screen.getByLabelText(/^端口/), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+
+    await waitFor(() => expect(screen.getByText(/端口需在 1-65535 之间/u)).toBeTruthy())
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
+  })
+
+  it('clears a validation error once the offending field is corrected', () => {
+    renderModal()
+    // Empty the name and save -> validation error.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByText(/请填写连接名称/u)).toBeTruthy()
+
+    // Correcting the name clears the error immediately.
+    fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: '有效名称' } })
+    expect(screen.queryByText(/请填写连接名称/u)).toBeNull()
+  })
+
+  it('does not restore a success banner when an in-flight test resolves after an edit (PR7 P2-2)', async () => {
+    const gate = deferred<{ ok: boolean; latencyMs: number; server: { product: string; version: string } }>()
+    mocks.testConnection.mockReturnValue(gate.promise)
+    renderModal()
+    // Start a test that will not settle yet.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    // Edit the draft while the test is in flight (invalidates via clearFeedback).
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    // The stale test resolves now; its success must NOT reappear.
+    await act(async () => { gate.resolve({ ok: true, latencyMs: 12, server: { product: 'MySQL', version: '8.0' } }); await gate.promise })
+    expect(screen.queryByText(/连接成功/u)).toBeNull()
+  })
+
+  it('does not show a stale test error after the draft is edited (PR8 round2)', async () => {
+    let reject!: (reason?: unknown) => void
+    const promise = new Promise((_, rej) => { reject = rej })
+    mocks.testConnection.mockReturnValue(promise)
+    renderModal()
+    // Start a test that will fail later.
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    // Edit the host while the test is in flight. clearFeedback bumps only
+    // bannerVersion, so the stale error must be suppressed by the catch guard.
+    fireEvent.change(screen.getByLabelText(/^主机/), { target: { value: '10.0.0.9' } })
+    await act(async () => { reject(new Error('old host unreachable')); await promise.catch(() => undefined) })
+    expect(screen.queryByText(/old host unreachable/u)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

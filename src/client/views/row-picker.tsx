@@ -26,9 +26,13 @@ export function RowPicker({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const anchor = useRef<HTMLSpanElement>(null)
+  const triggerRef = useRef<HTMLSpanElement>(null)
   const close = useCallback(() => {
     setOpen(false)
     setQuery('')
+    // The search box (autoFocused for long lists) unmounts on close; without
+    // restoring focus the keyboard position falls to <body>.
+    if (triggerRef.current?.isConnected) triggerRef.current.focus()
   }, [])
   const toggle = useCallback(() => {
     setOpen((value) => !value)
@@ -48,6 +52,7 @@ export function RowPicker({
   return (
     <span className="dshdb-picker-anchor" ref={anchor}>
       <span
+        ref={triggerRef}
         className="dshdb-row-action"
         role="button"
         tabIndex={0}
@@ -65,7 +70,7 @@ export function RowPicker({
             event.preventDefault()
             toggle()
           }
-          if (event.key === 'Escape') setOpen(false)
+          if (event.key === 'Escape') close()
         }}
       >
         <ColumnsIcon size={12} />

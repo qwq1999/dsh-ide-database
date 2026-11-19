@@ -399,6 +399,17 @@ describe('complete JOIN suggestions', () => {
     expect(req.catalog.calls.columns).toContain('shop.users')
   })
 
+  it('still suggests a JOIN when a semicolon appears inside a string literal', async () => {
+    // The statement boundary must ignore a `;` inside a quoted literal — a naive
+    // lastIndexOf(';') would start the token walk inside the string and lose the
+    // JOIN verb, dropping all JOIN suggestions.
+    const result = await complete(
+      request("SELECT ';' AS x FROM orders o JOIN ", { catalog: createJoinCatalog() }),
+    )
+    expect(result.items[0]).toMatchObject({ name: 'users', detail: '关联 orders.user_id' })
+    expect(result.items[0].insert).toMatch(/^users u\d* ON u\d*\.id = o\.user_id$/)
+  })
+
   it('uses the table name as the owner reference when there is no alias', async () => {
     const result = await complete(
       request('SELECT * FROM orders JOIN ', { catalog: createJoinCatalog() }),
@@ -2882,5 +2893,105 @@ describe('complete maintenance, lock modes and assignment tails', () => {
     )
     expect(result.analysis.expectation).toBe('number')
     expect(result.items).toEqual([])
+  })
+})
+
+
+describe('regression r23: comment, relation qualifier and case-sensitive columns', () => {
+  it('offers no names inside a MySQL # line comment', async () => {
+    const result = await complete(request('SELECT * FROM orders # or'))
+    expect(result.analysis.inLiteral).toBe(true)
+    expect(names(result)).toEqual([])
+  })
+
+  it('does not treat # as a comment in postgres', async () => {
+    const result = await complete(request('SELECT * FROM orders # or', { dialect: 'postgres' }))
+    expect(result.analysis.inLiteral).not.toBe(true)
+    expect(names(result).length).toBeGreaterThan(0)
+  })
+
+  it('lists a schema\'s tables for a known schema qualifier in a relation position', async () => {
+    // Current schema 'shop' has a table also named 'shop'; the qualifier in a
+    // FROM position must be read as the schema, not that same-named table.
+    const catalog = {
+      schemas: async () => ['shop', 'crm'],
+      tables: async (schema) => {
+        if (schema === 'shop') return [{ name: 'orders' }, { name: 'shop' }]
+        if (schema === 'crm') return [{ name: 'products' }, { name: 'prices' }]
+        return []
+      },
+      columns: async (schema, table) => {
+        if (schema === 'shop' && table === 'shop') return [{ name: 'shop_id' }, { name: 'shop_name' }]
+        return []
+      },
+    }
+    for (const stmt of ['SELECT * FROM crm.', 'SELECT * FROM crm.p']) {
+      const result = await complete(request(stmt, { dialect: 'postgres', catalog }))
+      expect(names(result)).toContain('products')
+      expect(names(result)).toContain('prices')
+      expect(names(result)).not.toContain('shop_id')
+    }
+    // PR8 P2: a trailing qualifier equal to the CURRENT schema ('shop') must
+    // also list that schema's tables, not the same-named table's columns.
+    const shopDot = await complete(request('SELECT * FROM shop.', { dialect: 'postgres', catalog }))
+    expect(names(shopDot)).toContain('orders')
+    expect(names(shopDot)).toContain('shop')
+    expect(names(shopDot)).not.toContain('shop_id')
+    // A typed prefix filters the schema's tables but must still not leak the
+    // same-named table's columns (shop_id/shop_name).
+    const shopP = await complete(request('SELECT * FROM shop.p', { dialect: 'postgres', catalog }))
+    expect(names(shopP)).not.toContain('shop_id')
+    expect(names(shopP)).not.toContain('shop_name')
+  })
+
+  it('expands an alias that equals a schema name to the aliased table columns (PR7 P2-1)', async () => {
+    // A WHERE/ON qualifier that happens to equal a schema name must resolve as
+    // a table alias (returning that table's columns), not list the schema's tables.
+    const catalog = {
+      schemas: async () => ['shop', 'crm', 'public'],
+      tables: async (schema) => {
+        if (schema === 'public') return [{ name: 'customers' }]
+        if (schema === 'crm') return [{ name: 'leads' }]
+        return []
+      },
+      columns: async (schema, table) => {
+        if (schema === 'public' && table === 'customers') return [{ name: 'id' }, { name: 'email' }]
+        return []
+      },
+    }
+    for (const stmt of [
+      'SELECT * FROM public.customers crm WHERE crm.',
+      'SELECT * FROM public.customers crm JOIN shop.orders o ON crm.',
+    ]) {
+      const result = await complete(request(stmt, { dialect: 'postgres', catalog }))
+      expect(names(result)).toContain('id')
+      expect(names(result)).toContain('email')
+      expect(names(result)).not.toContain('leads')
+    }
+  })
+
+  it('keeps a table alias/name qualifier as columns outside a relation position', async () => {
+    const catalog = {
+      schemas: async () => ['shop', 'crm'],
+      tables: async () => [],
+      columns: async (schema, table) => {
+        if (table === 'orders') return [{ name: 'id' }, { name: 'total' }]
+        return []
+      },
+    }
+    const result = await complete(request('SELECT orders.', { dialect: 'postgres', catalog }))
+    expect(names(result)).toContain('id')
+    expect(names(result)).toContain('total')
+  })
+
+  it('keeps case-different columns of a case-sensitive database distinct', async () => {
+    const catalog = {
+      schemas: async () => ['shop'],
+      tables: async () => [{ name: 'orders' }],
+      columns: async () => [{ name: 'id', typeName: 'int' }, { name: 'ID', typeName: 'text' }],
+    }
+    const result = await complete(request('SELECT * FROM orders WHERE ', { dialect: 'postgres', catalog }))
+    expect(names(result)).toContain('id')
+    expect(names(result)).toContain('ID')
   })
 })

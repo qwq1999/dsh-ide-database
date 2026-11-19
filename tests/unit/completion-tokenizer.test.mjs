@@ -173,4 +173,72 @@ describe('isInsideCommentOrString', () => {
     expect(isInsideCommentOrString('SELECT "na', 9)).toBe(false)
     expect(isInsideCommentOrString('SELECT 1 /* never closed', 20)).toBe(true)
   })
+
+  it('treats the caret at the end of a closed literal as outside', () => {
+    const text = "SELECT 'abc'"
+    expect(isInsideCommentOrString(text, text.length)).toBe(false)
+    // An unterminated line comment running to EOF still counts as inside.
+    const line = 'SELECT 1 -- note'
+    expect(isInsideCommentOrString(line, line.length)).toBe(true)
+  })
+})
+
+const BS = String.fromCharCode(92) // backslash, written this way to avoid escaping
+
+describe('backslash-escaped quotes by dialect', () => {
+  it('keeps a MySQL escaped quote inside one string token', () => {
+    const text = `SELECT 'O${BS}'Reilly', 1`
+    const strings = tokenize(text, 'mysql')
+      .filter((token) => token.kind === 'string')
+      .map((token) => token.text)
+    expect(strings).toEqual([`'O${BS}'Reilly'`])
+    // Standard SQL does not treat the backslash as an escape: the quote ends the literal.
+    const genericStrings = tokenize(text, 'generic')
+      .filter((token) => token.kind === 'string')
+      .map((token) => token.text)
+    expect(genericStrings[0]).toBe(`'O${BS}'`)
+  })
+
+  it('masks a semicolon inside a MySQL escaped-quote literal', () => {
+    const text = `SELECT 'a${BS}'; DROP' FROM t`
+    const masked = maskCommentsAndStrings(text, 'mysql')
+    expect(masked[text.indexOf(';')]).toBe(' ')
+    // Without the dialect, the quote after the backslash wrongly ends the literal.
+    expect(maskCommentsAndStrings(text, 'generic')[text.indexOf(';')]).toBe(';')
+  })
+
+  it('reports a caret after a MySQL escaped-quote literal as outside', () => {
+    const text = `SELECT 'O${BS}'Reilly' `
+    expect(isInsideCommentOrString(text, text.length, 'mysql')).toBe(false)
+    expect(isInsideCommentOrString(text, text.length, 'generic')).toBe(true)
+  })
+})
+
+
+describe('dialect-aware comment boundaries in the completion lexer', () => {
+  it('treats MySQL 5--3 as subtraction, not a comment', () => {
+    const text = 'SELECT 5--3 AS diff, na'
+    expect(tokenize(text, 'mysql').map((t) => t.text)).toEqual([
+      'SELECT', '5', '-', '-', '3', 'AS', 'diff', ',', 'na',
+    ])
+    expect(isInsideCommentOrString(text, text.length, 'mysql')).toBe(false)
+    // Standard SQL still treats `--` as a line comment.
+    expect(isInsideCommentOrString(text, text.length, 'generic')).toBe(true)
+  })
+
+  it('nests block comments in PostgreSQL and SQL Server', () => {
+    const text = 'SELECT /* outer /* inner */ c */ FROM orders'
+    const caret = text.indexOf('c */')
+    expect(isInsideCommentOrString(text, caret, 'postgres')).toBe(true)
+    expect(isInsideCommentOrString(text, caret, 'mssql')).toBe(true)
+    // MySQL does not nest: the first */ closes, so the caret is outside.
+    expect(isInsideCommentOrString(text, caret, 'mysql')).toBe(false)
+  })
+
+  it('does not tokenize code hidden inside a nested block comment', () => {
+    const text = 'SELECT /* hi /* inner */ FROM secret_table */ name FROM orders'
+    const words = tokenize(text, 'postgres').map((t) => t.text)
+    expect(words).toEqual(['SELECT', 'name', 'FROM', 'orders'])
+    expect(words).not.toContain('secret_table')
+  })
 })

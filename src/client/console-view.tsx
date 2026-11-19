@@ -85,11 +85,13 @@ export const HistoryPanel = memo(function HistoryPanel(props: {
   useEffect(() => {
     setClearArmed(false)
   }, [historyCount])
-  const needle = query.trim().toLowerCase()
+  const searchable = props.pins.length + props.entries.length >= 6
+  // The search input unmounts below six entries. A leftover query would then
+  // filter the list with no visible way to clear it, so ignore it when hidden.
+  const needle = searchable ? query.trim().toLowerCase() : ''
   const matches = (entry: HistoryEntry): boolean => needle === '' || entry.statement.toLowerCase().includes(needle)
   const pins = props.pins.filter(matches)
   const entries = props.entries.filter(matches)
-  const searchable = props.pins.length + props.entries.length >= 6
   return (
     <div className="dshdb-history">
       {searchable ? (

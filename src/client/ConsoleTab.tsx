@@ -29,6 +29,7 @@ import { filterRedisKeys } from './rediskeys'
 import { formatSql } from './sqlformat'
 import { columnValues, commaValues, copyText, type ColumnMenuItem } from './colmenu'
 import { cellCopyText, rowToTsv } from './cellmenu'
+import { expandTruncatedRows } from './cellvalue'
 import { useCopyFlash } from './copyflash'
 import { columnSignature, identityOrder, moveColumn, orderColumns, orderRows } from './columnOrder'
 import { moveWidthsForColumns } from './columnWidths'
@@ -87,6 +88,8 @@ export interface ConsoleTabProps {
 interface Failure {
   message: string
   detail?: string
+  /** Present only when the failure came from a replayable SQL run. */
+  retry?: () => void
 }
 
 /** One button of the SQL console toolbar; rendered inline or inside the "…" menu. */
@@ -192,7 +195,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const [failure, setFailure] = useState<Failure | null>(null)
   const [running, setRunning] = useState(false)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(() => readPageSize(CONSOLE_PAGE_KEY, PAGE_SIZES, 500))
+  // "全部" stores the ALL_PAGE_SIZE pseudo value (0); include it in the
+  // read whitelist or a reload silently falls back to 500.
+  const [pageSize, setPageSize] = useState(() => readPageSize(CONSOLE_PAGE_KEY, [...PAGE_SIZES, ALL_PAGE_SIZE], 500))
   const [pageDraft, setPageDraft] = useState('1')
   const [pageFallback, setPageFallback] = useState(false)
   /** True while the page we are loading is the recovery run for an empty page. */
@@ -209,13 +214,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const shownRowsRef = useRef<Row[]>([])
   /** Toggle one checkbox; shift-click extends from the last clicked row. */
   const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    // Capture the anchor before the state updater runs: setState updaters are
+    // deferred, so reading `selectionAnchor.current` inside it would see the
+    // value reassigned below (the clicked row) and the range would collapse to
+    // the clicked row alone.
+    const anchor = selectionAnchor.current
     setSelectedRows((current) => {
       const next = new Set(current)
-      if (extend && selectionAnchor.current !== null) {
+      if (extend && anchor !== null) {
         // Shift-click extends the selection; it never clears a selected range
         // based on the clicked row's current state.
-        const from = Math.min(selectionAnchor.current, rowIndex)
-        const to = Math.max(selectionAnchor.current, rowIndex)
+        const from = Math.min(anchor, rowIndex)
+        const to = Math.max(anchor, rowIndex)
         for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
@@ -329,6 +339,8 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const runningRef = useRef(0)
   /** Plans are invalidated by the same switching actions as query results. */
   const planToken = useRef(0)
+  /** schema listings are per-source; a late response from the old source must not land. */
+  const schemaRequest = useRef(0)
   /** The grid the plan replaced, so closing the plan can bring the rows back. */
   const resultBeforePlan = useRef<QueryResult | null>(null)
   /** Row count and duration of the run that just finished, for the history list. */
@@ -462,8 +474,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   // and from a live listing once it is connected.
   const loadSchemaList = useCallback(async (id: string): Promise<void> => {
     if (id === '') return
+    const request = ++schemaRequest.current
     try {
       const list = await api.schemas(id)
+      if (request !== schemaRequest.current) return
       setSchemas(list.schemas)
     } catch {
       // Keep the login default; the list retries after the first successful query.
@@ -593,6 +607,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         picked.insert ?? picked.name,
         connection?.dialect ?? 'mysql',
         picked.kind,
+        picked.insert !== undefined,
       )
       setSelectedRun(false)
       setStatement(next.statement)
@@ -683,7 +698,13 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       } catch (error) {
         if (token !== runToken.current) return
         setResult(null)
-        setFailure(failureText(error))
+        setFailure({
+          ...failureText(error),
+          retry: () => {
+            const text = lastAttempt.current
+            if (text !== null) void runText(text)
+          },
+        })
       } finally {
         runningRef.current = Math.max(0, runningRef.current - 1)
         if (token === runToken.current) setRunning(false)
@@ -708,6 +729,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportOpen(false)
     const collected: QueryResult[] = []
     let last: QueryResult | null = null
+    // Record the script on submission so a partial run still appears in
+    // history; a later statement failing must not erase the whole script.
+    setHistory(pushHistory('sql', parts.join(';\n')))
     try {
       for (const [index, part] of parts.entries()) {
         if (token !== runToken.current) return
@@ -747,7 +771,6 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       setBase('')
       setSourceSql(parts[parts.length - 1] ?? '')
       setMultiNote(`已顺序执行 ${parts.length} 条语句`)
-      setHistory(pushHistory('sql', parts.join(';\n')))
       if (last !== null) setHistory(annotateHistory('sql', parts.join(';\n'), { rows: last.rows.length, elapsedMs: last.elapsedMs }))
       if (parts.some((part) => looksLikeDdl(part, sqlDialectOf(connection?.dialect)))) {
         completionCatalog.current?.clear()
@@ -832,7 +855,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   /** Ctrl/⌘ + Shift + Enter: run only the statement the caret is in. */
   /** Reindenting keeps the caret near where it was instead of throwing it to the end. */
   const applyFormat = useCallback((): void => {
-    const next = formatSql(statement)
+    const next = formatSql(statement, sqlDialectOf(connection?.dialect))
     if (next === statement) return
     const offset = Math.min(caretPos, next.length)
     setSelectedRun(false)
@@ -844,7 +867,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       area.focus()
       area.setSelectionRange(offset, offset)
     }, 0)
-  }, [caretPos, statement])
+  }, [caretPos, statement, connection?.dialect])
 
   const runCaret = async (): Promise<void> => {
     const area = inputRef.current
@@ -859,19 +882,23 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   }
 
   const retryLast = (): void => {
-    const text = lastAttempt.current
-    if (text === null) return
+    const retry = failure?.retry
+    if (retry === undefined) return
     setFailure(null)
-    void runText(text)
+    retry()
   }
 
   /** 开始 / 提交 / 回滚事务；驱动层切换 auto-commit，Oracle 也适用。 */
+  // Connection id whose transaction is still open and needs a rollback on unmount/switch.
+  const txOpenRef = useRef('')
   useEffect(
     () => () => {
-      if (tx !== 'open' || selectedId === '') return
-      void api.tx(selectedId, 'rollback').catch(() => undefined)
+      const id = txOpenRef.current
+      if (id === '') return
+      txOpenRef.current = ''
+      void api.tx(id, 'rollback').catch(() => undefined)
     },
-    [tx, selectedId],
+    [selectedId],
   )
 
   const runTx = async (action: TxAction): Promise<void> => {
@@ -880,12 +907,36 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setTxBusy(true)
     setFailure(null)
     try {
-      await withConnection(selectedId, () => api.tx(selectedId, action))
-      setTx(action === 'start' ? 'open' : 'idle')
+      if (action === 'start') {
+        // Starting a transaction is idempotent and, like a query, may need
+        // to open a cold connection first.
+        await withConnection(selectedId, () => api.tx(selectedId, action))
+        txOpenRef.current = selectedId
+        setTx('open')
+        setTxNote('事务已开始，提交前可回滚')
+      } else {
+        // commit/rollback finalize an EXISTING transaction. Retrying them
+        // after a reconnect would act on a fresh session with no active
+        // transaction — reporting success while uncommitted work was lost
+        // with the old session. Never reconnect-retry these actions.
+        try {
+          await api.tx(selectedId, action)
+        } catch (error) {
+          if (error instanceof ApiError && error.code === 'not-connected') {
+            txOpenRef.current = ''
+            setTx('idle')
+            setFailure({ message: '连接已断开，事务可能已丢失', detail: '未提交更改可能已丢失，请检查数据后重试。' })
+            return
+          }
+          throw error
+        }
+        txOpenRef.current = ''
+        setTx('idle')
+        setTxNote(action === 'commit' ? '事务已提交' : '事务已回滚')
+      }
       setPlan(null)
       setResult(null)
       setBase('')
-      setTxNote(action === 'start' ? '事务已开始，提交前可回滚' : action === 'commit' ? '事务已提交' : '事务已回滚')
     } catch (error) {
       setFailure(failureText(error))
     } finally {
@@ -1013,15 +1064,18 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         )
         if (token !== runToken.current) return
         if (!redisDatabasesLoaded.current) {
-          void api.redisDatabases(selectedId)
+          const dbRequest = runToken.current
+          const dbSource = selectedId
+          void api.redisDatabases(dbSource)
             .then((info) => {
+              if (dbRequest !== runToken.current) return
               redisDatabasesLoaded.current = true
               setRedisDatabases(info.databases)
               // The remembered index can outlive the server that had that many
               // databases; sending it would fail before the first scan.
               if (info.databases > 0 && activeRedisDb >= info.databases) {
                 setRedisDb(0)
-                writeNumber(`${REDIS_DB_KEY_PREFIX}${selectedId}`, 0)
+                writeNumber(`${REDIS_DB_KEY_PREFIX}${dbSource}`, 0)
               }
             })
             .catch(() => undefined)
@@ -1051,6 +1105,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   const invalidateRun = useCallback((): void => {
     runToken.current += 1
     planToken.current += 1
+    schemaRequest.current += 1
+    setSchemas([])
+    // A Redis value refresh holds its own busy flag; its token-guarded finally
+    // is skipped after a switch, so reset it here like the other busy states.
+    setValueRefreshing(false)
+    // The old in-flight query still holds a runningRef slot until its finally
+    // runs; after a source switch that promise is voided by runToken, so free
+    // the slot now or the guard in execute/executeScript blocks the new source.
+    runningRef.current = 0
     setRunning(false)
     setPlanRunning(false)
     setCommandRunning(false)
@@ -1213,6 +1276,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   // Switching data source resets both modes, so results never look like another source's.
   useEffect(() => {
     setResult(null)
+    // plan/resultBeforePlan outlive the grid: closing a plan restores the saved
+    // result, so both must be cleared on a source switch or the previous source's
+    // grid reappears when the next plan is closed.
+    setPlan(null)
+    resultBeforePlan.current = null
     setScriptResults([])
     setScriptIndex(0)
     setRowFilter('')
@@ -1247,7 +1315,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, seeded)
     }
     setSchemas([])
-    setRedisDb(null)
+    // Do NOT reset redisDb here. The restore effect above (keyed on
+    // selectedId/isRedis) already resets it to the remembered db for the new
+    // source; clearing it in this same commit would win the batch and discard
+    // the restored value (remembered db silently lost on source adoption).
     setRedisDatabases(null)
     redisDatabasesLoaded.current = false
     scanCursorRef.current = '0'
@@ -1454,7 +1525,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       const binary = isBinaryCell(cell.column, cell.value, connection?.dialect)
       return [
       { label: '查看完整值', run: () => setCellView(cellValueView(cell.column.name, cell.value)) },
-      { label: '用该值筛选当前页', run: () => setRowFilter(cellCopyText(cell.value)) },
+      // Filter matches the raw displayed text (rowfilter.ts uses formatCell),
+      // NOT the clipboard text, which prefixes =+-@ values with an anti-injection
+      // apostrophe — filtering on that would match zero rows and look like data loss.
+      { label: '用该值筛选当前页', run: () => setRowFilter(formatCell(cell.value)) },
       { label: '复制单元格值', run: () => void copyText(cellCopyText(cell.value)).then(noteCopied('单元格值')) },
       {
         label: '复制 INSERT 语句',
@@ -1547,8 +1621,12 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
     setExportNote('当前语句没有目标表，无法导出 SQL')
     setTimeout(() => setExportNote(''), 5000)
   }
+  /** Expand any bridge-capped cells before they reach the export renderer. */
+  const expandRows = (cols: ColumnInfo[], rows: Row[]): Promise<Row[]> =>
+    expandTruncatedRows(cols, rows, (column, text) => api.cellText(column, text))
+
   /** Save the rows the grid is showing; the console keeps no cursor, so only the page. */
-  const exportPage = (format: ExportFormat): void => {
+  const exportPage = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     if (displayRows.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
@@ -1561,14 +1639,14 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
       columns: displayColumns,
-      rows: displayRows,
+      rows: await expandRows(displayColumns, displayRows),
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${displayRows.length} 行`)
     setTimeout(() => setExportNote(''), 5000)
   }
   /** Save only the checked rows of the current page. */
-  const exportSelected = (format: ExportFormat): void => {
+  const exportSelected = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     // Hidden columns stay in exports; only the grid omits them. Rows keep
     // their positions, so the selection indexes map straight onto displayRows.
@@ -1584,7 +1662,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       schema: target?.schema ?? '',
       table: target?.table ?? 'console',
       columns: displayColumns,
-      rows: picked,
+      rows: await expandRows(displayColumns, picked),
     })
     downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
@@ -1634,7 +1712,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         schema: target?.schema ?? '',
         table: target?.table ?? 'console',
         columns: cols,
-        rows: data,
+        rows: await expandRows(cols, data),
       })
       downloadText(exportFilename(target?.schema ?? '', target?.table ?? 'console', format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${data.length} 行`)
@@ -1775,7 +1853,7 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
   )
 
   /** Copy the checked rows in the same formats the page copies offer. */
-  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+  const copySelected = async (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): Promise<void> => {
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
     const target = format === 'sql' ? tableTarget() : null
@@ -1783,21 +1861,24 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
       noTableNote()
       return
     }
+    // Bridge-capped cells must be expanded before they reach the clipboard,
+    // otherwise the copied text carries the `…<truncated>` marker.
+    const expanded = await expandRows(displayColumns, picked)
     const text =
       format === 'csv'
-        ? toCsv(displayColumns, picked)
+        ? toCsv(displayColumns, expanded)
         : format === 'tsv'
-          ? toTsv(displayColumns, picked)
+          ? toTsv(displayColumns, expanded)
           : format === 'json'
-            ? toJson(displayColumns, picked)
+            ? toJson(displayColumns, expanded)
             : format === 'md'
-              ? toMarkdown(displayColumns, picked)
+              ? toMarkdown(displayColumns, expanded)
               : insertStatements(
                   connection?.dialect ?? 'mysql',
                   target!.schema,
                   target!.table,
                   displayColumns,
-                  picked,
+                  expanded,
                 )
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
@@ -1809,10 +1890,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         id: 'page',
         label: '导出当前页',
         leaves: [
-          { id: 'page-csv', label: `当前页 CSV（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('csv') },
-          { id: 'page-json', label: `当前页 JSON（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('json') },
-          { id: 'page-sql', label: `当前页 SQL（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('sql') },
-          { id: 'page-md', label: `当前页 Markdown（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => exportPage('md') },
+          { id: 'page-csv', label: `当前页 CSV（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('csv') },
+          { id: 'page-json', label: `当前页 JSON（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('json') },
+          { id: 'page-sql', label: `当前页 SQL（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('sql') },
+          { id: 'page-md', label: `当前页 Markdown（${filteredRows.length} 行）`, disabled: filteredRows.length === 0, onSelect: () => void exportPage('md') },
         ],
       },
       ...(selectedRows.size > 0
@@ -1821,10 +1902,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               id: 'selected',
               label: '导出已选',
               leaves: [
-                { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => exportSelected('csv') },
-                { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => exportSelected('json') },
-                { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => exportSelected('sql') },
-                { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => exportSelected('md') },
+                { id: 'selected-csv', label: `已选 CSV（${selectedRows.size} 行）`, onSelect: () => void exportSelected('csv') },
+                { id: 'selected-json', label: `已选 JSON（${selectedRows.size} 行）`, onSelect: () => void exportSelected('json') },
+                { id: 'selected-sql', label: `已选 SQL（${selectedRows.size} 行）`, onSelect: () => void exportSelected('sql') },
+                { id: 'selected-md', label: `已选 Markdown（${selectedRows.size} 行）`, onSelect: () => void exportSelected('md') },
               ],
             },
           ]
@@ -1833,10 +1914,10 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
         id: 'copy-page',
         label: '复制当前页',
         leaves: [
-          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void copyText(toMarkdown(displayColumns, filteredRows)).then(noteCopied('Markdown')) },
-          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toCsv(displayColumns, filteredRows)).then(noteCopied('CSV')) },
-          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void copyText(toTsv(displayColumns, filteredRows)).then(noteCopied('TSV')) },
-          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void copyText(toJson(displayColumns, filteredRows)).then(noteCopied('JSON')) },
+          { id: 'copy-page-md', label: '复制当前页 Markdown', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toMarkdown(displayColumns, expanded))).then(noteCopied('Markdown')) },
+          { id: 'copy-page-csv', label: '复制当前页 CSV', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toCsv(displayColumns, expanded))).then(noteCopied('CSV')) },
+          { id: 'copy-page-tsv', label: '复制当前页 TSV', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toTsv(displayColumns, expanded))).then(noteCopied('TSV')) },
+          { id: 'copy-page-json', label: '复制当前页 JSON', disabled: filteredRows.length === 0, onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toJson(displayColumns, expanded))).then(noteCopied('JSON')) },
           {
             id: 'copy-page-sql',
             label: '复制当前页 SQL',
@@ -1844,9 +1925,9 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
             onSelect: () => {
               const target = tableTarget()
               if (target === null) return
-              void copyText(
-                insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, filteredRows),
-              ).then(noteCopied('SQL'))
+              void expandRows(displayColumns, displayRows)
+                .then((expanded) => copyText(insertStatements(connection?.dialect ?? 'mysql', target.schema, target.table, displayColumns, expanded)))
+                .then(noteCopied('SQL'))
             },
           },
         ],
@@ -1945,6 +2026,11 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               invalidateRun()
               setSchema(next)
               writeText(`${SCHEMA_KEY_PREFIX}${selectedId}`, next)
+              // invalidateRun() clears schemas (and bumps schemaRequest) to avoid
+              // stale results across a data-source switch, but a DB/Schema change
+              // keeps selectedId, so nothing would reload the list. Re-fetch it
+              // explicitly or the dropdown collapses to just the current entry.
+              void loadSchemaList(selectedId)
             }}
             options={[
               { value: defaultSchema, label: `默认${defaultSchema === '' ? '' : `（${defaultSchema}）`}` },
@@ -2593,13 +2679,15 @@ function ConsoleBody({ initialConnectionId, initialSchema, initialSql }: { initi
               onClose={() => setFailure(null)}
               actions={
                 <>
-                  <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => retryLast()}
-                >
-                  重试
-                </Button>
+                  {failure.retry !== undefined ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => retryLast()}
+                    >
+                      重试
+                    </Button>
+                  ) : null}
                 <Button
                   size="sm"
                   variant="ghost"

@@ -228,6 +228,9 @@ export function DataView(props: DataViewProps): ReactElement {
     setFilterOpen(false)
     setFilter('')
     setSettledFilter('')
+    // The filter input unmounts on close; return focus to the tree so arrow
+    // keys keep working from where the user was before Ctrl+F / Escape.
+    containerRef.current?.focus()
   }, [])
 
   // Focus after the box has been committed to the DOM, so Ctrl+F works from
@@ -391,13 +394,15 @@ export function DataView(props: DataViewProps): ReactElement {
     for (const connection of connections) {
       const schemaList = schemas[connection.id]
       if (!schemaList || schemaList.length > 64) continue
-      if (searched.current.has(connection.id)) continue
       // Offline data sources only have what the structure cache kept; wait for
       // the connection status before searching so the attempt can retry later.
       if (servers[connection.id] === undefined) continue
-      searched.current.add(connection.id)
       for (const schema of schemaList) {
         const key = `${connection.id}:${schema.name}`
+        // Dedup per schema, not per connection: if schemas grow while the same
+        // filter is active, the new schema's objects must still be searched.
+        if (searched.current.has(key)) continue
+        searched.current.add(key)
         // Object names are already in memory (or on the way): searching a new
         // filter term must not re-query metadata for lists we already hold.
         if (objects[key] !== undefined || props.loadingObjects[key] === true) continue
@@ -462,9 +467,14 @@ export function DataView(props: DataViewProps): ReactElement {
         props.onToggleConnection(id)
       }
       for (const key of targets.schemas) {
-        if (keptClosed.has(key)) continue
         const separator = key.indexOf(':')
-        void props.onToggleSchema(key.slice(0, separator), key.slice(separator + 1))
+        const connectionId = key.slice(0, separator)
+        const schema = key.slice(separator + 1)
+        // filterTargets pushes the raw schema name, but toggleRow remembers the
+        // encoded treeSchemaKey. Normalize before the keptClosed check or a
+        // user-folded branch with '#'/unicode gets auto-expanded again.
+        if (keptClosed.has(treeSchemaKey(connectionId, schema))) continue
+        void props.onToggleSchema(connectionId, schema)
       }
       // Folders inside a matching schema open too, so the hit is one click away.
       for (const [key, list] of Object.entries(objects)) {
@@ -488,11 +498,19 @@ export function DataView(props: DataViewProps): ReactElement {
         const keysByDb = props.redisKeys[connection.id]
         if (keysByDb === undefined) continue
         if (keptClosed.has(connection.id)) continue
+        // Open the data source at most once per pass. The toggle is a functional
+        // flip on the real hook, so firing it once per matching DB (all reading
+        // the same stale `expanded` snapshot here) toggles an even number of
+        // times and leaves a collapsed connection collapsed forever.
+        let connectionOpened = expanded[connection.id] === true
         for (const [db, keys] of Object.entries(keysByDb)) {
           if (!keys.some((key) => matches(key.key))) continue
           const dbKey = `${connection.id}:redis:db${db}`
           if (keptClosed.has(dbKey)) continue
-          if (expanded[connection.id] !== true) props.onToggleConnection(connection.id)
+          if (!connectionOpened) {
+            props.onToggleConnection(connection.id)
+            connectionOpened = true
+          }
           if (expanded[dbKey] === false) props.onToggleRedisDb(connection.id, Number(db))
         }
       }
@@ -697,7 +715,9 @@ export function DataView(props: DataViewProps): ReactElement {
         return
       case 'redis-action':
         if (row.connectionId !== undefined && row.db !== undefined) {
-          current.onLoadRedisKeys(row.connectionId, row.db, true)
+          // 'scan' is a fresh retry (no cursor yet, must start at '0');
+          // 'load-more' continues from the existing cursor.
+          current.onLoadRedisKeys(row.connectionId, row.db, row.action === 'load-more')
         }
         return
       default:
@@ -846,10 +866,14 @@ export function DataView(props: DataViewProps): ReactElement {
         toggleRow(row)
         return
       }
-      const child = current + 1
-      if (child < rows.length && rows[child].depth > row.depth) {
+      // Skip non-navigable rows (notes, column/key/index children): focusing
+      // one clears aria-activedescendant while aria-current still points at it,
+      // which can strand the keyboard cursor with no visible focus.
+      for (let child = current + 1; child < rows.length && rows[child].depth > row.depth; child += 1) {
+        if (!rows[child].navigable) continue
         event.preventDefault()
         focusIndex(child)
+        return
       }
       return
     }
@@ -925,6 +949,10 @@ export function DataView(props: DataViewProps): ReactElement {
                   onClick={() => {
                     setFilter('')
                     setSettledFilter('')
+                    // The × button unmounts once the filter is empty; without
+                    // restoring focus, keyboard users land on <body>. Keep the
+                    // caret in the (still-mounted) filter input.
+                    filterRef.current?.focus()
                   }}
                 >
                   ×

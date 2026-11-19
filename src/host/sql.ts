@@ -159,6 +159,19 @@ function startsLineComment(text: string, index: number, dialect: SqlDialect): bo
   return after === undefined || /\s/u.test(after)
 }
 
+/**
+ * MySQL and MariaDB both execute the body of a versioned executable comment.
+ * MySQL spells the opener bang-after-star, MariaDB also accepts M-bang.
+ * Return the opener length (3 for the MySQL form, 4 for the MariaDB form) at
+ * `index`, or 0 when there is no executable comment there.
+ */
+function executableCommentOpener(text: string, index: number): number {
+  if (text[index] !== '/' || text[index + 1] !== '*') return 0
+  if (text[index + 2] === '!') return 3
+  if (text[index + 2] === 'M' && text[index + 3] === '!') return 4
+  return 0
+}
+
 function matchingParen(text: string, open: number, dialect: SqlDialect = 'generic'): number {
   let depth = 0
   for (let index = open; index < text.length; index += 1) {
@@ -229,8 +242,9 @@ function matchingParen(text: string, open: number, dialect: SqlDialect = 'generi
       // MySQL executes `/*! ... */` bodies, so their parentheses and quotes
       // must participate in matching. Other dialects treat `/*!` as a normal
       // comment and skip it.
-      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
-        index += 2
+      if (isMysqlDialect(dialect) && executableCommentOpener(text, index) > 0) {
+        // Step onto the `!` so the body characters participate in matching.
+        index += executableCommentOpener(text, index) - 1
         continue
       }
       const end = text.indexOf('*/', index + 2)
@@ -426,14 +440,18 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       // inert comments. Keeping the body visible makes the INTO checks below
       // reject `SELECT ... /*!50000 INTO OUTFILE ... */` while still allowing
       // harmless hints such as `/*!50000 SQL_NO_CACHE */`.
-      if (isMysqlDialect(dialect) && text[index + 2] === '!') {
-        // MySQL treats the digits after `/*!` as a version, not SQL. Replace
-        // them with spaces so `/*!50000INTO OUTFILE` still has a word boundary
-        // before `INTO`; the comment body itself must stay visible.
-        out += '/*!'
-        index += 2
-        // Stop on the last digit: the outer for-loop advances to the first body
-        // character, so moving straight to it here would skip that character.
+      const opener = isMysqlDialect(dialect) ? executableCommentOpener(text, index) : 0
+      if (opener > 0) {
+        // MySQL/MariaDB execute the comment body, so it must stay visible to the
+        // guards below. Replace the opener marker, version digits and body with
+        // spaces EXCEPT keep body letters: we blank the marker and digits but let
+        // the loop below copy the body verbatim. Blanking the marker is what lets
+        // `FOR /*!50000 UPDATE */` match LOCKING_READ (`for ... update`) — keeping
+        // `/*!` there hid the locking hint from the regex. INTO OUTFILE and other
+        // write bodies remain visible, so FILE_WRITE still rejects them.
+        out += ' '.repeat(opener)
+        index += opener - 1
+        // Stop on the last digit; the outer loop advances to the first body char.
         while (index + 1 < text.length && /\d/u.test(text[index + 1] ?? '')) {
           out += ' '
           index += 1
@@ -444,6 +462,17 @@ function withoutLiterals(text: string, dialect: SqlDialect = 'generic'): string 
       if (close < 0) return out
       index = close - 1
       out += ' '
+      continue
+    }
+    // A MySQL executable comment's closer `*/` reaches here verbatim after we
+    // blanked its opener/digits above (an empty-body `/*!50000*/` leaves a bare
+    // `*/`). Blank it too so it cannot break word boundaries between the hint
+    // and the keyword it guards (`FOR /*!50000*/ UPDATE`). Normal comments are
+    // removed wholesale by the blockCommentEnd branch, so no other `*/` lands
+    // here.
+    if (isMysqlDialect(dialect) && char === '*' && text[index + 1] === '/') {
+      out += '  '
+      index += 1
       continue
     }
     out += char.toLowerCase()
@@ -498,7 +527,7 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
       rest = rest.slice(newline + 1).trim()
       continue
     }
-    if (isMysqlDialect(dialect) && rest.startsWith('/*!')) {
+    if (isMysqlDialect(dialect) && (rest.startsWith('/*!') || rest.startsWith('/*M!'))) {
       // Executable comments are MySQL code, not a leading comment. Leaving them
       // in place makes a read-only guard reject a statement that starts inside
       // one instead of skipping the write the server would run.
@@ -517,7 +546,7 @@ function stripLeadingComments(text: string, dialect: SqlDialect = 'generic'): st
 /** Conservative guard used before the panel runs a statement on a read-only connection. */
 /** PostgreSQL's parenthesised EXPLAIN accepts `ANALYZE false`, which plans without running the statement. */
 function analyzeOptionEnabled(options: string): boolean {
-  const match = /\banalyze\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
+  const match = /\banaly[sz]e\b(?:\s*(?:=\s*)?(true|false|on|off|1|0))?/iu.exec(options)
   if (match === null) return false
   const value = match[1]?.toLowerCase()
   return value !== 'false' && value !== 'off' && value !== '0'
@@ -531,10 +560,11 @@ interface ExecutableComment {
 
 /** Read one executable comment at the start of `text`; null when there is none. */
 function executableComment(text: string): ExecutableComment | null {
-  if (!text.startsWith('/*!')) return null
-  const close = text.indexOf('*/', 2)
+  const opener = executableCommentOpener(text, 0)
+  if (opener === 0) return null
+  const close = text.indexOf('*/', opener)
   if (close < 0) return null
-  return { body: text.slice(3, close), end: close + 2 }
+  return { body: text.slice(opener, close), end: close + 2 }
 }
 
 export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boolean {
@@ -583,6 +613,32 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
     // keywords are whitespace, so `EXPLAIN /*x*/ ANALYZE DELETE` still runs.
     let rest = stripLeadingComments(withoutTrailing.slice(first[0].length), dialect)
     if (rest === null || rest === '') return false
+    // MySQL/MariaDB execute the body of `/*! ... */` (and MariaDB `/*M! ... */`);
+    // a versioned comment can hide ANALYZE so `EXPLAIN /*!50000 ANALYZE */ DELETE`
+    // really runs the DELETE. Unwrap a leading executable comment and keep the
+    // remaining statement, so the option checks below see the whole thing.
+    if (isMysqlDialect(dialect)) {
+      // Unwrap executable comments repeatedly until the leading token is stable.
+      // An empty-body `/*!...*/` may be followed by a normal comment and another
+      // executable comment before the real ANALYZE, e.g.
+      // `EXPLAIN /*!50000 */ /*h*/ ANALYZE DELETE`. Stopping after one unwrap
+      // leaves a leading `/*` for readWord, which reads an empty word and
+      // misclassifies the statement as a plain (read-only) EXPLAIN even though
+      // the server runs it.
+      for (;;) {
+        const versioned = /^\/\*(?:!|M!)\d*\s*([\s\S]*?)\*\//u.exec(rest)
+        if (versioned !== null) {
+          const body = (versioned[1] ?? '').trim()
+          const tail = rest.slice(versioned[0].length).trim()
+          rest = (tail === '' ? body : `${body} ${tail}`).trim()
+          continue
+        }
+        const stripped = stripLeadingComments(rest, dialect)
+        if (stripped === null) { rest = ''; break }
+        if (stripped === rest) break
+        rest = stripped
+      }
+    }
     if (rest.startsWith('(')) {
       const close = matchingParen(rest, 0, dialect)
       if (close < 0) return false
@@ -591,7 +647,9 @@ export function isReadOnlySql(sql: string, dialect: SqlDialect = 'generic'): boo
       return statement !== null && statement !== '' && isReadOnlySql(statement, dialect)
     }
     const analyze = readWord(rest, 0)
-    if (analyze.word !== 'analyze') return true
+    // PostgreSQL accepts both ANALYZE and ANALYSE; they are exact synonyms and
+    // both execute the statement, so neither may slip past a read-only guard.
+    if (analyze.word !== 'analyze' && analyze.word !== 'analyse') return true
     rest = stripLeadingComments(rest.slice(analyze.end), dialect) ?? ''
     if (rest === '') return false
     const format = readWord(rest, 0)
@@ -717,6 +775,9 @@ export class SqlService {
   private bridgeJavaPath = ''
   private bridgeStarting: Promise<BridgeClient> | undefined
   private readonly connected = new Map<string, Connected>()
+  // Bumped on every connect start and disconnect so a connect that resolves
+  // after a concurrent disconnect cannot resurrect a closed session.
+  private readonly connectEpoch = new Map<string, number>()
 
   constructor(
     private readonly paths: PluginPaths,
@@ -756,6 +817,10 @@ export class SqlService {
       throw new DbError('bridge', 'Java 数据库桥未构建', `缺少 ${this.paths.bridgeJar}，请在插件目录运行 npm run build:bridge。`)
     }
     if (this.bridge !== undefined && this.bridgeJavaPath !== status.path) {
+      // dispose() sends closeAll to the JVM, which closes every JDBC session.
+      // Drop our local connected map too, otherwise the UI still reports these
+      // connections as online while the new bridge has no session for them.
+      this.connected.clear()
       this.bridge.dispose()
       this.bridge = undefined
     }
@@ -787,6 +852,10 @@ export class SqlService {
   }
 
   private validateDatabase(connection: ConnectionConfig, template: string): void {
+    // SQLite's "database" is a local file path (jdbc:sqlite:{{database}}).
+    // Spaces, ? and # are legal filename characters there; the generic
+    // URL-component check below must not reject them for file-backed dialects.
+    if (template.startsWith('jdbc:sqlite:')) return
     const database = connection.database.trim()
     if (/[?#\s]/.test(database)) throw new DbError('invalid', '数据库/服务名不能包含空白或 ? # 字符')
     if (template.includes('{{database}}') && database === '') {
@@ -833,8 +902,14 @@ export class SqlService {
 
   async test(draft: ConnectionDraft): Promise<ConnectionTestResult> {
     const started = Date.now()
-    const syntheticId = typeof draft.id === 'string' && draft.id !== '' ? draft.id : `probe-${randomBytes(3).toString('hex')}`
-    const existing = this.config.connection(syntheticId)
+    // The draft id is only used to resolve the stored secret. The bridge keys
+    // JDBC sessions by connId and `connect` evicts any session under that key,
+    // so a probe must use its own id — reusing a live connection's id would
+    // close that connection's session and leave the host thinking it is still
+    // open. Always generate a fresh probe id.
+    const lookupId = typeof draft.id === 'string' && draft.id !== '' ? draft.id : undefined
+    const probeId = `probe-${randomBytes(6).toString('hex')}`
+    const existing = lookupId === undefined ? undefined : this.config.connection(lookupId)
     let driver: ResolvedJdbcDriver | undefined
     try {
       driver = this.drivers.resolveDriver(draft.driver, draft.customDriverId)
@@ -842,7 +917,7 @@ export class SqlService {
       const javaStatus = this.java.locate(this.config.settings().javaPath)
       if (!javaStatus.available) throw new DbError('java-missing', javaStatus.message ?? '未找到 Java')
       const connection: ConnectionConfig = {
-        id: syntheticId,
+        id: probeId,
         name: draft.name,
         driver: draft.driver,
         ...(draft.customDriverId === undefined ? {} : { customDriverId: draft.customDriverId }),
@@ -850,7 +925,12 @@ export class SqlService {
         host: draft.host,
         port: draft.port,
         user: draft.user,
-        ...(existing?.secretName === undefined ? {} : { secretName: existing.secretName }),
+        // A blank password normally falls back to the stored secret so editing
+        // a connection can be tested without re-typing it. But when the user
+        // explicitly asked to clear the password, test with an empty one —
+        // otherwise the probe would succeed with a credential that is about
+        // to be removed.
+        ...(existing?.secretName === undefined || draft.clearPassword === true ? {} : { secretName: existing.secretName }),
         hasPassword: false,
         database: draft.database,
         redisDb: draft.redisDb,
@@ -864,7 +944,7 @@ export class SqlService {
       const server = await bridge.request<ServerInfo>(
         'connect',
         {
-          connId: syntheticId,
+          connId: probeId,
           url: this.buildUrl(connection, driver),
           driverClass: driver.driverClass,
           dialect: driver.dialect,
@@ -876,12 +956,12 @@ export class SqlService {
         },
         (settings.connectTimeoutSec + 15) * 1000,
       )
-      await bridge.request('disconnect', { connId: syntheticId }, 15_000).catch(() => undefined)
+      await bridge.request('disconnect', { connId: probeId }, 15_000).catch(() => undefined)
       const note = fileDatabaseNote(driver.dialect, connection.database, existsSync(connection.database))
       return { ok: true, server, latencyMs: Date.now() - started, ...(note === null ? {} : { note }) }
     } catch (error) {
       if (this.bridge !== undefined && driver !== undefined) {
-        await this.bridge.request('disconnect', { connId: syntheticId }, 10_000).catch(() => undefined)
+        await this.bridge.request('disconnect', { connId: probeId }, 10_000).catch(() => undefined)
       }
       return { ok: false, latencyMs: Date.now() - started, message: errorMessage(error) }
     }
@@ -891,6 +971,13 @@ export class SqlService {
     const connection = this.requireConnection(connId)
     const driver = this.drivers.resolveDriver(connection.driver, connection.customDriverId)
     this.drivers.assertJarsPresent(driver)
+    // Claim the connect epoch before ANY await. disconnect() bumps this same
+    // epoch to invalidate an in-flight connect; if we computed it after the
+    // ensureBridge()/passwordFor() awaits, a disconnect landing in that window
+    // would have its bump overwritten by our newer value, and the connect would
+    // resurrect the session the user just closed.
+    const epoch = (this.connectEpoch.get(connId) ?? 0) + 1
+    this.connectEpoch.set(connId, epoch)
     const bridge = await this.ensureBridge()
     const settings = this.config.settings()
     const password = await this.passwordFor(connection)
@@ -910,16 +997,29 @@ export class SqlService {
         },
         (settings.connectTimeoutSec + 15) * 1000,
       )
+      // A disconnect may have run while the bridge request was in flight; it
+      // already closed the server-side session, so do not report the connection
+      // as online or cache a stale ServerInfo for it.
+      if (this.connectEpoch.get(connId) !== epoch) {
+        throw new DbError('not-connected', '连接已断开')
+      }
       this.connected.set(connId, { driver, server })
       this.config.touchConnection(connId)
       return server
     } catch (error) {
+      // The bridge evicts the old session for this connId before attempting a
+      // new connection, so any failed connect leaves no live session behind.
+      // Bridge-level failures take down all sessions, hence the full clear;
+      // every other failure (bad credentials, pool full, ...) must at least
+      // drop this connection or the UI keeps reporting a dead session online.
       if (error instanceof DbError && error.code === 'bridge') this.connected.clear()
+      else this.connected.delete(connId)
       throw error instanceof DbError ? error : new DbError('connect-failed', `连接失败：${errorMessage(error)}`)
     }
   }
 
   async disconnect(connId: string): Promise<void> {
+    this.connectEpoch.set(connId, (this.connectEpoch.get(connId) ?? 0) + 1)
     this.connected.delete(connId)
     if (this.bridge === undefined) return
     await this.bridge.request('disconnect', { connId }, 15_000).catch(() => undefined)
@@ -1007,11 +1107,27 @@ export class SqlService {
                     : `SHOW CREATE TABLE ${qualified}`
         const result = await this.query(connId, statement, { maxRows: 1 })
         const row = result.rows[0]
-        // SHOW CREATE … returns the statement among metadata columns; its
-        // position differs per object type (and MariaDB version), so take the
-        // longest string cell instead of a fixed index.
-        const cells = Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === 'string') : []
-        const ddl = trimDdlText(cells.reduce((longest, cell) => (cell.length > longest.length ? cell : longest), ''))
+        // SHOW CREATE … returns the definition among metadata columns whose
+        // position differs by object type and server version. Pick the column by
+        // name when available: sql_mode can be longer than a short routine body,
+        // so choosing the longest cell would return the mode list instead.
+        const definitionColumns = [
+          'create table', 'create view', 'create procedure', 'create function',
+          'create trigger', 'create sequence', 'sql original statement',
+        ]
+        const columns = Array.isArray(result.columns) ? result.columns : []
+        const nameIndex = columns.findIndex((column) =>
+          definitionColumns.includes(String(column?.name ?? '').trim().toLowerCase()),
+        )
+        let raw = nameIndex >= 0 && typeof row?.[nameIndex] === 'string' ? row[nameIndex] : ''
+        // Some servers (and mocks) omit column names: fall back to the longest
+        // cell that actually contains a CREATE statement, never sql_mode text.
+        if (raw === '' && Array.isArray(row)) {
+          for (const cell of row) {
+            if (typeof cell === 'string' && /\bcreate\b/iu.test(cell) && cell.length > raw.length) raw = cell
+          }
+        }
+        const ddl = trimDdlText(raw)
         if (ddl.trim() !== '') return { schema, table, kind, ddl, source: 'server', warnings }
         warnings.push('服务器没有返回 DDL 文本')
       } else if (dialect === 'sqlite' && (kind === 'table' || kind === 'view' || kind === 'trigger')) {
@@ -1146,7 +1262,10 @@ export class SqlService {
       await this.query(connId, 'SET SHOWPLAN_ALL ON', { ...queryOptions, allowWrite: true })
       try {
         statements.push(sql)
-        const plan = await this.query(connId, sql, queryOptions)
+        // SHOWPLAN_ALL is on, so this statement is only compiled, not executed.
+        // isReadOnlySql still flags DML by its leading keyword; let it through the
+        // guard just like the SET switches above (and Oracle's EXPLAIN PLAN FOR).
+        const plan = await this.query(connId, sql, { ...queryOptions, allowWrite: true })
         return { dialect: connection.dialect, statements, plan, warnings }
       } finally {
         statements.push('SET SHOWPLAN_ALL OFF')
@@ -1160,7 +1279,10 @@ export class SqlService {
     if (connection.dialect === 'oracle' || connection.dialect === 'oceanbase-oracle') {
       const explain = `EXPLAIN PLAN FOR ${sql}`
       statements.push(explain)
-      await this.query(connId, explain, queryOptions)
+      // EXPLAIN PLAN FOR writes to the plan table, so isReadOnlySql flags it.
+      // It is an internal, controlled statement (like mssql's SET SHOWPLAN_ALL),
+      // not SQL the user asked to run: allow it past the query read-only guard.
+      await this.query(connId, explain, { ...queryOptions, allowWrite: true })
       try {
         const display = "SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, 'BASIC'))"
         statements.push(display)

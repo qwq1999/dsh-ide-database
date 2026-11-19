@@ -84,4 +84,26 @@ describe('redis JSON payloads', () => {
     expect(redisValueTable(value('string', 'hello'))).toEqual({ headers: ['值'], rows: [['hello']] })
     expect(redisValueTable(value('string', '42'))).toEqual({ headers: ['值'], rows: [['42']] })
   })
+
+  it('keeps big integer literals exact when indenting JSON', () => {
+    expect(prettyJsonText('{"id":9007199254740993}')).toBe('{\n  "id": 9007199254740993\n}')
+    expect(prettyJsonText('{"big":9223372036854775807}')).toBe('{\n  "big": 9223372036854775807\n}')
+    expect(prettyJsonText('[-9223372036854775808,9223372036854775807]')).toBe(
+      '[\n  -9223372036854775808,\n  9223372036854775807\n]',
+    )
+    expect(prettyJsonText('{"n":123456789012345678901234567890}')).toContain('123456789012345678901234567890')
+  })
+
+  it('preserves numeric literal spelling instead of normalising it', () => {
+    expect(prettyJsonText('{"x":1.0,"y":1e3,"z":1.2300}')).toBe('{\n  "x": 1.0,\n  "y": 1e3,\n  "z": 1.2300\n}')
+  })
+
+  it('treats structural characters inside strings as literal text', () => {
+    expect(prettyJsonText('{"s":"a\\"b, c: {d}"}')).toBe('{\n  "s": "a\\"b, c: {d}"\n}')
+  })
+
+  it('keeps empty containers on one line', () => {
+    expect(prettyJsonText('{"empty":{},"arr":[]}')).toBe('{\n  "empty": {},\n  "arr": []\n}')
+  })
+
 })

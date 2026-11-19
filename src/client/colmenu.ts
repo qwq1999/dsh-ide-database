@@ -5,6 +5,8 @@
  * sort by it, drop the sort, copy its name, or copy every value in the page.
  */
 import type { CellValue, Row } from '../shared/types'
+import { spreadsheetSafe } from './export'
+import { formatCell } from './format'
 
 export interface ColumnMenuItem {
   label: string
@@ -12,24 +14,24 @@ export interface ColumnMenuItem {
   run: () => void
 }
 
+/**
+ * One value as clipboard text. Embedded tabs or newlines are flattened so a
+ * single cell cannot split one copied row into several lines or cells; this
+ * mirrors rowToTsv and file export, and keeps formula-injection protection.
+ */
+function clipboardValue(value: CellValue): string {
+  if (value === null || value === undefined) return ''
+  return spreadsheetSafe(formatCell(value)).replace(/[\t\r\n]+/gu, ' ')
+}
+
 /** Every value of one column as clipboard text, one line per row. */
 export function columnValues(rows: Row[], index: number): string {
-  return rows
-    .map((row) => {
-      const value: CellValue = row[index] ?? null
-      return value === null || value === undefined ? '' : String(value)
-    })
-    .join('\n')
+  return rows.map((row) => clipboardValue(row[index] ?? null)).join('\n')
 }
 
 /** The same values on one line, for pasting into scripts or IN lists. */
 export function commaValues(rows: Row[], index: number): string {
-  return rows
-    .map((row) => {
-      const value: CellValue = row[index] ?? null
-      return value === null || value === undefined ? '' : String(value)
-    })
-    .join(', ')
+  return rows.map((row) => clipboardValue(row[index] ?? null)).join(', ')
 }
 
 /** Copy through the clipboard API, falling back to a hidden textarea. */

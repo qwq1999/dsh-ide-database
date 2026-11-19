@@ -29,7 +29,7 @@ import { shortcutHit, shortcutLabel } from './keymap'
 import { Banner, Button, EmptyState, Loading, Spinner, Tag } from './ui'
 import { CellValueModal } from './CellValueModal'
 import { DdlModal } from './DdlModal'
-import { cellValueView, type CellValueView } from './cellvalue'
+import { cellValueView, expandTruncatedRows, type CellValueView } from './cellvalue'
 import { tableDumpText } from './tabledump'
 
 /** What the tab body receives: the framework's tab reader. */
@@ -242,10 +242,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const storedOrderApplied = useRef(false)
   const filterRowRef = useRef<HTMLTableRowElement | null>(null)
 
-  // Column drag order is display-only; reset it when the result set changes shape.
+  // Column drag order is display-only; reset it only when the result set changes
+  // shape. Re-running the same query stores a fresh columns array but the names
+  // (the signature) are unchanged, so the user's order must survive a refresh,
+  // page change, filter or auto-refresh — same split as ConsoleTab.
   const signature = columnSignature(columns)
   useEffect(() => {
     setOrder(null)
+  }, [signature])
+  useEffect(() => {
     // Keep the remembered hidden set while the first page is still loading;
     // pruning against an empty column list would forget it before it is useful.
     if (columns.length > 0) setHiddenColumns((current) => pruneHidden(current, columns))
@@ -611,8 +616,12 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
               label: `取消「${cell.column.name}」列的筛选`,
               disabled: columnFilter(filters, cell.column.name) === undefined,
               run: () => {
-                setColumnFilter(cell.column, undefined)
-                apply({ page: 0 })
+                // Pass the cleared filters explicitly: `apply` closes over the
+                // pre-clear `filters`, so without the override the re-query
+                // would still carry the filter just removed from the UI.
+                const next = withColumnFilter(filters, cell.column.name, undefined)
+                setFilters(next)
+                apply({ page: 0 }, next)
               },
             },
       ]
@@ -665,16 +674,34 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   const columnsRef = useRef<ColumnInfo[]>([])
   columnsRef.current = columns
   const previousActive = useRef(0)
+  // A typed filter whose debounce has not fired yet. Closing the filter row
+  // cancels the timer, so flush it on close instead of silently dropping the
+  // filter while activeFilterCount still advertises it as active.
+  const pendingFilter = useRef(false)
   useEffect(() => {
-    if (!filtersOpen || connection === null) return
+    if (connection === null) return
     const active = columnsRef.current.filter((column) => columnFilter(filters, column.name) !== undefined).length
     const hadFilters = previousActive.current > 0
     previousActive.current = active
     if (active === 0) {
       if (hadFilters) applyRef.current({ page: 0 }, {})
+      pendingFilter.current = false
       return
     }
-    const timer = setTimeout(() => applyRef.current({ page: 0 }), 400)
+    if (!filtersOpen) {
+      // The row was closed while a debounce was pending: apply now so the data
+      // matches the badge. Already-applied filters (pending=false) need no work.
+      if (pendingFilter.current) {
+        applyRef.current({ page: 0 })
+        pendingFilter.current = false
+      }
+      return
+    }
+    pendingFilter.current = true
+    const timer = setTimeout(() => {
+      applyRef.current({ page: 0 })
+      pendingFilter.current = false
+    }, 400)
     return () => clearTimeout(timer)
   }, [filters, filtersOpen, connection])
 
@@ -745,6 +772,10 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     return { columns: collectedColumns, rows: collected }
   }
 
+  /** Expand any bridge-capped cells before they reach the export/clipboard renderer. */
+  const expandRows = (cols: ColumnInfo[], rows: Row[]): Promise<Row[]> =>
+    expandTruncatedRows(cols, rows, (column, text) => api.cellText(column, text))
+
   const exportRows = async (format: ExportFormat, scope: 'page' | 'all'): Promise<void> => {
     if (connection === null) return
     setExporting(true)
@@ -770,7 +801,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         schema: params.schema,
         table: params.table,
         columns: exportColumns,
-        rows: exportData,
+        rows: await expandRows(exportColumns, exportData),
       })
       downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
       setExportNote(`${format.toUpperCase()} 已导出 ${formatCount(exportData.length)} 行`)
@@ -785,13 +816,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
 
   /** Toggle one checkbox; shift-click extends from the last clicked row. */
   const selectRow = useCallback((rowIndex: number, extend: boolean): void => {
+    // Capture the anchor before the state updater runs: setState updaters are
+    // deferred, so reading `selectionAnchor.current` inside it would see the
+    // value reassigned below (the clicked row) and the range would collapse to
+    // the clicked row alone.
+    const anchor = selectionAnchor.current
     setSelectedRows((current) => {
       const next = new Set(current)
-      if (extend && selectionAnchor.current !== null) {
+      if (extend && anchor !== null) {
         // Shift-click extends the selection; it never clears a selected range
         // based on the clicked row's current state.
-        const from = Math.min(selectionAnchor.current, rowIndex)
-        const to = Math.max(selectionAnchor.current, rowIndex)
+        const from = Math.min(anchor, rowIndex)
+        const to = Math.max(anchor, rowIndex)
         for (let index = from; index <= to; index += 1) next.add(index)
         return next
       }
@@ -807,7 +843,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
     )
   }, [shownRows])
   /** Save only the checked rows of the current page. */
-  const exportSelected = (format: ExportFormat): void => {
+  const exportSelected = async (format: ExportFormat): Promise<void> => {
     setExportOpen(false)
     // Hidden columns are a view setting; exports keep them.
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
@@ -817,7 +853,7 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       schema: params.schema,
       table: params.table,
       columns: displayColumns,
-      rows: picked,
+      rows: await expandRows(displayColumns, picked),
     })
     downloadText(exportFilename(params.schema, params.table, format), payload.mime, payload.text)
     setExportNote(`${format.toUpperCase()} 已导出 ${picked.length} 行`)
@@ -843,13 +879,18 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
         .ddl(params.connectionId, params.schema, params.table, objectKind)
         .then((result) => result.ddl)
         .catch(() => null)
+      // The dumped columns and the columns driving cell expansion must be the
+      // same ordered set: expandTruncatedRows resolves each cell's column by
+      // position, so passing unordered columns here fetches the wrong full text
+      // after a drag and leaves the truncation marker in the SQL.
+      const dumpColumns = orderColumns(collected.columns, order)
       const text = tableDumpText({
         dialect: connection.dialect,
         schema: params.schema,
         table: params.table,
         ddl,
-        columns: orderColumns(collected.columns, order),
-        rows: orderRows(collected.rows, order),
+        columns: dumpColumns,
+        rows: await expandRows(dumpColumns, orderRows(collected.rows, order)),
       })
       downloadText(exportFilename(params.schema, params.table, 'sql'), 'application/sql', text)
       setExportNote(`SQL 已导出 ${formatCount(collected.rows.length)} 行`)
@@ -870,17 +911,19 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
           onClose={() => setError(null)}
           actions={
             <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const last = lastLoad.current
-                  if (last === null) return
-                  void load(last.found, last.target)
-                }}
-              >
-                重试
-              </Button>
+              {lastLoad.current !== null ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const last = lastLoad.current
+                    if (last === null) return
+                    void load(last.found, last.target)
+                  }}
+                >
+                  重试
+                </Button>
+              ) : null}
               <Button size="sm" variant="ghost" title="复制错误信息" onClick={() => void copyText(failureMessage(error))}>
                 复制
               </Button>
@@ -895,20 +938,21 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
   }
 
   /** Copy the checked rows in the same formats the page copies offer. */
-  const copySelected = (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): void => {
+  const copySelected = async (format: 'csv' | 'tsv' | 'json' | 'md' | 'sql'): Promise<void> => {
     // Hidden columns are a view setting; exports and row copies keep them.
     const picked = displayRows.filter((_, index) => selectedRows.has(index))
     if (picked.length === 0) return
+    const expanded = await expandRows(displayColumns, picked)
     const text =
       format === 'csv'
-        ? toCsv(displayColumns, picked)
+        ? toCsv(displayColumns, expanded)
         : format === 'tsv'
-          ? toTsv(displayColumns, picked)
+          ? toTsv(displayColumns, expanded)
           : format === 'json'
-            ? toJson(displayColumns, picked)
+            ? toJson(displayColumns, expanded)
             : format === 'md'
-              ? toMarkdown(displayColumns, picked)
-              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, picked)
+              ? toMarkdown(displayColumns, expanded)
+              : insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, expanded)
     void copyText(text).then(noteCopied(format === 'md' ? 'Markdown' : format.toUpperCase()))
   }
 
@@ -941,15 +985,15 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
       id: 'copy-page',
       label: '复制当前页',
       leaves: [
-        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void copyText(toMarkdown(displayColumns, rows)).then(noteCopied('Markdown')) },
-        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void copyText(toCsv(displayColumns, rows)).then(noteCopied('CSV')) },
-        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void copyText(toTsv(displayColumns, rows)).then(noteCopied('TSV')) },
-        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void copyText(toJson(displayColumns, rows)).then(noteCopied('JSON')) },
+        { id: 'copy-page-md', label: '复制当前页 Markdown', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toMarkdown(displayColumns, expanded))).then(noteCopied('Markdown')) },
+        { id: 'copy-page-csv', label: '复制当前页 CSV', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toCsv(displayColumns, expanded))).then(noteCopied('CSV')) },
+        { id: 'copy-page-tsv', label: '复制当前页 TSV', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toTsv(displayColumns, expanded))).then(noteCopied('TSV')) },
+        { id: 'copy-page-json', label: '复制当前页 JSON', onSelect: () => void expandRows(displayColumns, displayRows).then((expanded) => copyText(toJson(displayColumns, expanded))).then(noteCopied('JSON')) },
         {
           id: 'copy-page-sql',
           label: '复制当前页 SQL',
           onSelect: () =>
-            void copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, rows)).then(noteCopied('SQL')),
+            void expandRows(displayColumns, displayRows).then((expanded) => copyText(insertStatements(connection?.dialect ?? 'mysql', params.schema, params.table, displayColumns, expanded))).then(noteCopied('SQL')),
         },
       ],
     },
@@ -1228,7 +1272,11 @@ function TableGrid({ params }: { params: TableTabParams }): ReactElement {
                     setWhereText('')
                     setFilters({})
                     setOrderText('')
-                    apply({ where: '', orderBy: '', page: 0 })
+                    // Pass the cleared filters explicitly: `apply` closes over the
+                    // pre-clear `filters`, so without the override the re-query
+                    // would still carry the column filter just removed (and with
+                    // the filter row closed no debounce effect re-runs to fix it).
+                    apply({ where: '', orderBy: '', page: 0 }, {})
                   }}
                   title="清掉过滤条件、列筛选与排序再查一次"
                 >

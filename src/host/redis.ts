@@ -1,3 +1,5 @@
+import { TextDecoder } from 'node:util'
+
 import type { Redis as RedisClient } from 'ioredis'
 
 import type {
@@ -12,7 +14,7 @@ import type {
 import type { ConfigStore } from './config.js'
 import { DbError } from './errors.js'
 import type { SecretStore } from './secrets.js'
-import { isRedisReadCommand } from '../shared/redisread.js'
+import { isRedisReadCommand, tokenizeRedisCommand } from '../shared/redisread.js'
 
 interface Session {
   client: RedisClient
@@ -82,7 +84,7 @@ function truncateText(text: string, limit: number): { text: string; truncated: b
  * ioredis normally returns a flat `[member, score, member, score, ...]` list,
  * but RESP3 connections (and raw `CALL`) return `[[member, score], ...]`.
  */
-export function zsetEntries(reply: unknown): Array<{ member: string; score: number }> {
+export function zsetEntries(reply: unknown): Array<{ member: string; score: number | string }> {
   const flat: string[] = []
   if (Array.isArray(reply)) {
     for (const entry of reply) {
@@ -90,9 +92,18 @@ export function zsetEntries(reply: unknown): Array<{ member: string; score: numb
       else flat.push(String(entry))
     }
   }
-  const items: Array<{ member: string; score: number }> = []
+  const items: Array<{ member: string; score: number | string }> = []
   for (let index = 0; index + 1 < flat.length; index += 2) {
-    const score = Number(flat[index + 1])
+    const raw = flat[index + 1]
+    // Redis accepts inf / -inf / nan as scores and returns them back as
+    // those literal strings. Keep them verbatim instead of collapsing
+    // them to 0 (Number('inf') is NaN), so the panel shows the real score.
+    const literal = raw.toLowerCase()
+    if (literal === 'inf' || literal === '-inf' || literal === 'nan') {
+      items.push({ member: flat[index], score: raw })
+      continue
+    }
+    const score = Number(raw)
     items.push({ member: flat[index], score: Number.isFinite(score) ? score : 0 })
   }
   return items
@@ -184,53 +195,20 @@ export async function keyInfos(client: RedisClient, keys: string[]): Promise<Red
 }
 
 /** Whether a command only reads data and may run on a read-only connection. */
-export function isReadOnlyCommand(command: string): boolean {
-  return isRedisReadCommand(command)
+export function isReadOnlyCommand(command: string, subcommand?: string, tokens?: readonly string[]): boolean {
+  return isRedisReadCommand(command, subcommand, tokens)
 }
 
 // FLUSHDB/FLUSHALL wipe a whole logical database; keep them denied even when writes are allowed.
 const DENIED_COMMANDS = new Set(['shutdown', 'monitor', 'subscribe', 'psubscribe', 'sync', 'psync', 'replconf', 'flushdb', 'flushall'])
 
-/** Splits a Redis command line into argv, honouring single and double quotes. */
-function tokenizeCommand(input: string): string[] {
-  const tokens: string[] = []
-  let current = ''
-  let quote: '"' | "'" | null = null
-  let escaped = false
-  for (const char of input) {
-    if (escaped) {
-      current += char
-      escaped = false
-      continue
-    }
-    if (char === '\\' && quote !== "'") {
-      escaped = true
-      continue
-    }
-    if (quote !== null) {
-      if (char === quote) quote = null
-      else current += char
-      continue
-    }
-    if (char === '"' || char === "'") {
-      quote = char
-      continue
-    }
-    if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-      if (current !== '') {
-        tokens.push(current)
-        current = ''
-      }
-      continue
-    }
-    current += char
-  }
-  if (current !== '') tokens.push(current)
-  return tokens
-}
 
 export class RedisManager {
   private readonly sessions = new Map<string, Session>()
+  /** Session opens in progress, keyed like `sessions`, so concurrent callers share one client. */
+  private readonly opening = new Map<string, Promise<Session>>()
+  /** Incremented on every disconnect; an open that started before it must not resurrect a session. */
+  private readonly epochs = new Map<string, number>()
 
   constructor(
     private readonly config: ConfigStore,
@@ -263,7 +241,7 @@ export class RedisManager {
       ...(password === undefined ? {} : { password }),
       db,
       connectTimeout: settings.connectTimeoutSec * 1000,
-      commandTimeout: settings.queryTimeoutSec,
+      commandTimeout: settings.queryTimeoutSec * 1000,
       lazyConnect: true,
       enableOfflineQueue: false,
       enableReadyCheck: false,
@@ -273,12 +251,23 @@ export class RedisManager {
     }
   }
 
-  async connect(connId: string): Promise<ServerInfo> {
-    const conn = this.connection(connId)
-    const db = conn.redisDb
-    const key = sessionKey(connId, db)
-    const existing = this.sessions.get(key)
-    if (existing !== undefined) return this.serverInfo(conn, existing.client)
+  private epochOf(connId: string): number {
+    return this.epochs.get(connId) ?? 0
+  }
+
+  /**
+   * Open one client and register it, revalidating after the await so a concurrent
+   * disconnect (epoch bump) or a winning opener never leaves an orphaned client
+   * or resurrects a session the user already closed.
+   */
+  private async openSession(
+    connId: string,
+    conn: ConnectionConfig,
+    db: number,
+    epoch: number,
+    failure: (error: unknown) => DbError,
+    touch: boolean,
+  ): Promise<Session> {
     const Redis = await redisDriver()
     const client = new Redis(this.options(conn, db) as never)
     try {
@@ -286,11 +275,66 @@ export class RedisManager {
       await client.ping()
     } catch (error) {
       client.disconnect()
-      throw new DbError('connect-failed', `无法连接 Redis ${conn.host}:${conn.port}：${messageOf(error)}`)
+      throw failure(error)
     }
-    this.sessions.set(key, { client, readOnly: conn.readOnly, db })
-    this.config.touchConnection(connId)
-    return this.serverInfo(conn, client)
+    const key = sessionKey(connId, db)
+    if (this.epochOf(connId) !== epoch) {
+      client.disconnect()
+      throw new DbError('not-connected', '连接尚未打开')
+    }
+    const raced = this.sessions.get(key)
+    if (raced !== undefined && raced.client.status === 'ready') {
+      client.disconnect()
+      return raced
+    }
+    if (raced !== undefined) {
+      try {
+        raced.client.disconnect()
+      } catch {
+        // Best effort: replace the stale, non-ready session.
+      }
+    }
+    const session: Session = { client, readOnly: conn.readOnly, db }
+    this.sessions.set(key, session)
+    if (touch) this.config.touchConnection(connId)
+    return session
+  }
+
+  /** De-duplicate concurrent opens of the same connId+db into a single client. */
+  private openingSession(
+    connId: string,
+    conn: ConnectionConfig,
+    db: number,
+    failure: (error: unknown) => DbError,
+    touch: boolean,
+  ): Promise<Session> {
+    const key = sessionKey(connId, db)
+    let task = this.opening.get(key)
+    if (task === undefined) {
+      task = this.openSession(connId, conn, db, this.epochOf(connId), failure, touch)
+      this.opening.set(key, task)
+      const done = (): void => {
+        if (this.opening.get(key) === task) this.opening.delete(key)
+      }
+      void task.then(done, done)
+    }
+    return task
+  }
+
+  async connect(connId: string): Promise<ServerInfo> {
+    const conn = this.connection(connId)
+    const db = conn.redisDb
+    const key = sessionKey(connId, db)
+    const existing = this.sessions.get(key)
+    if (existing !== undefined && existing.client.status === 'ready') return this.serverInfo(conn, existing.client)
+    const session = await this.openingSession(
+      connId,
+      conn,
+      db,
+      (error) => new DbError('connect-failed', `无法连接 Redis ${conn.host}:${conn.port}：${messageOf(error)}`),
+      true,
+    )
+    return this.serverInfo(conn, session.client)
   }
 
   /**
@@ -305,18 +349,13 @@ export class RedisManager {
     if (existing !== undefined && existing.client.status === 'ready') return existing
     const live = [...this.sessions.keys()].some((entry) => entry.startsWith(`${connId}\u0000`))
     if (!live) throw new DbError('not-connected', '连接尚未打开')
-    const Redis = await redisDriver()
-    const client = new Redis(this.options(conn, db) as never)
-    try {
-      await client.connect()
-      await client.ping()
-    } catch (error) {
-      client.disconnect()
-      throw new DbError('connect-failed', `无法打开 Redis db${db}：${messageOf(error)}`)
-    }
-    const session: Session = { client, readOnly: conn.readOnly, db }
-    this.sessions.set(key, session)
-    return session
+    return this.openingSession(
+      connId,
+      conn,
+      db,
+      (error) => new DbError('connect-failed', `无法打开 Redis db${db}：${messageOf(error)}`),
+      false,
+    )
   }
 
   private async serverInfo(conn: ConnectionConfig, client: RedisClient): Promise<ServerInfo> {
@@ -338,7 +377,14 @@ export class RedisManager {
   }
 
   async disconnect(connId: string): Promise<void> {
+    this.epochs.set(connId, this.epochOf(connId) + 1)
     const prefix = `${connId}\u0000`
+    // Drop in-flight opens for this connection. They captured the old epoch and
+    // will fail their post-await check; leaving them in `opening` would make an
+    // immediate reconnect reuse that doomed promise instead of opening anew.
+    for (const key of this.opening.keys()) {
+      if (key.startsWith(prefix)) this.opening.delete(key)
+    }
     const closing = [...this.sessions.entries()].filter(([key]) => key.startsWith(prefix))
     for (const [key] of closing) this.sessions.delete(key)
     await Promise.all(
@@ -421,8 +467,18 @@ export class RedisManager {
         case 'string': {
           const length = size ?? Number(await client.strlen(key))
           const limit = 64 * 1024
-          const raw = length > limit ? await client.getrange(key, 0, limit - 1) : await client.get(key)
-          const result = truncateText(String(raw ?? ''), limit)
+          let text: string
+          if (length > limit) {
+            // GETRANGE cuts by byte, so the slice can end in the middle of a
+            // multibyte character. Decode raw bytes in streaming mode so the
+            // incomplete trailing sequence is held back instead of becoming
+            // a U+FFFD replacement character in the preview.
+            const bytes = (await client.getrangeBuffer(key, 0, limit - 1)) ?? Buffer.alloc(0)
+            text = new TextDecoder('utf-8').decode(bytes, { stream: true })
+          } else {
+            text = String((await client.get(key)) ?? '')
+          }
+          const result = truncateText(text, limit)
           value = result.text
           truncated = length > limit || result.truncated
           break
@@ -471,7 +527,9 @@ export class RedisManager {
           break
         }
         case 'zset': {
-          const reply = (await client.zrange(key, '0', String(maxRows), 'WITHSCORES')) as unknown
+          // ZRANGE's stop is inclusive; ask for one fewer so the panel shows
+          // exactly maxRows members like every other container type.
+          const reply = (await client.zrange(key, '0', String(maxRows - 1), 'WITHSCORES')) as unknown
           value = zsetEntries(reply) as JsonValue[]
           if ((size ?? Number(await client.zcard(key))) > maxRows) truncated = true
           break
@@ -503,17 +561,22 @@ export class RedisManager {
   }
 
   async command(connId: string, db: number, input: string, allowWrite: boolean): Promise<RedisCommandResult> {
-    const tokens = tokenizeCommand(input)
+    const tokens = tokenizeRedisCommand(input)
     if (tokens.length === 0) throw new DbError('invalid', '命令不能为空')
     const command = tokens[0].toUpperCase()
     // Deny before connecting: a forbidden command must not open a session either.
     if (DENIED_COMMANDS.has(command.toLowerCase())) {
       throw new DbError('read-only', `该命令被插件禁止执行：${command}`)
     }
+    const readOnlyCommand = isReadOnlyCommand(command, tokens[1], tokens)
+    // A write rejected by this request must not open a session either. The
+    // connection's own readOnly flag is checked once the session is available.
+    if (!readOnlyCommand && !allowWrite) {
+      throw new DbError('read-only', '当前操作不允许写命令')
+    }
     const session = await this.ensureSession(connId, db)
-    const readOnlyCommand = isReadOnlyCommand(command)
-    if (!readOnlyCommand && (session.readOnly || !allowWrite)) {
-      throw new DbError('read-only', session.readOnly ? '该连接已标记为只读，拒绝写命令' : '当前操作不允许写命令')
+    if (!readOnlyCommand && session.readOnly) {
+      throw new DbError('read-only', '该连接已标记为只读，拒绝写命令')
     }
     const started = Date.now()
     try {
@@ -528,6 +591,14 @@ export class RedisManager {
   async dispose(): Promise<void> {
     const sessions = [...this.sessions.values()]
     this.sessions.clear()
+    // Invalidate any in-flight opens before forgetting them: their post-await
+    // epoch check must now fail so they disconnect their own client rather than
+    // resurrecting a session after this dispose returns.
+    for (const key of this.opening.keys()) {
+      const connId = key.slice(0, key.indexOf('\u0000'))
+      if (connId.length > 0) this.epochs.set(connId, this.epochOf(connId) + 1)
+    }
+    this.opening.clear()
     await Promise.all(
       sessions.map(async (session) => {
         try {

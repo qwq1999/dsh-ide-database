@@ -36,7 +36,9 @@ export function toggleSqlComment(statement: string, start: number, end: number):
 
   const commented = commentable.every((line) => line.trimStart().startsWith(COMMENT))
   const next = lines.map((line) => {
-    const match = /^(\s*)(.*)$/u.exec(line)
+    // `[\s\S]*` rather than `.*`: CRLF lines carry a trailing `\r`, which `.`
+    // refuses to match and would make `$` fail, leaving the line untouched.
+    const match = /^(\s*)([\s\S]*)$/u.exec(line)
     if (match === null) return line
     const indent = match[1] ?? ''
     const content = match[2] ?? ''

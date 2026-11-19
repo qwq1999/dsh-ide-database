@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { SQL_DIALECT_LABEL } from '../../shared/presets'
 import { sqlDialectOf } from '../../shared/dialect'
 import type { DriverStatus, JarRef, SqlDialect } from '../../shared/types'
@@ -49,8 +49,11 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
   const [jarsText, setJarsText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // A save in flight must not close a different driver modal opened later.
+  const requestRef = useRef(0)
 
   useEffect(() => {
+    requestRef.current += 1
     setError('')
     setSaving(false)
     if (!props.open) return
@@ -94,6 +97,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
       setError('请至少填写一行 Maven 坐标：group:artifact:version')
       return
     }
+    const request = requestRef.current
     setSaving(true)
     setError('')
     try {
@@ -105,13 +109,14 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
         urlTemplate: urlTemplate.trim(),
         jars,
       })
+      if (requestRef.current !== request) return
       props.notify(props.editing ? '自定义驱动已更新' : '自定义驱动已创建', 'success')
       props.onSaved(response.drivers)
       props.onClose()
     } catch (cause) {
-      setError(errorText(cause))
+      if (requestRef.current === request) setError(errorText(cause))
     } finally {
-      setSaving(false)
+      if (requestRef.current === request) setSaving(false)
     }
   }
 
@@ -138,20 +143,20 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
       <div className="dshdb-form">
         <div className="dshdb-form-grid">
           <Field label="名称" required span>
-            <TextInput value={name} autoFocus placeholder="例如 ClickHouse" onChange={(event) => setName(event.target.value)} />
+            <TextInput value={name} autoFocus placeholder="例如 ClickHouse" onChange={(event) => { setName(event.target.value); setError('') }} />
           </Field>
           <Field label="方言" required>
             <Select
               options={DIALECT_OPTIONS}
               value={dialect}
-              onValueChange={(value) => setDialect(value as SqlDialect)}
+              onValueChange={(value) => { setDialect(value as SqlDialect); setError('') }}
             />
           </Field>
           <Field label="驱动类" required>
             <TextInput
               value={driverClass}
               placeholder="com.example.jdbc.Driver"
-              onChange={(event) => setDriverClass(event.target.value)}
+              onChange={(event) => { setDriverClass(event.target.value); setError('') }}
             />
           </Field>
           <Field
@@ -160,7 +165,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
             span
             hint="占位符：{{host}} {{port}} {{database}}，例如 jdbc:mysql://{{host}}:{{port}}/{{database}}"
           >
-            <TextInput value={urlTemplate} onChange={(event) => setUrlTemplate(event.target.value)} />
+            <TextInput value={urlTemplate} onChange={(event) => { setUrlTemplate(event.target.value); setError('') }} />
           </Field>
           <Field
             label="Maven 依赖"
@@ -170,7 +175,7 @@ export function DriverModal(props: DriverModalProps): ReactElement | null {
           >
             <TextArea
               value={jarsText}
-              onChange={(event) => setJarsText(event.target.value)}
+              onChange={(event) => { setJarsText(event.target.value); setError('') }}
               placeholder={'com.example:example-jdbc:1.0.0'}
               style={{ minHeight: 84 }}
             />

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -138,6 +138,38 @@ describe('StructureStore accessors', () => {
     expect(instance.getDescription('c1', 'crm', 'b')).toBeUndefined()
   })
 
+  it('keeps legacy descriptions in the snapshot when their migration failed', () => {
+    const { file } = store()
+    const dir = join(file, '..', 'descriptions')
+    // A legacy structure.json carrying descriptions.
+    writeFileSync(
+      file,
+      JSON.stringify({
+        c1: {
+          fetchedAt: '2026-11-18T00:00:00.000Z',
+          schemas: [{ name: 'shop' }],
+          objects: { shop: [{ name: 'orders', kind: 'table' }] },
+          descriptions: {
+            'shop.orders': { schema: 'shop', table: 'orders', kind: 'table', columns: [], indexes: [] },
+          },
+        },
+      }),
+    )
+    // Force the migration write to fail: the target .ndjson path is a directory.
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(join(dir, 'c1.ndjson'))
+    const messages = []
+    const instance = new StructureStore(file, (message) => messages.push(message))
+    // The failed migration keeps the payload in the snapshot so a later flush
+    // cannot destroy the only remaining copy.
+    expect(instance.snapshot().c1.descriptions['shop.orders']).toMatchObject({ table: 'orders' })
+
+    // Remove the obstacle; a fresh start migrates successfully and drops it.
+    rmSync(join(dir, 'c1.ndjson'), { recursive: true, force: true })
+    const retry = new StructureStore(file, (message) => messages.push(message))
+    expect(retry.snapshot().c1.descriptions).toBeUndefined()
+  })
+
   it('keeps descriptions out of the tree snapshot payload', () => {
     const { instance } = store()
     instance.putSchemas('c1', [{ name: 'app' }])
@@ -192,5 +224,25 @@ describe('StructureStore accessors', () => {
 
     const reloaded = new StructureStore(file, () => {})
     expect(reloaded.getDescription('c1', 'app', 'orders')?.columns).toHaveLength(1)
+  })
+})
+
+
+describe('StructureStore.flush durability', () => {
+  it('retries the tree write after a failure instead of dropping the change', () => {
+    const { file, messages, instance } = store()
+    instance.putSchemas('c1', [{ name: 'shop' }])
+    // Make the temp path a directory so writeFileSync fails.
+    mkdirSync(`${file}.tmp-${process.pid}`, { recursive: true })
+
+    instance.flush()
+    expect(messages.some((m) => m.includes('结构缓存写入失败'))).toBe(true)
+    expect(existsSync(file)).toBe(false)
+
+    // Remove the obstruction; the next flush must still write the tree.
+    rmSync(`${file}.tmp-${process.pid}`, { recursive: true, force: true })
+    instance.flush()
+    expect(existsSync(file)).toBe(true)
+    expect(JSON.parse(readFileSync(file, 'utf8')).c1.schemas.map((s) => s.name)).toEqual(['shop'])
   })
 })

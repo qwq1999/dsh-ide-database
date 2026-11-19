@@ -24,3 +24,22 @@ describe('commaValues', () => {
     expect(commaValues([[1, null], [2, 0]], 1)).toBe(', 0')
   })
 })
+
+describe('columnValues / commaValues flatten embedded newlines', () => {
+  const NL = String.fromCharCode(10)
+  const TAB = String.fromCharCode(9)
+
+  it('keeps one line per row when a cell contains a newline', () => {
+    const rows = [[1, 'a' + NL + 'b'], [2, 'c']]
+    expect(columnValues(rows, 1)).toBe('a b' + NL + 'c')
+  })
+
+  it('flattens tabs and newlines in comma values', () => {
+    const rows = [[1, 'a' + TAB + NL + 'b'], [2, 'c']]
+    expect(commaValues(rows, 1)).toBe('a b, c')
+  })
+
+  it('still applies spreadsheet formula protection', () => {
+    expect(columnValues([[1, '=1+1']], 1)).not.toBe('=1+1')
+  })
+})

@@ -38,6 +38,23 @@ describe('collectRows', () => {
     expect(seen).toEqual([2, 4, 5])
   })
 
+  it('never reports more than the row cap even on an oversized final batch', async () => {
+    const seen = []
+    // limit is not a multiple of batch: the last batch overshoots before slicing.
+    const fake = walker([[1, 2], [3, 4], [5, 6]], { limit: 5, batch: 2, onProgress: (count) => seen.push(count) })
+    await expect(fake.run()).resolves.toEqual([1, 2, 3, 4, 5])
+    expect(seen[seen.length - 1]).toBe(5)
+    expect(seen.every((n) => n <= 5)).toBe(true)
+
+    // A server that ignores the page size and returns everything at once.
+    const seen2 = []
+    const big = walker([Array.from({ length: 50001 }, (_, i) => i)], {
+      limit: 50000, batch: 2000, onProgress: (count) => seen2.push(count),
+    })
+    expect(await big.run()).toHaveLength(50000)
+    expect(seen2[seen2.length - 1]).toBe(50000)
+  })
+
   it('hands out page numbers and row offsets', async () => {
     const fake = walker([[1, 2, 3], [4, 5, 6]], { limit: 100, batch: 3 })
     await fake.run()

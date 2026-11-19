@@ -319,6 +319,10 @@ export class ConfigStore {
       const driverRaw = asString(raw.driver, 'connection.driver', 64, true)
       const driver: DriverChoice = driverRaw === 'custom' ? 'custom' : isPresetId(driverRaw) ? driverRaw : 'mysql'
       const preset = driver === 'custom' ? undefined : presetOf(driver)
+      // SQLite is the one preset with an optional host and a numeric-0 default
+      // port. saveConnection persists `host:''`/`port:0` for it, so hydration
+      // must accept them or every SQLite connection is dropped on reload.
+      const hostOptional = preset?.hostOptional === true
       const customDriverId = driver === 'custom' ? asString(raw.customDriverId, 'connection.customDriverId', 64, true) : undefined
       const dialect = preset !== undefined ? preset.dialect : this.data.drivers.find((d) => d.id === customDriverId)?.dialect
       if (dialect === undefined) return []
@@ -329,8 +333,8 @@ export class ConfigStore {
         driver,
         ...(customDriverId === undefined ? {} : { customDriverId }),
         dialect,
-        host: asString(raw.host, 'connection.host', TEXT_MAX, true),
-        port: asPort(raw.port, 'connection.port', 0),
+        host: asString(raw.host, 'connection.host', TEXT_MAX, !hostOptional),
+        port: hostOptional ? asPortOptional(raw.port, 'connection.port', preset?.defaultPort ?? 0) : asPort(raw.port, 'connection.port', 0),
         user: asString(raw.user, 'connection.user', 128),
         ...(secretName === undefined ? {} : { secretName }),
         hasPassword: typeof secretName === 'string' && this.secrets.has(secretName),

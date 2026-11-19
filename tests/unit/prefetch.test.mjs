@@ -24,6 +24,7 @@ function fakeStructure({ objects = {}, descriptions = {} } = {}) {
         state.descriptions[`${schema}.${table}`] = { ...value, describedAt: new Date().toISOString() }
       },
       hasDescription: (id, schema, table) => state.descriptions[`${schema}.${table}`] !== undefined,
+      hasObject: (id, schema, table) => (objects[schema] ?? []).some((object) => object.name === table),
     },
   }
 }
@@ -200,8 +201,7 @@ describe('DescriptionPrefetcher', () => {
     })
 
     prefetch.schedule('c1')
-    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await vi.waitFor(() => expect(logs.some((m) => m.includes('boom'))).toBe(true))
 
     expect(calls.length).toBeLessThanOrEqual(3)
     expect(state.puts).not.toContain('app.closed')
@@ -234,6 +234,148 @@ describe('DescriptionPrefetcher', () => {
 
     await vi.waitFor(() => expect(completed).toBe(6))
     expect(peak).toBeLessThanOrEqual(DESCRIPTION_CONCURRENCY)
+  })
+
+  it('a refresh mid-pass cannot mutate the new session from a stale run', async () => {
+    const { structure, state } = fakeStructure({
+      objects: { app: [{ name: 'a', kind: 'table' }, { name: 'b', kind: 'table' }] },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(table)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push({ table, release })
+          return promise.then(() => ({ schema, table, kind: 'table', columns: [], indexes: [] }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+    await vi.waitFor(() => expect(calls).toEqual(['a', 'b']))
+
+    prefetch.schedule('c1', { refreshAll: true })
+    await vi.waitFor(() => expect(calls).toEqual(['a', 'b', 'a', 'b']))
+    expect(prefetch.progress()).toEqual([{ connectionId: 'c1', total: 2, done: 0 }])
+
+    gates[0].release()
+    gates[1].release()
+    await new Promise((resolve) => setTimeout(resolve, 15))
+    expect(state.puts).toEqual([])
+    expect(prefetch.progress()).toEqual([{ connectionId: 'c1', total: 2, done: 0 }])
+
+    gates[2].release()
+    gates[3].release()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    expect([...state.puts].sort()).toEqual(['app.a', 'app.b'])
+  })
+
+  it('does not resurrect a description for an object pruned while its read was in flight', async () => {
+    const objects = { app: [{ name: 'orders', kind: 'table' }] }
+    const { structure, state } = fakeStructure({ objects })
+    let release
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          // Prune the object while the read is still in flight.
+          objects[schema] = []
+          const promise = new Promise((resolve) => { release = resolve })
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    prefetch.schedule('c1')
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    expect(state.puts).toEqual([])
+    expect(state.descriptions['app.orders']).toBeUndefined()
+  })
+
+  it('re-walks when the visible schema set changes mid-pass', async () => {
+    const { structure, state } = fakeStructure({
+      objects: {
+        app: [{ name: 'a', kind: 'table' }],
+        audit: [{ name: 'b', kind: 'table' }],
+      },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(`${schema}.${table}`)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push(release)
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    // First pass restricted to schema `app`; hold its read in flight.
+    prefetch.schedule('c1', { schemas: ['app'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a']))
+
+    // A different schema set must start a fresh pass (the old one is retired).
+    prefetch.schedule('c1', { schemas: ['audit'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a', 'audit.b']))
+
+    gates[0]()
+    gates[1]()
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    // The stale `app.a` read must not be written (its session was replaced).
+    expect([...state.puts].sort()).toEqual(['audit.b'])
+  })
+
+  it('a partial request cannot retire an in-flight full refresh (PR8 P1-2)', async () => {
+    const { structure, state } = fakeStructure({
+      objects: {
+        app: [{ name: 'a1', kind: 'table' }],
+        audit: [{ name: 'b1', kind: 'table' }],
+      },
+    })
+    const calls = []
+    const gates = []
+    const prefetch = new DescriptionPrefetcher({
+      structure,
+      sql: {
+        describe: async (id, schema, table) => {
+          calls.push(`${schema}.${table}`)
+          let release
+          const promise = new Promise((resolve) => { release = resolve })
+          gates.push(release)
+          return promise.then(() => description({ schema, table, kind: 'table' }))
+        },
+      },
+      log: () => undefined,
+    })
+
+    // A full refresh across both schemas starts first and holds both reads.
+    prefetch.schedule('c1', { refreshAll: true, schemas: ['app', 'audit'] })
+    await vi.waitFor(() => expect(calls).toEqual(['app.a1', 'audit.b1']))
+    expect(gates.length).toBe(2)
+
+    // A narrower non-refresh request arrives while the refresh is in flight.
+    // It must NOT retire the refresh: doing so would drop audit's in-flight
+    // read via isCurrent() and leave only the app subset re-read.
+    prefetch.schedule('c1', { refreshAll: false, schemas: ['app'] })
+    expect(calls).toEqual(['app.a1', 'audit.b1'])
+
+    gates.forEach((release) => release())
+    await vi.waitFor(() => expect(prefetch.progress()).toEqual([]))
+    // Both tables were refreshed and persisted (audit was not dropped).
+    expect([...state.puts].sort()).toEqual(['app.a1', 'audit.b1'])
   })
 
   it('reports live progress and clears it when the walk ends', async () => {
