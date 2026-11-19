@@ -27,6 +27,8 @@ import type {
   StructureSnapshot,
   TableDescription,
   UpdateNotice,
+  VisibleRedisDbs,
+  VisibleSchemas,
 } from '../../shared/types'
 import { api, ApiError } from '../api'
 import { treeFolderKey, treeFolderSelectedKey, treeObjectKey, treeSchemaKey, treeSchemaSelectedKey } from '../treekeys'
@@ -42,6 +44,9 @@ export interface Snapshot {
   prefetch: PrefetchProgress[]
   /** Update notices the host still shows; closing one hides it for good. */
   notices: UpdateNotice[]
+  /** Tree picker selections persisted by the host in connections.json. */
+  persistedSchemas: VisibleSchemas
+  persistedRedisDbs: VisibleRedisDbs
 }
 
 export type Notify = (text: string, tone?: 'info' | 'success' | 'error') => void
@@ -99,7 +104,7 @@ export interface DataSources {
   redisDbs: Record<string, number[]>
   /**
    * Schemas hidden from the tree per connection. `null` means "all", a list is
-   * the explicit selection persisted in localStorage.
+   * the explicit selection persisted in the host config file.
    */
   visibleSchemas: Record<string, string[] | null>
   redisDetail: RedisValue | null
@@ -237,6 +242,31 @@ export function useDataSources(notify: Notify): DataSources {
   const [redisDatabases, setRedisDatabases] = useState<Record<string, number>>({})
   const [redisDbs, setRedisDbs] = useState<Record<string, number[]>>({})
   const [visibleSchemas, setVisibleSchemas] = useState<Record<string, string[] | null>>({})
+  // Host-side picker selections mirrored from /status. Browser storage is only
+  // a legacy fallback for choices saved before the host file existed.
+  const persistedRef = useRef<{ schemas: VisibleSchemas; dbs: VisibleRedisDbs }>({ schemas: {}, dbs: {} })
+  persistedRef.current = {
+    schemas: snapshot?.persistedSchemas ?? {},
+    dbs: snapshot?.persistedRedisDbs ?? {},
+  }
+  const readPersistedSchemas = useCallback((id: string): string[] | null | undefined => {
+    const fromHost = persistedRef.current.schemas[id]
+    if (fromHost !== undefined) return fromHost
+    return readStoredList(`${VISIBLE_SCHEMAS_KEY}${id}`)
+  }, [])
+  const readPersistedDbs = useCallback((id: string): number[] | undefined => {
+    const fromHost = persistedRef.current.dbs[id]
+    if (fromHost !== undefined) return fromHost
+    return readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${id}`) ?? undefined
+  }, [])
+  const persistSchemaSelection = useCallback((id: string, selection: string[] | null): void => {
+    writeStoredList(`${VISIBLE_SCHEMAS_KEY}${id}`, selection)
+    api.saveVisibleSchema?.(id, selection)?.catch?.(() => undefined)
+  }, [])
+  const persistRedisDbs = useCallback((id: string, dbs: number[]): void => {
+    writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${id}`, dbs)
+    api.saveVisibleRedisDbs?.(id, dbs)?.catch?.(() => undefined)
+  }, [])
   const [redisDetail, setRedisDetail] = useState<RedisValue | null>(null)
   const [redisDetailDb, setRedisDetailDb] = useState(-1)
   const [redisDetailLoading, setRedisDetailLoading] = useState(false)
@@ -271,6 +301,8 @@ export function useDataSources(notify: Notify): DataSources {
         env: data.env,
         prefetch: data.prefetch ?? [],
         notices: data.notices ?? [],
+        persistedSchemas: data.config.visibleSchemas ?? {},
+        persistedRedisDbs: data.config.visibleRedisDbs ?? {},
       })
       setLoadError('')
     } catch (error) {
@@ -327,7 +359,7 @@ export function useDataSources(notify: Notify): DataSources {
           .sort((left, right) => left - right)
         setRedisDbs((previous) => {
           if (previous[connectionId] !== undefined) return previous
-          const stored = readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`)
+          const stored = readPersistedDbs(connectionId)
           const chosen = stored ?? (cachedDbs.length > 0 ? cachedDbs : [0])
           return { ...previous, [connectionId]: chosen }
         })
@@ -341,7 +373,7 @@ export function useDataSources(notify: Notify): DataSources {
     setRedisDatabases((previous) => ({ ...nextRedisDatabases, ...previous }))
     setRedisKeys((previous) => ({ ...nextRedisKeys, ...previous }))
     setRedisCursor((previous) => ({ ...nextRedisCursor, ...previous }))
-  }, [])
+  }, [readPersistedDbs])
 
   // Cached structure lets the tree render before (or without) a connection.
   useEffect(() => {
@@ -428,6 +460,21 @@ export function useDataSources(notify: Notify): DataSources {
     [],
   )
 
+  // Old versions saved the picker in browser localStorage. On the first status
+  // that still has no host-side entry, copy each saved choice into the config
+  // file so a later profile reset can no longer lose it.
+  useEffect(() => {
+    if (!snapshot) return
+    for (const connection of snapshot.connections) {
+      if (persistedRef.current.schemas[connection.id] !== undefined) continue
+      const legacy = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`)
+      if (legacy !== null) api.saveVisibleSchema?.(connection.id, legacy)?.catch?.(() => undefined)
+      if (persistedRef.current.dbs[connection.id] !== undefined) continue
+      const legacyDbs = readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connection.id}`)
+      if (legacyDbs !== null) api.saveVisibleRedisDbs?.(connection.id, legacyDbs)?.catch?.(() => undefined)
+    }
+  }, [snapshot])
+
   // Restore which logical databases each Redis connection shows. The persisted
   // choice wins; otherwise fall back to the databases found in the cache, then
   // to the connection's own default database.
@@ -436,7 +483,7 @@ export function useDataSources(notify: Notify): DataSources {
     const missing: Record<string, number[]> = {}
     for (const connection of snapshot.connections) {
       if (connection.dialect !== 'redis' || redisDbs[connection.id] !== undefined) continue
-      const stored = readStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connection.id}`)
+      const stored = readPersistedDbs(connection.id)
       const cached = Object.keys(redisKeys[connection.id] ?? {})
         .map(Number)
         .filter((db) => Number.isInteger(db) && db >= 0)
@@ -444,7 +491,7 @@ export function useDataSources(notify: Notify): DataSources {
       missing[connection.id] = stored ?? (cached.length > 0 ? cached : [connection.redisDb])
     }
     if (Object.keys(missing).length > 0) setRedisDbs((previous) => ({ ...missing, ...previous }))
-  }, [snapshot, redisDbs, redisKeys])
+  }, [snapshot, redisDbs, redisKeys, readPersistedDbs])
 
   // Same for the SQL schema selection. An absent key means the data source was
   // never opened, so its default schema is picked once the list is known.
@@ -453,11 +500,11 @@ export function useDataSources(notify: Notify): DataSources {
     const missing: Record<string, string[] | null> = {}
     for (const connection of snapshot.connections) {
       if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
-      const stored = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connection.id}`)
-      if (stored !== null) missing[connection.id] = stored
+      const stored = readPersistedSchemas(connection.id)
+      if (stored !== undefined && stored !== null) missing[connection.id] = stored
     }
     if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
-  }, [snapshot, visibleSchemas])
+  }, [snapshot, visibleSchemas, readPersistedSchemas])
 
   // Cached structures populate the tree before the first connect; give a new
   // data source its default schema then too, so picker and cache agree.
@@ -468,18 +515,17 @@ export function useDataSources(notify: Notify): DataSources {
       if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
       // The hydration effect above runs in the same commit but still sees this
       // render's (empty) visibleSchemas, so checking only that map here would
-      // write a default over a choice the user already saved. Re-read storage:
-      // if a choice exists, leave persistence alone and let hydration apply it.
-      const key = `${VISIBLE_SCHEMAS_KEY}${connection.id}`
-      if (readStoredList(key) !== null) continue
+      // write a default over a choice the user already saved. Re-read the
+      // persisted choice (host file first, legacy browser storage second).
+      if (readPersistedSchemas(connection.id) !== undefined) continue
       const cached = schemas[connection.id]
       if (cached === undefined || cached.length === 0) continue
       const chosen = defaultVisibleSchemas(connection, cached)
-      writeStoredList(key, chosen)
+      persistSchemaSelection(connection.id, chosen)
       missing[connection.id] = chosen
     }
     if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
-  }, [snapshot, visibleSchemas, schemas])
+  }, [snapshot, visibleSchemas, schemas, readPersistedSchemas, persistSchemaSelection])
 
   /**
    * Selecting another data source drops the detail of the previous one. This
@@ -512,12 +558,16 @@ export function useDataSources(notify: Notify): DataSources {
         }
         // First open of a data source: only its default schema starts visible.
         // Persisting the choice keeps the picker and the background cache aligned.
-        const stored = readStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`)
+        const stored = readPersistedSchemas(connectionId)
         const connection = connectionsRef.current.find((item) => item.id === connectionId)
-        let selection = stored ?? visibleSchemasRef.current[connectionId]
+        // Prefer the live picker state: the host mirror only refreshes on the
+        // next status poll, so it can still hold a value the user just changed.
+        // An absent legacy value reads back as null; treat that as "never
+        // chosen" so the default branch below still runs.
+        let selection: string[] | null | undefined = visibleSchemasRef.current[connectionId] ?? (stored === null ? undefined : stored)
         if (selection === undefined && connection !== undefined) {
           selection = defaultVisibleSchemas(connection, result.schemas)
-          writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, selection)
+          persistSchemaSelection(connectionId, selection)
           setVisibleSchemas((previous) => ({ ...previous, [connectionId]: selection ?? null }))
         }
         schedulePrefetch(connectionId, false, selection)
@@ -603,7 +653,7 @@ export function useDataSources(notify: Notify): DataSources {
         setLoadingSchemas((previous) => ({ ...previous, [connectionId]: false }))
       }
     },
-    [notify, schedulePrefetch],
+    [notify, schedulePrefetch, readPersistedSchemas, persistSchemaSelection],
   )
 
   /** Read the server's logical-database count; the cached value is enough offline. */
@@ -617,13 +667,13 @@ export function useDataSources(notify: Notify): DataSources {
         const pruned = current.filter((db) => db < result.databases)
         if (pruned.length === current.length) return previous
         const next = pruned.length > 0 ? pruned : [0]
-        writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, next)
+        persistRedisDbs(connectionId, next)
         return { ...previous, [connectionId]: next }
       })
     } catch {
       // Offline: the cached count (or the 16 default) still renders a picker.
     }
-  }, [])
+  }, [persistRedisDbs])
 
   /**
    * Scan one page of a Redis logical database. Each database keeps its own
@@ -989,8 +1039,8 @@ export function useDataSources(notify: Notify): DataSources {
   )
 
   /**
-   * The row-end picker writes the visible list to localStorage so the choice
-   * survives restarts, like DataGrip's database selector.
+   * The row-end picker saves the visible list to the host config file so the
+   * choice survives restarts, like DataGrip's database selector.
    */
   const toggleSchemaVisible = useCallback(
     (connectionId: string, schema: string): void => {
@@ -998,7 +1048,7 @@ export function useDataSources(notify: Notify): DataSources {
       const current = visibleSchemas[connectionId] ?? all
       const enabling = !current.includes(schema)
       const list = enabling ? [...current, schema] : current.filter((name) => name !== schema)
-      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, list)
+      persistSchemaSelection(connectionId, list)
       setVisibleSchemas((previous) => ({ ...previous, [connectionId]: list }))
       if (!enabling) return
       // A newly visible schema starts caching right away: read its object list
@@ -1008,17 +1058,17 @@ export function useDataSources(notify: Notify): DataSources {
         void api.prefetchConnection(connectionId, { schemas: [schema] }).catch(() => undefined)
       }
     },
-    [schemas, visibleSchemas, servers, loadObjects],
+    [schemas, visibleSchemas, servers, loadObjects, persistSchemaSelection],
   )
 
   const toggleAllSchemasVisible = useCallback(
     (connectionId: string, all: boolean): void => {
       const list = all ? (schemas[connectionId] ?? []).map((item) => item.name) : []
-      writeStoredList(`${VISIBLE_SCHEMAS_KEY}${connectionId}`, list)
+      persistSchemaSelection(connectionId, list)
       setVisibleSchemas((previous) => ({ ...previous, [connectionId]: list }))
       if (all) schedulePrefetch(connectionId, false, list)
     },
-    [schemas, schedulePrefetch],
+    [schemas, schedulePrefetch, persistSchemaSelection],
   )
 
   const toggleRedisDbVisible = useCallback(
@@ -1026,7 +1076,7 @@ export function useDataSources(notify: Notify): DataSources {
       const fallback = connections.find((connection) => connection.id === connectionId)?.redisDb ?? 0
       const current = redisDbs[connectionId] ?? [fallback]
       const list = current.includes(db) ? current.filter((item) => item !== db) : [...current, db].sort((left, right) => left - right)
-      writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, list)
+      persistRedisDbs(connectionId, list)
       setRedisDbs((previous) => ({ ...previous, [connectionId]: list }))
       // Adding a database loads its first page right away, like DataGrip does
       // when a schema is switched on.
@@ -1034,17 +1084,17 @@ export function useDataSources(notify: Notify): DataSources {
         void loadRedisKeys(connectionId, db)
       }
     },
-    [connections, redisDbs, servers, redisKeys, loadRedisKeys],
+    [connections, redisDbs, servers, redisKeys, loadRedisKeys, persistRedisDbs],
   )
 
   const toggleAllRedisDbsVisible = useCallback(
     (connectionId: string, all: boolean): void => {
       const count = redisDatabases[connectionId] ?? 16
       const list = all ? Array.from({ length: count }, (_, index) => index) : []
-      writeStoredDbs(`${VISIBLE_REDIS_DBS_KEY}${connectionId}`, list)
+      persistRedisDbs(connectionId, list)
       setRedisDbs((previous) => ({ ...previous, [connectionId]: list }))
     },
-    [redisDatabases],
+    [redisDatabases, persistRedisDbs],
   )
 
   const resetDetail = useCallback((): void => {

@@ -19,6 +19,8 @@ import type {
   JarRef,
   SqlDialect,
   TrashedConnection,
+  VisibleRedisDbs,
+  VisibleSchemas,
 } from '../shared/types.js'
 import { DbError, errorMessage } from './errors.js'
 import type { SecretStore } from './secrets.js'
@@ -77,6 +79,54 @@ function randId(prefix: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function sanitizeSchemaSelection(value: unknown): string[] | null | undefined {
+  if (value === null) return null
+  if (!Array.isArray(value)) return undefined
+  const names: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const name = item.trim().slice(0, 256)
+    if (name === '' || names.includes(name)) continue
+    names.push(name)
+    if (names.length >= 512) break
+  }
+  return names
+}
+
+function sanitizeVisibleSchemas(raw: unknown): VisibleSchemas {
+  const result: VisibleSchemas = {}
+  if (!isRecord(raw)) return result
+  for (const [id, value] of Object.entries(raw)) {
+    if (!ID_PATTERN.test(id)) continue
+    const selection = sanitizeSchemaSelection(value)
+    if (selection !== undefined) result[id] = selection
+  }
+  return result
+}
+
+function sanitizeDbList(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const dbs: number[] = []
+  for (const item of value) {
+    const db = typeof item === 'number' ? item : Number(item)
+    if (!Number.isInteger(db) || db < 0 || db > 65535 || dbs.includes(db)) continue
+    dbs.push(db)
+    if (dbs.length >= 1024) break
+  }
+  return dbs.sort((left, right) => left - right)
+}
+
+function sanitizeVisibleRedisDbs(raw: unknown): VisibleRedisDbs {
+  const result: VisibleRedisDbs = {}
+  if (!isRecord(raw)) return result
+  for (const [id, value] of Object.entries(raw)) {
+    if (!ID_PATTERN.test(id)) continue
+    const dbs = sanitizeDbList(value)
+    if (dbs !== undefined) result[id] = dbs
+  }
+  return result
 }
 
 function asString(value: unknown, field: string, max = TEXT_MAX, required = false): string {
@@ -164,6 +214,8 @@ export class ConfigStore {
     drivers: [],
     settings: { ...DEFAULT_SETTINGS },
     dismissedNotices: [],
+    visibleSchemas: {},
+    visibleRedisDbs: {},
   }
 
   constructor(
@@ -181,6 +233,8 @@ export class ConfigStore {
         drivers: [],
         settings: { ...DEFAULT_SETTINGS },
         dismissedNotices: [],
+        visibleSchemas: {},
+        visibleRedisDbs: {},
       }
       return
     }
@@ -199,6 +253,8 @@ export class ConfigStore {
         drivers: hydratedDrivers,
         settings: this.hydrateSettings(settings),
         dismissedNotices: readDismissedNotices(parsed.dismissedNotices),
+        visibleSchemas: sanitizeVisibleSchemas(parsed.visibleSchemas),
+        visibleRedisDbs: sanitizeVisibleRedisDbs(parsed.visibleRedisDbs),
       }
       // Connections are resolved after their custom drivers exist on `this.data`.
       this.data.connections = connections.flatMap((entry) => this.hydrateConnection(entry))
@@ -221,6 +277,8 @@ export class ConfigStore {
         drivers: [],
         settings: { ...DEFAULT_SETTINGS },
         dismissedNotices: [],
+        visibleSchemas: {},
+        visibleRedisDbs: {},
       }
     }
   }
@@ -395,7 +453,35 @@ export class ConfigStore {
       trash,
       drivers: this.data.drivers.map((driver) => ({ ...driver, jars: driver.jars.map((jar) => ({ ...jar })) })),
       settings: { ...this.data.settings },
+      visibleSchemas: { ...this.data.visibleSchemas },
+      visibleRedisDbs: { ...this.data.visibleRedisDbs },
     }
+  }
+
+  /** Persisted tree picker selections, read on every client status refresh. */
+  visibleSchemas(): VisibleSchemas {
+    return { ...this.data.visibleSchemas }
+  }
+
+  visibleRedisDbs(): VisibleRedisDbs {
+    return { ...this.data.visibleRedisDbs }
+  }
+
+  /** Save one connection's schema picker choice (`null` = show every schema). */
+  setVisibleSchema(id: string, value: string[] | null): VisibleSchemas {
+    if (!ID_PATTERN.test(id)) throw new DbError('invalid', '连接标识无效')
+    const selection = value === null ? null : sanitizeSchemaSelection(value) ?? []
+    this.data.visibleSchemas = { ...this.data.visibleSchemas, [id]: selection }
+    this.persist()
+    return this.visibleSchemas()
+  }
+
+  /** Save one connection's visible Redis logical databases. */
+  setVisibleRedisDbs(id: string, value: number[]): VisibleRedisDbs {
+    if (!ID_PATTERN.test(id)) throw new DbError('invalid', '连接标识无效')
+    this.data.visibleRedisDbs = { ...this.data.visibleRedisDbs, [id]: sanitizeDbList(value) ?? [] }
+    this.persist()
+    return this.visibleRedisDbs()
   }
 
   driver(id: string): DriverConfig | undefined {

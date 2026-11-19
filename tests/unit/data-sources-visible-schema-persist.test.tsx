@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   describe: vi.fn(),
   prefetchConnection: vi.fn(),
+  saveVisibleSchema: vi.fn(),
+  saveVisibleRedisDbs: vi.fn(),
 }))
 
 vi.mock('../../src/client/api', () => ({
@@ -22,6 +24,8 @@ vi.mock('../../src/client/api', () => ({
     connect: mocks.connect,
     describe: mocks.describe,
     prefetchConnection: mocks.prefetchConnection,
+    saveVisibleSchema: mocks.saveVisibleSchema,
+    saveVisibleRedisDbs: mocks.saveVisibleRedisDbs,
   },
 }))
 
@@ -59,6 +63,8 @@ describe('visible-schema persistence on startup', () => {
     mocks.describe.mockResolvedValue({ schema: 'shop', table: 'orders', kind: 'table', columns: [], indexes: [] })
     mocks.prefetchConnection.mockResolvedValue({ id: 'a' })
     mocks.schemas.mockResolvedValue({ schemas: [{ name: 'shop' }, { name: 'audit' }] })
+    mocks.saveVisibleSchema.mockResolvedValue({ visibleSchemas: {} })
+    mocks.saveVisibleRedisDbs.mockResolvedValue({ visibleRedisDbs: {} })
   })
 
   afterEach(() => {
@@ -101,6 +107,46 @@ describe('visible-schema persistence on startup', () => {
 
     // The saved choice must survive; the hydration effect applies it and the
     // "default schema" effect must not overwrite the stored value with "shop".
+    expect(JSON.parse(window.localStorage.getItem(`${KEY}a`) as string)).toEqual(['audit'])
+  })
+
+  it('hydrates the picker from the host config file without rewriting it', async () => {
+    // A previous DSH session saved "audit" in the host file, while the browser
+    // storage still holds the older default "shop". The saved file must win.
+    window.localStorage.setItem(`${KEY}a`, JSON.stringify(['shop']))
+    mocks.structure.mockResolvedValue({ structures: {} })
+    mocks.status.mockResolvedValue({
+      config: {
+        connections: [connection('a', 'shop')], settings, drivers: [],
+        visibleSchemas: { a: ['audit'] },
+      },
+      drivers: [], env: {}, prefetch: [],
+    })
+
+    const { result } = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(result.current.visibleSchemas.a).toEqual(['audit']))
+    await new Promise((r) => setTimeout(r, 80))
+
+    // Host value is authoritative: no migration write and no default overwrite.
+    expect(mocks.saveVisibleSchema).not.toHaveBeenCalled()
+    expect(JSON.parse(window.localStorage.getItem(`${KEY}a`) as string)).toEqual(['shop'])
+  })
+
+  it('migrates a legacy browser choice into the host file once', async () => {
+    window.localStorage.setItem(`${KEY}a`, JSON.stringify(['audit']))
+    mocks.structure.mockResolvedValue({ structures: {} })
+    mocks.status.mockResolvedValue({
+      config: { connections: [connection('a', 'shop')], settings, drivers: [] },
+      drivers: [], env: {}, prefetch: [],
+    })
+
+    renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(mocks.saveVisibleSchema).toHaveBeenCalledWith('a', ['audit']))
+    await new Promise((r) => setTimeout(r, 80))
+
+    // The migration runs when the snapshot arrives; the picker hydration and
+    // default-schema effects must not overwrite the saved choice.
+    expect(mocks.saveVisibleSchema).toHaveBeenCalledTimes(1)
     expect(JSON.parse(window.localStorage.getItem(`${KEY}a`) as string)).toEqual(['audit'])
   })
 })

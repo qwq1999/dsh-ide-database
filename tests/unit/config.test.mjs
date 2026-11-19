@@ -411,4 +411,55 @@ describe('ConfigStore', () => {
     reloaded.load()
     expect(reloaded.snapshot().settings.toolbarActions).toEqual(['settings', 'add'])
   })
+
+  it('persists the visible-schema choice across a config reload', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().visibleSchemas).toEqual({})
+
+    config.setVisibleSchema('conn-1', ['audit', 'shop', 'audit'])
+    expect(config.visibleSchemas()['conn-1']).toEqual(['audit', 'shop'])
+    // null means "show every schema" and must stay distinct from an absent key.
+    config.setVisibleSchema('conn-2', null)
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().visibleSchemas).toEqual({ 'conn-1': ['audit', 'shop'], 'conn-2': null })
+    expect(reloaded.visibleSchemas()['conn-2']).toBeNull()
+    expect(() => config.setVisibleSchema('Bad Id', ['shop'])).toThrow(/连接标识无效/)
+  })
+
+  it('persists the visible Redis databases across a config reload', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().visibleRedisDbs).toEqual({})
+
+    config.setVisibleRedisDbs('cache-1', [2, 0, 1, 2, -1, 99999])
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().visibleRedisDbs).toEqual({ 'cache-1': [0, 1, 2] })
+    expect(() => config.setVisibleRedisDbs('Bad Id', [0])).toThrow(/连接标识无效/)
+  })
+
+  it('drops malformed picker data from an older config file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-config-'))
+    dirs.push(dir)
+    const file = join(dir, 'connections.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        connections: [],
+        trash: [],
+        drivers: [],
+        settings: {},
+        visibleSchemas: { good: ['shop', 'audit'], 'Bad Id': ['shop'], broken: 'all' },
+        visibleRedisDbs: { good: [0, 2], 'Bad Id': [1], broken: 'all' },
+      }),
+    )
+
+    const config = new ConfigStore(file, new SecretStore(join(dir, 'secrets.json')))
+    config.load()
+    expect(config.snapshot().visibleSchemas).toEqual({ good: ['shop', 'audit'] })
+    expect(config.snapshot().visibleRedisDbs).toEqual({ good: [0, 2] })
+  })
 })

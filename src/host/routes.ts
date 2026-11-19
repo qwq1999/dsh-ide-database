@@ -245,6 +245,18 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
       sendJson(response, 200, { ok: true, data: { notices: visibleNotices(dismissed) } })
       return
     }
+    case '/ui/visible-schema': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const selection = data.selection === null ? null : Array.isArray(data.selection) ? data.selection : []
+      sendJson(response, 200, { ok: true, data: { visibleSchemas: deps.config.setVisibleSchema(id, selection) } })
+      return
+    }
+    case '/ui/visible-redis-dbs': {
+      const id = typeof data.id === 'string' ? data.id : ''
+      const dbs = Array.isArray(data.dbs) ? data.dbs : []
+      sendJson(response, 200, { ok: true, data: { visibleRedisDbs: deps.config.setVisibleRedisDbs(id, dbs) } })
+      return
+    }
     case '/env': {
       sendJson(response, 200, { ok: true, data: envStatus(deps) })
       return

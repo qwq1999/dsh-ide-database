@@ -5,7 +5,7 @@ import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
 
 const servers = []
-const calls = { cancel: [], invalidate: [], upsertDriver: [], deleteDriver: [], ping: [] }
+const calls = { cancel: [], invalidate: [], upsertDriver: [], deleteDriver: [], ping: [], visibleSchemas: [], visibleRedisDbs: [] }
 
 let settings = { javaPath: '/usr/bin/java', redisScanCount: 200 }
 let java = { available: true, bridgeReady: true }
@@ -41,6 +41,14 @@ function deps() {
         return { id: 'drv-1', ...driver }
       },
       deleteDriver: (id) => calls.deleteDriver.push(id),
+      setVisibleSchema: (id, selection) => {
+        calls.visibleSchemas.push([id, selection])
+        return { [id]: selection }
+      },
+      setVisibleRedisDbs: (id, dbs) => {
+        calls.visibleRedisDbs.push([id, dbs])
+        return { [id]: dbs }
+      },
     },
     secrets: {},
     drivers: { statuses: () => [{ id: 'mysql', name: 'MySQL' }] },
@@ -136,6 +144,30 @@ describe('custom driver routes over HTTP', () => {
     await post(url, { id: 'drv-1' })
 
     expect(calls.deleteDriver).toEqual(['drv-1'])
+  })
+})
+
+describe('tree picker routes over HTTP', () => {
+  it('saves a schema selection and passes null through unchanged', async () => {
+    const url = await start('/ui/visible-schema')
+
+    const result = await post(url, { id: 'conn-1', selection: ['audit'] })
+    await post(url, { id: 'conn-2', selection: null })
+
+    expect(result.body).toMatchObject({ ok: true, data: { visibleSchemas: { 'conn-1': ['audit'] } } })
+    expect(calls.visibleSchemas).toEqual([
+      ['conn-1', ['audit']],
+      ['conn-2', null],
+    ])
+  })
+
+  it('saves the visible Redis databases', async () => {
+    const url = await start('/ui/visible-redis-dbs')
+
+    const result = await post(url, { id: 'cache-1', dbs: [0, 2] })
+
+    expect(result.body).toMatchObject({ ok: true, data: { visibleRedisDbs: { 'cache-1': [0, 2] } } })
+    expect(calls.visibleRedisDbs).toEqual([['cache-1', [0, 2]]])
   })
 })
 
