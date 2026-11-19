@@ -153,4 +153,11 @@ export const api = {
 
   updateSettings: (settings: Partial<DbSettings>) =>
     post<{ settings: DbSettings; env: EnvStatus }>('/settings/update', { settings }),
+
+  /** Save one connection's schema picker choice; null means "every schema". */
+  saveVisibleSchema: (id: string, selection: string[] | null) =>
+    post<{ visibleSchemas: Record<string, string[] | null> }>('/ui/visible-schema', { id, selection }),
+  /** Save one connection's visible Redis logical databases. */
+  saveVisibleRedisDbs: (id: string, dbs: number[]) =>
+    post<{ visibleRedisDbs: Record<string, number[]> }>('/ui/visible-redis-dbs', { id, dbs }),
 }

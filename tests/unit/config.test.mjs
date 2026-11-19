@@ -411,4 +411,92 @@ describe('ConfigStore', () => {
     reloaded.load()
     expect(reloaded.snapshot().settings.toolbarActions).toEqual(['settings', 'add'])
   })
+
+  it('persists the visible-schema choice across a config reload', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().visibleSchemas).toEqual({})
+
+    config.setVisibleSchema('conn-1', ['audit', 'shop', 'audit'])
+    expect(config.visibleSchemas()['conn-1']).toEqual(['audit', 'shop'])
+    // null means "show every schema" and must stay distinct from an absent key.
+    config.setVisibleSchema('conn-2', null)
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().visibleSchemas).toEqual({ 'conn-1': ['audit', 'shop'], 'conn-2': null })
+    expect(reloaded.visibleSchemas()['conn-2']).toBeNull()
+    expect(() => config.setVisibleSchema('Bad Id', ['shop'])).toThrow(/连接标识无效/)
+  })
+
+  it('persists the visible Redis databases across a config reload', () => {
+    const { config, dir } = store()
+    expect(config.snapshot().visibleRedisDbs).toEqual({})
+
+    config.setVisibleRedisDbs('cache-1', [2, 0, 1, 2, -1, 99999])
+
+    const reloaded = new ConfigStore(join(dir, 'connections.json'), new SecretStore(join(dir, 'secrets.json')))
+    reloaded.load()
+    expect(reloaded.snapshot().visibleRedisDbs).toEqual({ 'cache-1': [0, 1, 2] })
+    expect(() => config.setVisibleRedisDbs('Bad Id', [0])).toThrow(/连接标识无效/)
+  })
+
+  it('drops malformed picker data from an older config file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dshdb-config-'))
+    dirs.push(dir)
+    const file = join(dir, 'connections.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        connections: [],
+        trash: [],
+        drivers: [],
+        settings: {},
+        visibleSchemas: { good: ['shop', 'audit'], 'Bad Id': ['shop'], broken: 'all' },
+        visibleRedisDbs: { good: [0, 2], 'Bad Id': [1], broken: 'all' },
+      }),
+    )
+
+    const config = new ConfigStore(file, new SecretStore(join(dir, 'secrets.json')))
+    config.load()
+    expect(config.snapshot().visibleSchemas).toEqual({ good: ['shop', 'audit'] })
+    expect(config.snapshot().visibleRedisDbs).toEqual({ good: [0, 2] })
+  })
+
+  it('rejects malformed picker writes without changing the saved choice', () => {
+    const { config } = store()
+    config.setVisibleSchema('conn-1', ['shop'])
+    config.setVisibleRedisDbs('conn-1', [0])
+
+    expect(() => config.setVisibleSchema('conn-1', 123)).toThrow(/schema 选择/)
+    expect(() => config.setVisibleRedisDbs('conn-1', 'all')).toThrow(/Redis 库选择/)
+    // Overlong names are dropped rather than silently truncated.
+    config.setVisibleSchema('conn-1', ['a'.repeat(257)])
+    expect(config.visibleSchemas()['conn-1']).toEqual([])
+    // Restore the valid choice and confirm rejected writes leave it intact.
+    config.setVisibleSchema('conn-1', ['shop'])
+    expect(() => config.setVisibleSchema('conn-1', 123)).toThrow(/schema 选择/)
+    expect(config.visibleSchemas()['conn-1']).toEqual(['shop'])
+    expect(config.visibleRedisDbs()['conn-1']).toEqual([0])
+  })
+
+  it('drops picker entries when a connection is purged or the trash is emptied', () => {
+    const { config } = store()
+    const first = config.saveConnection({ name: 'One', driver: 'mysql', host: 'h', user: 'u', database: 'app' })
+    const second = config.saveConnection({ name: 'Two', driver: 'mysql', host: 'h', user: 'u', database: 'app' })
+    for (const id of [first.id, second.id]) {
+      config.setVisibleSchema(id, ['shop'])
+      config.setVisibleRedisDbs(id, [0])
+    }
+
+    config.trashConnection(first.id)
+    config.purgeConnection(first.id)
+    expect(Object.hasOwn(config.visibleSchemas(), first.id)).toBe(false)
+    expect(Object.hasOwn(config.visibleRedisDbs(), first.id)).toBe(false)
+
+    config.trashConnection(second.id)
+    config.emptyTrash()
+    expect(Object.hasOwn(config.visibleSchemas(), second.id)).toBe(false)
+    expect(Object.hasOwn(config.visibleRedisDbs(), second.id)).toBe(false)
+  })
 })

@@ -220,6 +220,11 @@ export interface ConnectionDraft {
   readOnly: boolean
 }
 
+/** Per-connection schema picker selection; null means "every schema". */
+export type VisibleSchemas = Record<string, string[] | null>
+/** Per-connection Redis logical databases currently shown in the tree. */
+export type VisibleRedisDbs = Record<string, number[]>
+
 export interface DbConfigFile {
   version: 1
   connections: ConnectionConfig[]
@@ -229,6 +234,9 @@ export interface DbConfigFile {
   settings: DbSettings
   /** Update notices the user closed; they stay hidden on every later launch. */
   dismissedNotices?: string[]
+  /** Tree picker selections, kept in this file so they survive a DSH restart. */
+  visibleSchemas: VisibleSchemas
+  visibleRedisDbs: VisibleRedisDbs
 }
 
 export interface ClientConfig {
@@ -237,6 +245,8 @@ export interface ClientConfig {
   trash: ClientTrashedConnection[]
   drivers: DriverConfig[]
   settings: DbSettings
+  visibleSchemas?: VisibleSchemas
+  visibleRedisDbs?: VisibleRedisDbs
 }
 
 export interface JavaCandidate {
