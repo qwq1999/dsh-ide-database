@@ -247,14 +247,14 @@ async function handle(deps: RouteDeps, request: IncomingMessage, response: Serve
     }
     case '/ui/visible-schema': {
       const id = typeof data.id === 'string' ? data.id : ''
-      const selection = data.selection === null ? null : Array.isArray(data.selection) ? data.selection : []
-      sendJson(response, 200, { ok: true, data: { visibleSchemas: deps.config.setVisibleSchema(id, selection) } })
+      // Keep the raw value: ConfigStore validates it and rejects malformed
+      // selections with 400 instead of silently clearing the whole tree.
+      sendJson(response, 200, { ok: true, data: { visibleSchemas: deps.config.setVisibleSchema(id, data.selection) } })
       return
     }
     case '/ui/visible-redis-dbs': {
       const id = typeof data.id === 'string' ? data.id : ''
-      const dbs = Array.isArray(data.dbs) ? data.dbs : []
-      sendJson(response, 200, { ok: true, data: { visibleRedisDbs: deps.config.setVisibleRedisDbs(id, dbs) } })
+      sendJson(response, 200, { ok: true, data: { visibleRedisDbs: deps.config.setVisibleRedisDbs(id, data.dbs) } })
       return
     }
     case '/env': {

@@ -462,4 +462,41 @@ describe('ConfigStore', () => {
     expect(config.snapshot().visibleSchemas).toEqual({ good: ['shop', 'audit'] })
     expect(config.snapshot().visibleRedisDbs).toEqual({ good: [0, 2] })
   })
+
+  it('rejects malformed picker writes without changing the saved choice', () => {
+    const { config } = store()
+    config.setVisibleSchema('conn-1', ['shop'])
+    config.setVisibleRedisDbs('conn-1', [0])
+
+    expect(() => config.setVisibleSchema('conn-1', 123)).toThrow(/schema 选择/)
+    expect(() => config.setVisibleRedisDbs('conn-1', 'all')).toThrow(/Redis 库选择/)
+    // Overlong names are dropped rather than silently truncated.
+    config.setVisibleSchema('conn-1', ['a'.repeat(257)])
+    expect(config.visibleSchemas()['conn-1']).toEqual([])
+    // Restore the valid choice and confirm rejected writes leave it intact.
+    config.setVisibleSchema('conn-1', ['shop'])
+    expect(() => config.setVisibleSchema('conn-1', 123)).toThrow(/schema 选择/)
+    expect(config.visibleSchemas()['conn-1']).toEqual(['shop'])
+    expect(config.visibleRedisDbs()['conn-1']).toEqual([0])
+  })
+
+  it('drops picker entries when a connection is purged or the trash is emptied', () => {
+    const { config } = store()
+    const first = config.saveConnection({ name: 'One', driver: 'mysql', host: 'h', user: 'u', database: 'app' })
+    const second = config.saveConnection({ name: 'Two', driver: 'mysql', host: 'h', user: 'u', database: 'app' })
+    for (const id of [first.id, second.id]) {
+      config.setVisibleSchema(id, ['shop'])
+      config.setVisibleRedisDbs(id, [0])
+    }
+
+    config.trashConnection(first.id)
+    config.purgeConnection(first.id)
+    expect(Object.hasOwn(config.visibleSchemas(), first.id)).toBe(false)
+    expect(Object.hasOwn(config.visibleRedisDbs(), first.id)).toBe(false)
+
+    config.trashConnection(second.id)
+    config.emptyTrash()
+    expect(Object.hasOwn(config.visibleSchemas(), second.id)).toBe(false)
+    expect(Object.hasOwn(config.visibleRedisDbs(), second.id)).toBe(false)
+  })
 })

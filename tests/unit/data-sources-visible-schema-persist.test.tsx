@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -148,5 +148,56 @@ describe('visible-schema persistence on startup', () => {
     // default-schema effects must not overwrite the saved choice.
     expect(mocks.saveVisibleSchema).toHaveBeenCalledTimes(1)
     expect(JSON.parse(window.localStorage.getItem(`${KEY}a`) as string)).toEqual(['audit'])
+  })
+
+  it('keeps an explicit host null ("show all") when cached structure arrives first', async () => {
+    // Status is held back while cached structure populates schemas['a']; the
+    // host file already says "show every schema" (null). The default-schema
+    // effect must NOT overwrite it with ["shop"].
+    mocks.structure.mockResolvedValue({
+      structures: {
+        a: { schemas: [{ name: 'shop' }, { name: 'audit' }], objects: {}, descriptions: {}, fetchedAt: new Date().toISOString() },
+      },
+    })
+    const status = deferred<unknown>()
+    mocks.status.mockReturnValue(status.promise)
+
+    renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(mocks.structure).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 50))
+    // No persisted signal yet -> the buggy guard would write the default here.
+    expect(mocks.saveVisibleSchema).not.toHaveBeenCalled()
+
+    status.resolve({
+      config: {
+        connections: [connection('a', 'shop')], settings, drivers: [],
+        visibleSchemas: { a: null },
+      },
+      drivers: [], env: {}, prefetch: [],
+    })
+    await new Promise((r) => setTimeout(r, 80))
+
+    expect(mocks.saveVisibleSchema).not.toHaveBeenCalled()
+  })
+
+  it('preserves an explicit host null through connect instead of resetting to the default schema', async () => {
+    mocks.structure.mockResolvedValue({ structures: {} })
+    mocks.status.mockResolvedValue({
+      config: {
+        connections: [connection('a', 'shop')], settings, drivers: [],
+        visibleSchemas: { a: null },
+      },
+      drivers: [], env: {}, prefetch: [],
+    })
+
+    const { result } = renderHook(() => useDataSources(() => undefined))
+    await waitFor(() => expect(result.current.selectedId).toBe('a'))
+    await waitFor(() => expect(result.current.visibleSchemas.a).toBeNull())
+    await act(async () => { await result.current.connect('a') })
+
+    expect(result.current.visibleSchemas.a).toBeNull()
+    expect(mocks.saveVisibleSchema).not.toHaveBeenCalled()
+    // null means "all schemas"; with no cached names yet, prefetch uses undefined.
+    expect(mocks.prefetchConnection).toHaveBeenCalledWith('a', { refresh: false, schemas: undefined })
   })
 })

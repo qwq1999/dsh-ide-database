@@ -3,6 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 
 import { ROUTE_PREFIX } from '../../lib/shared/presets.js'
 import { createRouteHandler } from '../../lib/host/routes.js'
+import { DbError } from '../../lib/host/errors.js'
 
 const servers = []
 const calls = { cancel: [], invalidate: [], upsertDriver: [], deleteDriver: [], ping: [], visibleSchemas: [], visibleRedisDbs: [] }
@@ -42,10 +43,12 @@ function deps() {
       },
       deleteDriver: (id) => calls.deleteDriver.push(id),
       setVisibleSchema: (id, selection) => {
+        if (selection !== null && !Array.isArray(selection)) throw new DbError('invalid', 'schema 选择无效')
         calls.visibleSchemas.push([id, selection])
         return { [id]: selection }
       },
       setVisibleRedisDbs: (id, dbs) => {
+        if (!Array.isArray(dbs)) throw new DbError('invalid', 'Redis 库选择无效')
         calls.visibleRedisDbs.push([id, dbs])
         return { [id]: dbs }
       },
@@ -168,6 +171,19 @@ describe('tree picker routes over HTTP', () => {
 
     expect(result.body).toMatchObject({ ok: true, data: { visibleRedisDbs: { 'cache-1': [0, 2] } } })
     expect(calls.visibleRedisDbs).toEqual([['cache-1', [0, 2]]])
+  })
+
+  it('returns 400 for malformed picker payloads', async () => {
+    const schemaUrl = await start('/ui/visible-schema')
+    const redisUrl = await start('/ui/visible-redis-dbs')
+
+    const schemaResult = await post(schemaUrl, { id: 'conn-1', selection: 123 })
+    const redisResult = await post(redisUrl, { id: 'cache-1', dbs: 'all' })
+
+    expect(schemaResult.status).toBe(400)
+    expect(schemaResult.body.ok).toBe(false)
+    expect(redisResult.status).toBe(400)
+    expect(redisResult.body.ok).toBe(false)
   })
 })
 

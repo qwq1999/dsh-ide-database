@@ -249,11 +249,15 @@ export function useDataSources(notify: Notify): DataSources {
     schemas: snapshot?.persistedSchemas ?? {},
     dbs: snapshot?.persistedRedisDbs ?? {},
   }
+  const hasHostSchemas = useCallback((id: string): boolean =>
+    Object.prototype.hasOwnProperty.call(persistedRef.current.schemas, id), [])
   const readPersistedSchemas = useCallback((id: string): string[] | null | undefined => {
-    const fromHost = persistedRef.current.schemas[id]
-    if (fromHost !== undefined) return fromHost
-    return readStoredList(`${VISIBLE_SCHEMAS_KEY}${id}`)
-  }, [])
+    // The host file is authoritative: an explicit null means "show every
+    // schema" and must not be confused with "never saved".
+    if (hasHostSchemas(id)) return persistedRef.current.schemas[id]
+    const legacy = readStoredList(`${VISIBLE_SCHEMAS_KEY}${id}`)
+    return legacy === null ? undefined : legacy
+  }, [hasHostSchemas])
   const readPersistedDbs = useCallback((id: string): number[] | undefined => {
     const fromHost = persistedRef.current.dbs[id]
     if (fromHost !== undefined) return fromHost
@@ -501,7 +505,7 @@ export function useDataSources(notify: Notify): DataSources {
     for (const connection of snapshot.connections) {
       if (connection.dialect === 'redis' || visibleSchemas[connection.id] !== undefined) continue
       const stored = readPersistedSchemas(connection.id)
-      if (stored !== undefined && stored !== null) missing[connection.id] = stored
+      if (stored !== undefined) missing[connection.id] = stored
     }
     if (Object.keys(missing).length > 0) setVisibleSchemas((previous) => ({ ...missing, ...previous }))
   }, [snapshot, visibleSchemas, readPersistedSchemas])
@@ -560,11 +564,14 @@ export function useDataSources(notify: Notify): DataSources {
         // Persisting the choice keeps the picker and the background cache aligned.
         const stored = readPersistedSchemas(connectionId)
         const connection = connectionsRef.current.find((item) => item.id === connectionId)
-        // Prefer the live picker state: the host mirror only refreshes on the
-        // next status poll, so it can still hold a value the user just changed.
-        // An absent legacy value reads back as null; treat that as "never
-        // chosen" so the default branch below still runs.
-        let selection: string[] | null | undefined = visibleSchemasRef.current[connectionId] ?? (stored === null ? undefined : stored)
+        // Prefer the live picker state, including an explicit null ("show all"):
+        // the host mirror only refreshes on the next status poll, so it can
+        // still hold a value the user just changed. Fall back to the persisted
+        // value only when this connection has no live entry yet.
+        const live = visibleSchemasRef.current
+        let selection: string[] | null | undefined = Object.prototype.hasOwnProperty.call(live, connectionId)
+          ? live[connectionId]
+          : stored
         if (selection === undefined && connection !== undefined) {
           selection = defaultVisibleSchemas(connection, result.schemas)
           persistSchemaSelection(connectionId, selection)

@@ -235,8 +235,8 @@ export interface DbConfigFile {
   /** Update notices the user closed; they stay hidden on every later launch. */
   dismissedNotices?: string[]
   /** Tree picker selections, kept in this file so they survive a DSH restart. */
-  visibleSchemas?: VisibleSchemas
-  visibleRedisDbs?: VisibleRedisDbs
+  visibleSchemas: VisibleSchemas
+  visibleRedisDbs: VisibleRedisDbs
 }
 
 export interface ClientConfig {

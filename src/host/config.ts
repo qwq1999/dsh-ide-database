@@ -87,8 +87,8 @@ function sanitizeSchemaSelection(value: unknown): string[] | null | undefined {
   const names: string[] = []
   for (const item of value) {
     if (typeof item !== 'string') continue
-    const name = item.trim().slice(0, 256)
-    if (name === '' || names.includes(name)) continue
+    const name = item.trim()
+    if (name === '' || name.length > 256 || names.includes(name)) continue
     names.push(name)
     if (names.length >= 512) break
   }
@@ -468,18 +468,21 @@ export class ConfigStore {
   }
 
   /** Save one connection's schema picker choice (`null` = show every schema). */
-  setVisibleSchema(id: string, value: string[] | null): VisibleSchemas {
+  setVisibleSchema(id: string, value: unknown): VisibleSchemas {
     if (!ID_PATTERN.test(id)) throw new DbError('invalid', '连接标识无效')
-    const selection = value === null ? null : sanitizeSchemaSelection(value) ?? []
+    const selection = value === null ? null : sanitizeSchemaSelection(value)
+    if (selection === undefined) throw new DbError('invalid', 'schema 选择必须是字符串数组或 null')
     this.data.visibleSchemas = { ...this.data.visibleSchemas, [id]: selection }
     this.persist()
     return this.visibleSchemas()
   }
 
   /** Save one connection's visible Redis logical databases. */
-  setVisibleRedisDbs(id: string, value: number[]): VisibleRedisDbs {
+  setVisibleRedisDbs(id: string, value: unknown): VisibleRedisDbs {
     if (!ID_PATTERN.test(id)) throw new DbError('invalid', '连接标识无效')
-    this.data.visibleRedisDbs = { ...this.data.visibleRedisDbs, [id]: sanitizeDbList(value) ?? [] }
+    const dbs = sanitizeDbList(value)
+    if (dbs === undefined) throw new DbError('invalid', 'Redis 库选择必须是数字数组')
+    this.data.visibleRedisDbs = { ...this.data.visibleRedisDbs, [id]: dbs }
     this.persist()
     return this.visibleRedisDbs()
   }
@@ -591,6 +594,8 @@ export class ConfigStore {
     if (connection === undefined) throw new DbError('not-found', `连接不存在：${id}`)
     this.data.connections = this.data.connections.filter((entry) => entry.id !== id)
     this.data.trash = this.data.trash.filter((entry) => entry.id !== id)
+    delete this.data.visibleSchemas[id]
+    delete this.data.visibleRedisDbs[id]
     if (connection.secretName !== undefined) this.secrets.delete(connection.secretName)
     this.persist()
     return connection
@@ -601,6 +606,8 @@ export class ConfigStore {
     const count = this.data.trash.length
     for (const connection of this.data.trash) {
       if (connection.secretName !== undefined) this.secrets.delete(connection.secretName)
+      delete this.data.visibleSchemas[connection.id]
+      delete this.data.visibleRedisDbs[connection.id]
     }
     this.data.trash = []
     this.persist()
